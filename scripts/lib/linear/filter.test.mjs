@@ -104,3 +104,13 @@ test('finishSearch applies blocked, the sort and the limit', () => {
   assert.deepEqual(finishSearch(rows, { sort: 'priority', limit: 1 }, { priorities }).map((i) => i.id), ['ACME-2'])
   assert.deepEqual(finishSearch(rows, {}, { priorities }).map((i) => i.id), ['ACME-1', 'ACME-2', 'ACME-3'])
 })
+
+// PMK-246: an issue matches a release when it is any of its releases.
+test('release becomes a releases clause', () => {
+  const on = { ...context, raw: { ...raw, flags: { ...raw.flags, releasesEnabled: true } } }
+  assert.deepEqual(clauses({ release: 'rel-1' }, on)[1], { releases: { some: { id: { eq: 'rel-1' } } } })
+})
+test('release refuses when releases are off', () => {
+  const off = { ...context, raw: { ...raw, flags: { ...raw.flags, releasesEnabled: false } } }
+  assert.throws(() => translateFilter({ release: 'rel-1' }, off), { code: 'NOT_SUPPORTED', message: 'Linear releases are off in this workspace' })
+})

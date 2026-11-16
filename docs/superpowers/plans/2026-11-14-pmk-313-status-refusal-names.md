@@ -1,0 +1,10 @@
+# PMK-313 plan
+
+Spec: `docs/superpowers/specs/2026-11-14-pmk-313-status-refusal-names-design.md`. Files: `scripts/lib/adr.mjs`, `scripts/pmkit.mjs`, `scripts/adr.test.mjs`, `CHANGELOG.md`.
+
+1. Red tests (AC1): `- Accepted`/`* Accepted`/`> Accepted` + blank + `Date: ...` or `Supersedes [ADR 3](0003-x.md)`; `- - Accepted` + `bar`. Each: `adrStatusDropped` is the extra line and the CLI message names it, not the status.
+2. Red tests (AC2): `- Accepted`, blank, closed fence with `## X`, and the same in a quote: the closing fence line is named once, as part of the fence.
+3. Make `hostsLazy` recursive; `statusLineOf` takes the first non-comment hosting line. Tests of 1 go green.
+4. `sectionEnd` records `closer`; new `adrFenceClosers` returns them (`adrFenceHeld` keeps its shape); `runAdrStatus` removes them once from `other`. Tests of 2 go green.
+5. AC3: existing tests unchanged in outcome; `node scripts/dev/adr-commonmark-diff.mjs` before/after; develop x branch comparison on random Status bodies (refused or not, written text).
+6. CHANGELOG line, `npm test`, tick criteria, PR.

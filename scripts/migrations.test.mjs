@@ -81,6 +81,15 @@ test('planMigration runs each step on a copy and lists the files it changed', ()
   assert.equal(hashTree(root), before)
 })
 
+test('planMigration leaves the leftover of a failed delete out of the copy', () => {
+  const root = makeRepo('basic')
+  const leftover = path.join(root, '.issues', 'issues', '.deleting-ISS-X-4242')
+  fs.mkdirSync(leftover, { recursive: true })
+  fs.writeFileSync(path.join(leftover, 'events.jsonl'), '')
+  const plan = planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [{ from: 1, to: 2, describe: 'x', run: (dir) => assert.deepEqual(fs.readdirSync(path.join(dir, 'issues')).filter((name) => name.startsWith('.deleting-')), []) }] })
+  assert.equal(fs.existsSync(path.join(plan.dir, 'issues', '.deleting-ISS-X-4242')), false)
+})
+
 test('planMigration lists create and delete actions', () => {
   const { root } = setup()
   const reshape = {
@@ -269,7 +278,7 @@ test('a failing step is INVALID_INPUT for loadConfig and migrate, and validate l
   assert.throws(() => runMigrate(root, { dryRun: true, migrations: [bad] }), check)
   const result = validateRepo(root, { migrations: [bad] })
   assert.deepEqual(result.problems, [problem('.issues/config.yaml')])
-  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
 })
 
 test('validate lists a failing step at a custom tracker path', () => {

@@ -13,6 +13,7 @@ types: feature, bug, task, chore
 priorities: urgent, high, medium, low
 labels: backend, frontend, webhooks, billing
 members:
+  agent:claude  Claude <>
   ana  Ana Souza <ana@example.com>
   fred  Fred Vanelli <fred@example.com>
 estimate: points 1, 2, 3, 5, 8, 13
@@ -72,6 +73,11 @@ exit 0
     "billing"
   ],
   "members": [
+    {
+      "id": "agent:claude",
+      "name": "Claude",
+      "availability": 1
+    },
     {
       "id": "ana",
       "name": "Ana Souza",

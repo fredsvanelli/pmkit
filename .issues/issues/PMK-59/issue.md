@@ -2,13 +2,16 @@
 id: PMK-59
 title: Add the estimate-issue command
 type: feature
-status: backlog
+status: done
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
+related: [PMK-176, PMK-216]
 milestone: generic-commands
+branch: pmk-59-add-the-estimate-issue-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:22Z
+updated: 2026-11-08T20:37:23Z
 ---
 
 ## Description
@@ -17,6 +20,6 @@ Source: Unified model, Dev catalog (`estimate-issue`: "Estimates from the affect
 
 ## Acceptance criteria
 
-- [ ] Proposes an estimate from the affected code and similar completed issues
-- [ ] Saves the estimate after confirmation
-- [ ] Without estimation it comments the estimate
+- [x] Proposes an estimate from the affected code and similar completed issues
+- [x] Saves the estimate after confirmation
+- [x] Without estimation it comments the estimate

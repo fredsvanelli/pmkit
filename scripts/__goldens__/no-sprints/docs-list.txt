@@ -1,0 +1,17 @@
+$ pmkit docs list
+exit 0
+--- stdout
+specs/overview.md
+--- stderr
+(empty)
+
+$ pmkit docs list --json
+exit 0
+--- stdout
+[
+  {
+    "path": "specs/overview.md"
+  }
+]
+--- stderr
+(empty)

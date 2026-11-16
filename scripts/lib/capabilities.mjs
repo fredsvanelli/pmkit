@@ -12,26 +12,26 @@ export const CAPABILITIES = [
  * An empty list means no command serves it, so the manifest reports it absent. A test checks every name.
  */
 export const SERVED_BY = {
-  cycles: ['cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'release-notes'],
+  cycles: ['cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'release-notes', 'release-readiness'],
   estimation: ['issues create', 'issues update'],
   multilevel_hierarchy: ['issues parent', 'epic list', 'issues dependencies'],
   dependencies: ['issues link', 'issues dependencies'],
   native_triage: ['issues move'],
   deliverables: ['epic list', 'epic get', 'epic create', 'epic progress'],
-  strategic_goals: [],
+  strategic_goals: ['goal list', 'goal get', 'goal create', 'goal update', 'goal close', 'goal delete', 'goal progress', 'epic goal'],
   status_update: ['epic update-status', 'epic updates'],
-  releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes'],
+  releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes', 'release-readiness'],
   capacity: ['cycle capacity'],
   native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events'],
-  saved_views: [],
-  documents: ['docs read', 'docs create'],
-  demand_signals: [],
-  request_queue: [],
-  time_tracking: ['issues log-time'],
-  linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync'],
-  agent_delegation: [],
-  security_alerts: [],
-  user_inbox: [],
+  saved_views: ['views list', 'views save', 'views run', 'views delete', 'views rename'],
+  documents: ['docs list', 'docs read', 'docs create', 'docs next-adr', 'docs adr-get', 'docs adr-status'],
+  demand_signals: ['customers list', 'customers show', 'customers create', 'customers update', 'requests create', 'demand list'],
+  request_queue: ['requests list', 'requests get', 'requests create', 'requests update', 'requests accept', 'requests decline'],
+  time_tracking: ['issues log-time', 'issues time-entries'],
+  linked_code: ['issues branch', 'pr open', 'pr ready', 'pr review', 'pr status', 'pr sync', 'deploys list', 'ci logs', 'pr diff', 'pr blockers', 'release-readiness'],
+  agent_delegation: ['issues delegate', 'issues track-agents'],
+  security_alerts: ['alerts list', 'alerts scan'],
+  user_inbox: ['inbox list', 'inbox mark-read'],
 }
 
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
@@ -46,6 +46,8 @@ export function unservedCapabilities(entries, servedBy) {
 export function buildCapabilities({ estimate, gitHost }) {
   const derived = {
     native_metrics: { detail: { source: 'events' } },
+    security_alerts: { detail: { source: 'scanners' } },
+    agent_delegation: { detail: { source: 'assignee', run: 'local' } },
     linked_code: { detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
   }
   return CAPABILITIES.map((id) => {

@@ -506,7 +506,7 @@ test('validate lists tracker.system linear as a problem and exits 0', () => {
   useUnsupported(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 comments')
+  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 goals, 0 comments, 0 views')
   assert.match(text.stdout, UNSUPPORTED_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
@@ -541,7 +541,7 @@ test('validate text starts with the counts, milestones included', () => {
   const { checked } = json(root, ['validate'])
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.comments} comments`)
+  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.goals} goals, ${checked.comments} comments, ${checked.views} views`)
 })
 
 test('capabilities --json lists 20 capabilities', () => {
@@ -616,6 +616,51 @@ test('description file, estimate and labels reach the issue', () => {
   assert.match(got.stdout, /Line two/)
 })
 
+test('time-entries lists the logged time and the total, text and JSON', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '45']).status, 0)
+  assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '15']).status, 0)
+  const text = run(root, ['issues', 'time-entries', 'ISS-3F7H']).stdout
+  assert.match(text, /45/)
+  assert.match(text, /total: 60 minutes \(1h\)/)
+  assert.match(text, /per person\n.*\n.*\nfred \| 60 +\| 1h\n/)
+  assert.match(text, /per sprint\n.*\n.*\n2026-10-12 \| 60 +\| 1h\n?$/)
+  const got = json(root, ['issues', 'time-entries', 'ISS-3F7H'])
+  assert.equal(got.totalTime, '1h')
+  assert.deepEqual(got.byPerson.map((row) => [row.by, row.minutes, row.time]), [['fred', 60, '1h']])
+  assert.deepEqual(got.entries.map((entry) => entry.time), ['45m', '15m'])
+  assert.equal(got.issue, 'ISS-3F7H')
+  assert.equal(got.total, 60)
+  assert.deepEqual(got.entries.map((entry) => entry.minutes), [45, 15])
+  const missing = run(root, ['issues', 'time-entries', 'ISS-9ZZZ'])
+  assert.notEqual(missing.status, 0)
+  assert.match(missing.stdout + missing.stderr, /ISS-9ZZZ|not found/i)
+})
+
+test('time-entries prints the empty text, and a note when log_time events are ignored', () => {
+  const root = makeRepo('team')
+  const empty = run(root, ['issues', 'time-entries', 'ISS-5N1R'])
+  assert.equal(empty.status, 0)
+  assert.match(empty.stdout, /^no time logged on ISS-5N1R\ntotal: 0 minutes\n?$/)
+  assert.equal(empty.stderr, '')
+  const events = path.join(root, '.issues', 'issues', 'ISS-5N1R', 'events.jsonl')
+  fs.appendFileSync(events, `${JSON.stringify({ at: '2026-10-24T10:00:00Z', by: 'fred', op: 'log_time', minutes: '30' })}\n`)
+  const noted = run(root, ['issues', 'time-entries', 'ISS-5N1R'])
+  assert.equal(noted.status, 0)
+  assert.match(noted.stdout, /total: 0 minutes/)
+  assert.match(noted.stderr, /^note: 1 log_time event ignored: minutes is not a positive integer\n/)
+})
+
+test('time-entries names the sprint file it could not read and says that period counts as no sprint', () => {
+  const root = makeRepo('team')
+  fs.writeFileSync(path.join(root, '.issues', 'sprints', 'broken.yaml'), 'name: [unclosed\n')
+  assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '45']).status, 0)
+  const got = run(root, ['issues', 'time-entries', 'ISS-3F7H'])
+  assert.equal(got.status, 0)
+  assert.match(got.stderr, /^note: could not read the sprint file broken; entries dated in that sprint's period count as no sprint, the other sprints still count; run pmkit validate\n/)
+  assert.deepEqual(json(root, ['issues', 'time-entries', 'ISS-3F7H']).sprintsUnread, ['broken'])
+})
+
 test('assign, link, comment, log-time, archive and get --comments --history', () => {
   const root = makeRepo('team')
   assert.match(run(root, ['issues', 'assign', 'ISS-3F7H', 'ana']).stdout, /assignee: .* → ana/)
@@ -677,6 +722,18 @@ test('cycle capacity reads, and --set takes a list or repeated flags', () => {
   assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred=3,ana=4']).after.capacity, { fred: 3, ana: 4 })
   assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred=6', '--set', 'ana=7']).after.capacity, { fred: 6, ana: 7 })
   assert.equal(run(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred']).status, 2)
+})
+
+test('cycle capacity current reads and writes the active sprint, and says so when none is active', () => {
+  const root = makeRepo('team')
+  assert.deepEqual(json(root, ['cycle', 'capacity', 'current']), { capacity: { fred: 8, ana: 10 }, days_off: { ana: ['2026-10-16'] } })
+  const set = json(root, ['cycle', 'capacity', 'current', '--set', 'fred=3'])
+  assert.deepEqual(set.after.capacity, { fred: 3 })
+  assert.equal(set.after.id, '2026-10-12')
+  const none = run(makeRepo('no-sprints'), ['cycle', 'capacity', 'current', '--json'])
+  assert.equal(none.status, 2)
+  assert.equal(JSON.parse(none.stdout).error.code, 'NOT_FOUND')
+  assert.match(JSON.parse(none.stdout).error.nextStep, /cycle:plan/)
 })
 
 test('cycle capacity --days-off sets, clears and validates', () => {
@@ -1061,6 +1118,76 @@ test('docs read refuses a path outside the docs folder', () => {
   assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
 })
 
+test('views save, list and run store a filter and run it', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['views', 'list']).stdout.trim(), 'no views')
+  const saved = json(root, ['views', 'save', 'active', '--category', 'in_progress', '--sort', 'created'])
+  assert.deepEqual(saved.after, { name: 'active', filter: { categories: ['in_progress'], sort: 'created' } })
+  assert.equal(fs.readFileSync(path.join(root, '.issues/views/active.yaml'), 'utf8'), 'filter:\n  categories: [in_progress]\n  sort: created\n')
+  assert.match(run(root, ['views', 'list']).stdout, /active +\| categories=in_progress sort=created/)
+  const ran = json(root, ['views', 'run', 'active'])
+  assert.deepEqual(ran.issues.map((issue) => issue.id), json(root, ['issues', 'list', '--category', 'in_progress', '--sort', 'created']).issues.map((issue) => issue.id))
+  const again = run(root, ['views', 'save', 'active', '--category', 'done', '--json'])
+  assert.equal(again.status, 2)
+  assert.equal(JSON.parse(again.stdout).error.code, 'CONFLICT')
+  const overwritten = json(root, ['views', 'save', 'active', '--category', 'done', '--overwrite'])
+  assert.deepEqual(overwritten.before.filter, { categories: ['in_progress'], sort: 'created' })
+  const empty = run(root, ['views', 'save', 'none', '--json'])
+  assert.equal(JSON.parse(empty.stdout).error.code, 'INVALID_INPUT')
+})
+
+test('views list skips a broken file with a warning, and views save --overwrite replaces it', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'good', '--blocked'])
+  fs.writeFileSync(path.join(root, '.issues/views/broken.yaml'), 'filter: 3\n')
+  const listed = run(root, ['views', 'list', '--json'])
+  assert.equal(listed.status, 0, listed.stderr)
+  assert.deepEqual(JSON.parse(listed.stdout).views.map((view) => view.name), ['good'])
+  assert.equal(JSON.parse(listed.stdout).problems.length, 1)
+  assert.match(listed.stderr, /broken: INVALID_INPUT .*needs a "filter" map; run pmkit validate/)
+  const dry = run(root, ['views', 'save', 'broken', '--archived', '--overwrite', '--dry-run'])
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.match(dry.stdout, /replaces: a file that could not be read \(.*needs a "filter" map\)/)
+  json(root, ['views', 'save', 'broken', '--archived', '--overwrite'])
+  assert.equal(run(root, ['views', 'list']).stderr, '')
+})
+
+test('views list reports a file with an invalid name and quotes filter values with a space or =', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'good', '--label', 'a b,c=d,e'])
+  fs.writeFileSync(path.join(root, '.issues/views/bad+name.yaml'), 'filter:\n  blocked: true\n')
+  const listed = run(root, ['views', 'list', '--json'])
+  assert.equal(listed.status, 0, listed.stderr)
+  const data = JSON.parse(listed.stdout)
+  assert.deepEqual(data.views.map((view) => view.name), ['good'])
+  assert.deepEqual(data.problems.map((problem) => [problem.id, problem.code]), [['bad+name', 'INVALID_INPUT']])
+  assert.match(data.problems[0].message, /^view name "bad\+name" must start/)
+  assert.match(listed.stderr, /bad\+name: INVALID_INPUT view name "bad\+name" must start.*; run pmkit validate/)
+  assert.match(run(root, ['views', 'list']).stdout, /labels="a b","c=d",e/)
+})
+
+test('views list does not say "no views" when every file is a problem, and a null filter value is not printed', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues/views'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues/views/bad+name.yaml'), 'filter:\n  blocked: true\n')
+  const only = run(root, ['views', 'list'])
+  assert.equal(only.status, 0, only.stderr)
+  assert.doesNotMatch(only.stdout, /^no views$/m)
+  assert.match(only.stdout, /1 view file could not be read/)
+  fs.writeFileSync(path.join(root, '.issues/views/unset.yaml'), 'filter:\n  blocked: true\n  sprint: null\n')
+  const listed = run(root, ['views', 'list'])
+  assert.doesNotMatch(listed.stdout, /null/)
+})
+
+test('views save --dry-run writes nothing', () => {
+  const root = makeRepo('team')
+  const before = hashTree(root)
+  const result = run(root, ['views', 'save', 'x', '--blocked', '--dry-run'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /dry run/)
+  assert.equal(hashTree(root), before)
+})
+
 function fixConfig(root) {
   const file = path.join(root, '.issues/config.yaml')
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/stale_days:.*/, 'stale_days: 60'))
@@ -1384,21 +1511,23 @@ test('issues list --sprint current gives no warning when a sprint is active, and
 const cmd = (name) => COMMANDS.find((c) => c.name === name)
 
 test('configClass sorts every call into exempt, read or write', () => {
-  assert.deepEqual(COMMANDS.filter((c) => c.exempt).map((c) => c.name), ['init', 'changelog', 'validate'])
-  for (const name of ['init', 'changelog', 'validate']) assert.equal(configClass(cmd(name), {}), 'exempt', name)
+  assert.deepEqual(COMMANDS.filter((c) => c.exempt).map((c) => c.name), ['init', 'link-repo', 'default-branch', 'changelog', 'validate'])
+  for (const name of ['init', 'link-repo', 'changelog', 'validate', 'default-branch']) assert.equal(configClass(cmd(name), {}), 'exempt', name)
   assert.equal(configClass(cmd('issues list'), {}), 'read')
   assert.equal(configClass(cmd('issues create'), {}), 'write')
   assert.equal(configClass(cmd('migrate'), {}), 'write')
   assert.equal(configClass(cmd('cycle capacity'), {}), 'read')
   assert.equal(configClass(cmd('cycle capacity'), { set: 'fred=5' }), 'write')
   assert.equal(configClass(cmd('cycle capacity'), { 'days-off': 'fred=2026-10-20' }), 'write')
+  assert.equal(configClass(cmd('team capacity'), {}), 'read')
+  assert.equal(configClass(cmd('team capacity'), { set: 'fred=5' }), 'write')
 })
 
-// A parent chain deep enough that JSON.stringify overflows the stack, while the text printer still copes.
-const chainCtx = (depth, json) => {
+// A parent chain of the given depth. The JSON overflow is simulated with a title whose toJSON throws, not by depth.
+const chainCtx = (depth, json, { title = 't' } = {}) => {
   const status = { name: 'todo', category: 'todo' }
   const issues = Array.from({ length: depth }, (_, index) => ({
-    id: `N${index}`, title: 't', status, blockedBy: [], related: [], archived: false, parent: index === 0 ? 'EPC-1' : `N${index - 1}`,
+    id: `N${index}`, title: index === depth - 1 ? title : 't', status, blockedBy: [], related: [], archived: false, parent: index === 0 ? 'EPC-1' : `N${index - 1}`,
   }))
   return {
     args: ['EPC-1'],
@@ -1416,7 +1545,10 @@ const chainCtx = (depth, json) => {
 test('issues dependencies prints a deep chain in text mode and fails only for JSON', async () => {
   const text = await cmd('issues dependencies').run(chainCtx(3000, false))
   assert.ok(text.text.includes('N2999'))
-  await assert.rejects(() => cmd('issues dependencies').run(chainCtx(3000, true)), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
+  // A title whose toJSON throws the stack RangeError stands for a map too deep for JSON.stringify, whatever the stack size.
+  const overflow = { toJSON() { throw new RangeError('Maximum call stack size exceeded') } }
+  await assert.rejects(() => cmd('issues dependencies').run(chainCtx(3000, true, { title: overflow })), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
+  await assert.doesNotReject(() => cmd('issues dependencies').run(chainCtx(50, true)))
 })
 
 const INPUTS = path.join(path.dirname(fileURLToPath(import.meta.url)), '__goldens__', '_inputs')
@@ -1441,25 +1573,47 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'issues update': ['ISS-5N1R', '--title', 'Renamed'],
     'issues move': ['ISS-5N1R', 'done'],
     'issues assign': ['ISS-5N1R', 'fred'],
+    'issues delegate': ['ISS-5N1R', 'agent:claude'],
     'issues link': ['ISS-5N1R', 'ISS-4M2S', '--kind', 'blocks'],
     'issues parent': ['ISS-5N1R', 'EPC-2M9D'],
     'issues comment': ['ISS-5N1R', '--body-file', input('comment.md')],
     'issues resolve': ['ISS-5N1R', 'some-comment'],
     'issues log-time': ['ISS-5N1R', '30'],
     'issues archive': ['ISS-5N1R'],
+    'issues unarchive': ['ISS-5N1R'],
+    'issues delete': ['ISS-5N1R'],
+    'issues restore': ['ISS-5N1R'],
+    'issues bulk': ['priority', 'high', '--category', 'done'],
     'cycle open': ['--start', '2026-10-26'],
     'cycle close': ['2026-10-12'],
     'cycle add': ['ISS-5N1R', '--to', 'current'],
     'cycle capacity': ['2026-10-12', '--set', 'fred=5'],
+    'team capacity': ['--set', 'fred=5'],
     'epic create': ['--title', 'New epic'],
     'epic update-status': ['EPC-2M9D', '--health', 'on_track', '--body-file', input('update.md')],
     'milestone create': ['v2.0'],
     'release create': ['2.0.0'],
     'release mark-released': ['1.0.0'],
     'docs create': ['notes/new.md', '--body-file', input('doc.md')],
+    'docs adr-status': ['1', 'deprecated'],
+    'views save': ['mine', '--category', 'done'],
+    'views delete': ['mine'],
+    'views rename': ['mine', 'theirs'],
+    'goal create': ['--title', 'New goal'],
+    'goal update': ['GOAL-8K2W', '--status', 'planned'],
+    'goal close': ['GOAL-8K2W'],
+    'goal delete': ['GOAL-8K2W'],
+    'epic goal': ['EPC-2M9D', 'none'],
+    'customers create': ['--name', 'Acme'],
+    'customers update': ['CUS-1', '--tier', 'gold'],
+    'requests create': ['--title', 'CSV export'],
+    'requests update': ['REQ-1', '--title', 'CSV'],
+    'requests accept': ['REQ-1', 'ISS-5N1R'],
+    'requests decline': ['REQ-1'],
     'issues branch': ['ISS-5N1R'],
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
+    'pr review': ['--issue', 'ISS-5N1R', '--body-file', path.join(import.meta.dirname, '__goldens__', '_inputs', 'comment.md')],
     'pr sync': [],
     'linear customers set': ['--customer', 'acme', '--tier', 'gold'],
     'linear customers link': ['--customer', 'acme', '--issue', 'ACME-1'],
@@ -1534,10 +1688,14 @@ test('every read goes on with one warning', () => {
     'issues list': [],
     'issues get': ['ISS-5N1R'],
     'issues dependencies': ['EPC-2M9D'],
+    'issues similar': ['ISS-5N1R'],
+    'issues time-entries': ['ISS-5N1R'],
+    'issues track-agents': [],
     'cycle list': [],
     'cycle current': [],
     'cycle issues': ['2026-10-12'],
     'cycle capacity': ['2026-10-12'],
+    'team capacity': [],
     'epic list': [],
     'epic get': ['EPC-2M9D'],
     'epic progress': ['EPC-2M9D'],
@@ -1548,6 +1706,23 @@ test('every read goes on with one warning', () => {
     'release get': ['1.0.0'],
     'release issues': ['1.0.0'],
     'release-notes': [],
+    'release-readiness': [],
+    'docs list': [],
+    'docs next-adr': ['--title', 'Next decision'],
+    'docs adr-get': ['1'],
+    'views list': [],
+    'views run': ['missing'],
+    'goal list': [],
+    'goal get': ['GOAL-1'],
+    'goal progress': ['GOAL-1'],
+    'goals overview': [],
+    'customers list': [],
+    'customers show': ['CUS-1'],
+    'requests list': [],
+    'requests get': ['REQ-1'],
+    'demand list': [],
+    'inbox list': [],
+    'inbox mark-read': ['--dry-run'],
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
@@ -1556,7 +1731,16 @@ test('every read goes on with one warning', () => {
     'metrics aging': [],
     events: [],
     risks: [],
+    'roadmap review': [],
+    'team load': [],
+    'alerts list': [],
+    'alerts scan': [],
+    'todos scan': [],
     'pr status': [],
+    'deploys list': [],
+    'ci logs': ['--run', '9'],
+    'pr diff': ['--branch', 'x'],
+    'pr blockers': ['--branch', 'x'],
     reindex: [],
     'linear customers list': [],
     'linear customers show': ['--customer', 'acme'],
@@ -1565,7 +1749,7 @@ test('every read goes on with one warning', () => {
     'local-migrate status': [],
     render: ['board'],
   }
-  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity'].sort())
+  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate', 'default-branch', 'issues parse-time', 'text redact'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
   const root = makeRepo('team')
   const runAll = () => Object.entries(READS).map(([name, argv]) => {
     const result = run(root, [...name.split(' '), ...argv, '--json'])
@@ -1590,7 +1774,7 @@ test('every read goes on with one warning', () => {
     assert.equal(count(second.stderr), 1, first.name)
     assert.equal(second.stderr, `${WARNING(CONFIRM_MSG)}\n${first.stderr}`, first.name)
   }
-  for (const name of ['milestone get', 'docs read', 'pr status']) {
+  for (const name of ['milestone get', 'docs read', 'views run', 'pr status']) {
     assert.equal(invalid.find((r) => r.name === name).status, 2, name)
   }
 })
@@ -2057,4 +2241,461 @@ test('release-notes keeps archived done issues on the sprint and period bases', 
     assert.ok(entry, result.basis)
     assert.equal(entry.archived, true)
   }
+})
+
+test('goal create, list, get, progress and epic goal link a goal to an epic and roll up its progress', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['goal', 'list']).stdout.trim(), 'no goals')
+  const created = json(root, ['goal', 'create', '--title', 'Trust our webhooks', '--target', '2026-12-31'])
+  const { id } = created.after
+  assert.match(id, /^GOAL-[0-9A-Z]{4}$/)
+  assert.deepEqual(json(root, ['goal', 'list']), [{ id, title: 'Trust our webhooks', status: 'active', target: '2026-12-31', description: '', epics: [] }])
+  const linked = run(root, ['epic', 'goal', 'EPC-2M9D', id])
+  assert.equal(linked.status, 0, linked.stderr)
+  assert.match(linked.stdout, new RegExp(`goal: \\(none\\) → ${id}`))
+  assert.match(run(root, ['epic', 'get', 'EPC-2M9D']).stdout, new RegExp(`^goal: ${id}$`, 'm'))
+  assert.match(run(root, ['epic', 'list']).stdout, /\| Goal/)
+  assert.match(run(root, ['goal', 'list']).stdout, new RegExp(`${id} +\\| Trust our webhooks +\\| active +\\| 2026-12-31 +\\| EPC-2M9D`))
+  assert.match(run(root, ['goal', 'get', id]).stdout, /^status: active$/m)
+  assert.deepEqual(json(root, ['goal', 'get', id]).epics, ['EPC-2M9D'])
+  const progress = json(root, ['goal', 'progress', id])
+  const epic = json(root, ['epic', 'progress', 'EPC-2M9D'])
+  assert.deepEqual(progress.epics.map((e) => [e.id, e.progress]), [['EPC-2M9D', epic]])
+  assert.equal(progress.total, epic.total)
+  const text = run(root, ['goal', 'progress', id]).stdout
+  assert.match(text, /^total: \d+$/m)
+  assert.match(text, /EPC-2M9D +\| Reliable webhooks and billing export +\| in_progress/)
+  const removed = json(root, ['epic', 'goal', 'EPC-2M9D', 'none'])
+  assert.equal(removed.after.goal, undefined)
+  const epicWithGoal = json(root, ['epic', 'create', '--title', 'Signing', '--goal', id.toLowerCase()])
+  assert.equal(epicWithGoal.after.goal, id)
+})
+
+test('goal create takes --status and --title-file, and refuses a bad status (PMK-213)', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, 'title.txt')
+  fs.writeFileSync(file, 'Ship `signing` $(now)\n')
+  const created = json(root, ['goal', 'create', '--title-file', file, '--status', 'planned'])
+  assert.equal(created.after.title, 'Ship `signing` $(now)')
+  assert.equal(created.after.status, 'planned')
+  const bad = run(root, ['goal', 'create', '--title', 'T', '--status', 'done', '--json'])
+  assert.equal(bad.status, 2)
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+})
+
+test('goal get of a missing goal is NOT_FOUND and epic goal of a missing goal is INVALID_INPUT', () => {
+  const root = makeRepo('team')
+  const missing = run(root, ['goal', 'get', 'GOAL-ZZZZ', '--json'])
+  assert.equal(missing.status, 2)
+  assert.equal(JSON.parse(missing.stdout).error.code, 'NOT_FOUND')
+  const before = hashTree(root)
+  const bad = run(root, ['epic', 'goal', 'EPC-2M9D', 'GOAL-ZZZZ', '--json'])
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+  assert.deepEqual(hashTree(root), before)
+})
+
+test('goal list warns about a goal file that does not parse', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'goals'))
+  fs.writeFileSync(path.join(root, '.issues', 'goals', 'GOAL-1.md'), '---\ntarget: soon\n---\n')
+  const result = run(root, ['goal', 'list'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), 'no goals')
+  assert.match(result.stderr, /GOAL-1.*run pmkit validate/)
+})
+
+test('customers, requests and demand record a request, accept it into an issue and list it as demand', () => {
+  const root = makeRepo('team')
+  assert.deepEqual(json(root, ['customers', 'list']), { available: true, customers: [], hasMore: false, problems: [] })
+  assert.equal(run(root, ['requests', 'list']).stdout.trim(), 'no open requests')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--revenue', '1000', '--size', '12.5', '--owner', 'fred']).after
+  assert.deepEqual([customer.tier, customer.revenue, customer.size, customer.owner], [{ id: 'gold', name: 'gold' }, 1000, 12.5, { id: 'fred', name: 'Fred Vanelli' }])
+  assert.equal(errorOf(run(root, ['customers', 'create', '--name', 'B', '--revenue', 'lots', '--json'])).code, 'INVALID_INPUT')
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'Columns out of order.\r\n')
+  const request = json(root, ['requests', 'create', '--title', 'CSV order', '--customer', customer.id, '--important', '--body-file', body]).after
+  assert.equal(request.state, 'open')
+  assert.equal(request.body, 'Columns out of order.')
+  assert.deepEqual(json(root, ['requests', 'list']).requests.map((item) => item.id), [request.id])
+  const hash = hashTree(root)
+  const dry = run(root, ['requests', 'accept', request.id, 'ISS-5N1R', '--dry-run'])
+  assert.match(dry.stdout, /dry run: nothing was written/)
+  assert.deepEqual(hashTree(root), hash)
+  const accepted = json(root, ['requests', 'accept', request.id, 'ISS-5N1R']).after
+  assert.equal(accepted.target.id, 'ISS-5N1R')
+  assert.deepEqual(json(root, ['requests', 'list']).requests, [])
+  assert.equal(json(root, ['requests', 'list', '--state', 'accepted']).requests[0].id, request.id)
+  const shown = json(root, ['customers', 'show', 'acme'])
+  assert.deepEqual(Object.keys(shown), ['available', 'customer', 'requests', 'problems'])
+  assert.equal(shown.customer.requests, 1)
+  const demand = json(root, ['demand', 'list'])
+  assert.equal(demand.signals[0].issue.id, 'ISS-5N1R')
+  assert.equal(demand.signals[0].customers[0].name, 'Acme')
+  assert.match(run(root, ['demand', 'list']).stdout, /ISS-5N1R/)
+  const declined = json(root, ['requests', 'decline', request.id, '--reason', 'Fixed already']).after
+  assert.deepEqual([declined.state, declined.reason, declined.target], ['declined', 'Fixed already', null])
+  assert.deepEqual(json(root, ['demand', 'list']).signals, [])
+})
+
+test('customers update edits a customer by name, previews with --dry-run and refuses a bad value (PMK-221)', () => {
+  const root = makeRepo('team')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--owner', 'fred']).after
+  const hash = hashTree(root)
+  const dry = json(root, ['customers', 'update', 'acme', '--revenue', '2000', '--size', '4.5', '--tier', 'none', '--dry-run'])
+  assert.deepEqual([dry.before.revenue, dry.after.revenue, dry.after.size, dry.after.tier], [null, 2000, 4.5, null])
+  assert.deepEqual(hashTree(root), hash)
+  const updated = json(root, ['customers', 'update', customer.id, '--revenue', '2000', '--status', 'active', '--owner', 'none', '--name', 'Acme Corp']).after
+  assert.deepEqual([updated.name, updated.revenue, updated.status, updated.owner], ['Acme Corp', 2000, { id: 'active', name: 'active' }, null])
+  assert.match(run(root, ['customers', 'update', customer.id, '--tier', 'silver']).stdout, /tier/)
+  assert.equal(errorOf(run(root, ['customers', 'update', customer.id, '--revenue', 'lots', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['customers', 'update', customer.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests update edits the title and the body from files and refuses --title with --title-file (PMK-221)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV']).after
+  const dir = tempDir('pmkit-req-')
+  fs.writeFileSync(path.join(dir, 'title.txt'), 'CSV export `$(touch x)`\n')
+  fs.writeFileSync(path.join(dir, 'body.md'), 'Columns.\r\n')
+  const hash = hashTree(root)
+  const dry = json(root, ['requests', 'update', request.id, '--title-file', path.join(dir, 'title.txt'), '--dry-run'])
+  assert.equal(dry.after.title, 'CSV export `$(touch x)`')
+  assert.deepEqual(hashTree(root), hash)
+  const updated = json(root, ['requests', 'update', request.id, '--title-file', path.join(dir, 'title.txt'), '--body-file', path.join(dir, 'body.md')]).after
+  assert.deepEqual([updated.title, updated.body, updated.state], ['CSV export `$(touch x)`', 'Columns.', 'open'])
+  assert.equal(json(root, ['requests', 'update', request.id, '--title', 'CSV']).after.title, 'CSV')
+  assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--title', 'A', '--title-file', path.join(dir, 'title.txt'), '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests accept --create creates the issue from the request and accepts the request into it (PMK-221)', () => {
+  const root = makeRepo('no-sprints')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme']).after
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'Columns out of order.\n')
+  const request = json(root, ['requests', 'create', '--title', 'CSV order', '--customer', customer.id, '--body-file', body]).after
+  const hash = hashTree(root, ['.issues/.cache'])
+  const dry = run(root, ['requests', 'accept', request.id, '--create', '--dry-run', '--json'])
+  assert.equal(dry.status, 0, dry.stderr)
+  const preview = JSON.parse(dry.stdout)
+  assert.deepEqual([preview.issue.before, preview.issue.after.title, preview.request.after.state, preview.request.after.target.id], [null, 'CSV order', 'accepted', preview.issue.after.id])
+  assert.match(dry.stderr, /note: the issue ID is assigned when written/)
+  assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
+  const result = json(root, ['requests', 'accept', request.id, '--create'])
+  const issue = json(root, ['issues', 'get', result.issue.after.id])
+  assert.equal(issue.title, 'CSV order')
+  assert.equal(issue.description, `Columns out of order.\n\nAsked by: Acme\nRequest: ${request.id}`)
+  assert.deepEqual([result.request.before.state, result.request.after.state, result.request.after.target.id], ['open', 'accepted', issue.id])
+  assert.ok(json(root, ['demand', 'list']).signals.some((signal) => signal.issue.id === issue.id))
+  const again = errorOf(run(root, ['requests', 'accept', request.id, '--create', '--json']))
+  assert.equal(again.code, 'CONFLICT')
+  assert.match(again.message, new RegExp(`already accepted into ${issue.id}`))
+  assert.equal(errorOf(run(root, ['requests', 'accept', request.id, 'ISS-5N1R', '--create', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['requests', 'accept', request.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests accept --create leaves out Asked by when the request names nobody, and names a from or a missing customer id', () => {
+  const root = makeRepo('no-sprints')
+  const bare = json(root, ['requests', 'create', '--title', 'Bare']).after
+  assert.equal(json(root, ['issues', 'get', json(root, ['requests', 'accept', bare.id, '--create']).issue.after.id]).description, `Request: ${bare.id}`)
+  const support = json(root, ['requests', 'create', '--title', 'From support', '--from', 'support']).after
+  assert.match(json(root, ['issues', 'get', json(root, ['requests', 'accept', support.id, '--create']).issue.after.id]).description, /^Asked by: support\nRequest: /)
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-9.md'), '---\ntitle: Lost\ncustomer: CUS-404\n---\n')
+  const lost = run(root, ['requests', 'accept', 'REQ-9', '--create', '--json'])
+  assert.equal(lost.status, 0, lost.stderr)
+  assert.match(json(root, ['issues', 'get', JSON.parse(lost.stdout).issue.after.id]).description, /^Asked by: CUS-404\n/)
+  assert.match(lost.stderr, /CUS-404/)
+})
+
+test('customers show takes the customer as a positional or as --customer, the linear customers show spelling (PMK-221)', () => {
+  const root = makeRepo('team')
+  json(root, ['customers', 'create', '--name', 'Acme'])
+  assert.deepEqual(json(root, ['customers', 'show', '--customer', 'acme']), json(root, ['customers', 'show', 'Acme']))
+  assert.equal(errorOf(run(root, ['customers', 'show', 'Acme', '--customer', 'Acme', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['customers', 'show', '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests update with only --body-file says the text changed, and customers update prints names, not JSON (PMK-221 review)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV']).after
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'New text.\n')
+  const updated = run(root, ['requests', 'update', request.id, '--body-file', body])
+  assert.equal(updated.status, 0, updated.stderr)
+  assert.match(updated.stdout, /^text: changed$/m)
+  assert.doesNotMatch(updated.stdout, /no change/)
+  assert.match(run(root, ['requests', 'update', request.id, '--body-file', body]).stdout, /no change/)
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--owner', 'fred']).after
+  const text = run(root, ['customers', 'update', customer.id, '--tier', 'silver', '--status', 'active', '--owner', 'none']).stdout
+  assert.match(text, /^tier: gold → silver$/m)
+  assert.match(text, /^status: \(none\) → active$/m)
+  assert.match(text, /^owner: Fred Vanelli → \(none\)$/m)
+  assert.doesNotMatch(text, /\{"id"/)
+})
+
+test('requests accept --create works next to an unreadable issue, warns in the text and the JSON, and a retry still finds the issue (PMK-221 review B6)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV export']).after
+  const dry = run(root, ['requests', 'accept', request.id, '--create', '--dry-run', '--json'])
+  assert.equal(dry.status, 0, dry.stdout + dry.stderr)
+  assert.match(JSON.parse(dry.stdout).warnings[0], /ISS-3Q6T could not be read/)
+  assert.match(dry.stderr, /warning: .*ISS-3Q6T could not be read/)
+  const made = run(root, ['requests', 'accept', request.id, '--create', '--json'])
+  assert.equal(made.status, 0, made.stdout + made.stderr)
+  const issue = JSON.parse(made.stdout).issue.after.id
+  assert.match(made.stderr, /ISS-3Q6T/)
+  json(root, ['requests', 'decline', request.id])
+  const retry = errorOf(run(root, ['requests', 'accept', request.id, '--create', '--json']))
+  assert.equal(retry.code, 'CONFLICT')
+  assert.equal(retry.nextStep, `pmkit requests accept ${request.id} ${issue}`)
+})
+
+test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-1.md'), '---\ntitle: [\n---\n')
+  for (const args of [['requests', 'list'], ['demand', 'list'], ['customers', 'list']]) {
+    const result = run(root, [...args, '--json'])
+    assert.equal(result.status, 0, args.join(' '))
+    assert.match(result.stderr, /warning: REQ-1: INVALID_INPUT .*; run pmkit validate/, args.join(' '))
+    assert.equal(JSON.parse(result.stdout).problems[0].id, 'REQ-1', args.join(' '))
+  }
+})
+
+test('requests get warns about unreadable links and never prints by null, in the text and in the JSON', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-1.md'), '---\ntitle: T\ncustomer: CUS-4\nstate: accepted\nissue: ISS-ZZZZ\ntriaged: 2026-10-23T12:00:00Z\n---\n')
+  const text = run(root, ['requests', 'get', 'REQ-1'])
+  assert.equal(text.status, 0, text.stderr)
+  assert.doesNotMatch(text.stdout, /by null/)
+  assert.match(text.stdout, /triaged: 2026-10-23T12:00:00Z$/m)
+  assert.match(text.stdout, /\(unreadable\)/)
+  assert.match(text.stderr, /warning: REQ-1: NOT_FOUND .*CUS-4.*; run pmkit validate/)
+  const shown = json(root, ['requests', 'get', 'REQ-1'])
+  assert.equal(shown.problems.length, 2)
+  assert.equal(shown.triaged.by, null)
+})
+
+test('log-time reads readable durations and refuses invalid ones with INVALID_INPUT', () => {
+  const root = makeRepo('team')
+  const logged = json(root, ['issues', 'log-time', 'ISS-3F7H', '1h30'])
+  assert.equal(logged.after.id, 'ISS-3F7H')
+  assert.equal(logged.minutes, 90, 'the JSON carries the parsed minutes, so the command can show them')
+  assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 90)
+  for (const bad of ['0', '-5', 'abc', '1.5', '1h90']) {
+    const result = run(root, ['issues', 'log-time', 'ISS-3F7H', bad, '--json'])
+    assert.equal(result.status, 2, bad)
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT', bad)
+  }
+  assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 90)
+})
+
+test('log-time has no ceiling: a time above one day is accepted with a note', () => {
+  const root = makeRepo('team')
+  for (const [time, minutes] of [['1500', 1500], ['100000', 100000]]) {
+    const dry = run(root, ['issues', 'log-time', 'ISS-3F7H', time, '--dry-run', '--json'])
+    assert.equal(dry.status, 0, dry.stderr)
+    assert.equal(JSON.parse(dry.stdout).minutes, minutes)
+    assert.match(JSON.parse(dry.stdout).note, /is more than a day/, 'the JSON carries the note')
+    assert.match(dry.stderr, /note: .*is more than a day/)
+    assert.match(JSON.parse(dry.stdout).note, /check the time before you confirm/)
+    const real = run(root, ['issues', 'log-time', 'ISS-3F7H', time, '--json'])
+    assert.equal(real.status, 0, real.stderr)
+    assert.match(JSON.parse(real.stdout).note, /the time is already logged/, 'a real write says the time is logged')
+    assert.match(real.stderr, /note: .*already logged/)
+    assert.doesNotMatch(real.stderr, /before you confirm/)
+  }
+  assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 101500)
+  const huge = run(root, ['issues', 'log-time', 'ISS-3F7H', '99999999999999999999999', '--json'])
+  assert.equal(huge.status, 2)
+  assert.equal(JSON.parse(huge.stdout).error.code, 'INVALID_INPUT')
+  assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 101500, 'nothing was written')
+  assert.equal(json(root, ['issues', 'log-time', 'ISS-3F7H', '30', '--dry-run']).note, null)
+})
+
+test('log-time usage and arguments name the time', () => {
+  const entry = COMMANDS.find((command) => command.name === 'issues log-time')
+  assert.equal(entry.usage, '<id> <time>')
+  assert.deepEqual(entry.args, ['id', 'time'])
+})
+
+test('parse-time reads a time with no tracker and no write, and refuses an invalid one', () => {
+  const root = makeRepo('team')
+  const before = hashTree(root)
+  const ok = json(root, ['issues', 'parse-time', '1h30'])
+  assert.deepEqual({ input: ok.input, minutes: ok.minutes, note: ok.note }, { input: '1h30', minutes: 90, note: null })
+  assert.match(json(root, ['issues', 'parse-time', '1500']).note, /is more than a day/)
+  for (const bad of ['0', 'abc', '1.5']) {
+    const result = run(root, ['issues', 'parse-time', bad, '--json'])
+    assert.equal(result.status, 2, bad)
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT', bad)
+  }
+  assert.equal(hashTree(root), before)
+})
+
+test('epic goal refuses an empty goal, only none clears the link, and goal progress marks a canceled epic (PMK-179)', () => {
+  const root = makeRepo('team')
+  const { id } = json(root, ['goal', 'create', '--title', 'Trust']).after
+  json(root, ['epic', 'goal', 'EPC-2M9D', id])
+  const before = hashTree(root)
+  for (const empty of ['', ' ']) {
+    const refused = run(root, ['epic', 'goal', 'EPC-2M9D', empty, '--json'])
+    assert.equal(refused.status, 2)
+    assert.equal(JSON.parse(refused.stdout).error.code, 'INVALID_INPUT')
+  }
+  assert.deepEqual(hashTree(root), before)
+  const file = path.join(root, '.issues', 'epics', 'EPC-2M9D', 'epic.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^status: .*$/m, 'status: canceled'))
+  const progress = json(root, ['goal', 'progress', id])
+  assert.equal(progress.epics[0].counted, false)
+  assert.equal(progress.total, 0)
+  assert.match(run(root, ['goal', 'progress', id]).stdout, /EPC-2M9D .*canceled, not counted/)
+  assert.equal(json(root, ['epic', 'goal', 'EPC-2M9D', 'none']).after.goal, undefined)
+})
+
+test('default-branch prints the validated default branch with no tracker and no write, and falls back to main with a note', () => {
+  const root = makeRepo('team')
+  assert.deepEqual(json(root, ['default-branch']), { branch: 'main', configured: null, valid: true, note: null })
+  editPmkit(root, 'system: none', 'system: github\n  default_branch: développement')
+  assert.deepEqual(json(root, ['default-branch']), { branch: 'développement', configured: 'développement', valid: true, note: null })
+  editPmkit(root, 'développement', '"main; curl x|sh"')
+  const bad = run(root, ['default-branch', '--json'])
+  assert.equal(bad.status, 0)
+  assert.deepEqual(JSON.parse(bad.stdout), { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
+  assert.match(bad.stderr, /note: git_host\.default_branch is not a valid branch name, so main is used/)
+  const before = hashTree(root)
+  assert.equal(run(root, ['default-branch']).stdout, 'main\n')
+  assert.equal(hashTree(root), before)
+})
+
+test('default-branch reads only .pmkit/config.yaml: no tracker, a broken tracker or no config file still gives a branch', () => {
+  const root = tempDir('pmkit-default-branch-')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  const result = () => run(root, ['default-branch', '--json'])
+  // No config file: main, with a note.
+  const missing = result()
+  assert.equal(missing.status, 0, missing.stdout + missing.stderr)
+  assert.equal(JSON.parse(missing.stdout).branch, 'main')
+  assert.match(missing.stderr, /note: .*main is used/)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  // No tracker at all, and an invalid name.
+  fs.writeFileSync(file, 'version: 1\ngit_host:\n  system: none\n  default_branch: "main; curl x|sh"\n')
+  const noTracker = result()
+  assert.equal(noTracker.status, 0, noTracker.stdout + noTracker.stderr)
+  assert.deepEqual(JSON.parse(noTracker.stdout), { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
+  // A tracker the plugin does not know, and a valid name.
+  fs.writeFileSync(file, 'version: 1\ntracker:\n  system: jira\ngit_host:\n  system: github\n  default_branch: develop\n')
+  assert.deepEqual(JSON.parse(result().stdout), { branch: 'develop', configured: 'develop', valid: true, note: null })
+  // A file that does not parse.
+  fs.writeFileSync(file, 'version: 1\nthis line has no colon\n')
+  const broken = result()
+  assert.equal(broken.status, 0, broken.stdout + broken.stderr)
+  assert.equal(JSON.parse(broken.stdout).branch, 'main')
+  assert.match(broken.stderr, /note: .*main is used/)
+})
+
+test('requests accept warns about a customer it cannot read, in the text and in the JSON', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-1.md'), '---\ntitle: T\ncustomer: CUS-4\n---\n')
+  const result = run(root, ['requests', 'accept', 'REQ-1', 'ISS-5N1R', '--dry-run'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: REQ-1: NOT_FOUND .*CUS-4.*; run pmkit validate/)
+  assert.equal(json(root, ['requests', 'accept', 'REQ-1', 'ISS-5N1R']).problems.length, 1)
+})
+
+test('views run prints a stable error.reason for each INVALID_INPUT case and none for NOT_FOUND', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'views'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'views', 'stale.yaml'), 'filter:\n  types: [gone]\n')
+  fs.writeFileSync(path.join(root, '.issues', 'views', 'broken.yaml'), 'filter: 3\n')
+  const error = (name) => JSON.parse(run(root, ['views', 'run', name, '--json']).stdout).error
+  assert.equal(error('../x').reason, 'invalid_view_name')
+  assert.equal(error('stale').reason, 'view_out_of_date')
+  assert.equal(error('broken').reason, 'view_file_broken')
+  assert.equal(error('missing').code, 'NOT_FOUND')
+  assert.equal(error('missing').reason, undefined)
+})
+
+test('views delete and views rename change the view files, and --dry-run does not (PMK-212)', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'a', '--blocked'])
+  const renamed = json(root, ['views', 'rename', 'a', 'b'])
+  assert.deepEqual(renamed.after, { name: 'b', filter: { blocked: true } })
+  assert.match(run(root, ['views', 'rename', 'b', 'c', '--dry-run']).stdout, /renamed view b to c[\s\S]*dry run: nothing was written/)
+  const dry = run(root, ['views', 'delete', 'b', '--dry-run'])
+  assert.match(dry.stdout, /deleted view b\nfilter: blocked=true\ndry run: nothing was written/)
+  assert.ok(fs.existsSync(path.join(root, '.issues/views/b.yaml')))
+  assert.deepEqual(json(root, ['views', 'delete', 'b']), { before: { name: 'b', filter: { blocked: true } }, after: null })
+  assert.equal(run(root, ['views', 'list']).stdout.trim(), 'no views')
+  assert.equal(JSON.parse(run(root, ['views', 'delete', 'b', '--json']).stdout).error.code, 'NOT_FOUND')
+})
+
+test('views run --limit and --sort override the stored values (PMK-212)', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'one', '--limit', '1'])
+  const ran = json(root, ['views', 'run', 'one', '--limit', '2', '--sort', 'priority'])
+  assert.equal(ran.issues.length, 2)
+  assert.deepEqual(ran.overrides, { limit: 2, sort: 'priority' })
+  assert.deepEqual(ran.view.filter, { limit: 1 })
+  const bad = run(root, ['views', 'run', 'one', '--sort', 'bogus', '--json'])
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+  assert.equal(JSON.parse(bad.stdout).error.reason, undefined)
+})
+
+test('goal update, close and delete change and remove a goal, with dry runs and refusals (PMK-213)', () => {
+  const root = makeRepo('team')
+  const { id } = json(root, ['goal', 'create', '--title', 'Trust']).after
+  const none = run(root, ['goal', 'update', id, '--json'])
+  assert.equal(none.status, 2)
+  assert.equal(JSON.parse(none.stdout).error.code, 'INVALID_INPUT')
+  const updated = json(root, ['goal', 'update', id, '--title', 'Trust webhooks', '--target', '2026-12-31', '--status', 'planned'])
+  assert.deepEqual([updated.before.title, updated.after.title, updated.after.target, updated.after.status], ['Trust', 'Trust webhooks', '2026-12-31', 'planned'])
+  assert.equal(json(root, ['goal', 'update', id, '--target', 'none']).after.target, undefined)
+  const closed = run(root, ['goal', 'close', id])
+  assert.equal(closed.status, 0, closed.stderr)
+  assert.match(closed.stdout, /status: planned → completed/)
+  assert.equal(json(root, ['goal', 'get', id]).status, 'completed')
+  json(root, ['epic', 'goal', 'EPC-2M9D', id])
+  const linked = run(root, ['goal', 'delete', id, '--json'])
+  assert.equal(JSON.parse(linked.stdout).error.code, 'CONFLICT')
+  json(root, ['epic', 'goal', 'EPC-2M9D', 'none'])
+  const before = hashTree(root)
+  const dry = json(root, ['goal', 'delete', id, '--dry-run'])
+  assert.equal(dry.after, null)
+  assert.equal(dry.removes.file, `.issues/goals/${id}.md`)
+  assert.deepEqual(hashTree(root), before)
+  const deleted = run(root, ['goal', 'delete', id])
+  assert.equal(deleted.status, 0, deleted.stderr)
+  assert.match(deleted.stdout, new RegExp(`deleted goal ${id}`))
+  assert.equal(JSON.parse(run(root, ['goal', 'get', id, '--json']).stdout).error.code, 'NOT_FOUND')
+})
+
+test('a project from before goal_prefix with id_prefix GOAL still validates and writes (PMK-213)', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^id_prefix: .*$/m, 'id_prefix: GOAL'))
+  assert.doesNotMatch(run(root, ['validate']).stdout, /goal_prefix/)
+  const created = run(root, ['issues', 'create', '--title', 'X', '--dry-run'])
+  assert.equal(created.status, 0, created.stderr)
+})
+
+test('goals overview carries each goal\'s own warnings, so a cut epic read makes it incomplete (PMK-213)', async () => {
+  const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: {} }
+  const goal = { id: 'INI-1', title: 'Grow', status: 'active', epics: ['P-ACM-1'] }
+  const ctx = {
+    args: [],
+    json: true,
+    tracker: () => ({
+      listGoals: () => ({ goals: [goal], problems: [] }),
+      searchIssues: () => ({ issues: [], problems: [] }),
+      goalProgress: () => ({ goal, epics: [], ...sum, warnings: ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'] }),
+    }),
+  }
+  const { data, text } = await cmd('goals overview').run(ctx)
+  assert.equal(data.complete, false)
+  assert.deepEqual(data.warnings, ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'])
+  assert.match(text, /^incomplete: /m)
+  assert.ok(data.items.every((item) => !('warnings' in item)))
 })

@@ -1,0 +1,20 @@
+$ pmkit requests get REQ-6J8P
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: request REQ-6J8P does not exist
+next: pmkit requests list
+
+$ pmkit requests get REQ-6J8P --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "request REQ-6J8P does not exist",
+    "nextStep": "pmkit requests list"
+  }
+}
+--- stderr
+(empty)

@@ -334,10 +334,11 @@ test('an archived blocker whose archived parent sits under the target is not out
   assert.equal(node(map, 'B').outside, false)
 })
 
-test('the JSON of a hierarchy too deep for JSON.stringify is a PmkitError', () => {
-  let tree = { id: 'N0', children: [] }
-  for (let index = 1; index < 6000; index++) tree = { id: `N${index}`, children: [tree] }
-  assert.throws(() => serializable({ tree }), (error) => error instanceof PmkitError && error.code === 'INVALID_INPUT')
+// Throws what JSON.stringify throws when a map nests past the stack, at any stack size.
+const OVERFLOW = { toJSON() { throw new RangeError('Maximum call stack size exceeded') } }
+
+test('the JSON of a map that overflows JSON.stringify is a PmkitError', () => {
+  assert.throws(() => serializable({ tree: OVERFLOW }), (error) => error instanceof PmkitError && error.code === 'INVALID_INPUT')
   assert.doesNotThrow(() => serializable({ tree: [] }))
 })
 

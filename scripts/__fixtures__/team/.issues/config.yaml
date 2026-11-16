@@ -19,6 +19,7 @@ estimate:
 members:
   fred: { name: Fred Vanelli, email: fred@example.com, availability: 1 }
   ana: { name: Ana Souza, email: ana@example.com, availability: 0.8 }
+  agent:claude: { name: Claude, availability: 1 }
 defaults:
   stale_days: 60
   stuck_business_days: 3

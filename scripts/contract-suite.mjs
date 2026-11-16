@@ -7,10 +7,12 @@
 // setup() may name `assignee`, the member id the suite assigns issues to (default: the first member). A shared workspace
 // returns the key owner so the suite never assigns a person who would be notified.
 // The test body runs setup(t) with the node:test context, so a setup may tell tests apart by `t.name`.
+// setup() may name `agent`, an agent member id (`agent:<name>`) for the agents family; without one the delegate test skips.
 // setup() may set `foldsQuickEdits: true` when the tracker folds an update made right after a create into the create entry
 // of its history. The history test then still requires create before comment and the updated value, but no 'update' entry.
 // The suite awaits every operation, so an adapter may return values or promises.
 //
+// setup() may name `seedDocuments()`, which adds documents to the tracker and returns their paths, so the list case cannot pass on an empty list.
 // setup() may also return `cycles: { active(), planned() }`, two async functions that return a cycle (an object with `id`, and
 // `start` and `end` when a test needs them) or null. The tests that need a cycle but do not open or close one ask for it with
 // `cycle('active')` or `cycle('planned')`. Without a provider the helper opens the cycle with openCycle, as the Local tracker
@@ -20,10 +22,18 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { assertTracker } from './lib/contract.mjs'
+import { parseDelegation } from './lib/delegation.mjs'
+import { teamMembers } from './lib/team-capacity.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes']
+export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
+
+/** The members of the scope team: on Linear `discover().members` lists the whole workspace, and a capacity write refuses another team's user. */
+const scopeMembers = async (tracker) => {
+  const found = await tracker.discover()
+  return teamMembers(found.members, found.team)
+}
 
 const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 const DOC_PATH = 'contract/notes.md'
@@ -67,7 +77,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       const env = await setup(t)
       try {
         const today = env.today ?? new Date().toISOString().slice(0, 10)
-        await body({ ...env, today, cycle: cycleHelper({ ...env, today }, t) })
+        await body({ ...env, today, t, cycle: cycleHelper({ ...env, today }, t) })
       } finally {
         await env.teardown()
       }
@@ -122,6 +132,55 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.equal((await tracker.getIssue(id)).archived, true)
       assert.deepEqual((await tracker.searchIssues({})).issues, [])
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [id])
+    })
+
+    it('deletes an issue, refuses while another issue references it, and a dry run changes nothing', ['issues'], async ({ tracker, actor }) => {
+      const x = (await tracker.createIssue({ title: 'Delete me' }, actor)).after.id
+      const y = (await tracker.createIssue({ title: 'Blocked by x' }, actor)).after.id
+      await tracker.link(x, y, 'blocks', actor)
+      for (const dryRun of [true, false]) {
+        await assert.rejects(async () => tracker.delete(x, actor, { dryRun }), (error) => error.code === 'CONFLICT' && error.message.includes(y))
+      }
+      assert.equal((await tracker.getIssue(x)).title, 'Delete me')
+      await tracker.unlink(x, y, 'blocks', actor)
+      const dry = await tracker.delete(x, actor, { dryRun: true })
+      assert.equal(dry.after, null)
+      assert.equal(dry.before.id, x)
+      assert.equal((await tracker.getIssue(x)).title, 'Delete me')
+      const done = await tracker.delete(x, actor)
+      assert.equal(done.after, null)
+      await assert.rejects(async () => tracker.getIssue(x), { code: 'NOT_FOUND' })
+      assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [y])
+      // PMK-222: a tracker with a trash brings the issue back; the Local tracker has none and says so.
+      let restored
+      try {
+        restored = await tracker.restore(x, actor)
+      } catch (error) {
+        assert.equal(error.code, 'NOT_SUPPORTED', error.message)
+        return
+      }
+      assert.equal(restored.after.id, x)
+      assert.equal((await tracker.getIssue(x)).title, 'Delete me')
+    })
+
+    // A local run makes the agent the assignee; a native run (Linear) keeps the assignee and sets the issue's delegate.
+    it('delegates an issue to an agent member with a delegation comment', ['issues', 'agents'], async (env) => {
+      const { tracker, actor, agent, t } = env
+      if (!agent) return t.skip('needs an agent member')
+      const id = (await tracker.createIssue({ title: 'For the agent' }, actor)).after.id
+      const first = await tracker.delegate(id, agent, 'Do it.', actor)
+      assert.ok(['local', 'native'].includes(first.run), `run is ${first.run}`)
+      const holder = (issue) => (first.run === 'native' ? issue.delegate : issue.assignee)
+      assert.equal(holder(first.after), agent)
+      assert.deepEqual(parseDelegation(first.comment.body), { agent, by: actor, run: first.run })
+      assert.equal(holder(await tracker.getIssue(id)), agent)
+      assert.deepEqual((await tracker.listComments(id)).map((comment) => comment.id), [first.comment.id])
+      const again = await tracker.delegate(id, agent, 'Do it again.', actor)
+      assert.equal(holder(again.before), holder(again.after))
+      assert.equal((await tracker.listComments(id)).length, 2)
+      await rejects(() => tracker.delegate(id, actor, 'x', actor), 'INVALID_INPUT')
+      await rejects(() => tracker.delegate(id, 'agent:nobody', 'x', actor), 'INVALID_INPUT')
+      assert.equal((await tracker.listComments(id)).length, 2)
     })
 
     it('rejects an unknown issue with NOT_FOUND and a bad write with INVALID_INPUT', ['issues'], async ({ tracker, actor }) => {
@@ -315,7 +374,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     })
 
     it('sets and reads cycle capacity', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
-      const [member] = (await tracker.discover()).members
+      const [member] = await scopeMembers(tracker)
       const cycle = await wanted('active')
       if (cycle === null) return
       await tracker.setCapacity(cycle.id, { [member.id]: 8 }, actor)
@@ -323,7 +382,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     })
 
     it('sets, reads and clears days off', ['cycles'], async ({ tracker, actor, today, cycle: wanted }) => {
-      const [member] = (await tracker.discover()).members
+      const [member] = await scopeMembers(tracker)
       const cycle = await wanted('active')
       if (cycle === null) return
       const date = new Date(`${cycle.start ?? today}T00:00:00Z`)
@@ -333,6 +392,35 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(await tracker.getDaysOff(cycle.id), { [member.id]: [weekday] })
       await tracker.updateCycleCapacity(cycle.id, { daysOff: { [member.id]: null } }, actor)
       assert.deepEqual(await tracker.getDaysOff(cycle.id), {})
+    })
+
+    it('patches one member of the capacity and keeps the others', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
+      const members = await scopeMembers(tracker)
+      const cycle = await wanted('active')
+      if (cycle === null || members.length < 2) return
+      const [first, second] = members
+      await tracker.setCapacity(cycle.id, { [first.id]: 8, [second.id]: 6 }, actor)
+      await tracker.updateCycleCapacity(cycle.id, { capacityPatch: { [first.id]: 5 } }, actor)
+      assert.deepEqual(await tracker.getCapacity(cycle.id), { [first.id]: 5, [second.id]: 6 })
+      await tracker.updateCycleCapacity(cycle.id, { capacityPatch: { [second.id]: null } }, actor)
+      assert.deepEqual(await tracker.getCapacity(cycle.id), { [first.id]: 5 })
+      for (const patch of [{ 'nobody-here': 3 }, { 'nobody-here': null }]) {
+        await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityPatch: patch }, actor), (error) => error.code === 'INVALID_INPUT')
+      }
+    })
+
+    it('keeps a base capacity on the sprint and drops it with null', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
+      const [member] = await scopeMembers(tracker)
+      const cycle = await wanted('active')
+      if (cycle === null) return
+      const sprintOf = async () => (await tracker.listCycles({})).find((item) => item.id === cycle.id)
+      await tracker.setCapacity(cycle.id, { [member.id]: 7 }, actor)
+      await tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { [member.id]: { capacity: 7, workingDays: 10 } } }, actor)
+      assert.deepEqual((await sprintOf()).capacityBase, { [member.id]: { capacity: 7, workingDays: 10 } })
+      await tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { [member.id]: null } }, actor)
+      assert.equal((await sprintOf()).capacityBase, undefined)
+      await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { [member.id]: { capacity: 7, workingDays: 0 } } }, actor), (error) => error.code === 'INVALID_INPUT')
+      await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { 'nobody-here': { capacity: 7, workingDays: 10 } } }, actor), (error) => error.code === 'INVALID_INPUT')
     })
 
     it('creates an epic, parents an issue and reads progress', ['deliverables', 'relations'], async ({ tracker, actor }) => {
@@ -447,6 +535,10 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await tracker.logTime(id, 45, actor)
       const logged = (await tracker.getHistory(id)).filter((event) => event.op === 'log_time')
       assert.deepEqual(logged.map((event) => event.minutes), [45])
+      const listed = await tracker.listTimeEntries(id)
+      assert.deepEqual(listed.entries.map((entry) => entry.minutes), [45])
+      assert.equal(listed.total, 45)
+      assert.equal(listed.ignored, 0)
       assert.ok((await tracker.metricEvents()).some((event) => event.issue === id && event.op === 'log_time'))
       await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
     })
@@ -475,7 +567,25 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.createDocument('../escape.md', 'x', actor), 'INVALID_INPUT')
     })
 
-    it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today, assignee }) => {
+    it('lists the known documents with a string path each, sorted', ['documents'], async ({ tracker, seedDocuments }) => {
+      const documents = seedDocuments?.() ?? []
+      const docs = await tracker.listDocuments()
+      assert.ok(Array.isArray(docs))
+      assert.ok(docs.every((doc) => typeof doc.path === 'string'))
+      const paths = docs.map((doc) => doc.path)
+      assert.deepEqual(paths, [...paths].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+      for (const known of documents) assert.ok(paths.includes(known), `${known} is listed`)
+      assert.ok(!paths.includes(DOC_PATH))
+    })
+
+    it('lists created documents in path order', ['documents', 'document-writes'], async ({ tracker, actor }) => {
+      await tracker.createDocument('contract/b.md', '# B\n', actor)
+      await tracker.createDocument('contract/a.md', '# A\n', actor)
+      const paths = (await tracker.listDocuments()).map((doc) => doc.path)
+      assert.ok(paths.indexOf('contract/a.md') !== -1 && paths.indexOf('contract/a.md') < paths.indexOf('contract/b.md'))
+    })
+
+    it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today, assignee, agent }) => {
       const { members } = await tracker.discover()
       const a = (await tracker.createIssue({ title: 'Dry A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'Dry B' }, actor)).after.id
@@ -532,6 +642,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
         () => tracker.createDeliverable({ title: 'Never epic' }, actor, dry),
         () => tracker.publishStatusUpdate({ epic, health: 'on_track', body: 'dry update' }, actor, dry),
         () => tracker.createDocument('dry/new.md', 'never', actor, dry),
+        ...(agent ? [() => tracker.delegate(a, agent, 'Never', actor, dry)] : []),
       ]
       for (const write of writes) {
         await write()

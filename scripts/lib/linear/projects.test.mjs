@@ -115,6 +115,7 @@ test('every project document has a name that operationName reads, and the two mu
     PmkitProjectMilestones: projects.PROJECT_MILESTONES_QUERY,
     PmkitProjectMilestone: projects.PROJECT_MILESTONE_QUERY,
     PmkitDocument: projects.DOCUMENT_QUERY,
+    PmkitDocuments: projects.DOCUMENTS_QUERY,
     PmkitEpicIssues: projects.EPIC_ISSUES_QUERY,
   }
   for (const [name, document] of Object.entries(documents)) {

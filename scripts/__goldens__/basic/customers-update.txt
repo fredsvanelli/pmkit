@@ -1,0 +1,125 @@
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: customer CUS-3T7W does not exist
+next: pmkit customers list
+
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "customer CUS-3T7W does not exist",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: customer CUS-3T7W does not exist
+next: pmkit customers list
+
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "customer CUS-3T7W does not exist",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Acme Corp' --owner none
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Acme Corp"
+next: pmkit customers list
+
+$ pmkit customers update 'Acme Corp' --owner none --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Acme Corp\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Acme Corp' --owner none --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Acme Corp"
+next: pmkit customers list
+
+$ pmkit customers update 'Acme Corp' --owner none --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Acme Corp\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Nobody here' --tier gold
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Nobody here"
+next: pmkit customers list
+
+$ pmkit customers update 'Nobody here' --tier gold --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Nobody here\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Nobody here' --tier gold --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Nobody here"
+next: pmkit customers list
+
+$ pmkit customers update 'Nobody here' --tier gold --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Nobody here\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)

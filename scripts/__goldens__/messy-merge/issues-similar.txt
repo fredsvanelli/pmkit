@@ -1,0 +1,81 @@
+$ pmkit issues similar ISS-1
+exit 0
+--- stdout
+no similar issues found among the 1 read
+not verified: 2 issue files could not be read (ISS-4, ISS-5). Do not say that no similar issue exists
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: the similar list is not verified. Do not say that no similar issue exists
+
+$ pmkit issues similar ISS-1 --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-1",
+    "title": "Sign webhook payloads"
+  },
+  "similar": [],
+  "unestimated": [],
+  "considered": 1,
+  "complete": false,
+  "hasMore": false,
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: the similar list is not verified. Do not say that no similar issue exists
+
+$ pmkit issues similar ISS-1 --category done,todo --limit 2
+exit 0
+--- stdout
+no similar issues found among the 1 read
+not verified: 2 issue files could not be read (ISS-4, ISS-5). Do not say that no similar issue exists
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: the similar list is not verified. Do not say that no similar issue exists
+
+$ pmkit issues similar ISS-1 --category done,todo --limit 2 --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-1",
+    "title": "Sign webhook payloads"
+  },
+  "similar": [],
+  "unestimated": [],
+  "considered": 1,
+  "complete": false,
+  "hasMore": false,
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: the similar list is not verified. Do not say that no similar issue exists

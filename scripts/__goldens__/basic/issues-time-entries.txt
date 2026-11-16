@@ -1,0 +1,20 @@
+$ pmkit issues time-entries ISS-0000
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues time-entries ISS-0000 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)

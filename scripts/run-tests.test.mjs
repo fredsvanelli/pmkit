@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { childEnv, findLeaks, finish } from './run-tests.mjs'
+import { childEnv, findLeaks, finish, testArgs } from './run-tests.mjs'
 import { tempDir } from './test-helpers.mjs'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -49,4 +49,12 @@ test('childEnv drops the Linear key and the live gate and points the temp folder
   assert.equal(env.TMPDIR, '/tmp/x')
   assert.equal(env.TMP, '/tmp/x')
   assert.equal(env.TEMP, '/tmp/x')
+})
+
+test('testArgs asks for the TAP reporter when stdout is not a terminal', () => {
+  assert.deepEqual(testArgs(false), ['--test', '--test-reporter=tap', 'scripts/**/*.test.mjs'])
+})
+
+test('testArgs leaves the reporter alone in a terminal', () => {
+  assert.deepEqual(testArgs(true), ['--test', 'scripts/**/*.test.mjs'])
 })

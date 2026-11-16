@@ -1,0 +1,52 @@
+$ pmkit views save golden-view --category in_progress --sort priority
+exit 0
+--- stdout
+view golden-view
+filter: categories=in_progress sort=priority
+--- stderr
+(empty)
+
+$ pmkit views save golden-view --category in_progress --sort priority --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "name": "golden-view",
+    "filter": {
+      "categories": [
+        "in_progress"
+      ],
+      "sort": "priority"
+    }
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit views save golden-view --category in_progress --sort priority --dry-run
+exit 0
+--- stdout
+view golden-view
+filter: categories=in_progress sort=priority
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit views save golden-view --category in_progress --sort priority --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "name": "golden-view",
+    "filter": {
+      "categories": [
+        "in_progress"
+      ],
+      "sort": "priority"
+    }
+  }
+}
+--- stderr
+(empty)

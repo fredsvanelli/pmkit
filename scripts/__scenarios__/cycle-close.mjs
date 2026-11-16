@@ -23,7 +23,7 @@ const remainingCriteria = path.join(import.meta.dirname, '_inputs', 'remaining-c
 const toBacklog = ['cycle', 'add', 'ISS-4M2S', 'ISS-5N1R', '--to', 'none']
 // The split keeps the type, priority and labels of ISS-2X6D (feature, high, billing and backend), and carries its
 // unchecked criterion.
-const split = ['issues', 'create', '--title', 'Finish the billing export to CSV', '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend', '--criteria-file', remainingCriteria]
+const split = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-finish-the-billing-export-to-csv.md'), '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend', '--criteria-file', remainingCriteria]
 const shrink = ['issues', 'update', 'ISS-2X6D', '--estimate', '5']
 const done = ['issues', 'move', 'ISS-2X6D', 'done']
 const close = ['cycle', 'close', '2026-10-12']

@@ -1,0 +1,83 @@
+$ pmkit docs adr-status 1 deprecated
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no ADR has the number 0001
+next: Check the number in docs/adr/; pmkit docs next-adr names the folders it reads
+
+$ pmkit docs adr-status 1 deprecated --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no ADR has the number 0001",
+    "nextStep": "Check the number in docs/adr/; pmkit docs next-adr names the folders it reads"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit docs adr-status 1 deprecated --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no ADR has the number 0001
+next: Check the number in docs/adr/; pmkit docs next-adr names the folders it reads
+
+$ pmkit docs adr-status 1 deprecated --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no ADR has the number 0001",
+    "nextStep": "Check the number in docs/adr/; pmkit docs next-adr names the folders it reads"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit docs adr-status 1 superseded
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: superseded needs --by with the number of the newer ADR
+next: Pass --by <number>, such as --by 7
+
+$ pmkit docs adr-status 1 superseded --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "superseded needs --by with the number of the newer ADR",
+    "nextStep": "Pass --by <number>, such as --by 7"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit docs adr-status 1 superseded --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: superseded needs --by with the number of the newer ADR
+next: Pass --by <number>, such as --by 7
+
+$ pmkit docs adr-status 1 superseded --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "superseded needs --by with the number of the newer ADR",
+    "nextStep": "Pass --by <number>, such as --by 7"
+  }
+}
+--- stderr
+(empty)

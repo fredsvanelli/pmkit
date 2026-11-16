@@ -1,0 +1,31 @@
+# PMK-197 Redact No Missed Secrets Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) with superpowers:test-driven-development.
+
+**Goal:** Redact every value after a secret key in full, accept the listed false positives, keep Markdown intact.
+
+**Architecture:** Changes stay in `scripts/lib/redact.mjs` (`looksSecret`, `VALUE`, `KEY_WORDS`, the `authorization` pattern, a new `curl_user` pattern) plus tests and docs.
+
+**Tech Stack:** Node ESM, `node:test`, no dependencies.
+
+**Spec:** `docs/superpowers/specs/2026-11-09-pmk-197-redact-no-missed-secrets-design.md`
+
+## Global Constraints
+
+- Linear time: add each new pattern to the 80k-character timing probe.
+- Every commit carries `(PMK-197)` and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- `npm test` in the foreground, exit code 0.
+
+## Review Focus
+
+- Markdown closers kept; `a=1&api_key=x&b=2` still stops at `&b=2`; `pwd`/`oldpwd` path exemption; idempotent on redacted text.
+
+---
+
+1. **Probes first (AC 2).** In `scripts/redact-probes.test.mjs` add a probe with the expected output for every case of the issue (`DB_PASSWORD=Summer.2024!`, `Password: Hunter.22`, `the password: hunter22.`, `password=(hunter22)`, `PASSWORD=/x9Kq!zz`, `API_TOKEN=abc123&rest`, `password=hunter&22`, a 600-character `AWS_SESSION_TOKEN`, JSON `Authorization`, `PRIVATE_KEY=`, `curl -u`, `GIT_CREDENTIAL=`, `password=pa$$;word123`, `secret=Xy7#kL:42`, `(token=...)`, backticked, bold) and flip the old "known gap" and false-positive probes. Run: they fail.
+2. **Rule (AC 1).** Rewrite `looksSecret` as the exemption list of the spec, widen `VALUE` (whitespace-delimited, `&` only before `name=`, no cap), cut trailing wrapper characters, add `private[_-]?key`, `credentials?`, `api[_-]?key` to `KEY_WORDS`. Probes pass.
+3. **Authorization and curl (AC 2).** `Authorization["']?:` in the pattern; `curl_user` pattern with a bounded lookback. Add to the timing probe.
+4. **Markdown (AC 3).** Probes for `(token=x)`, `` `token=x` ``, `**token=x**`, a Markdown list line. Covered by step 2's trailer cut; fix if not.
+5. **Scenario.** Strengthen `expect` in `issues-investigate-bug.mjs`; run the scenario tests and fix goldens that change.
+6. **Docs.** Spec lists the false positives (done); `commands/issues/investigate-bug.md`, `README.md` row and CHANGELOG `## Unreleased` mention the new rule and `curl_user`.
+7. **Verify and deliver.** `npm test` foreground exit 0; check criteria 1 to 3 (`issues update PMK-197 --check n`, dry-run then real); commit `.issues/`; PR.

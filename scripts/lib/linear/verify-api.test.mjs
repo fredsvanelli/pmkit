@@ -27,8 +27,10 @@ test('findMatches returns empty lists when nothing matches', () => {
 
 const feature = (id) => FEATURES.find((item) => item.id === id)
 
-test('FEATURES defines the four features with a pattern and live queries', () => {
-  assert.deepEqual(FEATURES.map((item) => item.id), ['recurring', 'project_dependencies', 'releases', 'insights'])
+test('FEATURES defines the five features with a pattern and live queries', () => {
+  assert.deepEqual(FEATURES.map((item) => item.id), ['recurring', 'project_dependencies', 'releases', 'insights', 'custom_views'])
+  assert.deepEqual(feature('custom_views').liveQueries.map((query) => query.name), ['customViews'])
+  assert.match(feature('custom_views').liveQueries[0].query, /modelName filterData team \{ key \} issues\(first: 1\)/)
   for (const item of FEATURES) {
     assert.ok(item.pattern instanceof RegExp)
     assert.ok(Array.isArray(item.liveQueries))

@@ -1,0 +1,29 @@
+# Track-agents Implementation Plan
+
+> For agentic workers: use superpowers:executing-plans.
+
+**Goal:** add `issues track-agents`.
+**Architecture:** a pure module `scripts/lib/track-agents.mjs` classifies delegation and PR state. The CLI command reads the tracker and the host and passes data in.
+**Spec:** docs/superpowers/specs/2026-10-31-pmk-58-track-agents-design.md
+
+## Global Constraints
+Commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; issue ID PMK-58 in every commit.
+
+## Review Focus
+- Comment with CRLF or trailing space still parses.
+- Newest root delegation wins; replies are ignored; other agent gives `stale`.
+- Issue without branch or PR is reported per issue.
+- `git_host: none` prints the note and no PR state.
+- Linear refuses with the hint.
+
+### Task 1: pure module
+Files: `scripts/lib/delegation.mjs`, `scripts/lib/track-agents.mjs`, `scripts/track-agents.test.mjs`, `scripts/delegation.test.mjs`.
+- Test then fix `parseDelegation` normalization.
+- Test then implement `delegationOf(comments, assignee)` and `prSummary(pr, found)`.
+
+### Task 2: CLI command
+Files: `scripts/pmkit.mjs`, `scripts/lib/capabilities.mjs`, `scripts/cli-track-agents.test.mjs`.
+- Test with fake gh (`scripts/fake-gh.mjs`) and the Local tracker, then implement the command and text.
+
+### Task 3: skill, scenario, docs
+Files: `commands/issues/track-agents.md`, scenario, counts, README, SKILL.md, CHANGELOG.

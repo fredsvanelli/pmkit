@@ -2,7 +2,7 @@
 
 export const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 export const TERMINAL = ['done', 'canceled']
-export const EVENT_OPS = ['create', 'update', 'move', 'assign', 'link', 'unlink', 'comment', 'log_time', 'archive']
+export const EVENT_OPS = ['create', 'update', 'move', 'assign', 'link', 'unlink', 'comment', 'log_time', 'archive', 'unarchive']
 export const LINK_KINDS = ['blocks', 'related', 'duplicate']
 
 export const isCategory = (value) => CATEGORIES.includes(value)
@@ -36,6 +36,7 @@ export const STATUS_MAPPING_KEYS = [...CATEGORIES, 'blocked']
  * @property {string} [release]
  * @property {string} [due] YYYY-MM-DD
  * @property {string} [branch]
+ * @property {string[]} [docs] the documents and ADRs the issue links to, by path; only when not empty, Local only (PMK-228)
  * @property {string} description
  * @property {Criterion[]} acceptanceCriteria
  * @property {string} created ISO 8601 UTC

@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
+const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'track-agents', 'review', 'todos', 'security-alerts', 'unblock', 'delete', 'bulk', 'run-view', 'investigate-bug', 'inbox-digest'], spec: ['import', 'record-decision', 'adr-status'], backlog: ['groom', 'triage', 'prioritize-by-demand', 'request-queue'], report: ['status', 'release-notes', 'roadmap-review', 'initiatives-and-goals', 'release-readiness'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -149,6 +149,19 @@ for (const [folder, names] of Object.entries(COMMANDS)) {
   })
 }
 
+test('no command file puts a title, a name or a description on the shell command line, and conventions.md says how to write the files', () => {
+  for (const file of markdownFiles(path.join(ROOT, 'commands'))) {
+    // A title, a name or a description with an inline value (quoted, a placeholder or after `=`) in any command, on one line or broken over two.
+    const inline = /--(title|name|description)(?:=|\s+)["'<$]/.exec(fs.readFileSync(file, 'utf8'))
+    // A positional name taken from data would reach the shell: milestone and release ids come from the user or from a name that follows the id rule.
+    const positional = /(?:milestone|release) create (?:<name>|["'])/.exec(fs.readFileSync(file, 'utf8'))
+    assert.equal(positional, null, `${path.relative(ROOT, file)} passes a name as the positional id; pass an id that follows the id rule`)
+    assert.equal(inline, null, `${path.relative(ROOT, file)} passes ${inline?.[0]} to the shell; use --${inline?.[1]}-file`)
+  }
+  const conventions = fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8')
+  assert.match(conventions, /file tool[^\n]*never[^\n]*`echo`/)
+})
+
 test('every command is listed in the skill table and in the README', () => {
   const skill = path.join(ROOT, 'skills/pmkit/SKILL.md')
   for (const doc of [skill, path.join(ROOT, 'README.md')]) {
@@ -160,6 +173,79 @@ test('every command is listed in the skill table and in the README', () => {
       }
     }
   }
+})
+
+test('record-decision.md covers the three places, the numbering, the bulk comments and a failed comment', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/spec/record-decision.md'), 'utf8')
+  const lines = text.split('\n')
+  const step = (number) => {
+    const from = lines.findIndex((line) => line.startsWith(`${number}. `))
+    const to = lines.findIndex((line, index) => index > from && /^(\d+\. |## )/.test(line))
+    return lines.slice(from, to).join('\n')
+  }
+  assert.match(step(3), /docs next-adr --title/, 'the CLI computes the number, the slug and the path')
+  assert.match(step(3), /GIT_TERMINAL_PROMPT=0 git fetch origin <defaultBranch>/)
+  assert.match(step(3), /20 seconds/)
+  assert.match(step(3), /gitHost: none/, 'the fetch is skipped without a git host')
+  assert.match(step(3), /already here/, 'a failed fetch keeps the local ref')
+  assert.match(step(3), /INVALID_INPUT/)
+  assert.match(step(5), /whatever `write_policy\.confirm` says/)
+  assert.match(step(5), /Ask again after every change of the number or the path/)
+  assert.match(step(5), /--dry-run/)
+  assert.match(step(6), /no commit yet/, 'the preview warns that the repository file has no commit')
+  assert.match(step(6), /bulk change/)
+  assert.match(step(6), /unless `write_policy\.confirm` is `none`/, 'step 6 says what the Confirmation points say')
+  assert.match(step(3), /only a valid branch name/)
+  assert.match(step(2), /replaces older ADRs/, 'step 2 finds every replaced ADR the user names')
+  assert.match(step(2), /docs adr-get <old number> --json/, 'the lookup only reads (PMK-263)')
+  assert.doesNotMatch(step(2), /adr-status/)
+  assert.match(step(4), /Supersedes: ADR <old number>, <supersedesRef>/, 'the draft names each older ADR by number and supersedesRef (PMK-274)')
+  assert.match(step(4), /one line `Supersedes: ADR <old number>, <supersedesRef>` per replaced ADR/, 'one Supersedes line per ADR (PMK-263)')
+  assert.match(step(4), /docs adr-get <old number> --from <path of step 3> --json/, 'the Supersedes ref is read from the CLI with the path of the new ADR (PMK-270)')
+  assert.match(step(4), /`supersedesRef`/, 'the line cites supersedesRef, not ref (PMK-270)')
+  assert.match(step(5), /docs adr-get <old number> --from <path>/, 'a new path asks for the ref again (PMK-270)')
+  assert.match(step(4), /replaces none, write no such line/, 'a decision with no older ADR is written as before')
+  assert.match(step(7), /docs adr-status <old number> superseded --by <new number> --dry-run/)
+  assert.match(step(7), /whatever `write_policy\.confirm` says/)
+  assert.match(step(7), /When step 6 stopped on a failure, say so first/, 'step 7 mentions a step 6 failure before asking to mark (PMK-263)')
+  assert.match(step(7), /bulk change/)
+  assert.match(step(7), /list the ADRs marked and the ones left/)
+  assert.match(step(1), /never ask again for a number the user named/)
+  assert.match(step(1), /Count each ADR once, whatever the spelling of its number/, 'a repeated number is one ADR (PMK-263 review 2)')
+  assert.match(step(4), /never two for the same ADR/)
+  assert.match(step(7), /For each older ADR, once,/)
+  assert.match(step(3), /higher than the new `number`, warn/, 'a replaced ADR newer than the new one is warned about (PMK-263)')
+  assert.match(step(7), /is not marked/, 'a declined or failed mark leaves the older ADR alone and says so')
+  assert.match(step(2), /`ref` is the path without the display label `tracker:`/, 'ref keeps its tracker: label rule and is not the Supersedes citation (PMK-274)')
+  const step2Sentences = step(2).split(/(?<=\.)\s+/)
+  assert.deepEqual(step2Sentences.filter((s) => /\bref\b/i.test(s) && /\b(keeps?|kept|retains?|stores?|saves?|reuses?)\b/i.test(s)), [], 'step 2 never tells the agent to keep ref, in any wording (PMK-274)')
+  assert.deepEqual(step2Sentences.filter((s) => /\bref\b/i.test(s) && /Supersedes/.test(s) && !/\b(never|not)\b/i.test(s)), [], 'a step 2 sentence that mentions ref and the Supersedes line says the line does not take it (PMK-274)')
+  assert.doesNotMatch(step(2), /\.\.\//, 'step 2 does not explain the ../ form of ref (PMK-274)')
+  assert.match(step(2), /The Supersedes line never takes `ref`/, 'step 2 says the Supersedes line never takes ref (PMK-274)')
+  assert.match(step(2), /`supersedesRef`, which step 4 reads/, 'steps 2 and 4 agree the line cites supersedesRef (PMK-274)')
+  assert.match(step(4), /never the `path`/)
+  assert.match(step(2), /any of the `statuses` already says superseded by another ADR/, 'step 2 warns before step 7 replaces a mark')
+  assert.match(step(6), /When a comment or a `docs` update fails, stop step 6 there: do not retry, do not run the rest of the comments or links, and do not delete the ADR/, 'a failed write in the batch stops it, as before PMK-251')
+  assert.match(step(6), /Step 8 lists what changed and what is left/)
+  assert.match(step(4), /right under a status line when the ADR format puts one there/)
+  assert.match(step(8), /List the issues that got the comment and the `docs` link and the ones that did not/)
+  assert.match(step(8), /did not/)
+  assert.doesNotMatch(text, /\.issues\/docs\/adr/, 'the tracker folder comes from the CLI, not from the file')
+  assert.doesNotMatch(text, /Status:|## Context|## Decision/, 'the format is the one of the ADRs in docs/adr/')
+  assert.match(text, /renames its file/)
+})
+
+test('delegate.md previews in step 5, writes in step 6, always asks, and runs the agent only after a question', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/issues/delegate.md'), 'utf8')
+  const step = (number) => text.split('\n').find((line) => line.startsWith(`${number}. `)) ?? ''
+  const calls = (line) => [...line.matchAll(/pmkit\.mjs" issues delegate[^`]*`/g)].map((match) => match[0])
+  assert.ok(calls(step(5)).length > 0 && calls(step(5)).every((call) => call.includes('--dry-run')), 'step 5 previews with --dry-run')
+  assert.ok(calls(step(6)).length > 0 && calls(step(6)).every((call) => !call.includes('--dry-run')), 'step 6 writes without --dry-run')
+  assert.match(step(5), /AskUserQuestion/)
+  assert.match(step(5), /write_policy\.confirm: none/)
+  assert.match(step(7), /AskUserQuestion/)
+  assert.match(step(7), /--as <agent>/)
+  assert.match(step(7), /commands\/issues\/work\.md/)
 })
 
 test('triage-rotation.md previews the set in step 6 and writes it in step 7', () => {
@@ -212,4 +298,65 @@ test('the routing skill has a name and a description', () => {
   const data = parseYaml(splitFrontmatter(fs.readFileSync(path.join(ROOT, 'skills/pmkit/SKILL.md'), 'utf8')).yaml)
   assert.equal(data.name, 'pmkit')
   assert.ok(data.description && data.description.length > 20)
+})
+
+test('no command file puts a git_host.default_branch value in a shell command without the default-branch check (PMK-192)', () => {
+  const dir = path.join(ROOT, 'commands')
+  const files = markdownFiles(dir).filter((file) => !file.endsWith(`${path.sep}link-repo.md`))
+  const offending = []
+  for (const file of files) {
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split('\n').entries()) {
+      const readsConfig = line.includes('git_host.default_branch')
+      const shellBase = /git (log|diff)[^`]*<(base|default branch)>/.test(line)
+      if ((readsConfig || shellBase) && !line.includes('default-branch --json')) offending.push(`${path.relative(ROOT, file)}:${index + 1}`)
+    }
+  }
+  assert.deepEqual(offending, [])
+  for (const name of ['issues/pause', 'issues/progress', 'issues/review', 'issues/investigate-bug', 'issues/work']) {
+    assert.match(fs.readFileSync(path.join(dir, `${name}.md`), 'utf8'), /pmkit\.mjs" default-branch --json/, name)
+  }
+})
+
+test('bulk.md tells what to do with NOT_FOUND and CONFLICT from a one-issue batch, and keeps the digest CONFLICT for the real run', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/issues/bulk.md'), 'utf8')
+  assert.match(text, /`NOT_FOUND` or `CONFLICT` and the filter matched exactly one issue/)
+  assert.match(text, /Do not run the same dry run again/)
+  assert.match(text, /`CONFLICT` without `result` on a real run with `--expect`/)
+})
+
+// PMK-229: text from data (a path, a pattern) never goes into a shell command between double quotes, where $(...) and backticks run,
+// and a `git grep` never takes a pattern that can be read as an option.
+test('command files hold text from data out of double quotes, and git grep takes its pattern with -F and -e or -f', () => {
+  const offending = []
+  for (const file of commandFiles()) {
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split('\n').entries()) {
+      const at = `${path.relative(ROOT, file)}:${index + 1}`
+      if (/"[^"\s]*<(path|pattern)>[^"\s]*"/.test(line)) offending.push(`${at}: <path> or <pattern> between double quotes`)
+      for (const match of line.matchAll(/`(git grep [^`]*)`/g)) {
+        if (!/ -F /.test(` ${match[1]} `) || !/ -(e|f) /.test(` ${match[1]} `)) offending.push(`${at}: ${match[1]} needs -F and -e or -f`)
+      }
+    }
+  }
+  assert.deepEqual(offending, [])
+  // PMK-217: a branch from the tracker goes into a command only after the validBranch check, and between double quotes there
+  // (a valid name holds no $ or backtick). These files still pass a bare <branch>: follow-up, not yet hardened.
+  const BARE_BRANCH = ['commands/issues/inbox-digest.md', 'commands/issues/mine.md', 'commands/issues/unblock.md', 'commands/issues/work.md', 'commands/team/standup.md']
+  const bare = []
+  for (const file of commandFiles()) {
+    const rel = path.relative(ROOT, file)
+    const text = fs.readFileSync(file, 'utf8')
+    const spans = [...text.matchAll(/`([^`]*<branch>[^`]*)`/g)].map((m) => m[1]).filter((span) => /pmkit\.mjs|^git /.test(span))
+    if (spans.length === 0 || BARE_BRANCH.includes(rel)) continue
+    for (const span of spans) if (span.replace(/"[^"]*"/g, '').includes('<branch>')) bare.push(`${rel}: ${span}`)
+    if (!/the rule of `validBranch`/.test(text)) bare.push(`${rel}: puts <branch> in a command without the validBranch check`)
+  }
+  assert.deepEqual(bare, [])
+  // The rule itself, so the two checks above have a reason that the agent reads.
+  assert.match(fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8'), /## Text from data in a command/)
+})
+
+test('cycle:plan takes the members of the configured team only, which is what cycle capacity accepts on Linear', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/cycle/plan.md'), 'utf8')
+  assert.match(text, /drop each member whose `teams` does not list it/)
+  assert.match(text, /for the members of the team only/)
 })

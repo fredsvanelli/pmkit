@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { TRACKERS, pmkitConfigMessages, unsupportedTracker } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { validateRepo } from './lib/validate.mjs'
@@ -10,6 +11,46 @@ import { adapterFor } from './lib/adapters.mjs'
 import { useLinear, withLinear } from './fake-hosted.mjs'
 
 const brief = (result) => result.problems.map(({ path: file, code }) => `${code} ${file}`).sort()
+
+test('a leftover of a failed delete is reported as one, not as an invalid issue', () => {
+  const root = makeRepo('basic')
+  const before = validateRepo(root)
+  const leftover = path.join(root, '.issues', 'issues', '.deleting-ISS-X-4242')
+  fs.mkdirSync(path.join(leftover, 'comments'), { recursive: true })
+  fs.writeFileSync(path.join(leftover, 'events.jsonl'), '')
+  const after = validateRepo(root)
+  assert.equal(after.checked.issues, before.checked.issues)
+  assert.equal(after.checked.comments, before.checked.comments)
+  assert.deepEqual(after.problems.filter((problem) => !before.problems.some((old) => old.path === problem.path && old.code === problem.code)), [{
+    path: '.issues/issues/.deleting-ISS-X-4242',
+    code: 'leftover',
+    message: 'it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+rwX \'.issues/issues/.deleting-ISS-X-4242\' && rm -rf \'.issues/issues/.deleting-ISS-X-4242\'',
+  }])
+})
+
+test('the leftover step removes a read-only leftover, with spaces and an apostrophe in its path', { skip: process.getuid?.() === 0 || process.platform === 'win32' }, () => {
+  const root = makeRepo('basic')
+  const leftover = path.join(root, '.issues', 'issues', ".deleting-ISS-X 4'2")
+  const locked = path.join(leftover, 'comments')
+  fs.mkdirSync(locked, { recursive: true })
+  fs.writeFileSync(path.join(locked, 'c.md'), 'x')
+  fs.chmodSync(locked, 0o555)
+  const noAccess = path.join(leftover, 'nested')
+  fs.mkdirSync(noAccess)
+  fs.writeFileSync(path.join(noAccess, 'd.md'), 'y')
+  fs.chmodSync(noAccess, 0o000)
+  try {
+    const problem = validateRepo(root).problems.find((item) => item.code === 'leftover')
+    const step = problem.message.split('remove it with: ')[1]
+    const run = spawnSync('sh', ['-c', step], { cwd: root, encoding: 'utf8' })
+    assert.equal(run.status, 0, run.stderr)
+    assert.equal(fs.existsSync(leftover), false)
+  } finally {
+    if (fs.existsSync(locked)) fs.chmodSync(locked, 0o755)
+    if (fs.existsSync(noAccess)) fs.chmodSync(noAccess, 0o755)
+    fs.rmSync(leftover, { recursive: true, force: true })
+  }
+})
 
 test('broken fixture returns exactly one problem of each kind, at the right path', () => {
   const root = makeRepo('broken')
@@ -26,7 +67,7 @@ test('broken fixture returns exactly one problem of each kind, at the right path
     'sprint .issues/sprints/2026-10-12.yaml',
     'value .issues/issues/ISS-3VAZ/issue.md',
   ])
-  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, milestones: 0, releases: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
   const cycle = result.problems.find((problem) => problem.code === 'cycle')
   assert.match(cycle.message, /ISS-5CYA.*ISS-5CYB.*ISS-5CYA/)
 })
@@ -36,7 +77,7 @@ test('team fixture minus its conflicted issue has no problems', () => {
   fs.rmSync(path.join(root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
   const result = validateRepo(root)
   assert.deepEqual(result.problems, [])
-  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, milestones: 0, releases: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
 })
 
 test('team fixture reports only its conflicted issue', () => {
@@ -193,9 +234,11 @@ test('a milestone file with conflict markers is one conflict problem, as for epi
   assert.equal(result.checked.milestones, 1)
 })
 
-test('two folders with the same normalized id are one id problem', () => {
+test('two folders with the same normalized id are one id problem', (t) => {
   const root = makeRepo('basic')
   writeIssue(root, 'ISS-1AAA')
+  // Where the filesystem folds case (default macOS and Windows), both names are one folder and there is nothing to test.
+  if (fs.existsSync(path.join(root, '.issues', 'issues', 'iss-1aaa'))) return t.skip('the filesystem folds case, so ISS-1AAA and iss-1aaa are one folder')
   writeIssue(root, 'iss-1aaa')
   const ids = validateRepo(root).problems.filter((problem) => problem.code === 'id')
   assert.ok(ids.some((problem) => /same id/.test(problem.message)))
@@ -229,6 +272,26 @@ test('a bad .pmkit/config.yaml is reported with its path', () => {
     { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.system must be github or none' },
     { path: '.pmkit/config.yaml', code: 'config', message: 'write_policy.confirm must be one of all_writes, single_writes, none' },
   ])
+})
+
+test('validate reports an invalid git_host.default_branch and accepts a non-ASCII one', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: none', 'system: github\n  repo: acme/app\n  default_branch: "main; curl x|sh"')
+  assert.deepEqual(validateRepo(root).problems, [
+    { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.default_branch is not a valid branch name, so main is used' },
+  ])
+  editPmkit(root, 'main; curl x|sh', 'développement')
+  assert.deepEqual(validateRepo(root).problems, [])
+})
+
+test('validate reports system github without a repo', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: none', 'system: github')
+  assert.deepEqual(validateRepo(root).problems, [
+    { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.repo is required when git_host.system is github' },
+  ])
+  editPmkit(root, 'system: github', 'system: github\n  repo: acme/app')
+  assert.deepEqual(validateRepo(root).problems, [])
 })
 
 test('problems of both config files are listed, sorted by path', () => {
@@ -325,7 +388,7 @@ test('tracker.system jira alone is one config problem, not a throw', () => {
   })
   assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
   assert.equal(result.problems[0].message, MSG)
-  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
   assert.ok(MSG.startsWith(unsupportedTracker('jira').message))
 })
 
@@ -341,7 +404,7 @@ test('a hosted config lists only .pmkit/config.yaml problems and checks no track
   const root = useLinear(makeRepo('team'), 'mappings:\n  status:\n    reviewing: Review\n')
   const before = hashTree(root)
   assert.deepEqual(validateRepo(root, { adapters: withLinear() }), {
-    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 },
+    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 },
     problems: [{ path: '.pmkit/config.yaml', code: 'config', message: 'mappings.status.reviewing: reviewing is not a category or blocked' }],
   })
   assert.equal(hashTree(root), before)
@@ -478,4 +541,55 @@ test('an issue, archived or not, whose release has no file is a reference proble
   assert.ok(result.problems.every((p) => p.message === 'release 9.9.9 does not exist'))
   writeRelease(root, '9.9.9.md')
   assert.deepEqual(validateRepo(root).problems, [])
+})
+
+test('PMK-195: an event or a comment with an unreadable time is a problem', () => {
+  const root = makeRepo('team')
+  const id = 'ISS-1V9Z'
+  const dir = path.join(root, '.issues', 'issues', id)
+  fs.appendFileSync(path.join(dir, 'events.jsonl'), `${JSON.stringify({ at: 'yesterday', by: 'ana', op: 'update', field: 'title', from: 'a', to: 'b' })}\n`)
+  fs.mkdirSync(path.join(dir, 'comments'), { recursive: true })
+  fs.writeFileSync(path.join(dir, 'comments', 'late.md'), '---\nauthor: ana\ncreated: soon\n---\nhi\n')
+  fs.writeFileSync(path.join(dir, 'comments', 'broken.md'), '---\nauthor: [\n---\nhi\n')
+  const found = validateRepo(root).problems.filter((problem) => problem.path.includes(`${id}/`) && ['events', 'comment'].includes(problem.code))
+  assert.deepEqual(found.map((problem) => problem.code).sort(), ['comment', 'comment', 'events'])
+  assert.ok(found.some((problem) => /yesterday/.test(problem.message)) && found.some((problem) => /soon/.test(problem.message)))
+})
+
+test('PMK-195: a comment with an empty created is no problem', () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues', 'issues', 'ISS-1V9Z', 'comments')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'empty.md'), '---\nauthor: ana\ncreated:\n---\nhi\n')
+  assert.deepEqual(validateRepo(root).problems.filter((problem) => problem.code === 'comment'), [])
+})
+
+test('two ADRs with one number are each reported, in docs/adr and the tracker folder (PMK-228)', () => {
+  const root = makeRepo('basic')
+  fs.mkdirSync(path.join(root, 'docs', 'adr'), { recursive: true })
+  fs.mkdirSync(path.join(root, '.issues', 'docs', 'adr'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0003-a.md'), '# A\n')
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0004-d.md'), '# D\n')
+  fs.writeFileSync(path.join(root, '.issues', 'docs', 'adr', '0003-b.md'), '# B\n')
+  const adr = validateRepo(root).problems.filter((problem) => problem.code === 'adr')
+  assert.deepEqual(adr, [
+    { path: '.issues/docs/adr/0003-b.md', code: 'adr', message: 'ADR number 0003 is also used by docs/adr/0003-a.md' },
+    { path: 'docs/adr/0003-a.md', code: 'adr', message: 'ADR number 0003 is also used by .issues/docs/adr/0003-b.md' },
+  ])
+})
+
+test('a hosted tracker still gets the ADR check of docs/adr (PMK-228)', () => {
+  const root = useLinear(makeRepo('team'))
+  fs.mkdirSync(path.join(root, 'docs', 'adr'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0002-a.md'), '# A\n')
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0002-b.md'), '# B\n')
+  assert.deepEqual(brief(validateRepo(root)).filter((line) => line.startsWith('adr ')), ['adr docs/adr/0002-a.md', 'adr docs/adr/0002-b.md'])
+})
+
+test('dated ADR names carry no number, so two of them are never reported (PMK-228 review)', () => {
+  const root = makeRepo('basic')
+  fs.mkdirSync(path.join(root, 'docs', 'adr'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '2026-10-31-x.md'), '# X\n')
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '2026-11-01-y.md'), '# Y\n')
+  assert.deepEqual(validateRepo(root).problems.filter((problem) => problem.code === 'adr'), [])
 })

@@ -97,9 +97,35 @@ test('parentInput sets an issue parent, an epic, or clears both', () => {
   assert.deepEqual(parentInput(), { parentId: null, projectId: null })
 })
 
-test('a milestone is NOT_SUPPORTED with the Linear message, and NOT_EPICS is gone', () => {
-  assert.throws(() => toInput({ milestone: 'x' }, update), { code: 'NOT_SUPPORTED', message: 'set the milestone in Linear' })
+test('a milestone is written by create and update with the milestone node, and cleared by null', () => {
+  const milestoneNode = { id: 'ms-1', project: { id: 'project-uuid' } }
+  assert.throws(() => toInput({ title: 'x', milestone: 'x' }, create), { code: 'INVALID_INPUT' })
+  assert.equal(toInput({ title: 'x', milestone: 'ms-1' }, { ...create, milestoneNode }).projectMilestoneId, 'ms-1')
+  assert.equal('projectMilestoneId' in toInput({ title: 'x', milestone: null }, create), false)
+  assert.deepEqual(toInput({ milestone: 'ms-1' }, { ...update, milestoneNode }), { projectMilestoneId: 'ms-1' })
+  assert.deepEqual(toInput({ milestone: null }, update), { projectMilestoneId: null })
+  assert.throws(() => toInput({ milestone: 'ms-1' }, update), { code: 'INVALID_INPUT' })
   assert.equal('NOT_EPICS' in writes, false)
+})
+
+// PMK-246: one release per issue. The caller resolves the release and refuses an issue in two or more.
+const rel = (id, type = 'planned') => ({ id, stage: { type } })
+test('a release swaps the current one, leaves a canceled one, and needs a resolved release', () => {
+  const withRelease = (nodes) => ({ ...update, beforeNode: node({ releases: { nodes } }) })
+  assert.deepEqual(toInput({ release: 'r2' }, { ...withRelease([rel('r1')]), releaseNode: rel('r2') }), { addedReleaseIds: ['r2'], removedReleaseIds: ['r1'] })
+  assert.deepEqual(toInput({ release: 'r2' }, { ...withRelease([rel('r0', 'canceled')]), releaseNode: rel('r2') }), { addedReleaseIds: ['r2'] })
+  assert.deepEqual(toInput({ release: 'r1' }, { ...withRelease([rel('r1')]), releaseNode: rel('r1') }), {})
+  assert.deepEqual(toInput({ release: null }, withRelease([rel('r1')])), { removedReleaseIds: ['r1'] })
+  assert.throws(() => toInput({ release: 'r2' }, withRelease([])), { code: 'INVALID_INPUT' })
+})
+
+test('applyInput shows the milestone a projectMilestoneId sets', () => {
+  assert.deepEqual(applyInput(node(), { projectMilestoneId: 'ms-1' }, context).projectMilestone, { id: 'ms-1' })
+  assert.equal(applyInput(node({ projectMilestone: { id: 'ms-1' } }), { projectMilestoneId: null }, context).projectMilestone, null)
+})
+
+test('docs is not an issue input on Linear: toInput leaves it out, and updateIssue links it as attachments (PMK-252)', () => {
+  for (const docs of [['docs/adr/0001-a.md'], []]) assert.deepEqual(toInput({ docs }, update), {})
 })
 
 test('applyInput sets the project from the project option and the parent from the parent option', () => {
@@ -135,9 +161,14 @@ test('description and criteria rebuild the whole description; the heading is ref
   assert.throws(() => toInput({ acceptanceCriteria: [{ text: '' }] }, update), { code: 'INVALID_INPUT' })
 })
 
-test('milestone and release take only null', () => {
-  assert.deepEqual(toInput({ milestone: null, release: null }, update), {})
-  for (const key of ['milestone', 'release']) assert.throws(() => toInput({ [key]: 'x' }, update), { code: 'NOT_SUPPORTED' })
+test('create takes no release, and milestone null clears the milestone', () => {
+  assert.deepEqual(toInput({ milestone: null, release: null }, update), { projectMilestoneId: null })
+  assert.throws(() => toInput({ title: 'T', release: 'x' }, { mode: 'create', team: raw.teams[0], context }), { code: 'NOT_SUPPORTED', message: 'issues create does not set a Linear release' })
+})
+
+test('applyInput shows the release an addedReleaseIds sets and drops the removed one', () => {
+  const next = applyInput(node({ releases: { nodes: [rel('r1'), rel('r0', 'canceled')] } }), { addedReleaseIds: ['r2'], removedReleaseIds: ['r1'] }, context, { release: rel('r2') })
+  assert.deepEqual(next.releases.nodes.map((item) => item.id), ['r0', 'r2'])
 })
 
 const cycleRaw = await fakeRaw({ labels: LABELS, teams: [teamRecord({ cyclesEnabled: true })] })

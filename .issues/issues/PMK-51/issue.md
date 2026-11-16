@@ -2,13 +2,16 @@
 id: PMK-51
 title: List the time entries of an issue
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+related: [PMK-211]
 milestone: generic-commands
+branch: pmk-51-list-the-time-entries-of-an-issue
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:21Z
+updated: 2026-11-08T20:37:22Z
 ---
 
 ## Description
@@ -17,4 +20,4 @@ Source: MVP skills, Contract operations ("Time: Not yet `list_time_entries`").
 
 ## Acceptance criteria
 
-- [ ] The CLI lists the `log_time` events of an issue with the total
+- [x] The CLI lists the `log_time` events of an issue with the total

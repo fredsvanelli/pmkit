@@ -1,0 +1,20 @@
+# PMK-194 Implementation Plan
+
+> For agentic workers: use superpowers:executing-plans.
+
+**Goal:** Fix the four `docs next-adr` defects. **Spec:** `docs/superpowers/specs/2026-11-09-pmk-194-next-adr-fixes-design.md`
+
+## Task 1: Numbering (criterion 2)
+- Test (`scripts/adr.test.mjs`): `highestAdr(['0006-y.md','20261031.md','0007a-x.md'])` is `{highest: 6, ignored: ['20261031.md','0007a-x.md']}`; replace the two 0007a tests.
+- Change `NUMBERED` in `scripts/lib/adr.mjs` to `/^(\d{4,})-[^/]*\.md$/`.
+
+## Task 2: Paths and duplicate folder (criterion 1)
+- Tests: tracker outside repo gives `data.path === 'docs/adr/0002-...md'` and a note naming the tracker; `tracker.path: .` gives no "also has ADRs" note.
+- In `planNextAdr`, label the outside folder `docs/adr`, skip the tracker folder when it resolves to the repo folder, and name it "in the tracker" in notes.
+
+## Task 3: Slug (criterion 3)
+- Tests: `adrSlug('Использовать файлы событий')`, a CJK title, `Straße æble ørsted`, still `Café "x"`; `!!!` still refused.
+- Rewrite the slug regexes in `adrSlug` as in the spec. Update the spec of PMK-65 line, the command file wording, CHANGELOG.
+
+## Task 4: Delivery
+Goldens/scenarios if affected, `npm test` exit 0, check criteria 1-3, commit `.issues/`, PR.

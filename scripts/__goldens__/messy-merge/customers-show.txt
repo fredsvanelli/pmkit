@@ -1,0 +1,62 @@
+$ pmkit customers show CUS-3T7W
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: customer CUS-3T7W does not exist
+next: pmkit customers list
+
+$ pmkit customers show CUS-3T7W --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "customer CUS-3T7W does not exist",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers show 'Acme Corp'
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Acme Corp"
+next: pmkit customers list
+
+$ pmkit customers show 'Acme Corp' --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Acme Corp\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers show --customer 'Acme Corp'
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Acme Corp"
+next: pmkit customers list
+
+$ pmkit customers show --customer 'Acme Corp' --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Acme Corp\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)

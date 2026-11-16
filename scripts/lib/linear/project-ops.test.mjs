@@ -10,14 +10,14 @@ const TWO = { ...ACME_TEAM, id: 'team-two', key: 'TWO', name: 'Two' }
 const NOW = new Date('2026-10-28T12:00:00Z')
 
 /** Fakes, a client and a projectOperations instance for scope team `team`. `options` reach fakeLinearProjects. */
-function kit({ team = 'ACME', identifiers = true, points = false, routes = (table) => table } = {}) {
+function kit({ team = 'ACME', identifiers = true, points = false, routes = (table) => table, wrapClient = (client) => client } = {}) {
   const teams = [points ? { ...ACME_TEAM, issueEstimationType: 'fibonacci' } : ACME_TEAM, TWO]
   const states = [...ACME_STATES, ...ACME_STATES.map((state) => ({ ...state, id: `${state.id}-two`, team: { id: TWO.id } }))]
   const issues = fakeLinearIssues({ teams, states })
   const fake = fakeLinearProjects({ issues, teams, states, identifiers })
   const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...issues.routes, ...routes(fake.routes) })
   const config = { pmkit: { tracker: { system: 'linear', scope: { workspace: 'acme', team } }, ...(points ? { mappings: { fields: { estimate: 'native' } } } : {}) } }
-  const client = createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: config.pmkit.tracker, fetch })
+  const client = wrapClient(createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: config.pmkit.tracker, fetch }))
   let memo
   const discovery = () => (memo ??= fetchDiscovery(client, { now: () => NOW }).then((raw) => ({ raw })))
   let count = 0
@@ -333,11 +333,51 @@ test('readDocument returns path, title and body for a slug or a document URL, an
   await assert.rejects(ops.readDocument('notes/plan.md'), { code: 'NOT_FOUND' })
 })
 
+test('listDocuments returns path and title sorted by slug, for the team projects only', async () => {
+  const { fake, ops } = kit()
+  const mine = seedProject(fake, 'Launch')
+  const other = fake.seed({ name: 'Elsewhere', teamIds: ['team-two'] })
+  fake.seedDocument(mine.id, { slugId: 'bbbbbbbbbbbb', title: 'B', content: 'x' })
+  fake.seedDocument(mine.id, { slugId: 'aaaaaaaaaaaa', title: 'A', content: 'x' })
+  fake.seedDocument(other.id, { slugId: 'cccccccccccc', title: 'C', content: 'x' })
+  assert.deepEqual(await ops.listDocuments(), [{ path: 'aaaaaaaaaaaa', title: 'A' }, { path: 'bbbbbbbbbbbb', title: 'B' }])
+})
+
+test('listDocuments returns an empty list when there are no documents', async () => {
+  const { fake, ops } = kit()
+  seedProject(fake, 'Launch')
+  assert.deepEqual(await ops.listDocuments(), [])
+})
+
+test('listDocuments leaves out a document that belongs to no project, and readDocument still reads it', async () => {
+  const { fake, ops } = kit()
+  fake.seedDocument(null, { slugId: 'aaaaaaaaaaaa', title: 'Loose', content: 'x' })
+  fake.seedDocument(seedProject(fake, 'Launch').id, { slugId: 'bbbbbbbbbbbb', title: 'B', content: 'x' })
+  assert.deepEqual(await ops.listDocuments(), [{ path: 'bbbbbbbbbbbb', title: 'B' }])
+  assert.equal((await ops.readDocument('aaaaaaaaaaaa')).title, 'Loose')
+})
+
+test('listDocuments filters on the server by the team and reads no project list', async () => {
+  const { fake, ops, sent } = kit()
+  fake.seedDocument(seedProject(fake, 'Launch').id, { slugId: 'aaaaaaaaaaaa', title: 'A', content: '' })
+  await ops.listDocuments()
+  assert.deepEqual(sent('PmkitDocuments').map((call) => call.body.variables.filter), [{ project: { accessibleTeams: { some: { key: { eq: 'ACME' } } } } }])
+  assert.equal(sent('PmkitProjects').length, 0)
+})
+
+test('listDocuments fails with UPSTREAM and a next step that names epic get when the page cap cuts the list short', async () => {
+  const wrapClient = (client) => ({ ...client, paginate: async (...args) => ({ ...(await client.paginate(...args)), hasMore: true }) })
+  const { fake, ops } = kit({ wrapClient })
+  fake.seedDocument(seedProject(fake, 'Launch').id, { slugId: 'aaaaaaaaaaaa', title: 'A', content: '' })
+  await assert.rejects(ops.listDocuments(), (error) => error.code === 'UPSTREAM' && error.nextStep === 'pmkit epic get <project> lists the documents of one project')
+})
+
 test('createMilestone and createDocument are NOT_SUPPORTED and send no request', async () => {
   const { ops, fetch } = kit()
   const before = fetch.calls.length
   await assert.rejects(ops.createMilestone({ id: 'm' }, ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Create the milestone in Linear' })
   await assert.rejects(ops.createDocument('notes/plan.md', 'x', ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Create the document in Linear' })
+  await assert.rejects(ops.updateDocument('notes/plan.md', 'x', ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Edit the document in Linear' })
   await assert.rejects(ops.createMilestone({ id: 'm' }, ACTOR, { dryRun: true }), { code: 'NOT_SUPPORTED' })
   assert.equal(fetch.calls.length, before)
 })

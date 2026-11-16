@@ -5,6 +5,10 @@ import { CAPABILITIES, SERVED_BY } from '../capabilities.mjs'
 import { CAPACITY_FILE } from './capacity-store.mjs'
 import { estimateScale } from './discovery.mjs'
 
+/** The hint of agent_delegation and of delegate on a workspace without an app user. */
+export const NO_AGENT_HINT = 'Install an agent in this Linear workspace to delegate issues to it'
+const unservedHint = (id) => `No pmkit command serves ${id} yet; Linear offers it on this workspace`
+
 /**
  * What the Linear API has, whatever the workspace: PMK-29's API check and the introspection the spec records.
  * Capabilities missing here depend on a setting, the plan or pmkit, and buildLinearCapabilities decides them.
@@ -15,17 +19,15 @@ export const LINEAR_CAPABILITIES = Object.freeze({
   deliverables: { path: 'native', detail: { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] } },
   status_update: { path: 'native', detail: { entity: 'project update' } },
   native_metrics: { path: 'derived', detail: { source: 'history' } },
-  saved_views: { path: 'native' },
-  documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument'] } },
+  saved_views: { path: 'native', detail: { source: 'custom views', unsupported: ['saveView', 'deleteView', 'renameView'] } },
+  documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument', 'updateDocument'] } },
   time_tracking: { path: 'absent', enableHint: 'Linear has no time tracking' },
-  security_alerts: { path: 'absent', enableHint: 'Linear has no security alerts' },
-  user_inbox: { path: 'native' },
+  security_alerts: { path: 'derived', detail: { source: 'scanners' } },
 })
 
 export const BUSINESS_PLANS = ['business', 'enterprise', 'trial']
 const GIT_INTEGRATIONS = ['github', 'gitlab']
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
-const unservedHint = (id) => `No pmkit command serves ${id} yet; Linear offers it on this workspace`
 
 const TEAM_SETTINGS = {
   cycles: { on: (team) => team.cyclesEnabled, hint: "Turn on cycles in the team's settings in Linear" },
@@ -49,6 +51,8 @@ function sharedScale(teams) {
   return { unit, scale }
 }
 
+export const RELEASES_HINT = 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings'
+
 /**
  * Linear's own answer for the capabilities that depend on a setting or the plan, before the served-by rule.
  * An absent answer carries the hint that names the plan or the setting.
@@ -56,16 +60,35 @@ function sharedScale(teams) {
 function workspaceAnswers(raw) {
   const business = BUSINESS_PLANS.includes(raw.workspace.plan)
   const { releasesEnabled, customersEnabled } = raw.flags
+  const agents = raw.users.filter((user) => user.app).map((user) => user.name)
   return {
-    strategic_goals: business ? { path: 'native' } : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
+    // Linear has initiatives on these plans. The adapter reads them as goals (PMK-213); the goal writes stay unsupported.
+    strategic_goals: business
+      ? { path: 'native', detail: { entity: 'initiative', unsupported: ['createGoal', 'setEpicGoal', 'updateGoal', 'deleteGoal'] } }
+      : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
+    // The adapter reads releases and sets an issue's release (PMK-246); it does not create or mark them.
     releases: releasesEnabled
-      ? { path: 'native' }
-      : { path: 'absent', enableHint: 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings' },
+      ? { path: 'native', detail: { unsupported: ['createRelease', 'markReleased'] } }
+      : { path: 'absent', enableHint: RELEASES_HINT },
+    // Linear has customer requests when customers are on, and the generic commands read them through linear customers (PMK-221).
     demand_signals: customersEnabled
-      ? { path: 'native' }
+      ? { path: 'native', detail: { workspace: 'native' } }
       : { path: 'absent', enableHint: 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings' },
-    request_queue: business ? { path: 'conditional' } : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },
-    agent_delegation: { path: 'conditional', detail: { agents: raw.users.filter((user) => user.app).map((user) => user.name) } },
+    // Linear Asks come in through the Slack integration on these plans, and the adapter does not read them yet (PMK-46).
+    request_queue: business
+      ? {
+        path: 'absent',
+        detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'updateRequest', 'acceptRequest', 'declineRequest'] },
+        enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
+      }
+      : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },
+    // Linear has notifications on every plan, and the adapter reads the key owner's (PMK-225).
+    user_inbox: { path: 'native', detail: { workspace: 'native' } },
+    // Linear delegates to installed app agents through the issue's delegate field (PMK-214). Without an app user there is no agent.
+    // track-agents finds agent issues by an agent: assignee, which a Linear issue never has, so the issue path is unsupported; it lists bot pull requests instead (PMK-215).
+    agent_delegation: agents.length > 0
+      ? { path: 'native', detail: { workspace: 'conditional', run: 'native', agents, unsupported: ['issues track-agents'] } }
+      : { path: 'absent', detail: { workspace: 'conditional', agents }, enableHint: NO_AGENT_HINT },
   }
 }
 

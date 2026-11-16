@@ -1,0 +1,49 @@
+$ pmkit alerts scan
+exit 0
+--- stdout
+security alerts are absent in this repository: no scanner found (npm-audit needs package-lock.json or npm-shrinkwrap.json; yarn-audit needs yarn.lock; pnpm-audit needs pnpm-lock.yaml; pip-audit needs requirements.txt; cargo-audit needs Cargo.lock)
+--- stderr
+(empty)
+
+$ pmkit alerts scan --json
+exit 0
+--- stdout
+{
+  "absent": true,
+  "incomplete": false,
+  "scanners": [
+    {
+      "id": "npm-audit",
+      "detected": false,
+      "alerts": 0
+    },
+    {
+      "id": "yarn-audit",
+      "detected": false,
+      "alerts": 0
+    },
+    {
+      "id": "pnpm-audit",
+      "detected": false,
+      "alerts": 0
+    },
+    {
+      "id": "pip-audit",
+      "detected": false,
+      "alerts": 0
+    },
+    {
+      "id": "cargo-audit",
+      "detected": false,
+      "alerts": 0
+    }
+  ],
+  "unread": {
+    "count": 0,
+    "ids": []
+  },
+  "candidates": [],
+  "matched": []
+}
+--- stderr
+(empty)

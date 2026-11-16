@@ -22,7 +22,7 @@ const postPlan = ['issues', 'comment', 'ISS-4M2S', '--body-file', input('plan.md
 const open = ['pr', 'open', '--issue', 'ISS-4M2S', '--body-file', input('pr-body.md')]
 const ready = ['pr', 'ready', '--issue', 'ISS-4M2S']
 const postSummary = ['issues', 'comment', 'ISS-4M2S', '--body-file', input('summary.md')]
-const followUp = ['issues', 'create', '--title', 'Check the CSV header against the finance template']
+const followUp = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-check-the-csv-header-against-the-finance.md')]
 const relate = (saved) => ['issues', 'link', saved.followUp.after.id, 'ISS-4M2S', '--kind', 'related']
 
 export default {
@@ -31,6 +31,8 @@ export default {
   github: true,
   gh: {
     [`pr view ${BRANCH} --json ${VIEW}`]: { stdout: JSON.stringify(draft) },
+    // pr ready reads the base of the pull request in the same call (PMK-308).
+    [`pr view ${BRANCH} --json ${VIEW},reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName`]: { stdout: JSON.stringify({ ...draft, reviews: [], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }) },
     'pr ready 7': { stdout: '' },
     [`pr view 7 --json ${VIEW}`]: { stdout: JSON.stringify({ ...draft, isDraft: false }) },
   },
@@ -48,6 +50,7 @@ export default {
     // Step 2: the issue with its comments, and its parent, which is an issue.
     { step: '2', read: ['issues', 'get', 'ISS-4M2S', '--comments'], save: 'issue' },
     { step: '2', read: ['issues', 'get', 'ISS-2X6D'] },
+    { step: '2', read: ['default-branch'] },
     // Step 3: ISS-4M2S has no acceptance criteria, and the user continues.
     { confirm: 'Step 3' },
     // Step 4: the working tree is clean.
@@ -56,10 +59,10 @@ export default {
     { step: '5.2', dryRun: move('in_progress') },
     { confirm: 'Step 5' },
     { step: '5.2', write: move('in_progress') },
-    // Step 6: on main with no extra commits, so the branch starts from main.
+    // Step 6: the dry run gives the base (`from`, main here), then on main with no extra commits the branch starts from main.
+    { step: '6', dryRun: branch },
     { step: '6', git: ['branch', '--show-current'] },
     { step: '6', git: ['log', 'main..HEAD', '--oneline'] },
-    { step: '6', dryRun: branch },
     { confirm: 'Step 6' },
     { step: '6', write: branch },
     // Step 7: the plan is approved, then posted as a comment.

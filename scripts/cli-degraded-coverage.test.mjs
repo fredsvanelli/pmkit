@@ -42,6 +42,33 @@ const REFUSALS = [
   ['release', 'create', '1.0'],
   ['release', 'mark-released', '1.0'],
   ['issues', 'log-time', 'ACME-1', '5'],
+  ['issues', 'log-time', 'ACME-1', 'not a time'],
+  ['issues', 'time-entries', 'ACME-1'],
+  ['issues', 'track-agents'],
+  // Linear serves views list and views run (PMK-212); the view writes stay in Linear.
+  ['views', 'save', 'v', '--category', 'done'],
+  ['views', 'delete', 'v'],
+  ['views', 'rename', 'v', 'w'],
+  ['goal', 'list'],
+  ['goal', 'get', 'GOAL-1'],
+  ['goal', 'create', '--title', 'G'],
+  ['goal', 'progress', 'GOAL-1'],
+  ['goal', 'update', 'GOAL-1', '--status', 'completed'],
+  ['goal', 'close', 'GOAL-1'],
+  ['goal', 'delete', 'GOAL-1'],
+  ['epic', 'goal', 'P-ACM-1', 'GOAL-1'],
+  ['epic', 'create', '--title', 'E', '--goal', 'GOAL-1'],
+  ['customers', 'list'],
+  ['customers', 'show', 'CUS-1'],
+  ['customers', 'create', '--name', 'Acme'],
+  ['customers', 'update', 'CUS-1', '--tier', 'gold'],
+  ['requests', 'list'],
+  ['requests', 'get', 'REQ-1'],
+  ['requests', 'create', '--title', 'R'],
+  ['requests', 'accept', 'REQ-1', 'ACME-1'],
+  ['requests', 'decline', 'REQ-1'],
+  ['requests', 'update', 'REQ-1', '--title', 'R'],
+  ['demand', 'list'],
 ]
 
 for (const args of REFUSALS) {
@@ -57,15 +84,25 @@ for (const args of REFUSALS) {
 // Each command a capability names is covered by a path test elsewhere, or exempt with a reason. A new command in SERVED_BY fails here until it is listed.
 const COVERED = {
   'cycle list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'cycle current': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'cycle issues': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'cycle open': 'REFUSALS', 'cycle close': 'REFUSALS',
-  'cycle add': 'native write, PMK-39', 'cycle capacity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release-notes': 'cli-linear.test.mjs or cli-degraded.test.mjs',
+  'cycle add': 'native write, PMK-39', 'cycle capacity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release-notes': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release-readiness': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'issues create': 'native write, PMK-39', 'issues update': 'native write, PMK-39', 'issues parent': 'native write, PMK-39', 'issues link': 'native write, PMK-39',
-  'issues dependencies': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'issues move': 'native write, PMK-39', 'issues branch': 'PATH_CASES', 'issues log-time': 'REFUSALS',
+  'issues dependencies': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'issues move': 'native write, PMK-39', 'issues branch': 'PATH_CASES', 'issues log-time': 'REFUSALS', 'issues time-entries': 'REFUSALS',
   'epic list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'epic get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'epic create': 'native write, PMK-39', 'epic progress': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'epic update-status': 'native write, PMK-39', 'epic updates': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'release list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release issues': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release create': 'REFUSALS', 'release mark-released': 'REFUSALS',
   'metrics velocity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics cycle-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics lead-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics throughput': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics aging': 'cli-linear.test.mjs or cli-degraded.test.mjs', events: 'cli-linear.test.mjs or cli-degraded.test.mjs',
-  'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
-  'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES',
+  'docs list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS', 'docs next-adr': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs adr-get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs adr-status': 'cli-linear.test.mjs or cli-degraded.test.mjs',
+  'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr review': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES', 'pr diff': 'PATH_CASES', 'pr blockers': 'PATH_CASES',
+  'views list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'views run': 'cli-linear.test.mjs or cli-degraded.test.mjs',
+  'views save': 'REFUSALS', 'views delete': 'REFUSALS', 'views rename': 'REFUSALS',
+  'goal list': 'REFUSALS', 'goal get': 'REFUSALS', 'goal create': 'REFUSALS', 'goal progress': 'REFUSALS', 'goal update': 'REFUSALS', 'goal close': 'REFUSALS', 'goal delete': 'REFUSALS', 'epic goal': 'REFUSALS',
+  'customers list': 'REFUSALS', 'customers show': 'REFUSALS', 'customers create': 'REFUSALS', 'customers update': 'REFUSALS', 'demand list': 'REFUSALS',
+  'requests list': 'REFUSALS', 'requests get': 'REFUSALS', 'requests create': 'REFUSALS', 'requests accept': 'REFUSALS', 'requests decline': 'REFUSALS', 'requests update': 'REFUSALS',
+  'alerts list': 'REPO_SCAN',
+  'alerts scan': 'REPO_SCAN',
+  'issues delegate': 'cli-linear.test.mjs or cli-degraded.test.mjs',
+  'issues track-agents': 'REFUSALS',
+  'inbox list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'inbox mark-read': 'cli-linear.test.mjs or cli-degraded.test.mjs',
 }
 
 test('every command a capability names has a degraded-path case or an exemption', () => {
@@ -85,6 +122,7 @@ test('every COVERED place names a case that exists', () => {
   for (const [command, where] of Object.entries(COVERED)) {
     if (where === 'REFUSALS') assert.ok(refusals.has(command), `${command} is listed under REFUSALS but REFUSALS lacks it`)
     else if (where === 'PATH_CASES') assert.ok(pathCases.has(command), `${command} is listed under PATH_CASES but PATH_CASES lacks it`)
+    else if (where === 'REPO_SCAN') assert.ok(fs.readFileSync(new URL('cli-alerts.test.mjs', import.meta.url), 'utf8').includes(argvLiteral(command)), `${command} is listed under REPO_SCAN but cli-alerts.test.mjs does not run it`)
     else if (where === FILES) assert.ok(sources.some((source) => source.includes(argvLiteral(command))), `${command} is listed under ${FILES} but neither file runs it`)
     else assert.equal(where, EXEMPT, `${command} has an unknown COVERED place`)
   }
@@ -98,7 +136,8 @@ function forged(id, entry, { github = false, gh: extra = {}, failManifest = fals
   let config = fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME')
   if (github) config = config.replace('  system: none', '  system: github\n  default_branch: main')
   fs.writeFileSync(file, config)
-  const gh = github ? fakeGh({ [`pr view x --json ${PR_VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "x"\n' }, ...extra }) : null
+  const none = { status: 1, stderr: 'no pull requests found for branch "x"\n' }
+  const gh = github ? fakeGh({ [`pr view x --json ${PR_VIEW}`]: none, [`pr view x --json ${PR_VIEW}${PR_DETAIL}`]: none, ...extra }) : null
   const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY, ...(gh ? { PATH: `${gh.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: gh.responses } : {}) }
   if (github) {
     for (const args of [['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init']]) {
@@ -127,6 +166,8 @@ function forged(id, entry, { github = false, gh: extra = {}, failManifest = fals
 }
 
 const PR_VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
+// pr status and pr blockers read the pull request with its reviews and merge state in the same gh pr view.
+const PR_DETAIL = ',reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName'
 const noteLines = (stderr) => stderr.split('\n').filter((line) => line.startsWith('note: '))
 const ABSENT = { path: 'absent', enableHint: 'Use the Business plan' }
 const ISSUE_BRANCH = 'acme-1-fix-it'
@@ -153,8 +194,14 @@ const PATH_CASES = [
     { argv: ['issues', 'branch', 'ACME-1'] },
     { argv: ['pr', 'status', '--branch', 'x'] },
     { argv: ['pr', 'open', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { status: 1, stderr: `no pull requests found for branch "${ISSUE_BRANCH}"\n` } } },
-    { argv: ['pr', 'ready', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: true, headRefName: ISSUE_BRANCH, author: { login: 'a' }, mergedAt: null }) } } },
+    { argv: ['pr', 'ready', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}${PR_DETAIL}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: true, headRefName: ISSUE_BRANCH, author: { login: 'a' }, mergedAt: null, reviews: [], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }) } } },
+    { argv: ['pr', 'review', '--issue', 'ACME-1', '--body-file', path.join(import.meta.dirname, '__goldens__', '_inputs', 'comment.md'), '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: false, headRefName: ISSUE_BRANCH, author: { login: 'a' }, mergedAt: null }) } } },
+    { argv: ['pr', 'diff', '--branch', 'x'], gh: { [`pr view x --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: false, headRefName: 'x', author: { login: 'a' }, mergedAt: null }) }, 'pr diff 7 --color never': { stdout: 'diff\n' } } },
+    { argv: ['pr', 'blockers', '--branch', 'x'] },
     { argv: ['pr', 'sync'] },
+    { argv: ['deploys', 'list'], gh: { 'api repos/{owner}/{repo}/deployments?per_page=20': { stdout: '[]' } } },
+    { argv: ['ci', 'logs', '--run', '9'], gh: { 'run view 9 --json workflowName,url,conclusion,status,createdAt,headSha': { stdout: JSON.stringify({ workflowName: 'CI', url: 'u', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'failed\n' } } },
+    { argv: ['ci', 'logs', '--branch', 'x'], gh: { 'run list --branch x --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha': { stdout: '[]' } } },
   ].map(({ argv, gh }) => ({ id: 'linked_code', argv, github: true, gh, cases: [
     [{ path: 'derived', detail: { source: 'git' } }, 'note: branch and PR state read from git, not from the tracker'],
     [CONDITIONAL, 'note: linked_code is on for teams OPS only'],

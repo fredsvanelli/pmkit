@@ -1,0 +1,6 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit views run in-progress --json  [step 3, read]
+exit 0
+
+(no file changed)

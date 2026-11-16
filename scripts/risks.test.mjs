@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 
 const TODAY = '2026-10-26' // a Monday
 const issue = (id, category, extra = {}) => ({
@@ -174,7 +174,7 @@ test('epicRisks flags a target before today and not one on today', () => {
   const recent = [update('2026-10-20T10:00:00Z')]
   assert.deepEqual(epicRisks(epics, epicOpts({ E1: recent, E2: recent })), [{
     id: 'E1', title: 'Epic E1', status: 'in_progress', target: '2026-10-25',
-    lastUpdate: { at: '2026-10-20T10:00:00Z', health: 'on_track' }, reasons: ['late'],
+    updatesRead: true, lastUpdate: { at: '2026-10-20T10:00:00Z', health: 'on_track' }, reasons: ['late'],
   }])
 })
 
@@ -309,4 +309,28 @@ test('risksText adds the pr sync note under a pr_merged row', () => {
   assert.ok(merged.split('\n').includes('pr_merged: the pull request is merged; pmkit pr sync moves the issue to done'), merged)
   const idle = risksText(baseReport({ stalledIssues: [row('idle', null)] }))
   assert.ok(!idle.includes('pr_merged:'), idle)
+})
+
+test('epicRisks does not report no_recent_update for an epic whose update read failed', () => {
+  const epics = [epic('X1', 'in_progress', { target: '2026-10-01' }), epic('X2', 'in_progress')]
+  const rows = epicRisks(epics, epicOpts({ X1: null, X2: null }))
+  assert.deepEqual(rows.map((row) => [row.id, row.reasons]), [['X1', ['late']]])
+})
+
+test('epicsUpdatesNotChecked lists the open epics that need an update and whose read failed', () => {
+  const epics = [
+    epic('U1', 'in_progress'), epic('U2', 'todo', { start: '2026-10-20' }), epic('U3', 'todo', { start: '2026-10-01' }),
+    epic('U4', 'done'), epic('U5', 'in_progress'),
+  ]
+  const ids = epicsUpdatesNotChecked(epics, epicOpts({ U1: null, U2: null, U3: null, U4: null, U5: [] }))
+  assert.deepEqual(ids, ['U1', 'U3'])
+})
+
+test('a late epic whose update read failed has an unknown last update, not none', () => {
+  const epics = [epic('X1', 'in_progress', { target: '2026-10-01' }), epic('X2', 'in_progress', { target: '2026-10-01' })]
+  const rows = epicRisks(epics, epicOpts({ X1: null, X2: [] }))
+  assert.deepEqual(rows.map((row) => [row.id, row.updatesRead]), [['X1', false], ['X2', true]])
+  const report = baseReport({ epics: rows, updatesNotChecked: ['X1'] })
+  const cells = risksText(report).split('\n').filter((l) => /^(X1|X2) /.test(l)).map((l) => l.split('|')[4].trim())
+  assert.deepEqual(cells, ['not checked', 'none'])
 })

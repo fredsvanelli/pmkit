@@ -1,0 +1,151 @@
+$ pmkit requests create --title 'Golden request' --from sales --important
+exit 0
+--- stdout
+REQ-M0GZ  Golden request
+id: REQ-M0GZ
+title: Golden request
+state: open
+important: yes
+from: sales
+created: 2026-10-23T12:00:00.000Z
+--- stderr
+(empty)
+
+$ pmkit requests create --title 'Golden request' --from sales --important --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "REQ-M0GZ",
+    "title": "Golden request",
+    "body": "",
+    "priority": 1,
+    "important": true,
+    "customer": null,
+    "from": "sales",
+    "state": "open",
+    "target": null,
+    "created": "2026-10-23T12:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit requests create --title 'Golden request' --from sales --important --dry-run
+exit 0
+--- stdout
+REQ-M0GZ  Golden request
+id: REQ-M0GZ
+title: Golden request
+state: open
+important: yes
+from: sales
+created: 2026-10-23T12:00:00.000Z
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit requests create --title 'Golden request' --from sales --important --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "REQ-M0GZ",
+    "title": "Golden request",
+    "body": "",
+    "priority": 1,
+    "important": true,
+    "customer": null,
+    "from": "sales",
+    "state": "open",
+    "target": null,
+    "created": "2026-10-23T12:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit requests create --title 'Golden demand' --issue ISS-9B2X
+exit 0
+--- stdout
+REQ-M0GZ  Golden demand
+id: REQ-M0GZ
+title: Golden demand
+state: accepted
+issue: ISS-9B2X Dead-letter queue
+created: 2026-10-23T12:00:00.000Z
+--- stderr
+(empty)
+
+$ pmkit requests create --title 'Golden demand' --issue ISS-9B2X --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "REQ-M0GZ",
+    "title": "Golden demand",
+    "body": "",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": null,
+    "state": "accepted",
+    "target": {
+      "type": "issue",
+      "id": "ISS-9B2X",
+      "title": "Dead-letter queue"
+    },
+    "created": "2026-10-23T12:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit requests create --title 'Golden demand' --issue ISS-9B2X --dry-run
+exit 0
+--- stdout
+REQ-M0GZ  Golden demand
+id: REQ-M0GZ
+title: Golden demand
+state: accepted
+issue: ISS-9B2X Dead-letter queue
+created: 2026-10-23T12:00:00.000Z
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit requests create --title 'Golden demand' --issue ISS-9B2X --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "REQ-M0GZ",
+    "title": "Golden demand",
+    "body": "",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": null,
+    "state": "accepted",
+    "target": {
+      "type": "issue",
+      "id": "ISS-9B2X",
+      "title": "Dead-letter queue"
+    },
+    "created": "2026-10-23T12:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  }
+}
+--- stderr
+(empty)

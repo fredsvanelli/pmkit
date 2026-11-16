@@ -1,0 +1,9 @@
+# PMK-295 plan
+
+Spec: `docs/superpowers/specs/2026-11-12-pmk-295-hide-bang-gt-pipe-url-design.md`
+
+1. Test first (`scripts/paths.test.mjs`): `!/Users/x` -> `!<path>`; `from>/Users/x` -> `from><path>`; `https://h.com/x|/Users/y` -> `https://h.com/x|<path>`; `https://h.com/a|b` whole. Keep `<remote>/<branch>`, `<rev1>/<rev2>`, `HEAD~1>/x`, ``git`/`gh`` unchanged. Run, see them fail.
+2. `scripts/lib/paths.mjs`: add `!` to START; the letter-`>` alternative; the URL body stops before `|`+path.
+3. Run `scripts/paths.test.mjs` and `scripts/paths-timing.test.mjs`.
+4. Battery of common git/gh lines on develop and on the branch; diff must show only the three cases.
+5. CHANGELOG line, check both criteria, commit `.issues/`, `npm test` (Node 22, foreground), PR, comment, `in_review`.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { fixedNow } from '../../test-helpers.mjs'
 import { CAPABILITIES, SERVED_BY, unservedCapabilities } from '../capabilities.mjs'
 import { createLinearClient } from './client.mjs'
@@ -56,19 +56,22 @@ test('the default workspace gives the sandbox column', async () => {
     releases: 'absent',
     capacity: 'absent',
     native_metrics: 'derived',
-    saved_views: 'absent',
+    saved_views: 'native',
     documents: 'native',
     demand_signals: 'absent',
     request_queue: 'absent',
     time_tracking: 'absent',
     linked_code: 'derived',
-    agent_delegation: 'absent',
-    security_alerts: 'absent',
-    user_inbox: 'absent',
+    agent_delegation: 'native',
+    security_alerts: 'derived',
+    user_inbox: 'native',
   })
   const entry = byId(entries)
-  assert.deepEqual(entry.agent_delegation.detail, { workspace: 'conditional', agents: ['Linear'] })
-  assert.equal(entry.agent_delegation.enableHint, 'No pmkit command serves agent_delegation yet; Linear offers it on this workspace')
+  assert.deepEqual(entry.agent_delegation, {
+    id: 'agent_delegation',
+    path: 'native',
+    detail: { workspace: 'conditional', run: 'native', agents: ['Linear'], unsupported: ['issues track-agents'] },
+  })
   assert.equal(entry.cycles.enableHint, "Turn on cycles in the team's settings in Linear")
   assert.equal(entry.estimation.enableHint, "Turn on estimates in the team's settings in Linear")
   assert.equal(entry.native_triage.enableHint, "Turn on triage in the team's settings in Linear")
@@ -79,29 +82,41 @@ test('the default workspace gives the sandbox column', async () => {
   assert.equal(entry.demand_signals.enableHint, 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings')
   assert.equal(entry.request_queue.enableHint, 'Linear Asks need the Business or Enterprise plan')
   assert.equal(entry.time_tracking.enableHint, 'Linear has no time tracking')
-  assert.equal(entry.security_alerts.enableHint, 'Linear has no security alerts')
-  assert.deepEqual(entry.saved_views.detail, { workspace: 'native' })
+  assert.deepEqual(entry.security_alerts, { id: 'security_alerts', path: 'derived', detail: { source: 'scanners' } })
+  assert.deepEqual(entry.saved_views, { id: 'saved_views', path: 'native', detail: { source: 'custom views', unsupported: ['saveView', 'deleteView', 'renameView'] } })
   assert.deepEqual(entry.user_inbox.detail, { workspace: 'native' })
   assert.deepEqual(entry.deliverables.detail, { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] })
   assert.deepEqual(entry.status_update.detail, { entity: 'project update' })
-  assert.deepEqual(entry.documents.detail, { scope: 'project', unsupported: ['createDocument'] })
+  assert.deepEqual(entry.documents.detail, { scope: 'project', unsupported: ['createDocument', 'updateDocument'] })
   assert.deepEqual(entry.native_metrics.detail, { source: 'history' })
   assert.deepEqual(entry.linked_code, { id: 'linked_code', path: 'derived', detail: { source: 'git' } })
 })
 
 test('a Business workspace with releases and customers on', async () => {
   const entry = byId(buildLinearCapabilities(await raw(BUSINESS), pmkitWith()))
-  assert.deepEqual(entry.releases, { id: 'releases', path: 'native' })
-  assert.equal(entry.demand_signals.path, 'absent')
-  assert.equal(entry.demand_signals.detail.workspace, 'native')
-  assert.equal(entry.strategic_goals.detail.workspace, 'native')
+  assert.deepEqual(entry.releases, { id: 'releases', path: 'native', detail: { unsupported: ['createRelease', 'markReleased'] } })
+  assert.equal(entry.strategic_goals.path, 'native')
   assert.equal(entry.request_queue.detail.workspace, 'conditional')
-  assert.equal(entry.strategic_goals.enableHint, 'No pmkit command serves strategic_goals yet; Linear offers it on this workspace')
+  // PMK-221: the generic customer commands read Linear customers.
+  assert.deepEqual(entry.demand_signals, { id: 'demand_signals', path: 'native', detail: { workspace: 'native' } })
+  assert.deepEqual(entry.request_queue, {
+    id: 'request_queue',
+    path: 'absent',
+    detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'updateRequest', 'acceptRequest', 'declineRequest'] },
+    enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
+  })
+  assert.deepEqual(entry.user_inbox, { id: 'user_inbox', path: 'native', detail: { workspace: 'native' } })
+  // PMK-213: the adapter reads initiatives as goals; the goal writes stay unsupported.
+  assert.deepEqual(entry.strategic_goals, {
+    id: 'strategic_goals',
+    path: 'native',
+    detail: { entity: 'initiative', unsupported: ['createGoal', 'setEpicGoal', 'updateGoal', 'deleteGoal'] },
+  })
 })
 
 test('a trial counts as a Business plan and releases follow the setting', async () => {
   const entry = byId(buildLinearCapabilities(await raw({ trialEndsAt: '2026-11-01T00:00:00Z' }), pmkitWith()))
-  assert.equal(entry.strategic_goals.detail.workspace, 'native')
+  assert.equal(entry.strategic_goals.path, 'native')
   assert.equal(entry.releases.path, 'absent')
 })
 
@@ -201,4 +216,14 @@ test('cycles carries detail.open, close and schedule when native, and none when 
   const off = byId(buildLinearCapabilities(await raw(), pmkitWith({ team: 'ACME' })))
   assert.equal(off.cycles.detail, undefined)
   assert.deepEqual(off.capacity, { id: 'capacity', path: 'absent', enableHint: 'Capacity needs cycles' })
+})
+
+test('agent_delegation is absent with a hint when the workspace has no app user', async () => {
+  const entry = byId(buildLinearCapabilities(await raw({ users: ACME_USERS.filter((user) => !user.app) }), pmkitWith()))
+  assert.deepEqual(entry.agent_delegation, {
+    id: 'agent_delegation',
+    path: 'absent',
+    detail: { workspace: 'conditional', agents: [] },
+    enableHint: 'Install an agent in this Linear workspace to delegate issues to it',
+  })
 })

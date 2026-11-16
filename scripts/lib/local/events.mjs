@@ -24,10 +24,18 @@ function checkEvent(event) {
 
 export function readEvents(file) {
   if (!fs.existsSync(file)) return { events: [], problems: [] }
-  const text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  return parseEvents(fs.readFileSync(file, 'utf8'))
+}
+
+/** The events and the problems of the text of an events.jsonl, which a caller may have read from git instead of a file. */
+export function parseEvents(raw) {
+  const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   const events = []
   const problems = []
+  const parsed = []
   const seen = new Set()
+  let toggle // the last archive or unarchive kept: a repeat of it is a merge duplicate, a flip back is a new event
+  let lastAt // the time of the last event kept
   text.split('\n').forEach((line, index) => {
     if (line.trim() === '') return
     let event
@@ -42,11 +50,29 @@ export function readEvents(file) {
       problems.push(`line ${index + 1}: ${reason}`)
       return
     }
-    const key = sortedStringify(event)
-    if (seen.has(key)) return
-    seen.add(key)
-    events.push(event)
+    // The event is kept, so replay and drift do not change, but a time nobody can read is reported.
+    if (!['string', 'number'].includes(typeof event.at) || Number.isNaN(new Date(event.at).getTime())) problems.push(`line ${index + 1}: at "${event.at}" is not a time`)
+    parsed.push({ event, key: sortedStringify(event), flips: event.op === 'archive' || event.op === 'unarchive' })
   })
+  // PMK-267: the flips of one second that a merge repeats whole (the run twice over) show once. A run that is not two equal halves is kept as it is.
+  // ponytail: a real run of two equal halves in one second reads as a merge copy; the final state is the same.
+  const dropped = new Set()
+  const bySecond = new Map()
+  for (const item of parsed) if (item.flips) bySecond.set(item.event.at, [...(bySecond.get(item.event.at) ?? []), item])
+  for (const run of bySecond.values()) {
+    const half = run.length / 2
+    if (Number.isInteger(half) && run.slice(0, half).every((item, index) => item.key === run[half + index].key)) run.slice(half).forEach((item) => dropped.add(item))
+  }
+  for (const item of parsed) {
+    if (dropped.has(item)) continue
+    const { event, key, flips } = item
+    // PMK-256: a flip back is a new event only within the second of the last kept event; after that, a repeat is a merge duplicate.
+    if (seen.has(key) && (!flips || toggle === event.op || lastAt !== event.at)) continue
+    seen.add(key)
+    lastAt = event.at
+    if (flips) toggle = event.op
+    events.push(event)
+  }
   events.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
   return { events, problems }
 }
@@ -88,6 +114,8 @@ export function replay(events) {
         ? (list.includes(event.to) ? list : [...list, event.to])
         : list.filter((item) => item !== event.to)
     } else if (event.op === 'archive') state.archived = true
+    // An unarchived issue has no `archived` key in its file, so the replay drops it or the next write reads the file as a hand edit.
+    else if (event.op === 'unarchive') delete state.archived
   }
   return state
 }

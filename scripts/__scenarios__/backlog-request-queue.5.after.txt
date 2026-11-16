@@ -1,0 +1,23 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit requests list --json  [step 2, read]
+exit 0
+$ pmkit issues list --category backlog,todo,triage,in_progress,in_review --json  [step 3, read]
+exit 0
+? Step 4  [confirmed]
+$ pmkit issues create --title-file <inputs>/request-queue-title.md --description-file <inputs>/request-queue-description.md --dry-run --json  [step 5.1, dry run]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues create --title-file <inputs>/request-queue-title.md --description-file <inputs>/request-queue-description.md --json  [step 5.1, write]
+exit 0
+~ edit .issues/issues/ISS-M0GZ/issue.md  [step 7]
+$ pmkit requests accept REQ-M0GZ ISS-M0GZ --dry-run --json  [step 7, dry run]
+exit 2 (expected CONFLICT)
+
+--- added .issues/issues/ISS-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Export the board to CSV","type":"feature","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-M0GZ/issue.md
++<<<<<<< HEAD
++id: ISS-M0GZ
++=======
++>>>>>>> other

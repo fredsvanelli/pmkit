@@ -1,0 +1,13 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit issues get ACME-2 --json  [step 2, read]
+exit 0
+$ pmkit issues parse-time 1h30 --json  [step 6, read]
+exit 0
+$ pmkit issues comment ACME-2 --body-file <inputs>/log-time-comment.md --dry-run --json  [step 6, dry run]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues comment ACME-2 --body-file <inputs>/log-time-comment.md --json  [step 6, write]
+exit 0
+
+(no file changed)

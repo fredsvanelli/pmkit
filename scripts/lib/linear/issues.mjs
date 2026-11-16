@@ -1,6 +1,7 @@
 // A Linear issue as a pmkit issue: ids, priorities and the acceptance criteria section of the description.
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md, "The issue model".
 
+import { issueReleaseFields } from './releases.mjs'
 import { compareIds } from '../ids.mjs'
 import { TERMINAL } from '../model.mjs'
 import { categoryOfType, estimateScale } from './discovery.mjs'
@@ -110,6 +111,14 @@ export function estimateOf(node, context) {
   return Object.keys(scale.values).find((size) => scale.values[size] === node.estimate) ?? node.estimate
 }
 
+/** The docs paths of attachment nodes: those pmkit made (metadata.pmkitDoc is a path), oldest first. Other attachments are not docs. */
+export function docPaths(nodes) {
+  return nodes
+    .filter((item) => typeof item.metadata?.pmkitDoc === 'string')
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0) || (a.metadata.pmkitDoc < b.metadata.pmkitDoc ? -1 : 1))
+    .map((item) => item.metadata.pmkitDoc)
+}
+
 /** The pmkit issue of a fragment-shaped node, or null for an issue in Linear's trash. Unset fields are absent keys. */
 export function toIssue(node, context) {
   if (node.trashed === true) return null
@@ -128,11 +137,22 @@ export function toIssue(node, context) {
   const estimate = estimateOf(node, context)
   if (estimate !== undefined) issue.estimate = estimate
   if (node.assignee?.id) issue.assignee = node.assignee.id
+  // Linear keeps the person as assignee and the agent as delegate (PMK-214); an agent id is agent:<Linear user id>.
+  if (node.delegate?.id) issue.delegate = `agent:${node.delegate.id}`
   issue.labels = [...new Set(labelNames.filter((name) => !typeLabels.has(name)))].sort()
   // The parent issue wins; an issue with only a project shows the project as its parent (PMK-38).
   if (node.parent?.identifier) issue.parent = node.parent.identifier
   else if (node.project) issue.parent = epicId(node.project)
   if (node.projectMilestone?.id) issue.milestone = node.projectMilestone.id
+  // PMK-246: present only when the issue's releases were read (a workspace with releases on).
+  if (node.releases) Object.assign(issue, issueReleaseFields(node.releases.nodes))
+  // A release read that failed: the release is unknown, never "none" (review of PR #208).
+  else if (node.releasesUnread) issue.releaseUnknown = node.releasesUnread.message
+  // PMK-252: the docs pmkit linked, in the order added. Unread attachments make the docs unknown, never none.
+  if (node.attachments) {
+    const docs = docPaths(node.attachments.nodes)
+    if (docs.length > 0) issue.docs = docs
+  } else if (node.attachmentsUnread) issue.docsUnknown = node.attachmentsUnread.message
   if (node.cycle) issue.sprint = String(node.cycle.number)
   issue.blockedBy = identifiers(inverse.filter((item) => item.type === 'blocks').map((item) => item.issue.identifier))
   issue.blocks = identifiers(out.filter((item) => item.type === 'blocks').map((item) => item.relatedIssue.identifier))

@@ -113,8 +113,9 @@ function attempt(id, read) {
  * Reads every folder in `ids` through the index. `fileOf(id)` is the file to sign and `read(id)` the plain
  * read, which returns the parsed value or throws. Returns the values and problems in `ids` order. With
  * `write`, a changed index is saved; a failed save lands in `stats.error` and the read still returns.
+ * `sign(file)` gives the stat signature; it defaults to `signature`.
  */
-export function readThroughIndex({ cacheDir, header, ids, fileOf, read, write }) {
+export function readThroughIndex({ cacheDir, header, ids, fileOf, read, write, sign = signature }) {
   const loaded = loadIndex(path.join(cacheDir, INDEX_FILE), header)
   const old = loaded?.entries ?? new Map()
   const next = new Map()
@@ -126,7 +127,7 @@ export function readThroughIndex({ cacheDir, header, ids, fileOf, read, write })
     let sig = null
     try {
       // Signed before the read: a change between the two leaves the old signature, so the next read reparses.
-      sig = signature(fileOf(id))
+      sig = sign(fileOf(id))
     } catch {
       sig = null
     }

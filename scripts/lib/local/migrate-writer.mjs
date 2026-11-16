@@ -25,7 +25,7 @@ const write = (file, text) => {
 function findStem(base, sub, stem) {
   if (!fs.existsSync(base)) return false
   return fs.readdirSync(base, { withFileTypes: true })
-    .some((entry) => entry.isDirectory() && fs.existsSync(path.join(base, entry.name, sub, `${stem}.md`)))
+    .some((entry) => entry.isDirectory() && !entry.name.startsWith('.deleting-') && fs.existsSync(path.join(base, entry.name, sub, `${stem}.md`)))
 }
 
 export function createLocalWriter({ root, config, actor, now = () => new Date() }) {

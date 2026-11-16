@@ -1,0 +1,13 @@
+$ pmkit goal list
+exit 0
+--- stdout
+no goals
+--- stderr
+(empty)
+
+$ pmkit goal list --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

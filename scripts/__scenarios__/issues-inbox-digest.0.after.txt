@@ -1,0 +1,36 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit inbox list --json  [step 2, read]
+exit 0
+$ pmkit whoami --json  [step 4, read]
+exit 0
+$ pmkit issues list --category backlog,todo,in_progress,in_review --json  [step 5, read]
+exit 0
+$ pmkit pr blockers --branch iss-8c4w-dead-letter-queue --json  [step 5.1, read]
+exit 0
+$ pmkit pr blockers --branch iss-4m2s-csv-column-order --json  [step 5.1, read]
+exit 0
+$ pmkit pr blockers --branch iss-3f7h-empty-state --json  [step 5.1, read]
+exit 0
+$ pmkit pr blockers --branch iss-2x6d-billing-export --json  [step 5.1, read]
+exit 0
+
+(no file changed)
+--- gh calls
+pr view iss-8c4w-dead-letter-queue --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
+pr checks 9 --json name,state,bucket,link
+api graphql -F owner={owner} -F repo={repo} -F number=9 -f query=query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }
+api repos/{owner}/{repo}/branches/main/protection
+api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1
+pr view iss-4m2s-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
+pr checks 10 --json name,state,bucket,link
+api graphql -F owner={owner} -F repo={repo} -F number=10 -f query=query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }
+api graphql -F owner={owner} -F repo={repo} -F number=10 -f query=query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } } -f endCursor=p2
+api repos/{owner}/{repo}/branches/main/protection
+api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1
+pr view iss-3f7h-empty-state --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
+pr checks 11 --json name,state,bucket,link
+api graphql -F owner={owner} -F repo={repo} -F number=11 -f query=query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }
+api repos/{owner}/{repo}/branches/main/protection
+api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1
+pr view iss-2x6d-billing-export --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName

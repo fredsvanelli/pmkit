@@ -75,7 +75,7 @@ test('validate with a hosted config checks only .pmkit/config.yaml', async () =>
   const result = await call(mirrorRepo('team'), ['validate', '--json'], { adapters: withLinear(mirrorLinear()) })
   assert.equal(result.code, 0, result.stderr)
   assert.deepEqual(JSON.parse(result.stdout), {
-    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 },
+    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 },
     problems: [],
   })
 })
@@ -112,6 +112,16 @@ test('milestone create warns about unfiled milestones on the Local tracker only'
   assert.equal(mirror.stderr, '')
 })
 
+test('team load warns when the issue read was cut and proposes no move', async () => {
+  const override = { searchIssues: async () => ({ issues: [], problems: [], hasMore: true }) }
+  const result = await call(mirrorRepo('team'), ['team', 'load', '--json'], { adapters: withLinear(mirrorLinear({ override })) })
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.truncated, true)
+  assert.deepEqual(data.suggestions, [])
+  assert.match(result.stderr, /warning: the issue read was cut/)
+})
+
 test('risks lists an epic whose updates reject, as it does for a throw', async () => {
   const override = { listStatusUpdates: async () => { throw new PmkitError('UPSTREAM', 'updates failed', 'Retry') } }
   const result = await call(mirrorRepo('team'), ['risks', '--json'], { adapters: withLinear(mirrorLinear({ override })) })
@@ -122,7 +132,8 @@ test('risks lists an epic whose updates reject, as it does for a throw', async (
 // The mirror runs every golden case twice: on a plain copy with the product registry, and on a copy whose
 // .pmkit/config.yaml says linear, over a tracker whose operations all return promises. A missing await, or a call past
 // the contract, makes the two outputs differ.
-const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.exempt && !command.systems)
+// docs next-adr answers differently on Linear by design: no tracker folder and a repository file. Its Linear answer has a test in cli-degraded.test.mjs.
+const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.exempt && !command.systems && !command.byTracker)
 
 test('every command that is not local or exempt has mirror cases', () => {
   for (const command of MIRRORED) {
@@ -142,9 +153,13 @@ test('the linear commands are the triage and customers commands and stay out of 
   assert.ok(MIRRORED.every((command) => !command.linear))
 })
 
-test('the customers feature adds no contract operation', async () => {
-  const { TRACKER_OPERATIONS } = await import('./lib/contract.mjs')
-  assert.ok(!TRACKER_OPERATIONS.includes('customers') && TRACKER_OPERATIONS.every((operation) => !/customer/i.test(operation)))
+// PMK-46 added customer and request operations that every tracker implements. The Linear-only `customers` extension of PMK-42 stays outside the contract.
+test('the Linear customers extension stays outside the contract', async () => {
+  const { TRACKER_OPERATIONS, contractView } = await import('./lib/contract.mjs')
+  assert.ok(!TRACKER_OPERATIONS.includes('customers'))
+  for (const operation of ['list', 'show', 'set']) assert.ok(!TRACKER_OPERATIONS.includes(operation), operation)
+  const tracker = Object.fromEntries(TRACKER_OPERATIONS.map((name) => [name, () => {}]))
+  assert.ok(!('customers' in contractView({ ...tracker, customers: { list() {} } })))
 })
 
 async function runCopy(fixture, argv, { mirror }) {

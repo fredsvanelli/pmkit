@@ -3,10 +3,10 @@ exit 0
 $ pmkit issues list --text webhook --json  [step 4, read]
 exit 0
 ? Step 5  [confirmed]
-$ pmkit issues create --title 'Webhook deliveries are lost on a 5xx answer' --type bug --priority high --description-file <inputs>/description.md --criteria-file <inputs>/criteria.md --dry-run --json  [step 6, dry run]
+$ pmkit issues create --title-file <inputs>/title-webhook-deliveries-are-lost-on-a-5xx-ans.md --type bug --priority high --description-file <inputs>/description.md --criteria-file <inputs>/criteria.md --dry-run --json  [step 6, dry run]
 exit 0
 ? Step 7  [confirmed]
-$ pmkit issues create --title 'Webhook deliveries are lost on a 5xx answer' --type bug --priority high --description-file <inputs>/description.md --criteria-file <inputs>/criteria.md --json  [step 6, write]
+$ pmkit issues create --title-file <inputs>/title-webhook-deliveries-are-lost-on-a-5xx-ans.md --type bug --priority high --description-file <inputs>/description.md --criteria-file <inputs>/criteria.md --json  [step 6, write]
 exit 0
 $ pmkit issues link ISS-M0GZ ISS-5N1R --kind related --dry-run --json  [step 9, dry run]
 exit 0

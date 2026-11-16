@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 
 test('setScalar changes one value and keeps the comment on that line', () => {
@@ -114,4 +114,24 @@ test('setSchemaLine normalizes CRLF and a BOM', () => {
 test('setSchemaLine twice gives the same text', () => {
   const once = setSchemaLine('a: 1\n', URL_NOW)
   assert.equal(setSchemaLine(once, URL_NOW), once)
+})
+
+test('removeKey drops one scalar line and keeps the neighbors and the comments', () => {
+  const text = '# top\ngit_host:\n  system: github # host\n  repo: o/r\n  default_branch: main\nwrite_policy:\n  confirm: none\n'
+  assert.equal(removeKey(text, ['git_host', 'repo']), '# top\ngit_host:\n  system: github # host\n  default_branch: main\nwrite_policy:\n  confirm: none\n')
+})
+
+test('removeKey removes the block under a key and leaves the next sibling', () => {
+  const text = 'tracker:\n  system: linear\n  scope:\n    workspace: acme\n    team: ACME\ngit_host:\n  system: none\n'
+  assert.equal(removeKey(text, ['tracker', 'scope']), 'tracker:\n  system: linear\ngit_host:\n  system: none\n')
+})
+
+test('removeKey returns the text unchanged when the key or its parent is missing', () => {
+  const text = 'git_host:\n  system: none\n'
+  assert.equal(removeKey(text, ['git_host', 'repo']), text)
+  assert.equal(removeKey(text, ['tracker', 'scope', 'team']), text)
+})
+
+test('removeKey reads CRLF and writes LF', () => {
+  assert.equal(removeKey('git_host:\r\n  system: none\r\n  repo: o/r\r\n', ['git_host', 'repo']), 'git_host:\n  system: none\n')
 })

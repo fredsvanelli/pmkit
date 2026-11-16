@@ -1,9 +1,9 @@
 import { PmkitError } from './errors.mjs'
 
 // Flags that never take a value, so `--dry-run ISS-1` keeps ISS-1 as a positional.
-export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save', 'off', 'important'])
+export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save', 'off', 'important', 'overwrite', 'all', 'redact', 'reviews', 'create', 'recheck-team'])
 // Commands with a second word: `issues move`, `cycle open`.
-export const GROUPS = new Set(['issues', 'cycle', 'epic', 'milestone', 'release', 'metrics', 'pr', 'docs', 'linear', 'local-migrate'])
+export const GROUPS = new Set(['alerts', 'todos', 'team', 'issues', 'cycle', 'epic', 'milestone', 'release', 'metrics', 'pr', 'deploys', 'ci', 'text', 'docs', 'views', 'goal', 'goals', 'customers', 'requests', 'demand', 'inbox', 'linear', 'local-migrate', 'roadmap'])
 
 /**
  * Splits argv into a command (one or two words), options and positionals.

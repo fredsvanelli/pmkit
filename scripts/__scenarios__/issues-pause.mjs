@@ -35,6 +35,7 @@ export default {
     { confirm: 'Step 5' },
     { step: '4', write: comment },
     { step: '4', write: move },
+    { step: '7', read: ['default-branch'] },
     { step: '7', dryRun: open, save: 'preview' },
     { confirm: 'Step 7' },
     { step: '7', write: open, save: 'opened' },

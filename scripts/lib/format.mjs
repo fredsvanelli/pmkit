@@ -35,8 +35,8 @@ export function issueRecord(issue) {
   const lines = fields([
     ['id', issue.id], ['title', issue.title], ['type', issue.type],
     ['status', `${issue.status.name} (${issue.status.category})`],
-    ['priority', issue.priority], ['estimate', issue.estimate], ['assignee', issue.assignee], ['labels', issue.labels],
-    ['parent', issue.parent], ['sprint', issue.sprint], ['milestone', issue.milestone], ['release', issue.release], ['due', issue.due], ['branch', issue.branch],
+    ['priority', issue.priority], ['estimate', issue.estimate], ['assignee', issue.assignee], ['delegate', issue.delegate], ['labels', issue.labels],
+    ['parent', issue.parent], ['sprint', issue.sprint], ['milestone', issue.milestone], ['release', issue.release ?? (issue.releaseUnknown === undefined ? undefined : `unknown (${issue.releaseUnknown})`)], ['due', issue.due], ['branch', issue.branch], ['docs', issue.docs ?? (issue.docsUnknown === undefined ? undefined : `unknown (${issue.docsUnknown})`)],
     ['blocked_by', issue.blockedBy], ['blocks', issue.blocks], ['related', issue.related], ['duplicate_of', issue.duplicateOf],
     ['children', issue.children], ['archived', issue.archived ? true : undefined],
     ['created', issue.created], ['updated', issue.updated],
@@ -58,7 +58,7 @@ function listLines(heading, items, line, more) {
 export function epicRecord(epic) {
   const lines = fields([
     ['id', epic.id], ['title', epic.title], ['status', `${epic.status.name} (${epic.status.category})`],
-    ['start', epic.start], ['target', epic.target], ['milestone', epic.milestone],
+    ['start', epic.start], ['target', epic.target], ['milestone', epic.milestone], ['goal', epic.goal],
     ['health', epic.health], ['progress', epic.progress === undefined ? undefined : percent(epic.progress)], ['url', epic.url],
   ])
   lines.push(
@@ -66,6 +66,34 @@ export function epicRecord(epic) {
     ...listLines('documents', epic.documents, (d) => `${d.path}  ${d.title}`, epic.documentsMore),
   )
   if (epic.description) lines.push('', epic.description)
+  return lines.join('\n')
+}
+
+export function goalRecord(goal) {
+  const lines = fields([['id', goal.id], ['title', goal.title], ['status', goal.status], ['target', goal.target], ['epics', goal.epics]])
+  if (goal.description) lines.push('', goal.description)
+  return lines.join('\n')
+}
+
+export function customerRecord(customer) {
+  const lines = fields([
+    ['id', customer.id], ['name', customer.name], ['status', customer.status?.name], ['tier', customer.tier?.name], ['revenue', customer.revenue],
+    ['size', customer.size], ['owner', customer.owner?.id], ['requests', customer.requests],
+  ])
+  if (customer.notes) lines.push('', customer.notes)
+  return lines.join('\n')
+}
+
+/** A request target or customer as one short line: the id and, when it could be read, the title or name. */
+const reference = (item, label) => (item ? `${item.id}${item[label] ? ` ${item[label]}` : item[label] === null ? ' (unreadable)' : ''}` : undefined)
+
+export function requestRecord(request) {
+  const lines = fields([
+    ['id', request.id], ['title', request.title], ['state', request.state], ['important', request.important ? 'yes' : undefined],
+    ['customer', reference(request.customer, 'name')], ['from', request.from], ['issue', reference(request.target, 'title')],
+    ['reason', request.reason], ['created', request.created], ['triaged', request.triaged ? `${request.triaged.at}${request.triaged.by ? ` by ${request.triaged.by}` : ''}` : undefined],
+  ])
+  if (request.body) lines.push('', request.body)
   return lines.join('\n')
 }
 
@@ -96,6 +124,8 @@ function flatten(record) {
   for (const [key, value] of Object.entries(record)) {
     if (SKIPPED.has(key)) continue
     if (key === 'status' && value?.name) flat.status = value.name
+    // A named reference (a customer's status, tier or owner) shows its name, never the JSON of the object.
+    else if (value !== null && typeof value === 'object' && !Array.isArray(value) && 'name' in value && 'id' in value) flat[key] = value.name ?? value.id
     else if (key === 'acceptanceCriteria') flat['acceptance criteria'] = value.length === 0 ? undefined : criteriaLines(value).join('; ')
     else if (key === 'description') flat.description = value === '' ? undefined : 'text'
     else flat[key] = value
@@ -110,7 +140,7 @@ export function changeLines(before, after) {
   const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])]
   return keys
     .filter((key) => JSON.stringify(a[key]) !== JSON.stringify(b[key]))
-    .map((key) => (key === 'description' ? 'description: changed' : `${key}: ${show(a[key])} → ${show(b[key])}`))
+    .map((key) => (key === 'description' || key === 'text' ? `${key}: changed` : `${key}: ${show(a[key])} → ${show(b[key])}`))
 }
 
 function describeEvent(event) {
@@ -243,6 +273,7 @@ export function releaseNotesText(result) {
     lines.push(`${phrases}, so the notes use ${used}`)
   }
   if (result.draft) lines.push(result.basis === 'release' ? `draft: release ${result.source.id} is not released yet` : `draft: sprint ${result.source.id} is not closed`)
+  if (result.truncated) lines.push('incomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues')
   lines.push('')
   if (result.groups.length === 0) lines.push('no done issues')
   const withDone = result.basis !== 'release'
@@ -255,5 +286,32 @@ export function releaseNotesText(result) {
   const { open, canceled, chore, after_close: afterClose } = result.counts.excluded
   const parts = [[open, 'not done'], [afterClose, 'done after the sprint closed'], [canceled, 'canceled'], [chore, 'chore']].filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`)
   if (parts.length > 0) lines.push('', `left out: ${parts.join(', ')}`)
+  return lines.join('\n')
+}
+
+const READINESS_SKIPS = { releases_absent: 'this tracker has no releases', no_planned_release: 'no planned release', no_open_milestone: 'no milestone with an open issue', no_active_sprint: 'no active sprint', cycles_absent: 'this tracker has no sprints', releases_not_read: 'the releases could not be read', milestones_not_read: 'the milestones could not be read', cycles_not_read: 'the sprints could not be read' }
+
+function readinessSection(title, value, empty, rows, header) {
+  if (value === null) return [`${title}: not checked`]
+  if (!Array.isArray(value)) return [`${title}: not checked, ${value.error.message}`]
+  return value.length === 0 ? [`${title}: ${empty}`] : [`${title} (${value.length})`, table(header, rows(value))]
+}
+
+/** The text of `release-readiness`: the basis, why, open issues, pull requests, deploys and the verdict. */
+export function readinessText(result) {
+  const { basis, source, reason } = result
+  const label = basis === 'release' ? `release ${source.id}${source.target ? ` (target ${source.target})` : ''}` : basis === 'milestone' ? `milestone ${source.name ?? source.id}${source.due ? ` (due ${source.due})` : ''}` : `sprint ${source.id} (${source.start} to ${source.end})`
+  const lines = [label]
+  if (reason !== 'requested' && result.skipped.length > 0) {
+    lines.push(`${result.skipped.map((s) => READINESS_SKIPS[s.reason]).join(', ')}, so the report uses ${basis} ${basis === 'milestone' ? source.name ?? source.id : source.id}`)
+  }
+  const { counts, open } = result.issues
+  lines.push('', `issues: ${counts.open} open, ${counts.done} done, ${counts.canceled} canceled`)
+  if (open.length > 0) lines.push(table(['ID', 'Title', 'Status', 'Assignee', 'Estimate'], open.map((i) => [i.id, i.title, i.status, i.assignee ?? '', i.estimate ?? ''])))
+  lines.push('', ...readinessSection('pull requests', result.pullRequests, 'none open', (prs) => prs.map((p) => [`#${p.number}`, p.title, p.issue, p.isDraft ? 'draft' : 'ready', p.checks.failing.length > 0 ? `failing: ${p.checks.failing.join(', ')}${p.checks.pending > 0 ? `, ${p.checks.pending} pending` : ''}` : p.checks.total === 0 ? 'no checks' : p.checks.pending > 0 ? `${p.checks.pending} of ${p.checks.total} checks pending` : `${p.checks.total} checks, none failing`]), ['PR', 'Title', 'Issue', 'State', 'Checks']))
+  if (result.pullRequestsIncomplete) lines.push('the pull request list may be incomplete: only 200 were read')
+  lines.push('', ...readinessSection('deploys (whole repository, newest first)', result.deploys, 'none', (ds) => ds.map((d) => [d.environment, d.state ?? 'unknown', d.ref, String(d.sha ?? '').slice(0, 7), String(d.createdAt ?? ''), d.matchesRelease ? 'this release' : '']), ['Environment', 'State', 'Ref', 'Sha', 'Created', 'Match']))
+  if (!result.gitHost.available) lines.push(`git host: ${result.gitHost.system === 'none' ? 'none' : result.gitHost.reason.message}, so pull requests and deploys are not checked`)
+  lines.push('', result.ready === true ? 'ready: nothing is open' : result.ready === false ? 'not ready: work is still open' : result.empty ? `unknown: the ${result.basis} has no issue that is not canceled, so nothing says it is ready` : 'unknown: nothing found open, but not everything was read')
   return lines.join('\n')
 }

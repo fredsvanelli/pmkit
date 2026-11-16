@@ -1,0 +1,10 @@
+# PMK-185 plan
+
+Spec: `docs/superpowers/specs/2026-11-08-pmk-185-alerts-list-fixes-design.md`. Each task starts with a failing test.
+
+1. **Missing-npm check** (criterion 4). Test in `scripts/alerts.test.mjs`: `isNpmMissingOnShell` is false for `{ status: 1, stdout: '{"vulnerabilities":{}}', stderr: 'is not recognized' }` and for `{ status: 9009, stdout: valid }`; a collectAlerts run on win32 with that result gives the alerts, no warning. Code: blank-stdout guard in `scripts/lib/alerts.mjs`.
+2. **Advisory choice** (criterion 2). Test: `via` of low ReDoS then critical RCE with package severity critical gives title RCE and its URL; no equal severity gives the most severe. Code: pick in `parseNpmAudit`.
+3. **Empty-output stderr** (criterion 3). Test on `parseNpmAudit('', 'npm ERR! x')` and through `collectAlerts` and the CLI warning. Code: second argument, runner passes stderr.
+4. **Note** (criterion 1). Test in `scripts/cli-alerts.test.mjs`: `notes` in the JSON and `note:` in the text hold `security_alerts is derived from scanners, not read natively`. Code in `scripts/pmkit.mjs`.
+5. Docs: CHANGELOG line, README and `commands/issues/security-alerts.md` if they describe the output, spec mention. Check each criterion with `issues update --check`.
+6. `npm test` in the foreground, exit 0.

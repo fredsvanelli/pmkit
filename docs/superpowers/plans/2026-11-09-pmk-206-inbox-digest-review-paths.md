@@ -1,0 +1,13 @@
+# PMK-206 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) with superpowers:test-driven-development.
+
+**Goal:** Fix the review-request and error paths of the inbox digest.
+**Spec:** `docs/superpowers/specs/2026-11-09-pmk-206-inbox-digest-review-paths-design.md`
+**Constraints:** no new dependency; every commit carries `(PMK-206)` and the `Co-Authored-By: Claude Opus 5.5` trailer; command file calls end with `--json`.
+
+1. **Team requests (AC 2).** Test in `scripts/pr-blockers.test.mjs`: a team named `fred` and a user `fred` give `requested: ['fred']`, `requestedTeams: ['fred']`; text says `team fred`. Change `collectBlockers` and the text/`open` lines in `scripts/lib/pr-blockers.mjs`. Update the existing test (`['dee','core']`), README row for `pr blockers`.
+2. **Digest command file (AC 1, 3).** Rewrite steps 3, 5.1, 5.3, 5.4 and the missing-section as in the spec (rate limit, status filter, authored PRs, team requests, `since`).
+3. **Scenario (AC 1, 3, 4).** Turn the scenario into three entries: add an `in_progress` issue with a team request, a PR authored by fred on an unassigned issue, a complete inbox with the keys offered to `mark-read`, and a rate-limited read. Regenerate snapshots (`UPDATE_GOLDENS=1 node --test scripts/scenarios.test.mjs`), update the skip list in `scripts/scenarios-live.mjs`.
+4. **Docs.** CHANGELOG line under `## Unreleased`; PMK-55 spec untouched (history).
+5. **Verify.** `npm test` in the foreground, exit code 0; check the four criteria (`issues update PMK-206 --check n`, dry-run then real); commit `.issues/`.

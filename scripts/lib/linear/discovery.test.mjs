@@ -189,7 +189,7 @@ test('the default workspace gives the no-team view', async () => {
   assert.deepEqual(view.labels, ['Bug', 'Docs', 'Feature', 'L', 'M', 'S', 'XL', 'XS'])
   assert.deepEqual(view.members.map((member) => member.id), ['user-1', 'user-2'])
   assert.deepEqual(view.members[1], { id: 'user-2', name: 'Ada Lovelace', email: 'ada@example.com', handle: 'ada', guest: false, teams: ['ACME'] })
-  assert.deepEqual(view.agents, [{ id: 'user-4', name: 'Linear' }])
+  assert.deepEqual(view.agents, [{ id: 'agent:user-4', name: 'Linear' }])
   assert.deepEqual(view.estimate, { unit: 'points', scale: [] })
   assert.deepEqual(view.priorities, ['urgent', 'high', 'medium', 'low'])
   assert.deepEqual(view.types, [])

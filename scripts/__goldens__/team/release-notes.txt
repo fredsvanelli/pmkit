@@ -121,7 +121,9 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
-  ]
+  ],
+  "truncated": false,
+  "complete": false
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.

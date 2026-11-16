@@ -3,29 +3,37 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ADAPTERS } from './adapters.mjs'
-import { loadConfig, pmkitConfigMessages, validateLocalConfig } from './config.mjs'
+import { goalPrefixOf, loadConfig, pmkitConfigMessages, resolveDefaultBranch, validateLocalConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
-import { parseYaml } from './yaml.mjs'
+import { parseYaml, splitFrontmatter } from './yaml.mjs'
+import { adrFiles, adrFolders, adrLocation, duplicateAdrs } from './adr.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
 import { formatError } from './local/migrations.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } from './local/milestones.mjs'
 import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs'
+import { checkFilter } from './local/query.mjs'
+import { caseClashes, parseView, validViewName, viewStems } from './local/views.mjs'
+import { goalStems, parseGoal } from './local/goals.mjs'
+import { CUSTOMER_PREFIX, mdStems, parseCustomer } from './local/customers.mjs'
+import { REQUEST_PREFIX, parseRequest } from './local/requests.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
-import { overlaps, readSprint } from './local/sprints.mjs'
+import { overlaps, readSprint, sprintFileExists } from './local/sprints.mjs'
 
 const LIST_REFS = ['blocked_by', 'related', 'duplicate_of']
 const read = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 const subdirs = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [])
 const files = (dir, ext) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(ext)).sort() : [])
 
-function walkFiles(dir) {
+// skip(dir) prunes a folder: a leftover of a failed delete is not an issue, and may hold a folder nobody can read.
+function walkFiles(dir, skip = () => false) {
   if (!fs.existsSync(dir)) return []
   return fs.readdirSync(dir, { withFileTypes: true })
     .sort((a, b) => (a.name < b.name ? -1 : 1))
     .flatMap((entry) => {
       const full = path.join(dir, entry.name)
-      return entry.isDirectory() ? walkFiles(full) : [full]
+      if (!entry.isDirectory()) return [full]
+      return skip(full) ? [] : walkFiles(full, skip)
     })
 }
 
@@ -64,7 +72,7 @@ function blockedByCycles(graph) {
 }
 
 const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
-const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
+const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
 // A problem has no next step field, so the format problem carries it in its message.
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
@@ -114,6 +122,11 @@ function pmkitConfigProblems(root, adapters) {
     return [{ path: at, code: 'config', message: `config.yaml does not parse: ${error.message}` }]
   }
   const messages = pmkitConfigMessages(parsed, adapters)
+  // Reported as a config problem, but kept out of pmkitConfigMessages so it does not refuse writes: every reader falls back to main.
+  const defaultBranch = resolveDefaultBranch(parsed)
+  if (!defaultBranch.valid && typeof defaultBranch.configured === 'string') messages.push(defaultBranch.note)
+  // Kept out of pmkitConfigMessages for the same reason: link-repo --repo is the fix, and it loads the file first.
+  if (parsed?.git_host?.system === 'github' && !parsed.git_host.repo) messages.push('git_host.repo is required when git_host.system is github')
   return messages.map((message) => ({ path: at, code: 'config', message }))
 }
 
@@ -133,8 +146,8 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
       return { checked: noneChecked(), problems: [...pmkit, broken].sort(byPathThenCode) }
     }
   }
-  // A hosted tracker has no tracker files here, and validate stays offline: .pmkit/config.yaml is all it checks.
-  if (config.hosted) return { checked: noneChecked(), problems: pmkit }
+  // A hosted tracker has no tracker files here, and validate stays offline: .pmkit/config.yaml and the repository's ADRs are all it checks.
+  if (config.hosted) return { checked: noneChecked(), problems: [...pmkit, ...adrProblems(root, null)].sort(byPathThenCode) }
   const { local, issuesDir } = config
   // An older format is one problem: the other checks assume the current shape.
   if (config.format && config.format.state !== 'current') {
@@ -147,7 +160,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
 
   const configFile = path.join(issuesDir, 'config.yaml')
   const conflicted = new Set()
-  for (const file of walkFiles(issuesDir).filter((name) => name.endsWith('.md') || name.endsWith('.yaml'))) {
+  for (const file of walkFiles(issuesDir, (dir) => path.basename(dir).startsWith('.deleting-')).filter((name) => name.endsWith('.md') || name.endsWith('.yaml'))) {
     if (!hasConflictMarkers(read(file))) continue
     conflicted.add(file)
     add(file, 'conflict', 'the file contains git conflict markers')
@@ -174,6 +187,8 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     epicIds.add(name)
     checked.epics++
     if (conflicted.has(file)) continue
+    // Commands read only folders named after an epic id, so any other one is skipped by every read (PMK-213).
+    if (!isId(name, local.epic_prefix)) add(file, 'id', `epic folder ${name} is not named after an epic id such as ${local.epic_prefix}-1, so pmkit does not read it`)
     try {
       const epic = parseEpicFile(read(file), { statuses: local.statuses })
       epics.set(name, epic)
@@ -245,8 +260,92 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     }
   }
 
+  // Views
+  const viewsDir = path.join(issuesDir, 'views')
+  const viewNames = [...viewStems(viewsDir)].sort()
+  // On a file system that ignores case the two names are one file; views save refuses such a clash.
+  const clashOf = new Map(caseClashes(viewNames))
+  for (const name of viewNames) {
+    const file = path.join(viewsDir, `${name}.yaml`)
+    checked.views++
+    if (conflicted.has(file)) continue
+    if (clashOf.has(name)) add(file, 'view', `view name "${name}" differs from "${clashOf.get(name)}" only in case`)
+    if (!validViewName(name)) {
+      add(file, 'view', `view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`)
+      continue
+    }
+    try {
+      const { filter } = parseView(read(file), name)
+      if (Object.keys(filter).length === 0) throw new Error('view filter is empty, so the view matches every issue')
+      checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists: (id) => sprintFileExists(issuesDir, id) })
+    } catch (error) {
+      add(file, 'view', error.message)
+    }
+  }
+
+  // Goals
+  const goalsDir = path.join(issuesDir, 'goals')
+  const goalIds = goalStems(goalsDir)
+  // Goal ids whose file parses: an epic may only link to one of these.
+  const readableGoals = new Set()
+  for (const id of [...goalIds].sort()) {
+    const file = path.join(goalsDir, `${id}.md`)
+    // Only a file named after a goal id is a goal, as goal list counts them; a README.md is a problem, not a goal.
+    if (isId(id, goalPrefixOf(local))) checked.goals++
+    if (conflicted.has(file)) continue
+    if (!isId(id, goalPrefixOf(local))) {
+      add(file, 'goal', `goal file ${id}.md is not named after a goal id such as ${goalPrefixOf(local)}-1`)
+      continue
+    }
+    try {
+      parseGoal(read(file), id)
+      readableGoals.add(id)
+    } catch (error) {
+      add(file, 'goal', error.message)
+    }
+  }
+
+  // Customers and requests (PMK-46). Their references are checked with the other references, below.
+  const recordFiles = (folder, prefix, code, parse, check) => {
+    const dir = path.join(issuesDir, folder)
+    const ids = mdStems(dir)
+    const parsed = []
+    for (const id of [...ids].sort()) {
+      const file = path.join(dir, `${id}.md`)
+      if (conflicted.has(file)) continue
+      if (!isId(id, prefix)) {
+        add(file, code, `${code} file ${id}.md is not named after a ${code} id such as ${prefix}-1`)
+        continue
+      }
+      try {
+        const record = parse(read(file), id)
+        check(file, record)
+        parsed.push({ file, record })
+      } catch (error) {
+        add(file, code, error.message)
+      }
+    }
+    return { ids, parsed }
+  }
+  const customerFiles = recordFiles('customers', CUSTOMER_PREFIX, 'customer', parseCustomer, (file, customer) => {
+    if (customer.owner !== undefined && !Object.hasOwn(local.members, customer.owner)) add(file, 'customer', `owner "${customer.owner}" is not a member`)
+  })
+  const readableCustomers = new Set(customerFiles.parsed.map(({ record }) => record.id))
+  const requestFiles = recordFiles('requests', REQUEST_PREFIX, 'request', parseRequest, () => {})
+
   // Issues
-  const folders = subdirs(path.join(issuesDir, 'issues'))
+  const LEFTOVER = '.deleting-'
+  // POSIX single quotes: a space or an apostrophe in the path cannot split or end the argument.
+  const shellQuote = (text) => `'${text.replace(/'/g, "'\\''")}'`
+  const allFolders = subdirs(path.join(issuesDir, 'issues'))
+  // A failed cleanup of `issues delete` leaves one of these. It is not an issue: report it as a leftover, with the step to remove it.
+  for (const name of allFolders.filter((folder) => folder.startsWith(LEFTOVER))) {
+    const dir = path.join(issuesDir, 'issues', name)
+    // chmod first: a read-only or no-access subfolder makes rm -rf fail the same way. X gives the execute bit a folder needs to be entered.
+    const q = shellQuote(rel(dir))
+    add(dir, 'leftover', `it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+rwX ${q} && rm -rf ${q}`)
+  }
+  const folders = allFolders.filter((folder) => !folder.startsWith(LEFTOVER))
   const byNormalized = new Map()
   for (const name of folders) {
     const key = normalizeId(name)
@@ -257,7 +356,18 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     const dir = path.join(issuesDir, 'issues', name)
     const file = path.join(dir, 'issue.md')
     checked.issues++
-    checked.comments += files(path.join(dir, 'comments'), '.md').length
+    const commentNames = files(path.join(dir, 'comments'), '.md')
+    checked.comments += commentNames.length
+    for (const commentName of commentNames) {
+      const commentFile = path.join(dir, 'comments', commentName)
+      try {
+        const split = splitFrontmatter(read(commentFile).replace(/\r\n?/g, '\n'))
+        const created = split ? parseYaml(split.yaml).created : undefined
+        if (created != null && Number.isNaN(new Date(String(created)).getTime())) add(commentFile, 'comment', `created "${created}" is not a time`)
+      } catch (error) {
+        add(commentFile, 'comment', `the comment cannot be read: ${error.message}`)
+      }
+    }
     if (!isId(name, local.id_prefix)) add(file, 'id', `folder name ${name} is not a valid ${local.id_prefix} id`)
     const twins = byNormalized.get(normalizeId(name))
     if (twins.length > 1 && twins[0] === name) add(file, 'id', `folders ${twins.join(', ')} have the same id`)
@@ -307,6 +417,20 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   }
   for (const [name, epic] of epics) {
     if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)
+    if (epic.goal !== undefined) {
+      const file = path.join(issuesDir, 'epics', name, 'epic.md')
+      if (!isId(epic.goal, goalPrefixOf(local))) add(file, 'reference', `goal ${epic.goal} is not a valid goal id such as ${goalPrefixOf(local)}-1`)
+      else if (!goalIds.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not exist`)
+      else if (!readableGoals.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not parse, see ${rel(path.join(goalsDir, `${epic.goal}.md`))}`)
+    }
+  }
+  for (const { file, record } of requestFiles.parsed) {
+    if (record.customer !== undefined && !customerFiles.ids.has(record.customer)) add(file, 'reference', `customer ${record.customer} does not exist`)
+    // The file exists but did not parse, or conflict markers held it back: the request points at a customer nobody can read.
+    else if (record.customer !== undefined && !readableCustomers.has(record.customer)) {
+      add(file, 'reference', `customer ${record.customer} does not parse, see ${rel(path.join(issuesDir, 'customers', `${record.customer}.md`))}`)
+    }
+    if (record.issue !== undefined && !folderSet.has(record.issue)) add(file, 'reference', `issue ${record.issue} does not exist`)
   }
 
   // Cycles
@@ -327,6 +451,13 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   const graph = new Map([...issues].map(([id, issue]) => [id, issue.blockedBy]))
   for (const cycle of blockedByCycles(graph)) report('blocked_by', cycle)
 
+  problems.push(...adrProblems(root, issuesDir))
   problems.sort(byPathThenCode)
   return { checked, problems }
+}
+
+/** One problem per ADR file whose number another ADR file uses, in docs/adr and the Local tracker's docs/adr (PMK-228). Working tree only. */
+function adrProblems(root, issuesDir) {
+  const folders = adrFolders({ root, ...adrLocation({ root, issuesDir, hosted: issuesDir === null }) })
+  return duplicateAdrs(adrFiles(folders)).map(({ path: file, number, others }) => ({ path: file, code: 'adr', message: `ADR number ${number} is also used by ${others.join(', ')}` }))
 }

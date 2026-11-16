@@ -19,10 +19,11 @@ test('a second test still sees the top-level folder', () => {
   assert.ok(fs.existsSync(topLevel))
 })
 
-test('tempDir makes a folder under os.tmpdir() with the prefix', () => {
+test('tempDir makes a folder under os.tmpdir() with the prefix and returns its real path', () => {
   const dir = tempDir('pmkit-x-')
   assert.ok(fs.existsSync(dir))
-  assert.equal(path.dirname(dir), os.tmpdir())
+  assert.equal(path.dirname(dir), fs.realpathSync(os.tmpdir()))
+  assert.equal(dir, fs.realpathSync(dir))
   assert.ok(path.basename(dir).startsWith('pmkit-x-'))
 })
 

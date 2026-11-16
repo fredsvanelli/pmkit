@@ -1,0 +1,32 @@
+$ pmkit goals overview
+exit 0
+--- stdout
+no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues
+no top-level issues with sub-issues
+6 top-level issues have no sub-issues and are not listed
+incomplete: some files or issues were not read, so these numbers may be low; do not conclude from them
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues
+
+$ pmkit goals overview --json
+exit 0
+--- stdout
+{
+  "source": "top_level",
+  "complete": false,
+  "items": [],
+  "withoutChildren": 6,
+  "notes": [
+    "no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues"
+  ],
+  "warnings": [
+    "ISS-4: CONFLICT The issue file contains git conflict markers.",
+    "ISS-5: CONFLICT The issue file contains git conflict markers."
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues

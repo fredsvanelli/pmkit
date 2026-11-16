@@ -1,4 +1,6 @@
 import test from 'node:test'
+import fs from 'node:fs'
+import path from 'node:path'
 import assert from 'node:assert/strict'
 import { hashTree, makeRepo } from '../../test-helpers.mjs'
 import { buildMigrationFixture } from '../../migrate-fixture.mjs'
@@ -76,7 +78,25 @@ test('the reader writes nothing', () => {
 
 test('outOfScope counts time logs', () => {
   const { read } = fixture()
-  assert.deepEqual(read().outOfScope, { releases: 0, timeLogs: 1, documents: 0, milestones: 0 })
+  assert.deepEqual(read().outOfScope, { releases: 0, timeLogs: 1, documents: 0, milestones: 0, views: 0, goals: 0, customers: 0, requests: 0 })
+})
+
+test('outOfScope counts the view files, readable or not', () => {
+  const { root, read } = fixture()
+  const views = path.join(root, '.issues', 'views')
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'a.yaml'), 'filter:\n  blocked: true\n')
+  fs.writeFileSync(path.join(views, 'broken.yaml'), 'filter: 3\n')
+  assert.equal(read().outOfScope.views, 2)
+})
+
+test('outOfScope counts the goal files', () => {
+  const { root, read } = fixture()
+  const goals = path.join(root, '.issues', 'goals')
+  fs.mkdirSync(goals, { recursive: true })
+  fs.writeFileSync(path.join(goals, 'GOAL-1.md'), '---\ntitle: One\n---\n')
+  fs.writeFileSync(path.join(goals, 'GOAL-2.md'), '---\ntitle: Two\n---\n')
+  assert.equal(read().outOfScope.goals, 2)
 })
 
 test('two reads of an unchanged tracker give the same records', () => {
@@ -84,4 +104,24 @@ test('two reads of an unchanged tracker give the same records', () => {
   const { read: _a, ...a } = read()
   const { read: _b, ...b } = read()
   assert.deepEqual(a, b)
+})
+
+test('outOfScope counts the customer and request files', () => {
+  const { root, read } = fixture()
+  for (const [folder, names] of [['customers', ['CUS-1.md']], ['requests', ['REQ-1.md', 'REQ-2.md']]]) {
+    fs.mkdirSync(path.join(root, '.issues', folder), { recursive: true })
+    for (const name of names) fs.writeFileSync(path.join(root, '.issues', folder, name), '---\nname: A\ntitle: T\n---\n')
+  }
+  const { customers, requests } = read().outOfScope
+  assert.deepEqual({ customers, requests }, { customers: 1, requests: 2 })
+})
+
+test('an issue carries its docs into the snapshot, and an issue without them an empty list (PMK-228)', async () => {
+  const { root, read } = fixture()
+  const { createLocalTracker } = await import('./tracker.mjs')
+  const [first, second] = read().issues.map((issue) => issue.id)
+  createLocalTracker(root).updateIssue(first, { docs: ['docs/adr/0001-a.md'] }, 'fred')
+  const issues = read().issues
+  assert.deepEqual(issues.find((issue) => issue.id === first).docs, ['docs/adr/0001-a.md'])
+  assert.deepEqual(issues.find((issue) => issue.id === second).docs, [])
 })

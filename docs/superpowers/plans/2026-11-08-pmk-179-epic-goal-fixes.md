@@ -1,0 +1,30 @@
+# PMK-179 plan: epic goal and goal checks of validate
+
+Spec: `docs/superpowers/specs/2026-11-08-pmk-179-epic-goal-fixes-design.md`. Every task is test first. Run one test file with `node --test scripts/<file>`; `npm test` runs all.
+
+## Task 1: refuse an empty goal (criterion 1)
+
+- Test in `scripts/goals.test.mjs`: `setEpicGoal(epic, '')`, `'  '` and `5` throw `INVALID_INPUT` and write nothing (no event, file unchanged); `null` still clears.
+- Test in `scripts/cli.test.mjs`: `epic goal <epic> ""` exits 2 with `INVALID_INPUT`; `epic goal <epic> none` clears.
+- Change `setEpicGoal` in `scripts/lib/local/tracker.mjs`: `null` clears, any other non-string or blank value throws, no more `blank(goal) || goal === ''`.
+
+## Task 2: validate checks the link (criterion 2)
+
+- Tests in `scripts/validate-goals.test.mjs`: `goal: notes` with `goals/notes.md` present, `goal: goal-1` (lowercase), and an epic that links to a `GOAL-1` file with no title are each a `reference` problem on the epic with the spec's messages; a valid link has none.
+- Change `scripts/lib/validate.mjs`: collect the goal IDs whose file parsed, and check the epic's goal with `isId`, existence and parse in that order.
+
+## Task 3: keep the frontmatter (criterion 3)
+
+- Test in `scripts/goals.test.mjs`: an `epic.md` with a `# comment`, a `""` key, an unknown list of maps and a body; set, change and remove the goal, and compare the file with the original text except for the `goal` line. Add a CRLF case and a `goal` key that holds a block (fails, file untouched).
+- Change `setEpicGoal`: edit the frontmatter text with `setScalar` and `removeKey`, rejoin with the raw body, read back with `parseEpicFile`.
+
+## Task 4: canceled epic in goal progress (criterion 4)
+
+- Tests in `scripts/goals.test.mjs`: a goal with a canceled epic holding open and done issues and a live epic: the sums equal the live epic only, the canceled epic is listed with `counted: false` and its own progress; an epic with an unmapped status is counted; all epics canceled gives `total: 0`.
+- Change `goalProgress`: add `counted` and skip the sums for a canceled epic. `goal progress` text marks it. Check `goals overview` (PMK-67) still agrees: its test for the sums.
+
+## Task 5: docs and tracker records
+
+- `CHANGELOG.md` line under `## Unreleased`, README note where `epic goal` is described, the canceled-epic rule in the PMK-45 spec's `goalProgress` section.
+- Check each criterion with `issues update PMK-179 --check n`, commit `.issues/`.
+- `npm test` in the foreground, exit code 0, then deliver (PR, comment, `in_review`).

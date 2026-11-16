@@ -64,7 +64,9 @@ exit 0
     "assignee": "ana",
     "parent": "EPC-1",
     "sprint": "2026-10-05"
-  }
+  },
+  "minutes": 30,
+  "note": null
 }
 --- stderr
 (empty)
@@ -136,7 +138,9 @@ exit 0
     "assignee": "ana",
     "parent": "EPC-1",
     "sprint": "2026-10-05"
-  }
+  },
+  "minutes": 30,
+  "note": null
 }
 --- stderr
 (empty)

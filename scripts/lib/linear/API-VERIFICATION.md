@@ -19,7 +19,7 @@ Without `PMKIT_LIVE=1` the script sends nothing. It sends only queries and refus
 | Releases | yes | `Release`, `ReleasePipeline`, `ReleaseStage`; `releases`, `releasePipelines`; `releaseCreate`, `releaseComplete`, `issueToReleaseCreate`; `Issue.releases` | read/write | Business and Enterprise | schema, live read, docs | `Organization.releasesEnabled` is `false` on this workspace. Write access comes from the schema only. |
 | Insights | no | none | none | Business and Enterprise (UI) | schema, docs | PMK-33 treats `native_metrics` as `derived`. |
 | Triage responsibility and Triage Intelligence | yes | `Team.triageResponsibility`, `TriageResponsibility`, `TimeSchedule`; `triageResponsibilityCreate`, `triageResponsibilityUpdate`, `triageResponsibilityDelete`; `IssueSuggestion`, `Issue.suggestions` | read/write for triage responsibility, read for suggestions | Business and Enterprise | schema, live read, docs | The mutations come from the schema only. Both reads answer on Free, so the plan decides. |
-| Customers and customer requests | yes | `Customer`, `CustomerNeed`, `CustomerStatus`, `CustomerTier`; `customers`, `customerNeeds`, `customerStatuses`, `customerTiers`; `customerUpdate`, `customerNeedCreate`, `customerNeedUpdate`; `Organization.customersEnabled` | read/write | Linear tab says Business and Enterprise; the docs page says all plans, enabled by an admin | schema, live read, docs | The mutations come from the schema only. Customer reads fail when the feature is off, so the `customersEnabled` flag decides, on any plan. |
+| Customers and customer requests | yes | `Customer`, `CustomerNeed`, `CustomerStatus`, `CustomerTier`; `customers`, `customerNeeds`, `customerStatuses`, `customerTiers`; `customerCreate`, `customerUpdate`, `customerNeedCreate`, `customerNeedUpdate`; `Organization.customersEnabled` | read/write | Linear tab says Business and Enterprise; the docs page says all plans, enabled by an admin | schema, live read, docs | The mutations come from the schema only. Customer reads fail when the feature is off, so the `customersEnabled` flag decides, on any plan. |
 
 ## Recurring issues
 
@@ -52,6 +52,57 @@ Live: `releases(first: 1)` and `releasePipelines(first: 1)` answer with empty li
 Docs: `https://linear.app/docs/releases` (read 2026-10-27) says releases are available on Business and Enterprise plans, and Business allows up to 15 pipelines. It also says a personal API key cannot replace a pipeline access key, which applies to the `*ByAccessKey` mutations.
 
 Answer `yes`, access `read/write`. Creation was not tried, so the Verified by cell does not claim a live write.
+
+## Releases mapped (PMK-246)
+
+Checked 2026-11-10 against Linear's public SDK schema (`packages/sdk/src/schema.graphql` in the `linear/linear` repository), not against a workspace: no workspace with releases on (Business or Enterprise) was at hand. The adapter's release documents run against the fake in `npm test` only.
+
+| pmkit | Linear (schema) |
+|---|---|
+| release `id` | `Release.id` (UUID). `release(id)` also takes the slug; pmkit sends the UUID only. |
+| `name`, `target`, `released`, `description` | `name`, `targetDate`, `completedAt`, `description` |
+| `state` | `released` when `completedAt` is set, else `planned`. `stage.type` (`planned`, `started`, `completed`, `canceled`) decides only that a canceled release is left out. |
+| `release list` | `releases(filter: { pipeline: { teams: { some: { key: { eq: <team> } } } } })`, page by page (`ReleaseFilter.pipeline` is a `ReleasePipelineFilter`, whose `teams` is a `TeamCollectionFilter`). |
+| an issue's `release` / `releases` | `issues(filter: { id: { in } }) { id releases(first: 50) }` for up to 100 issues at once, and `issue(id) { releases(first, after) }` for an issue with more than 50. Sent only when `Organization.releasesEnabled` is true. |
+| a release of another team | `Release.pipeline.teams` (a `TeamConnection`); a release whose pipeline does not list the scope team is refused. |
+| `issues update --release` | `issueUpdate` with `IssueUpdateInput.addedReleaseIds` and `removedReleaseIds`. |
+| the `release` filter | `IssueFilter.releases: { some: { id: { eq } } }` (`ReleaseCollectionFilter`). |
+
+Open until a workspace with releases runs them (acceptance criterion 5 of PMK-246):
+
+- `releases` with the `pipeline.teams` filter answers the scope team's releases and no error.
+- `Release.stage { type }`, `version`, `targetDate` and `completedAt` come back with the values the table assumes; in particular, whether a completed release always has `completedAt` set.
+- `Issue.releases` lists a release the issue was added to in the Linear app, and leaves a release the issue was removed from, also inside `issues(filter: { id: { in } })`.
+- `ReleasePipeline.teams` lists the teams a pipeline is linked to in the app.
+- The `x-complexity` header of `PmkitReleases` (page 100), `PmkitIssuesReleases` (100 issues x 20 releases) and `PmkitRelease` stays under Linear's limit of 10000 points. By the documented rule they cost about 380, 4300 and 280.
+- `issueUpdate` accepts `addedReleaseIds` and `removedReleaseIds` from a personal API key, and the issue then shows in the release in the app.
+- `issues(filter: { releases: { some: { id: { eq } } } })` answers the release's issues.
+- A pipeline with no team linked: whether its releases should count for the scope team. pmkit leaves them out today.
+
+A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message.
+
+## Issue docs mapped (PMK-252)
+
+Written 2026-11-10 from Linear's public SDK schema, not checked against a workspace: nothing below ran against the live API, only against the fake in `scripts/fake-linear-api.mjs`. Nothing here is verified.
+
+| pmkit | Linear (schema, to confirm) |
+|---|---|
+| an issue's `docs` | `issues(filter: { id: { in } }) { id attachments(first: 20) { nodes { id url metadata createdAt } } }` for up to 100 issues, and `issue(id) { attachments(first, after) }` for an issue with more than 20. Only an attachment whose `metadata.pmkitDoc` is a string is a doc. |
+| `issues update --add-doc` | `attachmentCreate(input: { issueId, url, title, metadata: { pmkitDoc } })`, with `url` = `https://github.com/<repo>/blob/<branch>/<path>`. |
+| `issues update --remove-doc` | `attachmentDelete(id)` of the attachments whose `metadata.pmkitDoc` is the path. |
+
+Open until a workspace runs them:
+
+- `Issue.attachments` answers inside `issues(filter: { id: { in } })`, and `attachments(first: 20)` is accepted there.
+- `Attachment.metadata` comes back as it was written (`{ pmkitDoc: <path> }`), also for an attachment made with a personal API key.
+- `AttachmentCreateInput` accepts `metadata` and `title` together with `issueId` and `url` from a personal API key.
+- The upsert by URL: `attachmentCreate` for an `issueId` and `url` that already have an attachment updates it. pmkit assumes it does, so it refuses (CONFLICT) to add a doc whose link a person attached by hand, and never rewrites or removes that attachment.
+- Whether Linear turns a `github.com/.../blob/...` URL into an integration attachment (another `sourceType`, its own `metadata`), which would drop `pmkitDoc` or fail the upsert.
+- `attachmentDelete` works with a personal API key, and the attachment leaves the issue.
+- The `x-complexity` header of `PmkitIssuesAttachments` (100 issues x 20 attachments of 4 scalar fields). By the documented rule it costs about 3000 points, under the limit of 10000.
+- An issue with more than 20 attachments (pull request links count) takes the one-issue read, 50 at a time.
+
+A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message, and the docs of the issue would read as `unknown`.
 
 ## Insights
 
@@ -126,13 +177,25 @@ Writes are not proven live. `projectCreate` and `projectUpdateCreate` run agains
 
 ## Customers and customer requests
 
-Schema. `Customer` has `id`, `name`, `status` (`CustomerStatus`), `tier` (`CustomerTier`, nullable), `revenue` (`Int`, nullable), `size` (`Float`, nullable), `owner` (`User`), `domains`, `externalIds`, `approximateNeedCount`, `slugId`, `url` and `needs`. `CustomerStatus` and `CustomerTier` have `id`, `name`, `displayName`, `color`, `description` and `position`. `CustomerNeed` is the customer request. It has `customer`, `issue`, `project`, `priority` (0 or 1), `body` and `url`, and it may have neither an issue nor a project. The queries are `customers`, `customer`, `customerNeeds`, `customerNeed`, `customerStatuses` and `customerTiers`. The mutations pmkit uses are `customerUpdate` (`id`, input `CustomerUpdateInput`: `name`, `statusId`, `tierId`, `revenue`, `size`, `ownerId`), `customerNeedCreate` (input `CustomerNeedCreateInput`: `customerId`, `issueId`, `projectId`, `priority`, `body`) and `customerNeedUpdate` (`id`, input `CustomerNeedUpdateInput`, which can move a request). Their payloads return `success` and the object. Revenue has no unit in the schema.
+Schema. `Customer` has `id`, `name`, `status` (`CustomerStatus`), `tier` (`CustomerTier`, nullable), `revenue` (`Int`, nullable), `size` (`Float`, nullable), `owner` (`User`), `domains`, `externalIds`, `approximateNeedCount`, `slugId`, `url` and `needs` (a plain `[CustomerNeed!]!` list without arguments, so pmkit reads a customer's requests from `customerNeeds` filtered by `customer.id`). In `CustomerCreateInput` and `CustomerUpdateInput`, `size` is an `Int`, so pmkit sends a whole number. `CustomerStatus` and `CustomerTier` have `id`, `name`, `displayName`, `color`, `description` and `position`. `CustomerNeed` is the customer request. It has `customer`, `issue`, `project`, `priority` (0 or 1), `body` and `url`, and it may have neither an issue nor a project. The queries are `customers`, `customer`, `customerNeeds`, `customerNeed`, `customerStatuses` and `customerTiers`. The mutations pmkit uses are `customerCreate` (input `CustomerCreateInput`: `name`, `statusId`, `tierId`, `revenue`, `size`, `ownerId`; PMK-221), `customerUpdate` (`id`, input `CustomerUpdateInput`: `name`, `statusId`, `tierId`, `revenue`, `size`, `ownerId`), `customerNeedCreate` (input `CustomerNeedCreateInput`: `customerId`, `issueId`, `projectId`, `priority`, `body`) and `customerNeedUpdate` (`id`, input `CustomerNeedUpdateInput`, which can move a request). Their payloads return `success` and the object. Revenue has no unit in the schema. `demand list` reads `customerNeeds` page by page, up to 1000 requests (PMK-221).
 
 Live. On the sandbox workspace (Free), `customers(first: 1)` and `customerNeeds(first: 1)` fail with "Customer requests are not available in this workspace." `customerStatuses` answers with four statuses and `customerTiers` with an empty list. `Organization.customersEnabled` is false. No mutation was sent.
 
 Docs. `https://linear.app/docs/customer-requests` (read 2026-10-28; `https://linear.app/docs/customers` answered 404) says "Customer Requests is available on all currently offered plans", that an admin enables it in workspace settings, and that after that anyone in the workspace except guests can view and edit customers. This differs from the Linear tab, which marks the feature Business. The sandbox result fits the docs: the workspace has the feature off, and customer reads fail until it is on.
 
-Answer `yes`, access `read/write`. The three mutations stay `schema` because none was sent. `linear customers` decides from `customersEnabled` in the cached discovery and sends no customer query when it is false. When the flag is false the reason is `customers_off` on every plan, with the hint "An admin can turn on customer requests in the workspace settings.", because the docs say the feature exists on all plans and the docs win over the Linear tab (decided in PMK-42 review).
+Answer `yes`, access `read/write`. The four mutations stay `schema` because none was sent. `linear customers` decides from `customersEnabled` in the cached discovery and sends no customer query when it is false. When the flag is false the reason is `customers_off` on every plan, with the hint "An admin can turn on customer requests in the workspace settings.", because the docs say the feature exists on all plans and the docs win over the Linear tab (decided in PMK-42 review).
+
+## Initiatives as goals (PMK-213)
+
+Checked 2026-11-10 against Linear's public SDK schema (`packages/sdk/src/schema.graphql` in the `linear/linear` repository), not by introspection of a workspace: no Business workspace was at hand, and a Free one answers `initiatives` with an empty list (above).
+
+| Call | Result |
+|---|---|
+| `type Initiative` | `id`, `slugId`, `identifier` (nullable), `name`, `description`, `content`, `status` (`InitiativeStatus`, required), `targetDate` (`TimelessDate`), `url`, `owner`, and `projects(first, after, filter: ProjectFilter, includeSubInitiatives, ...)`. |
+| `enum InitiativeStatus` | `Proposed`, `Planned`, `Active`, `Completed`, `Canceled`. pmkit uses them in lower case as the goal statuses. |
+| `initiatives(first, after, filter, includeArchived, ...)` | Returns an `InitiativeConnection` with `nodes` and `pageInfo`. |
+
+The adapter's `PmkitInitiatives` query is not proven live. Its shapes run against the fake in `npm test`. A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message.
 
 ## Live writes (PMK-39)
 
@@ -162,13 +225,13 @@ The team is named `pmkit-test`, has the key `PKT` and carries the marker `pmkit-
 | `findOrCreateTestTeam({ client, guard })` | Finds the team by name or creates it once. Returns `{ team: { id, key }, created }`. Sends no write when the team exists. |
 | `listTestTeamItems({ client, team, guard })` | Returns `{ issues, projects }` that the team holds and are not trashed. |
 | `trashTestTeamItems({ client, team, guard })` | Trashes those issues and projects. Returns the counts. |
-| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 14 mutations of this suite. PMK-41 passes its own allowlist. |
+| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 15 mutations of this suite. PMK-41 passes its own allowlist. |
 
 `preflight`, `waitForCycles` and `checkTestTeam` are exported too. The live run calls them in this order: `preflight`, `findOrCreateTestTeam`, `waitForCycles`.
 
 ### The write guard
 
-The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `issueDelete` and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
+The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
 
 ### Request budget
 
@@ -199,6 +262,8 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 | `cycleStartDay` 0 means Sunday | `unverified` |
 | `teamCreate` accepts the five-character key `PKT` | Yes, the third live run created issues PKT-71 and PKT-72 |
 | `issueDelete` works on an archived issue | `unverified` |
+| `issueUnarchive` brings an issue back from the trash, and `issues(filter: { id })` with `includeArchived` returns a trashed issue with `trashed: true` (PMK-222, `issues restore`) | `unverified`: the contract delete test checks both on the next live run |
+| The contract delete test (`issues` family, PMK-52) passes against the live team | `unverified`: added after the third live run |
 | Trashed issues count toward the 250 issues of the Free plan | `unverified` |
 | `projects(filter: { accessibleTeams })` and `issues(filter: { team })` with an id comparator accept the test team id | `unverified` |
 

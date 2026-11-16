@@ -1,0 +1,145 @@
+$ pmkit issues bulk priority high --category done
+exit 0
+--- stdout
+set priority to high: 0 matched, 0 to write
+nothing to write
+--- stderr
+(empty)
+
+$ pmkit issues bulk priority high --category done --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "priority",
+    "value": "high",
+    "text": "set priority to high"
+  },
+  "matched": 0,
+  "writes": 0,
+  "items": [],
+  "blockers": [],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": false,
+  "warnings": [],
+  "applied": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk priority high --category done --dry-run
+exit 0
+--- stdout
+set priority to high: 0 matched, 0 to write
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues bulk priority high --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "priority",
+    "value": "high",
+    "text": "set priority to high"
+  },
+  "matched": 0,
+  "writes": 0,
+  "items": [],
+  "blockers": [],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true,
+  "warnings": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done
+exit 0
+--- stdout
+add label backend: 0 matched, 0 to write
+nothing to write
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "label-add",
+    "value": "backend",
+    "text": "add label backend"
+  },
+  "matched": 0,
+  "writes": 0,
+  "items": [],
+  "blockers": [],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": false,
+  "warnings": [],
+  "applied": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --dry-run
+exit 0
+--- stdout
+add label backend: 0 matched, 0 to write
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "label-add",
+    "value": "backend",
+    "text": "add label backend"
+  },
+  "matched": 0,
+  "writes": 0,
+  "items": [],
+  "blockers": [],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true,
+  "warnings": []
+}
+--- stderr
+(empty)

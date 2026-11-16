@@ -19,24 +19,25 @@ test('the manifest lists the 20 capabilities in spec order, each with a path', (
   assert.equal(manifest.generatedAt, '2026-10-23T12:00:00Z')
   const byPath = (wanted) => manifest.capabilities.filter((entry) => entry.path === wanted).map((entry) => entry.id)
   assert.deepEqual(byPath('native'), [
-    'cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'native_triage', 'deliverables', 'status_update',
-    'releases', 'capacity', 'documents', 'time_tracking',
+    'cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'native_triage', 'deliverables', 'strategic_goals', 'status_update',
+    'releases', 'capacity', 'saved_views', 'documents', 'demand_signals', 'request_queue', 'time_tracking', 'user_inbox',
   ])
-  assert.deepEqual(byPath('derived'), ['native_metrics', 'linked_code'])
-  assert.deepEqual(byPath('absent'), [
-    'strategic_goals', 'saved_views', 'demand_signals', 'request_queue', 'agent_delegation',
-    'security_alerts', 'user_inbox',
-  ])
+  assert.deepEqual(byPath('derived'), ['native_metrics', 'linked_code', 'agent_delegation', 'security_alerts'])
+  assert.deepEqual(byPath('absent'), [])
 })
 
 test('derived capabilities carry their detail and absent ones a hint', () => {
   const byId = Object.fromEntries(tracker().capabilities().capabilities.map((entry) => [entry.id, entry]))
   assert.deepEqual(byId.native_metrics.detail, { source: 'events' })
   assert.deepEqual(byId.linked_code.detail, { source: 'git' })
+  assert.deepEqual(byId.security_alerts.detail, { source: 'scanners' })
+  assert.deepEqual(byId.agent_delegation, { id: 'agent_delegation', path: 'derived', detail: { source: 'assignee', run: 'local' } })
   assert.deepEqual(byId.releases, { id: 'releases', path: 'native' })
-  assert.deepEqual(byId.saved_views, {
-    id: 'saved_views', path: 'absent', enableHint: 'No pmkit command serves saved_views in the Local tracker yet',
-  })
+  assert.deepEqual(byId.saved_views, { id: 'saved_views', path: 'native' })
+  assert.deepEqual(byId.strategic_goals, { id: 'strategic_goals', path: 'native' })
+  assert.deepEqual(byId.demand_signals, { id: 'demand_signals', path: 'native' })
+  assert.deepEqual(byId.request_queue, { id: 'request_queue', path: 'native' })
+  assert.deepEqual(byId.user_inbox, { id: 'user_inbox', path: 'native' })
 })
 
 test('SERVED_BY has exactly the capability ids, in spec order', () => {
@@ -71,8 +72,7 @@ test('a native or derived capability has a serving command, an absent one has a 
 test('unservedCapabilities flags a native or derived capability with no serving command', () => {
   const entries = tracker().capabilities().capabilities
   assert.deepEqual(unservedCapabilities(entries, SERVED_BY), [])
-  const doctored = entries.map((entry) => (entry.id === 'strategic_goals' ? { id: entry.id, path: 'native' } : entry))
-  assert.deepEqual(unservedCapabilities(doctored, SERVED_BY), ['strategic_goals'])
+  assert.deepEqual(unservedCapabilities(entries, { ...SERVED_BY, user_inbox: [] }), ['user_inbox'])
 })
 
 function withGitHost(system) {
@@ -108,6 +108,7 @@ test('discover lists statuses in config order, the lists and members sorted by i
   assert.deepEqual(found.priorities, ['urgent', 'high', 'medium', 'low'])
   assert.deepEqual(found.labels, ['backend', 'frontend', 'webhooks', 'billing'])
   assert.deepEqual(found.members, [
+    { id: 'agent:claude', name: 'Claude', email: undefined, availability: 1 },
     { id: 'ana', name: 'Ana Souza', email: 'ana@example.com', availability: 0.8 },
     { id: 'fred', name: 'Fred Vanelli', email: 'fred@example.com', availability: 1 },
   ])

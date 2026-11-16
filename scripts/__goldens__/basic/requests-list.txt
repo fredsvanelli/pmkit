@@ -1,0 +1,33 @@
+$ pmkit requests list
+exit 0
+--- stdout
+no open requests
+--- stderr
+(empty)
+
+$ pmkit requests list --json
+exit 0
+--- stdout
+{
+  "requests": [],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit requests list --state all
+exit 0
+--- stdout
+no requests
+--- stderr
+(empty)
+
+$ pmkit requests list --state all --json
+exit 0
+--- stdout
+{
+  "requests": [],
+  "problems": []
+}
+--- stderr
+(empty)

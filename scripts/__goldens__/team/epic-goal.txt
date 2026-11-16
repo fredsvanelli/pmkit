@@ -1,0 +1,118 @@
+$ pmkit epic goal EPC-2M9D none
+exit 0
+--- stdout
+EPC-2M9D  Reliable webhooks and billing export
+no change
+--- stderr
+(empty)
+
+$ pmkit epic goal EPC-2M9D none --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  },
+  "after": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic goal EPC-2M9D none --dry-run
+exit 0
+--- stdout
+EPC-2M9D  Reliable webhooks and billing export
+no change
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit epic goal EPC-2M9D none --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  },
+  "after": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic goal EPC-2M9D GOAL-8K2W
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: goal GOAL-8K2W does not exist
+next: pmkit goal list
+
+$ pmkit epic goal EPC-2M9D GOAL-8K2W --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "goal GOAL-8K2W does not exist",
+    "nextStep": "pmkit goal list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic goal EPC-2M9D GOAL-8K2W --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: goal GOAL-8K2W does not exist
+next: pmkit goal list
+
+$ pmkit epic goal EPC-2M9D GOAL-8K2W --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "goal GOAL-8K2W does not exist",
+    "nextStep": "pmkit goal list"
+  }
+}
+--- stderr
+(empty)

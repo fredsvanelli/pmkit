@@ -72,8 +72,11 @@ export function planMigration({ root, trackerPath, from, to, migrations = MIGRAT
   const source = path.join(root, trackerPath)
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-format-'))
   removeOnExit(dir)
-  // The query index is a cache: it never enters the migration copy, its snapshots or its list of changes.
-  fs.cpSync(source, dir, { recursive: true, filter: (src) => path.relative(source, src).split(path.sep)[0] !== '.cache' })
+  // The query index is a cache: it never enters the migration copy, its snapshots or its list of changes. Nor does a `.deleting-` folder, the leftover of a failed issues delete.
+  fs.cpSync(source, dir, { recursive: true, filter: (src) => {
+    const parts = path.relative(source, src).split(path.sep)
+    return parts[0] !== '.cache' && !parts[1]?.startsWith('.deleting-')
+  } })
   const toRoot = (rel) => path.relative(root, path.join(source, rel)).split(path.sep).join('/')
   const configFile = path.join(dir, 'config.yaml')
   const planned = []

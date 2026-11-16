@@ -9,7 +9,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, FAKE_KEY, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, ACME_USERS, FAKE_KEY, customView, fakeCustomViews, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -175,6 +175,8 @@ test('issues branch uses the name Linear suggests', async () => {
   const { fake, fetch } = withIssues(['Fix it'])
   fake.records[0].branchName = 'ada/acme-1-fix-it'
   const context = setup({ edit: (text) => withTeam(text.replace('  system: none', '  system: github')) })
+  // The base branch has to exist now (PMK-290): give the repository a local main.
+  for (const args of [['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init']]) spawnSync('git', args, { cwd: context.root, env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' } })
   const result = await cli(context, ['issues', 'branch', 'ACME-1', '--as', 'user-1', '--dry-run', '--json'], fetch)
   assert.equal(result.code, 0, result.stdout + result.stderr)
   assert.equal(JSON.parse(result.stdout).branch, 'ada/acme-1-fix-it')
@@ -193,7 +195,7 @@ test('whoami prints the viewer', async () => {
 
 test('issues list --assignee me sends the viewer id', async () => {
   const { fake, fetch } = withIssues()
-  fake.seed({ title: 'Mine', assigneeId: 'user-1' })
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', stateId: 'state-3' })
   fake.seed({ title: 'Theirs', assigneeId: 'user-2' })
   const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--assignee', 'me', '--json'], fetch)
   assert.equal(result.code, 0, result.stdout + result.stderr)
@@ -806,6 +808,36 @@ const bodyFile = (text) => {
   return file
 }
 
+test('team load lists only the members of the configured team, and shows other assignees on their own row', async () => {
+  const outsider = { id: 'user-5', name: 'Outsider', displayName: 'outsider', email: 'user-5@example.com', active: true, guest: false, app: false, teams: { nodes: [{ id: 'team-other' }] } }
+  const users = [...ACME_USERS, outsider]
+  const fake = fakeLinearIssues({ users })
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', stateId: 'state-3' })
+  fake.seed({ title: 'Theirs', assigneeId: 'user-5', stateId: 'state-3' })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ users }), ...fake.routes })
+  const result = await linear(fetch, ['team', 'load', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.ok(!data.rows.some((row) => row.member === 'user-5' && row.isMember), 'the other team member is not a member row')
+  const row = data.rows.find((item) => item.member === 'user-5')
+  assert.deepEqual([row.isMember, row.issues], [false, 1])
+  assert.ok(data.rows.filter((item) => item.isMember).every((item) => ['user-1', 'user-2'].includes(item.member)))
+  assert.ok(!data.noWork.some((item) => item.member === 'user-5'))
+  assert.deepEqual(data.suggestions.filter((move) => move.to === 'user-5'), [])
+})
+
+test('team load --sprint current on a Linear team with cycles off counts all open work and names the cycles', async () => {
+  const fake = fakeLinearIssues({ users: ACME_USERS })
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', stateId: 'state-3' })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ users: ACME_USERS }), ...fake.routes })
+  const result = await linear(fetch, ['team', 'load', '--sprint', 'current', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.sprint, null)
+  assert.equal(data.rows.find((row) => row.member === 'user-1').issues, 1)
+  assert.doesNotMatch(result.stderr, /there is no active sprint, so --sprint current matches no issues/)
+})
+
 test('issues get --history and --comments read Linear, with thread lines in the text', async () => {
   const { fake, fetch } = withIssues()
   fake.seed({ title: 'Talk' }, { createdAt: '2026-10-01T00:00:00.000Z' })
@@ -844,6 +876,39 @@ test('issues comment --reply-to and issues resolve write to Linear, and their dr
   assert.equal(done.code, 0, done.stderr)
   assert.equal(JSON.parse(done.stdout).after.resolved.by, 'user-1')
   assert.deepEqual(fake.mutations.slice(2), ['PmkitCommentResolve'])
+})
+
+test('issues comment --redact on Linear posts the redacted body and reports what was replaced (PMK-229)', async () => {
+  const { fake, fetch } = withIssues(['Talk'])
+  const context = setup({ edit: withTeam })
+  const secret = `ghp_${'a'.repeat(36)}`
+  const result = await cli(context, ['issues', 'comment', 'ACME-1', '--body-file', bodyFile(`Seen with GITHUB_TOKEN=${secret}\n`), '--redact', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.redacted.count, 1)
+  assert.ok(!data.body.includes(secret) && data.body.endsWith('Redacted 1 value.'), data.body)
+  assert.ok(!JSON.stringify(fake).includes(secret), 'the secret never reached the API')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate'])
+})
+
+test('issues delegate on Linear sets the delegate of an app agent and says the tracker runs it; the dry run writes nothing', async () => {
+  const { fake, fetch } = withIssues(['Hand off'])
+  const context = setup({ edit: withTeam })
+  const dry = await cli(context, ['issues', 'delegate', 'ACME-1', 'agent:user-4', '--instructions-file', bodyFile('Do it.'), '--dry-run'], fetch)
+  assert.equal(dry.code, 0, dry.stderr)
+  assert.match(dry.stdout, /^delegate: \(none\) → agent:user-4$/m)
+  assert.match(dry.stdout, /^would comment$/m)
+  assert.doesNotMatch(dry.stdout, /tracker runs the agent/)
+  assert.match(dry.stdout, /dry run: nothing was written/)
+  assert.deepEqual(fake.mutations, [])
+  const done = await cli(context, ['issues', 'delegate', 'ACME-1', 'agent:user-4', '--instructions-file', bodyFile('Do it.')], fetch)
+  assert.equal(done.code, 0, done.stderr)
+  assert.match(done.stdout, /^the tracker runs the agent: agent:user-4 works on ACME-1 there$/m)
+  assert.doesNotMatch(done.stdout, /runs locally/)
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+  const shown = await cli(context, ['issues', 'get', 'ACME-1'], fetch)
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.match(shown.stdout, /^delegate: agent:user-4$/m)
 })
 
 test('issues comment with --as another member exits 2 with INVALID_INPUT and writes nothing', async () => {
@@ -998,6 +1063,25 @@ test('cycle capacity --set and --days-off write .pmkit/capacity.yaml and read ba
   assert.deepEqual(fake.mutations, [])
 })
 
+test('cycle capacity current writes the active cycle, and a member outside the configured team is refused', async () => {
+  const outsider = { id: 'user-5', name: 'Outsider', displayName: 'outsider', email: 'user-5@example.com', active: true, guest: false, app: false, teams: { nodes: [{ id: 'team-other' }] } }
+  const users = [...ACME_USERS, outsider]
+  const teams = [CYCLE_TEAM]
+  const fake = fakeLinearIssues({ teams, cycles: CYCLES, users })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, users }), ...fake.routes })
+  const context = setup({ edit: withTeam })
+  const ok = await cycleCli(context, ['cycle', 'capacity', 'current', '--set', 'user-1=8'], fetch)
+  assert.equal(ok.code, 0, ok.stdout + ok.stderr)
+  assert.equal(JSON.parse(ok.stdout).after.id, '2')
+  const refused = await cycleCli(context, ['cycle', 'capacity', '2', '--set', 'user-5=3'], fetch)
+  assert.equal(refused.code, 2)
+  assert.equal(errorOf(refused).code, 'INVALID_INPUT')
+  assert.match(errorOf(refused).nextStep, /user-1/)
+  assert.doesNotMatch(errorOf(refused).nextStep, /user-5/)
+  const refusedOff = await cycleCli(context, ['cycle', 'capacity', '2', '--days-off', 'user-5=2026-10-21'], fetch)
+  assert.equal(refusedOff.code, 2)
+})
+
 test('cycle open and cycle close exit 2 with NOT_SUPPORTED, the reason and the next step', async () => {
   const { fake, fetch } = withCycles()
   const context = setup({ edit: withTeam })
@@ -1140,6 +1224,11 @@ test('a milestone, a document and a milestone of an issue are readable', async (
   const docs = await cli(context, ['docs', 'read', 'abcdef012345'], fetch)
   assert.equal(docs.code, 0, docs.stdout + docs.stderr)
   assert.equal(docs.stdout.trim(), '# Plan')
+  const listed = await cli(context, ['docs', 'list', '--json'], fetch)
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.deepEqual(JSON.parse(listed.stdout), [{ path: 'abcdef012345', title: 'Plan' }])
+  const listedText = await cli(context, ['docs', 'list'], fetch)
+  assert.equal(listedText.stdout.trim(), 'abcdef012345  Plan')
   const attached = await cli(context, ['issues', 'get', 'ACME-1', '--json'], fetch)
   assert.equal(attached.code, 0, attached.stdout + attached.stderr)
   assert.equal(JSON.parse(attached.stdout).milestone, MILESTONE)
@@ -1151,7 +1240,7 @@ test('a Local epic prints no health, progress, milestones or documents line', ()
 })
 
 // Customers (PMK-42). The workspace with customers off is the proof for the absent capability; the workspaces with customers on use the fake.
-const CUSTOMER_OPERATIONS = ['PmkitCustomersList', 'PmkitCustomerShow', 'PmkitCustomerStatuses', 'PmkitCustomerTiers', 'PmkitCustomerIssue', 'PmkitCustomerProjects', 'PmkitCustomerUpdate', 'PmkitCustomerNeedCreate', 'PmkitCustomerNeedUpdate']
+const CUSTOMER_OPERATIONS = ['PmkitCustomersList', 'PmkitCustomerShow', 'PmkitCustomerStatuses', 'PmkitCustomerTiers', 'PmkitCustomerIssue', 'PmkitCustomerProjects', 'PmkitCustomerUpdate', 'PmkitCustomerNeedCreate', 'PmkitCustomerNeedUpdate', 'PmkitCustomerCreate', 'PmkitCustomerNeeds']
 const customerCalls = (fetch) => fetch.calls.filter((call) => CUSTOMER_OPERATIONS.includes(operationName(call.body.query)))
 const customersFetch = ({ workspace = {}, customers = {} } = {}) => fakeLinearFetch({ ...fakeWorkspace(workspace), ...fakeCustomers(customers) })
 const CUSTOMERS_PLAN = { type: 'Business' }
@@ -1546,6 +1635,53 @@ test('release-notes on Linear without releases refuses --release', async () => {
   assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'release notes by release need releases, which this workspace does not have', nextStep: RELEASES_HINT })
 })
 
+test('release-readiness on Linear without releases refuses --release', async () => {
+  const result = await cycleCli(setup({ edit: withTeam }), ['release-readiness', '--release', '1.0', '--json'], withCycles(['A']).fetch)
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'release readiness by release needs releases, which this workspace does not have', nextStep: RELEASES_HINT })
+})
+
+test('release-readiness on Linear without releases uses the sprint and says so', async () => {
+  const fake = fakeLinearIssues({ teams: [CYCLE_TEAM], cycles: CYCLES })
+  fake.seed({ title: 'A' })
+  const projects = fakeLinearProjects({ issues: fake })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams: [CYCLE_TEAM] }), ...fake.routes, ...projects.routes })
+  const result = await cli(setup({ edit: withTeam }), ['release-readiness'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse((await cycleCli(setup({ edit: withTeam }), ['release-readiness'], fetch)).stdout)
+  assert.deepEqual([data.basis, data.reason, data.source.id], ['sprint', 'active_sprint', '2'])
+  assert.deepEqual(data.skipped.map((s) => [s.basis, s.reason]), [['release', 'releases_absent'], ['milestone', 'no_open_milestone']])
+  assert.equal(data.gitHost.available, false)
+  assert.equal(data.ready, null)
+  assert.match(result.stderr, new RegExp(`note: releases is absent: ${RELEASES_HINT}`))
+  assert.match(result.stdout, /^sprint 2 \(.*\)\nthis tracker has no releases, no milestone with an open issue, so the report uses sprint 2\n/)
+})
+
+test('release-readiness on Linear takes a project milestone as the basis', async () => {
+  const { fetch } = withProjects()
+  const result = await cli(setup({ edit: withTeam }), ['release-readiness', '--milestone', MILESTONE, '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.basis, data.reason, data.issues.counts.done], ['milestone', 'requested', 1])
+})
+
+test('release-readiness on Linear marks a cut issue read as incomplete and reads a sprint server side', async () => {
+  const fake = fakeLinearIssues({ teams: [CYCLE_TEAM], cycles: CYCLES })
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}` })
+  fake.records[0].cycleId = fake.cycles.list()[1].id
+  const projects = fakeLinearProjects({ issues: fake })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams: [CYCLE_TEAM] }), ...fake.routes, ...projects.routes })
+  const cut = await cycleCli(setup({ edit: withTeam }), ['release-readiness'], fetch)
+  assert.equal(cut.code, 0, cut.stdout + cut.stderr)
+  const data = JSON.parse(cut.stdout)
+  assert.deepEqual([data.truncated, data.complete], [true, false])
+  assert.equal(data.issues.counts.open, 1)
+  assert.equal(data.ready, false)
+  assert.match(cut.stderr, /more issues than the 1000 pmkit read, so the basis and the open work may be incomplete/)
+  const sprint = JSON.parse((await cycleCli(setup({ edit: withTeam }), ['release-readiness', '--sprint', '2'], fetch)).stdout)
+  assert.deepEqual([sprint.truncated, sprint.issues.counts.total], [false, 1])
+})
+
 test('release-notes on Linear without releases builds from the sprint and says so', async () => {
   for (const args of [['release-notes', '--sprint', '1'], ['release-notes']]) {
     const result = await cycleCli(setup({ edit: withTeam }), args, withCycles(['A']).fetch)
@@ -1553,4 +1689,540 @@ test('release-notes on Linear without releases builds from the sprint and says s
     assert.equal(JSON.parse(result.stdout).basis, 'sprint', args.join(' '))
     assert.equal(result.stderr, `note: release notes built from sprint 1: ${RELEASES_HINT}\n`, args.join(' '))
   }
+})
+
+// PMK-225: the inbox reads Linear notifications of the key owner and marks them read in Linear.
+const inboxRoutes = () => ({
+  ...fakeWorkspace(),
+  PmkitNotifications: { status: 200, headers: {}, json: { data: { notifications: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
+    { id: 'n1', type: 'issueAssignedToYou', createdAt: '2026-10-30T10:00:00.000Z', readAt: null, actor: { id: 'user-2' }, issue: { identifier: 'ACME-1', title: 'First' }, comment: null },
+  ] } } } },
+  PmkitNotificationRead: (body) => ({ status: 200, headers: {}, json: { data: { notificationUpdate: { success: true, notification: { id: body.variables.id, readAt: body.variables.readAt } } } } }),
+})
+
+test('PMK-225: inbox list on Linear lists the key owner notifications', async () => {
+  const fetch = fakeLinearFetch(inboxRoutes())
+  const result = await cli(setup({ edit: withTeam }), ['inbox', 'list', '--as', 'user-1', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual(data.items.map((item) => [item.key, item.kind, item.issue]), [['notification:n1', 'assignment', 'ACME-1']])
+  assert.ok(!fetch.calls.some((call) => isMutation(call.body.query)))
+})
+
+test('PMK-225: inbox mark-read on Linear writes readAt, and a dry run writes nothing', async () => {
+  const fetch = fakeLinearFetch(inboxRoutes())
+  const context = setup({ edit: withTeam })
+  const dry = await cli(context, ['inbox', 'mark-read', '--as', 'user-1', '--dry-run', '--json'], fetch)
+  assert.equal(dry.code, 0, dry.stderr + dry.stdout)
+  assert.equal(callsOf(fetch, 'PmkitNotificationRead'), 0)
+  const result = await cli(context, ['inbox', 'mark-read', '--as', 'user-1', '--key', 'notification:n1', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  assert.deepEqual(JSON.parse(result.stdout).marked, ['notification:n1'])
+  assert.equal(callsOf(fetch, 'PmkitNotificationRead'), 1)
+})
+
+test('PMK-225 review: inbox list --reviews on Linear without --login is not verified, never 0, and calls no gh', async () => {
+  const fetch = fakeLinearFetch(inboxRoutes())
+  const context = setup({ edit: (text) => withTeam(text).replace(/git_host:\n  system: \w+/, 'git_host:\n  system: github\n  repo: acme/repo') })
+  const result = await cli(context, ['inbox', 'list', '--as', 'user-1', '--reviews', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.reviews.verified, data.reviews.requested, data.reviews.code, data.counts.reviewRequests], [false, null, 'INVALID_INPUT', null])
+  assert.match(data.reviews.reason, /--login/)
+})
+
+test('PMK-225 review: a cut Linear read is a warning without a null id and without pmkit validate', async () => {
+  const routes = inboxRoutes()
+  let n = 0
+  routes.PmkitNotifications = () => ({ status: 200, headers: {}, json: { data: { notifications: { pageInfo: { hasNextPage: true, endCursor: `c${(n += 1)}` }, nodes: [] } } } })
+  const result = await cli(setup({ edit: withTeam }), ['inbox', 'list', '--as', 'user-1'], fakeLinearFetch(routes))
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  assert.match(result.stderr, /warning: UPSTREAM only the newest 1000 notifications were read/)
+  assert.doesNotMatch(result.stderr + result.stdout, /null:|pmkit validate/)
+  assert.match(result.stdout, /the inbox is incomplete/)
+})
+
+// Linear custom views (PMK-212): views list and views run read them; the writes stay in Linear.
+function withViews(views, { endless = false, extra = [] } = {}) {
+  const fake = fakeLinearIssues()
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', priority: 4 })
+  fake.seed({ title: 'Theirs', assigneeId: 'user-2' })
+  fake.seed({ title: 'Also mine', assigneeId: 'user-1', priority: 1 })
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes, ...fakeCustomViews({ views, issues: fake, endless, extra }) }) }
+}
+const MINE = { assignee: { id: { eq: 'user-1' } } }
+const VIEWS = [
+  customView('00000000-0000-4000-8000-000000000002', 'Mine', MINE),
+  customView('00000000-0000-4000-8000-000000000001', 'Everyone', {}, { team: null }),
+  customView('00000000-0000-4000-8000-000000000003', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } }),
+  customView('00000000-0000-4000-8000-000000000004', 'Projects', {}, { modelName: 'Project' }),
+]
+
+test('views list on Linear lists the issue views of the scope team and the workspace, with the Linear filter', async () => {
+  const { fetch } = withViews(VIEWS)
+  const listed = await cli(setup({ edit: withTeam }), ['views', 'list', '--json'], fetch)
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  const data = JSON.parse(listed.stdout)
+  assert.deepEqual(data.views.map((view) => [view.name, view.id, view.filter, view.linear.team]), [['Everyone', '00000000-0000-4000-8000-000000000001', null, null], ['Mine', '00000000-0000-4000-8000-000000000002', null, 'ACME']])
+  assert.deepEqual(data.views[1].linear.filterData, MINE)
+  assert.equal(data.hasMore, false)
+  const text = await cli(setup({ edit: withTeam }), ['views', 'list'], withViews(VIEWS).fetch)
+  assert.match(text.stdout, /Mine +\| linear: \{"assignee":\{"id":\{"eq":"user-1"\}\}\}/)
+})
+
+test('views list on Linear says the list is cut when Linear has more views than pmkit read', async () => {
+  const { fetch } = withViews(VIEWS, { endless: true })
+  const listed = await cli(setup({ edit: withTeam }), ['views', 'list', '--json'], fetch)
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.equal(JSON.parse(listed.stdout).hasMore, true)
+  assert.match(listed.stderr, /Linear has more views than pmkit read, so the list is not complete/)
+})
+
+test('views run on Linear runs the view by name or id, in created order, with --limit and --sort', async () => {
+  const context = setup({ edit: withTeam })
+  const byName = await cli(context, ['views', 'run', 'Mine', '--json'], withViews(VIEWS).fetch)
+  assert.equal(byName.code, 0, byName.stdout + byName.stderr)
+  const data = JSON.parse(byName.stdout)
+  assert.deepEqual(data.issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
+  assert.equal(data.view.id, '00000000-0000-4000-8000-000000000002')
+  assert.equal(data.hasMore, false)
+  const byId = await cli(context, ['views', 'run', '00000000-0000-4000-8000-000000000002', '--sort', 'priority', '--limit', '1', '--json'], withViews(VIEWS).fetch)
+  assert.equal(byId.code, 0, byId.stdout + byId.stderr)
+  assert.deepEqual(JSON.parse(byId.stdout).issues.map((issue) => issue.id), ['ACME-3'])
+  assert.deepEqual(JSON.parse(byId.stdout).overrides, { limit: 1, sort: 'priority' })
+})
+
+test('views run on Linear refuses two views with one name, and a name it cannot find', async () => {
+  const context = setup({ edit: withTeam })
+  const twice = [...VIEWS, customView('00000000-0000-4000-8000-000000000005', 'Mine', {})]
+  const ambiguous = await cli(context, ['views', 'run', 'Mine', '--json'], withViews(twice).fetch)
+  assert.equal(ambiguous.code, 2)
+  assert.equal(errorOf(ambiguous).code, 'INVALID_INPUT')
+  assert.equal(JSON.parse(ambiguous.stdout).error.reason, 'ambiguous_view_name')
+  assert.match(errorOf(ambiguous).message, /00000000-0000-4000-8000-000000000002, 00000000-0000-4000-8000-000000000005/)
+  const missing = await cli(context, ['views', 'run', 'Gone', '--json'], withViews(VIEWS).fetch)
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+  assert.equal(JSON.parse(missing.stdout).error.reason, undefined)
+  const cut = await cli(context, ['views', 'run', 'Gone', '--json'], withViews(VIEWS, { endless: true }).fetch)
+  assert.equal(errorOf(cut).code, 'NOT_FOUND')
+  assert.equal(JSON.parse(cut.stdout).error.reason, 'view_list_incomplete')
+  assert.match(errorOf(cut).message, /Linear has more views than pmkit read/)
+})
+
+test('views save, delete and rename on Linear answer NOT_SUPPORTED and send no mutation', async () => {
+  const { fake, fetch } = withViews(VIEWS)
+  for (const args of [['views', 'save', 'v', '--category', 'done'], ['views', 'delete', 'Mine'], ['views', 'rename', 'Mine', 'Ours']]) {
+    const refused = await cli(setup({ edit: withTeam }), [...args, '--json'], fetch)
+    assert.equal(refused.code, 2, refused.stdout + refused.stderr)
+    assert.equal(errorOf(refused).code, 'NOT_SUPPORTED', args.join(' '))
+    assert.equal(errorOf(refused).message, 'Linear views are created, renamed and deleted in Linear; pmkit reads and runs them')
+  }
+  assert.deepEqual(fake.mutations, [])
+  assert.ok(fetch.calls.every((call) => !isMutation(call.body.query)))
+})
+
+test('issues bulk --view refuses a Linear view, whose filter pmkit cannot check', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'bulk', 'priority', 'high', '--view', 'Mine', '--dry-run', '--json'], fetch)
+  assert.equal(result.code, 2, result.stdout + result.stderr)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.match(errorOf(result).message, /Linear view Mine/)
+  assert.equal(callsOf(fetch, 'PmkitCustomViews') + callsOf(fetch, 'PmkitCustomViewIssues') + callsOf(fetch, 'PmkitIssues'), 0, 'refused before any read')
+})
+
+test('views run on Linear does not run a name found once in a cut list, and runs it by id', async () => {
+  const context = setup({ edit: withTeam })
+  const byName = await cli(context, ['views', 'run', 'Mine', '--json'], withViews(VIEWS, { endless: true }).fetch)
+  assert.equal(byName.code, 2, byName.stdout + byName.stderr)
+  assert.equal(errorOf(byName).code, 'INVALID_INPUT')
+  assert.equal(JSON.parse(byName.stdout).error.reason, 'view_list_incomplete')
+  assert.match(errorOf(byName).message, /00000000-0000-4000-8000-000000000002/)
+  const byId = await cli(context, ['views', 'run', '00000000-0000-4000-8000-000000000002', '--json'], withViews(VIEWS, { endless: true }).fetch)
+  assert.equal(byId.code, 0, byId.stdout + byId.stderr)
+  assert.deepEqual(JSON.parse(byId.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
+})
+
+test('views list and views run on Linear need tracker.scope.workspace and send no view query without it', async () => {
+  const { fetch } = withViews(VIEWS)
+  const context = setup({ edit: (text) => withTeam(text).replace('    workspace: acme\n', '') })
+  for (const args of [['views', 'list'], ['views', 'run', 'Mine']]) {
+    const result = await cli(context, [...args, '--json'], fetch)
+    assert.equal(result.code, 2, result.stdout + result.stderr)
+    assert.equal(errorOf(result).code, 'NOT_CONFIGURED', args.join(' '))
+  }
+  assert.equal(callsOf(fetch, 'PmkitCustomViews'), 0)
+})
+
+test('views list on Linear never says no views when the list is cut', async () => {
+  const { fetch } = withViews([customView('00000000-0000-4000-8000-000000000003', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } })], { endless: true })
+  const listed = await cli(setup({ edit: withTeam }), ['views', 'list'], fetch)
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.doesNotMatch(listed.stdout, /^no views$/m)
+  assert.match(listed.stdout, /no view among the views pmkit read/)
+})
+
+test('views run on Linear asks Linear for the created order, so a cut read keeps the oldest issues', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['views', 'run', 'Everyone', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const call = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitCustomViewIssues').at(-1)
+  assert.deepEqual(call.body.variables.sort, [{ createdAt: { order: 'Ascending' } }])
+  assert.deepEqual(JSON.parse(result.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-2', 'ACME-3'])
+})
+
+test('views run on Linear reads a view by id directly, even past the cut of the view list', async () => {
+  const late = customView('00000000-0000-4000-8000-000000000009', 'Late', MINE)
+  const { fetch } = withViews(VIEWS, { endless: true, extra: [late] })
+  const context = setup({ edit: withTeam })
+  const result = await cli(context, ['views', 'run', late.id, '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
+  assert.equal(callsOf(fetch, 'PmkitCustomViews'), 0, 'an id needs no list')
+  const missing = await cli(context, ['views', 'run', '00000000-0000-4000-8000-0000000000ff', '--json'], fetch)
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+  const projects = await cli(context, ['views', 'run', VIEWS[3].id, '--json'], fetch)
+  assert.equal(errorOf(projects).code, 'INVALID_INPUT')
+  assert.match(errorOf(projects).message, /not an issue view/)
+  const other = await cli(context, ['views', 'run', VIEWS[2].id, '--json'], fetch)
+  assert.equal(errorOf(other).code, 'INVALID_INPUT')
+  assert.match(errorOf(other).message, /team OPS/)
+})
+
+test('views run --limit on Linear reads only that many issues and warns about no cut', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['views', 'run', 'Everyone', '--limit', '2'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.equal(result.stderr, '')
+  const call = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitCustomViewIssues').at(-1)
+  assert.equal(call.body.variables.first, 2)
+  const sorted = await cli(setup({ edit: withTeam }), ['views', 'run', 'Everyone', '--limit', '2', '--sort', 'priority', '--json'], withViews(VIEWS).fetch)
+  assert.deepEqual(JSON.parse(sorted.stdout).issues.map((issue) => issue.id), ['ACME-3', 'ACME-1'], 'another order reads every issue first')
+})
+
+test('issues bulk estimate --view on Linear refuses before any request', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'bulk', 'estimate', '3', '--view', 'Mine', '--dry-run', '--json'], fetch)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.match(errorOf(result).message, /Linear view Mine/)
+  assert.equal(fetch.calls.length, 0)
+})
+
+// PMK-221: the generic customer commands on Linear, on top of linear customers, with the Local record keys.
+const LOCAL_CUSTOMER_KEYS = ['id', 'name', 'status', 'tier', 'revenue', 'size', 'owner', 'requests', 'url', 'notes']
+const LOCAL_REQUEST_KEYS = ['id', 'title', 'body', 'priority', 'important', 'customer', 'from', 'state', 'target', 'created', 'triaged', 'reason']
+const generic = async (args, fetch) => {
+  const result = await cli(setup({ edit: withTeam }), [...args, '--json'], fetch)
+  return { ...result, data: JSON.parse(result.stdout) }
+}
+
+test('customers list and customers show on Linear return the Local keys, and both spellings of show agree', async () => {
+  const list = await generic(['customers', 'list'], withNeeds())
+  assert.equal(list.code, 0, list.stdout + list.stderr)
+  assert.deepEqual(Object.keys(list.data), ['available', 'customers', 'hasMore', 'problems'])
+  assert.deepEqual(list.data.customers.map((item) => item.name), ['ACME Corp', 'Initech', 'Globex'])
+  assert.deepEqual(Object.keys(list.data.customers[0]), LOCAL_CUSTOMER_KEYS)
+  assert.equal(list.data.customers[0].notes, null)
+  const showFetch = withNeeds()
+  const shown = await generic(['customers', 'show', 'acme corp'], showFetch)
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.deepEqual(Object.keys(shown.data), ['available', 'customer', 'requests', 'problems'])
+  assert.deepEqual(shown.data.requests.map((request) => request.id), ['need-2', 'need-3', 'need-1', 'need-4'])
+  assert.deepEqual(Object.keys(shown.data.requests[0]), LOCAL_REQUEST_KEYS)
+  assert.deepEqual(shown.data.requests.map((request) => request.state), ['accepted', 'open', 'accepted', 'accepted'])
+  assert.deepEqual(shown.data.requests[2].customer, { id: 'cust-2', name: 'ACME Corp' })
+  assert.deepEqual((await generic(['customers', 'show', '--customer', 'cust-2'], withNeeds())).data, shown.data)
+  assert.equal(mutationCalls(showFetch).length, 0)
+})
+
+test('customers show on Linear reports a cut request read as INCOMPLETE, and a name past a cut list as an incomplete lookup', async () => {
+  const many = Array.from({ length: 251 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: `Ask ${index}`, priority: 0, createdAt: `2026-10-01T00:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}Z` }))
+  const fetch = onFetch({ needs: [...many, { id: 'other', customerId: 'cust-3', body: 'Not mine', priority: 0 }] })
+  const shown = await generic(['customers', 'show', 'cust-2'], fetch)
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.equal(shown.data.requests.length, 250)
+  assert.ok(!shown.data.requests.some((request) => request.id === 'other'))
+  assert.deepEqual(shown.data.problems.map((problem) => [problem.id, problem.code]), [['cust-2', 'INCOMPLETE']])
+  assert.match(shown.stderr, /warning: cust-2: INCOMPLETE .*250/)
+  // B3: the requests of a customer come from customerNeeds filtered by the customer, never from Customer.needs.
+  const reads = fetch.calls.filter((call) => operationName(call.body.query) === 'PmkitCustomerNeeds')
+  assert.ok(reads.length > 0)
+  for (const call of reads) assert.deepEqual(call.body.variables.filter, { customer: { id: { eq: 'cust-2' } } })
+  assert.doesNotMatch(shown.stderr, /run pmkit validate/)
+  const crowd = Array.from({ length: 251 }, (_, index) => customerNode(`c-${index}`, `Customer ${index}`))
+  const missing = await generic(['customers', 'show', 'Nobody'], onFetch({ customers: crowd }))
+  assert.equal(missing.code, 2)
+  assert.equal(missing.data.error.code, 'NOT_FOUND')
+  assert.match(missing.data.error.message, /incomplete/)
+  const listed = await generic(['customers', 'list'], onFetch({ customers: crowd }))
+  assert.equal(listed.data.hasMore, true)
+  assert.equal(listed.data.problems[0].code, 'INCOMPLETE')
+})
+
+test('customers create on Linear sends customerCreate with the ids of the names; --dry-run sends no mutation', async () => {
+  const dryFetch = onFetch()
+  const dry = await generic(['customers', 'create', '--name', 'Hooli', '--status', 'prospect', '--tier', 'silver', '--revenue', '900', '--owner', 'user-2', '--dry-run'], dryFetch)
+  assert.equal(dry.code, 0, dry.stderr)
+  assert.deepEqual(dry.data.after, {
+    id: null, name: 'Hooli', status: { id: 'st-2', name: 'Prospect' }, tier: { id: 'tier-2', name: 'Silver' }, revenue: 900, size: null,
+    owner: { id: 'user-2', name: 'Ada Lovelace' }, requests: 0, url: null, notes: null,
+  })
+  assert.equal(mutationCalls(dryFetch).length, 0)
+  const fetch = onFetch()
+  const made = await generic(['customers', 'create', '--name', 'Hooli', '--tier', 'Gold'], fetch)
+  assert.equal(made.code, 0, made.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables.input), [{ name: 'Hooli', tierId: 'tier-1' }])
+  assert.equal(made.data.after.name, 'Hooli')
+  for (const args of [['--name', 'X', '--tier', 'Platinum'], ['--name', 'X', '--owner', 'nobody'], ['--name', 'X', '--revenue', 'lots']]) {
+    const refused = await generic(['customers', 'create', ...args], onFetch())
+    assert.equal(refused.data.error.code, 'INVALID_INPUT', args.join(' '))
+  }
+})
+
+test('customers update on Linear sends customerUpdate, refuses --status none and previews with --dry-run', async () => {
+  const fetch = onFetch()
+  const updated = await generic(['customers', 'update', 'Initech', '--tier', 'gold', '--revenue', '7000'], fetch)
+  assert.equal(updated.code, 0, updated.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables), [{ id: 'cust-3', input: { tierId: 'tier-1', revenue: 7000 } }])
+  assert.deepEqual([updated.data.before.revenue, updated.data.after.revenue, updated.data.after.notes], [5000, 7000, null])
+  const dryFetch = onFetch()
+  const dry = await generic(['customers', 'update', 'Initech', '--owner', 'none', '--dry-run'], dryFetch)
+  assert.equal(dry.data.after.owner, null)
+  assert.equal(mutationCalls(dryFetch).length, 0)
+  assert.equal((await generic(['customers', 'update', 'Initech', '--status', 'none'], onFetch())).data.error.code, 'INVALID_INPUT')
+})
+
+test('requests create on Linear writes the title as the first body line on an issue, and needs a customer and an issue', async () => {
+  const fetch = withNeeds({ issues: [{ id: 'iss-7', identifier: 'ACME-7', title: 'CSV export', archivedAt: null, trashed: false }] })
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'Columns out of order.\n')
+  const made = await generic(['requests', 'create', '--title', 'CSV order', '--customer', 'Initech', '--issue', 'ACME-7', '--important', '--body-file', body], fetch)
+  assert.equal(made.code, 0, made.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables.input), [{ customerId: 'cust-3', issueId: 'iss-7', priority: 1, body: 'CSV order\n\nColumns out of order.' }])
+  assert.deepEqual([made.data.after.title, made.data.after.body, made.data.after.state, made.data.after.target.id], ['CSV order', 'Columns out of order.', 'accepted', 'ACME-7'])
+  for (const args of [['--title', 'T', '--issue', 'ACME-7'], ['--title', 'T', '--customer', 'Initech'], ['--title', 'T', '--customer', 'Initech', '--issue', 'ACME-7', '--from', 'support']]) {
+    const refusedFetch = withNeeds()
+    const refused = await generic(['requests', 'create', ...args], refusedFetch)
+    assert.equal(refused.data.error.code, 'INVALID_INPUT', args.join(' '))
+    assert.equal(mutationCalls(refusedFetch).length, 0)
+  }
+  const twin = await generic(['requests', 'create', '--title', 'Again', '--customer', 'cust-2', '--issue', 'ACME-12'], withNeeds({ issues: [{ id: 'iss-12', identifier: 'ACME-12', title: 'SSO login', archivedAt: null, trashed: false }] }))
+  assert.equal(twin.data.error.code, 'CONFLICT')
+})
+
+test('demand list on Linear groups the customer requests on issues, skips the others, and maps the status and the priority', async () => {
+  const state = { id: 'state-x', name: 'In Progress', type: 'started' }
+  const issue = (identifier, priority) => ({ id: `id-${identifier}`, identifier, title: `Title ${identifier}`, priority, archivedAt: null, state, team: { id: 'team-1' } })
+  const needs = [
+    { id: 'n-1', customerId: 'cust-2', body: 'a', priority: 1, createdAt: '2026-10-01T00:00:00Z', issue: issue('ACME-12', 2) },
+    { id: 'n-2', customerId: 'cust-3', body: 'b', priority: 0, createdAt: '2026-10-02T00:00:00Z', issue: issue('ACME-12', 2) },
+    { id: 'n-3', customerId: 'cust-3', body: 'c', priority: 0, createdAt: '2026-10-03T00:00:00Z', issue: issue('ACME-4', 0) },
+    { id: 'n-4', customerId: 'cust-2', body: 'd', priority: 0, createdAt: '2026-10-04T00:00:00Z', project: { id: 'proj-1', name: 'Mobile' } },
+    { id: 'n-5', customerId: 'cust-1', body: 'e', priority: 0, createdAt: '2026-10-05T00:00:00Z' },
+  ]
+  const fetch = onFetch({ needs })
+  const demand = await generic(['demand', 'list'], fetch)
+  assert.equal(demand.code, 0, demand.stderr)
+  assert.deepEqual(demand.data.problems, [])
+  assert.deepEqual(demand.data.signals.map((signal) => [signal.issue.id, signal.count, signal.important, signal.requests]), [['ACME-12', 2, 1, ['n-1', 'n-2']], ['ACME-4', 1, 0, ['n-3']]])
+  assert.deepEqual(demand.data.signals[0].issue, { id: 'ACME-12', title: 'Title ACME-12', status: { name: 'In Progress', category: 'in_progress' }, priority: 'high' })
+  assert.equal(demand.data.signals[1].issue.priority, null)
+  assert.deepEqual(demand.data.signals[0].customers, [
+    { id: 'cust-2', name: 'ACME Corp', tier: { id: 'tier-1', name: 'Gold' }, revenue: 120000, size: 450 },
+    { id: 'cust-3', name: 'Initech', tier: { id: 'tier-2', name: 'Silver' }, revenue: 5000, size: 10 },
+  ])
+  assert.deepEqual(demand.data.signals[0].from, [])
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('demand list on Linear past the read cap says the requests are incomplete, about request', async () => {
+  const needs = Array.from({ length: 1001 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: 'x', priority: 0, createdAt: '2026-10-01T00:00:00Z', issue: { id: 'i-1', identifier: 'ACME-1', title: 'T', priority: 0, archivedAt: null, state: { id: 's', name: 'Todo', type: 'unstarted' }, team: { id: 'team-1' } } }))
+  const demand = await generic(['demand', 'list'], onFetch({ needs }))
+  assert.equal(demand.code, 0, demand.stderr)
+  assert.deepEqual(demand.data.problems.map((problem) => [problem.id, problem.about, problem.code]), [[null, 'request', 'INCOMPLETE']])
+  assert.equal(demand.data.signals[0].count, 1000)
+})
+
+test('the generic customer commands with customers off refuse with the hint and send no customer query; the request queue stays unsupported', async () => {
+  for (const args of [['customers', 'list'], ['customers', 'show', 'acme'], ['customers', 'update', 'acme', '--tier', 'Gold'], ['demand', 'list']]) {
+    const fetch = customersFetch({ workspace: { subscription: CUSTOMERS_PLAN } })
+    const refused = await generic(args, fetch)
+    assert.equal(refused.data.error.code, 'NOT_SUPPORTED', args.join(' '))
+    assert.match(refused.data.error.message, /customer requests/i, args.join(' '))
+    assert.equal(customerCalls(fetch).length, 0, args.join(' '))
+  }
+  for (const args of [['requests', 'list'], ['requests', 'get', 'need-1'], ['requests', 'accept', 'need-1', '--create'], ['requests', 'update', 'need-1', '--title', 'T']]) {
+    const fetch = withNeeds()
+    const refused = await generic(args, fetch)
+    assert.equal(refused.data.error.code, 'NOT_SUPPORTED', args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+})
+
+// PMK-221 review B3: Customer.needs is a plain list without arguments in Linear's schema; the fake refuses the connection form.
+test('the fake refuses Customer.needs with arguments, as the Linear schema does', async () => {
+  const fetch = withNeeds()
+  const wrong = 'query PmkitCustomerShow($id: String!) { customer(id: $id) { id needs(first: 50) { nodes { id } pageInfo { hasNextPage endCursor } } } }'
+  const response = await fetch('https://api.linear.app/graphql', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: wrong, variables: { id: 'cust-2' } }) })
+  const body = JSON.parse(await response.text())
+  assert.match(body.errors?.[0]?.message ?? '', /Unknown argument "first" on field "Customer.needs"/)
+})
+
+test('linear customers show and link read the requests through customerNeeds and say when the read was cut', async () => {
+  const many = Array.from({ length: 251 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: `Ask ${index}`, priority: 0, createdAt: '2026-10-01T00:00:00Z' }))
+  const shown = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'cust-2', '--json'], onFetch({ needs: many }))
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.equal(JSON.parse(shown.stdout).requests.length, 250)
+  assert.match(shown.stderr, /more than 250 requests/)
+})
+
+// PMK-221 review B5: a customer past the 250 the lookup reads is still found by its id, read directly.
+test('the generic customer commands on Linear find a customer past the lookup cap by its id', async () => {
+  const late = '0b5d7e9a-1c2d-4e3f-8a9b-0c1d2e3f4a5b'
+  const crowd = [...Array.from({ length: 260 }, (_, index) => customerNode(`c-${index}`, `Customer ${index}`)), customerNode(late, 'Late Corp', { revenue: 1 })]
+  const shown = await generic(['customers', 'show', late], onFetch({ customers: crowd }))
+  assert.equal(shown.code, 0, shown.stdout + shown.stderr)
+  assert.equal(shown.data.customer.name, 'Late Corp')
+  const fetch = onFetch({ customers: crowd })
+  const updated = await generic(['customers', 'update', late, '--tier', 'silver'], fetch)
+  assert.equal(updated.code, 0, updated.stdout + updated.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables.id), [late])
+  const missing = await generic(['customers', 'show', '0b5d7e9a-0000-4e3f-8a9b-0c1d2e3f4a5b'], onFetch({ customers: crowd }))
+  assert.equal(missing.data.error.code, 'NOT_FOUND')
+})
+
+// PMK-221 review M2: CustomerCreateInput.size and CustomerUpdateInput.size are Int.
+test('customers create and update on Linear refuse a decimal size before any mutation', async () => {
+  for (const args of [['customers', 'create', '--name', 'X', '--size', '2.5'], ['customers', 'update', 'Initech', '--size', '2.5']]) {
+    const fetch = onFetch()
+    const refused = await generic(args, fetch)
+    assert.equal(refused.data.error.code, 'INVALID_INPUT', args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+})
+
+// PMK-221 review M6 and M8: a name matched in a cut list may have a twin past the cut; an id that Linear does not have is plainly missing.
+test('past the 250-customer cap, a name match is incomplete: a read warns, a write refuses, and an unknown id is NOT_FOUND', async () => {
+  const crowd = Array.from({ length: 260 }, (_, index) => customerNode(`c-${index}`, `Customer ${index}`))
+  const shown = await generic(['customers', 'show', 'Customer 5'], onFetch({ customers: crowd }))
+  assert.equal(shown.code, 0, shown.stdout + shown.stderr)
+  assert.equal(shown.data.customer.id, 'c-5')
+  assert.deepEqual(shown.data.problems.map((problem) => problem.code), ['INCOMPLETE'])
+  assert.match(shown.data.problems[0].message, /more than 250 customers; another customer named "Customer 5" past them is not ruled out/)
+  const byId = await generic(['customers', 'show', 'c-5'], onFetch({ customers: crowd }))
+  assert.deepEqual(byId.data.problems, [])
+  const fetch = onFetch({ customers: crowd })
+  const refused = await generic(['customers', 'update', 'Customer 5', '--tier', 'Gold'], fetch)
+  assert.equal(refused.data.error.code, 'INVALID_INPUT')
+  assert.match(refused.data.error.nextStep, /c-5/)
+  assert.equal(mutationCalls(fetch).length, 0)
+  const linear = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'Customer 5', '--json'], onFetch({ customers: crowd }))
+  assert.equal(linear.code, 0, linear.stderr)
+  assert.match(linear.stderr, /warning: .*more than 250 customers/)
+  const missing = await generic(['customers', 'show', '0b5d7e9a-0000-4e3f-8a9b-0c1d2e3f4a5b'], onFetch({ customers: crowd }))
+  assert.equal(missing.data.error.code, 'NOT_FOUND')
+  assert.equal(missing.data.error.message, 'customer 0b5d7e9a-0000-4e3f-8a9b-0c1d2e3f4a5b does not exist')
+})
+
+// PMK-246: a workspace with releases on. One release per issue (decision PMK-246-1); the filter matches any of an issue's releases.
+const RA = '00000000-0000-4000-8000-0000000000d1'
+const RB = '00000000-0000-4000-8000-0000000000d2'
+function withReleases() {
+  const fake = fakeLinearIssues({
+    pipelines: [{ id: 'pipe', name: 'Web', teams: ['team-acme'] }],
+    releases: [{ id: RA, name: 'Alpha', version: '1.0', pipeline: 'pipe', targetDate: '2026-12-01' }, { id: RB, name: 'Beta', version: '1.1', pipeline: 'pipe' }],
+  })
+  fake.seed({ title: 'Shipped', releaseIds: [RA], stateId: 'state-8', labelIds: ['label-feature'] })
+  fake.seed({ title: 'Open', releaseIds: [RA] })
+  fake.seed({ title: 'Both', releaseIds: [RA, RB] })
+  fake.seed({ title: 'Free' })
+  const projects = fakeLinearProjects({ issues: fake })
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace({ releasesEnabled: true }), ...fake.routes, ...projects.routes }) }
+}
+
+test('release list and get read Linear releases on a workspace with releases', async () => {
+  const { fetch } = withReleases()
+  const list = await linear(fetch, ['release', 'list', '--json'])
+  assert.equal(list.code, 0, list.stderr)
+  assert.deepEqual(JSON.parse(list.stdout).map((release) => [release.id, release.name, release.state]), [[RA, 'Alpha', 'planned'], [RB, 'Beta', 'planned']])
+  assert.equal(list.stderr, '')
+  const get = await linear(fetch, ['release', 'get', RA, '--json'])
+  assert.deepEqual(JSON.parse(get.stdout), { id: RA, name: 'Alpha', target: '2026-12-01', state: 'planned', description: '' })
+})
+
+test('issues get shows the release and issues update --release changes it on Linear', async () => {
+  const { fake, fetch } = withReleases()
+  assert.equal(JSON.parse((await linear(fetch, ['issues', 'get', 'ACME-2', '--json'])).stdout).release, RA)
+  assert.deepEqual(JSON.parse((await linear(fetch, ['issues', 'get', 'ACME-3', '--json'])).stdout).releases, [RA, RB])
+  const dry = JSON.parse((await linear(fetch, ['issues', 'update', 'ACME-4', '--release', RB, '--dry-run', '--json'])).stdout)
+  assert.equal(dry.after.release, RB)
+  const real = await linear(fetch, ['issues', 'update', 'ACME-4', '--release', RB, '--json'])
+  assert.equal(real.code, 0, real.stdout + real.stderr)
+  assert.deepEqual(fake.records[3].releaseIds, [RB])
+  const refused = await linear(fetch, ['issues', 'update', 'ACME-3', '--release', 'none', '--json'])
+  assert.deepEqual(errorOf(refused), { code: 'INVALID_INPUT', message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue', nextStep: 'Change the releases of the issue in Linear' })
+})
+
+test('issues update --release on a workspace with releases off says releases are off', async () => {
+  const { fetch } = withIssues(['A'])
+  const result = await linear(fetch, ['issues', 'update', 'ACME-1', '--release', RA, '--json'])
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'Linear releases are off in this workspace', nextStep: RELEASES_HINT })
+})
+
+test('release issues lists the issues of a Linear release, and a missing one is NOT_FOUND', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release', 'issues', RA, '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).map((issue) => issue.id), ['ACME-1', 'ACME-2', 'ACME-3'])
+  const missing = await linear(fetch, ['release', 'issues', '00000000-0000-4000-8000-0000000000ff', '--json'])
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+})
+
+test('release-readiness --release reads a Linear release', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release-readiness', '--release', RA, '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.basis, data.reason, data.source.id], ['release', 'requested', RA])
+  assert.deepEqual([data.issues.counts.total, data.issues.counts.done, data.issues.counts.open], [3, 1, 2])
+})
+
+test('release-readiness with no flag picks a planned Linear release', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release-readiness', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.equal(JSON.parse(result.stdout).basis, 'release')
+})
+
+test('release-notes --release reads a Linear release', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release-notes', '--release', RA, '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.basis, 'release')
+  assert.match(JSON.stringify(data), /Shipped/)
+  assert.doesNotMatch(JSON.stringify(data), /"Open"/)
+  assert.deepEqual(data.groups.flatMap((group) => group.issues.map((issue) => issue.release)), [RA])
+  assert.deepEqual([data.truncated, data.complete], [false, true])
+})
+
+test('release-notes --release marks a cut read incomplete in the JSON, the text and a warning', async () => {
+  const { fake, fetch } = withReleases()
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}`, releaseIds: [RA] })
+  const result = await linear(fetch, ['release-notes', '--release', RA, '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual([JSON.parse(result.stdout).truncated, JSON.parse(result.stdout).complete], [true, false])
+  assert.match(result.stderr, /Linear has more issues than the 1000 pmkit read, so the notes may be missing issues/)
+  const text = await linear(fetch, ['release-notes', '--release', RA])
+  assert.match(text.stdout, /\nincomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues\n/)
+})
+
+test('issues get on Linear says the release is unknown when its read fails, and exits 0', async () => {
+  const { fake } = withReleases()
+  const failed = { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ releasesEnabled: true }), ...fake.routes, PmkitIssuesReleases: failed, PmkitIssueReleases: failed })
+  const result = await linear(fetch, ['issues', 'get', 'ACME-2'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /\nrelease: unknown \(/)
+  assert.match(result.stderr, /note: the release of ACME-2 is unknown, because pmkit could not read it: /)
 })

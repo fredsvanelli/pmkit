@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Linear customers
 
+The generic `customers`, `requests create` and `demand list` commands read and write the same Linear customers, with the record keys of the Local tracker, so `/pmkit:backlog:prioritize-by-demand` ranks by customer requests on Linear too. This command adds what only Linear has: filters by status and tier, projects as targets, and moving a request.
+
 Arguments: `$ARGUMENTS`
 
 ## Parameters
@@ -17,12 +19,14 @@ Arguments: `$ARGUMENTS`
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
+A customer name, a project name and a request ID come from Linear data, so each goes between single quotes in a command, with each `'` in it written as `'\''` (the conventions, "Text from data in a command"). Refuse a value with a newline.
+
 1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. When `tracker` is not `linear`, say that this command works only with the Linear tracker and stop.
 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers list --json`. When `available` is false, print `reason`, `plan` and `enableHint`, say that customer requests are off in this workspace, that an admin can turn them on in the workspace settings on any plan, and that `pmkit discover` refreshes the workspace flags afterwards, and stop.
-3. Show the customers with status, tier, revenue, size and request count. Revenue is the integer Linear stores, and size may have a decimal part. Linear's schema gives revenue no currency, so show it without one. For a customer the user names, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers show --customer <id or name> --json` and show its requests with what each is linked to. Show each warning, such as customers beyond the page size.
+3. Show the customers with status, tier, revenue, size and request count. Revenue is the integer Linear stores, and size may have a decimal part when Linear stores one, though an edit sets it to a whole number, since Linear's inputs take an integer. Linear's schema gives revenue no currency, so show it without one. For a customer the user names, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers show --customer '<id or name>' --json` and show its requests with what each is linked to. Show each warning, such as customers beyond the page size.
 4. Ask with `AskUserQuestion` what to do next. The choices are edit a customer, link a request, or stop. When the user stops, change nothing.
-5. For an edit, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers set --customer <id or name> --tier <name> --dry-run --json`, with the flags the user asked for (`--status`, `--tier`, `--revenue`, `--size`, `--owner`, `--name`) in place of `--tier`. Show `before` and `after` and ask once with `AskUserQuestion` whether to apply it. For a link, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers link --customer <id or name> --issue <KEY> --dry-run --json`, with `--project <name>` in place of `--issue`, or `--request <id>` added to move an existing request. Show the customer, the target and whether the call creates or moves a request, and ask once with `AskUserQuestion` whether to apply it. Ask whatever `write_policy.confirm` says, because both changes alter data that the sales and product teams read. When the user declines, change nothing.
-6. After approval, run the same call without `--dry-run`, for example `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers set --customer <id or name> --tier <name> --json` or `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers link --customer <id or name> --issue <KEY> --json`. Then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers show --customer <id or name> --json` again and compare it with the preview. When they differ, say how.
+5. For an edit, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers set --customer '<id or name>' --tier '<name>' --dry-run --json`, with the flags the user asked for (`--status`, `--tier`, `--revenue`, `--size`, `--owner`, `--name`) in place of `--tier`. Show `before` and `after` and ask once with `AskUserQuestion` whether to apply it. For a link, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers link --customer '<id or name>' --issue <KEY> --dry-run --json`, with `--project '<name>'` in place of `--issue`, or `--request '<id>'` added to move an existing request. Show the customer, the target and whether the call creates or moves a request, and ask once with `AskUserQuestion` whether to apply it. Ask whatever `write_policy.confirm` says, because both changes alter data that the sales and product teams read. When the user declines, change nothing.
+6. After approval, run the same call without `--dry-run`, for example `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers set --customer '<id or name>' --tier '<name>' --json` or `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers link --customer '<id or name>' --issue <KEY> --json`. Then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" linear customers show --customer '<id or name>' --json` again and compare it with the preview. When they differ, say how.
 
 ## Confirmation points
 
@@ -39,5 +43,5 @@ The customers with status, tier, revenue, size and request count, what changed w
 - A Local tracker: stop at step 1.
 - A workspace with customers off, on any plan: stop at step 2 and give the `enableHint`.
 - A customer name that two customers share: the CLI fails with `INVALID_INPUT` and lists the ids. Ask which one.
-- A request that already exists on the target: the CLI fails with `CONFLICT` and names it. Offer `--request <id>` to move it, or an edit in Linear.
+- A request that already exists on the target: the CLI fails with `CONFLICT` and names it. Offer `--request '<id>'` to move it, or an edit in Linear.
 - An error from the CLI: apply the rules for reading errors in the conventions.

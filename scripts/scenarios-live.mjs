@@ -2,11 +2,11 @@
 // of its fixture, and the suite checks what the agent did. It costs money, so it never runs by default and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
-//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 36 runs, up to $1 each
+//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario entry, one run each
 //   PMKIT_LIVE=1 node scripts/scenarios-live.mjs issues-move   only the named modules (node --test drops extra args)
 //
 // Each test is skipped unless PMKIT_LIVE is 1 and `claude` is on PATH. Each run passes --max-budget-usd 1, which
-// the docs say can overshoot, so a full run can cost more than $32.
+// the docs say can overshoot, so a full run costs that budget per non-Linear entry, and sometimes more.
 //
 // Per scenario entry the suite prepares the copy as scripts/scenarios.test.mjs does (prepareCopy), logs every
 // Bash and AskUserQuestion call through a PreToolUse hook, sends `prompt`, then each of `answers` as a new user
@@ -33,7 +33,7 @@
 //   stop is an answer turn with no key. Every answer counts as a stop, including the answer to a choice of
 //   input (setup's prefix, a status name), so a write after such an answer counts as confirmed.
 // - Rule 8 per call: only the tree hash at each stop.
-// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 22 of 36 entries).
+// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists the entries it applies to).
 //
 // Spike findings (claude 2.1.310, 2026-10-26, /pmkit:issues:move ISS-2X6D done on the team fixture, 2 runs):
 // - The plugin command runs under -p despite `disable-model-invocation: true`. The agent read conventions.md,
@@ -85,26 +85,50 @@ const LIVE_ENV_KEYS = /^(?:HOME|USER|LOGNAME|SHELL|LANG|LC_\w+|TMPDIR|XDG_\w+|AN
 // with what is left unchecked. Keys are the test labels.
 const LIVE_EXPECT_STOPS = {
   'backlog-groom': 'the backlog lists of the scripted run, and the estimate of 2, which the agent proposes',
+  'backlog-prioritize-by-demand.0': 'the demand list of the scripted run, whose scores the agent ranks',
+  'backlog-prioritize-by-demand.1': 'the empty demand list of the scripted run',
+  'backlog-prioritize-by-demand.2': 'the demand list of the scripted run, and the failed write, which needs a file edit',
+  'backlog-prioritize-by-demand.3': 'the AUTH error of the scripted run, which a live run does not reproduce',
+  'backlog-prioritize-by-demand.4': 'the demand list of the scripted run, whose problem comes from a file the setup breaks',
+  'backlog-prioritize-by-demand.5': 'the problems of the demand list of the scripted run',
+  'backlog-prioritize-by-demand.7': 'the stale write, which needs a file edit after the preview',
+  'backlog-prioritize-by-demand.8': 'the demand list of the scripted run',
+  'backlog-request-queue.0': 'the open requests of the scripted run, which the agent decides one by one',
+  'backlog-request-queue.1': 'the AUTH error of the scripted run, which a live run does not reproduce',
+  'backlog-request-queue.2': 'the requests list of the scripted run, whose problem comes from a file the setup breaks',
+  'backlog-request-queue.3': 'the open request of the scripted run, and the failed accept, which needs a file edit',
+  'backlog-request-queue.4': 'the empty queue of the scripted run',
   'cycle-close': 'the sync preview and issue lists, and the split estimates and retro text, which the agent chooses',
   'cycle-plan': 'the velocity and the scope the agent picks for the sprint',
   help: 'the capability manifest, the only thing a read-only help checks',
   'issues-dependencies.0': 'the dependency map of the scripted run, whose critical path the agent derives',
   'issues-dependencies.1': 'the dependency map of the scripted run, whose basis the agent derives',
   'issues-find': 'the two result lists, the only thing a read-only find checks',
-  'issues-mine': 'the sync, list and PR status results the agent shows',
+  'issues-mine.0': 'the sync, list and PR status results the agent shows',
+  'issues-mine.1': 'the rate limited PR status the agent stops on, and the issue it marks not verified',
+  'issues-inbox-digest.0': 'the inbox list and the pr blockers results the agent shows',
+  'issues-inbox-digest.1': 'the inbox list the agent shows, and the mark-read call it offers',
+  'issues-inbox-digest.2': 'the rate limited read the agent stops on',
   'issues-pause': 'the PR preview and view results',
+  'issues-run-view': 'the result of the saved view in the scripted run, which is the only thing the run reads',
   'issues-summary.1': 'the epic, update and children results the summary shows',
   'issues-work': 'the readiness, PR preview and PR view results, and the follow-up issue, whose ID the agent gets',
   'local-doctor': 'the doctor results and the ISS-5 conflict resolution, which needs a file edit',
   'local-render': 'the render result of the scripted run, whose path, overwrite flag and problems the agent reports',
+  'report-release-readiness': 'the readiness result of the scripted run, whose wording and verdict the agent writes',
   'report-release-notes.0': 'the release and issue results of the scripted run, whose draft grouping and wording the agent writes',
   'report-release-notes.1': 'the release and issue results of the scripted run, whose period and wording the agent chooses',
+  'report-roadmap-review': 'the review of the scripted run, which the agent shows as its sections',
   'setup.0': 'the init preview, validate and discover results',
   'setup.1': 'the init preview and validate results',
   'spec-import': 'every check: they find the new epic and issues through the IDs the scripted run saved',
+  'team-capacity': 'the capacity reads and the preview of the scripted run, which the agent words itself',
   'team-flow-metrics': 'the metrics results the agent shows',
+  'team-load': 'the load tables of the scripted run, which the agent words itself',
   'team-risk-radar': 'the risks of the scripted run, which the agent ranks and words itself',
   'team-standup': 'the sync, list, events and PR status results the standup shows',
+  'issues-bulk': 'the preview of the scripted run, whose digest the agent passes back to the write',
+  'issues-unblock': 'the blockers result of the scripted run, which the agent words itself',
   upgrade: 'the changelog sections and the migration plan',
 }
 

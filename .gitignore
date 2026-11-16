@@ -4,3 +4,4 @@ node_modules/
 !.claude/settings.json
 .superpowers/
 .tmp
+scripts/__fixtures__/**/.issues/.cache/

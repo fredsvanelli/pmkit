@@ -1,0 +1,23 @@
+$ pmkit goals overview
+exit 0
+--- stdout
+no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues
+no top-level issues with sub-issues
+--- stderr
+note: no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues
+
+$ pmkit goals overview --json
+exit 0
+--- stdout
+{
+  "source": "top_level",
+  "complete": true,
+  "items": [],
+  "withoutChildren": 0,
+  "notes": [
+    "no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues"
+  ],
+  "warnings": []
+}
+--- stderr
+note: no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues

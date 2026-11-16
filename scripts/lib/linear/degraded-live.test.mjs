@@ -11,7 +11,7 @@ const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'degraded
 
 test('without PMKIT_LIVE the script skips with one reason and sends nothing', () => {
   const env = { PATH: process.env.PATH, HOME: process.env.HOME }
-  const done = spawnSync(process.execPath, ['--test', SCRIPT], { env, encoding: 'utf8' })
+  const done = spawnSync(process.execPath, ['--test', '--test-reporter=tap', SCRIPT], { env, encoding: 'utf8' })
   assert.equal(done.status, 0, done.stdout + done.stderr)
   assert.match(done.stdout, /set PMKIT_LIVE=1 to run the live check/)
   assert.match(done.stdout, /# skipped 1/)

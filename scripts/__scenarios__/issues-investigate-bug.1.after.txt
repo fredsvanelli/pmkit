@@ -1,0 +1,31 @@
+$ pmkit issues get ISS-5N1R --comments --json  [step 2, read]
+exit 0
+$ pmkit deploys list --environment production --json  [step 5, read]
+exit 0
+$ pmkit issues comment ISS-5N1R --body-file - --redact --dry-run --json  [step 10.3, dry run]
+exit 0
+? Step 10  [confirmed]
+$ pmkit issues comment ISS-5N1R --body-file - --redact --json  [step 10.3, write]
+exit 0
+
+--- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred-2.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++Diagnosis of ISS-5N1R.
++
++1. The cursor is ignored (low). No source supports more.
++
++Not read: the pull request, CI and the diff, because the issue has no branch.
++The reporter wrote: "password=[redacted]
++
++Redacted 1 value.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred-2.md"}
+--- gh calls
+api repos/{owner}/{repo}/deployments?per_page=20&environment=production

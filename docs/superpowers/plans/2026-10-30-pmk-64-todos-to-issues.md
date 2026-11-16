@@ -1,0 +1,74 @@
+# PMK-64 todos-to-issues Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add `todos scan` (CLI, read-only) and `/pmkit:issues:todos` (command file) that turn TODO and FIXME comments into deduplicated issues after a full preview.
+
+**Architecture:** `scripts/lib/todos.mjs` holds pure functions (line parser, key, grouping, matching) and `scanRepo` (git file listing and reading). `todos scan` in `scripts/pmkit.mjs` joins the scan with `tracker.searchIssues({ archived: true })`. The command file creates through `issues create`.
+
+**Tech Stack:** Node ESM, `node:test`, `git ls-files`.
+
+**Spec:** `docs/superpowers/specs/2026-10-30-pmk-64-todos-to-issues-design.md`
+
+## Global Constraints
+
+- Key: first 12 hex characters of SHA-256 of the normalized text. Description marker line: `todo-key: <key>`.
+- Match reasons, in order: `key`, `source`, `text` (text at least 15 characters).
+- `git ls-files -z --cached --others --exclude-standard` with `maxBuffer` of 256 MiB, no timeout.
+- Skip `.issues/`, `.pmkit/`, `node_modules/`, files over 1 MiB and binary files.
+- `capabilities.mjs` and the `capabilities.txt` goldens do not change.
+
+## Review Focus
+
+- A repeated TODO in two files gives one candidate with both locations (Task 1).
+- A second run after creating the issue returns no candidates (Task 2).
+- A TODO inside prose in a Markdown file (no comment leader) is ignored (Task 1).
+- A repository with 20000 matching lines does not fail on buffer size (Task 2).
+- A directory that is not a git repository gives `INVALID_INPUT` (Task 2).
+
+---
+
+### Task 1: The todos library
+
+**Files:**
+- Create: `scripts/lib/todos.mjs`, `scripts/todos.test.mjs`
+
+**Interfaces:**
+- Produces: `parseTodoLine(line) -> { tag, owner, text } | null`, `normalizeText(text) -> string`, `todoKey(text) -> string`, `groupTodos(found: {file, line, tag, text}[]) -> candidate[]` where candidate is `{ key, tag, text, locations, title, description }`, `matchTodos(candidates, issues) -> { candidates, matched }`, `scanRepo(root, { path }) -> { found, files, skippedEmpty }` (throws `PmkitError('INVALID_INPUT')` outside git).
+
+- [ ] **Step 1: Write failing tests** in `scripts/todos.test.mjs`: `parseTodoLine('// TODO(ana): fix the cache */')` gives tag TODO, owner ana, text `fix the cache`; `parseTodoLine('TODO and FIXME become issues')` is null; `parseTodoLine('# TODOS later')` is null; `// TODO` has empty text; `todoKey('Fix  the Cache.')` equals `todoKey('fix the cache')` and has 12 hex characters; `groupTodos` merges two entries of one text into one candidate with sorted `locations` and tag FIXME when one is FIXME; the title is cut at 80 characters ending `...`; the description has the spec layout; `matchTodos` returns reasons `key`, `source`, `text`, and no match for a text under 15 characters found inside a body.
+- [ ] **Step 2: Run** `node --test scripts/todos.test.mjs`. Expected: FAIL, module missing.
+- [ ] **Step 3: Implement** the functions in `scripts/lib/todos.mjs` as the spec describes.
+- [ ] **Step 4: Run** the same command. Expected: PASS.
+- [ ] **Step 5: Commit** `feat(todos): add the TODO scan and matching library (PMK-64)`.
+
+### Task 2: The `todos scan` command
+
+**Files:**
+- Modify: `scripts/pmkit.mjs` (new `todos scan` entry after `alerts list`), `scripts/golden-cases.mjs`, `scripts/cli.test.mjs` (READS map), `scripts/cli-degraded-coverage.test.mjs` if it demands a place
+- Create: `scripts/cli-todos.test.mjs`, goldens under `scripts/__goldens__/*/`
+
+**Interfaces:**
+- Consumes: Task 1 exports.
+- Produces: CLI `todos scan [--path prefix]`, data `{ files, skippedEmpty, candidates, matched }`.
+
+- [ ] **Step 1: Write failing CLI tests** in `scripts/cli-todos.test.mjs` using a temporary git repo with a tracker: ignored file not scanned; `node_modules`, `.issues`, a binary and a 2 MiB file skipped; repeats grouped; `--path src` filters; each match reason; create an issue with the candidate description then rescan and get zero candidates; non-git directory refused with `INVALID_INPUT`; a 20000-line file scans.
+- [ ] **Step 2: Run** `node --test scripts/cli-todos.test.mjs`. Expected: FAIL, unknown command.
+- [ ] **Step 3: Implement** the command entry: load config, `scanRepo(ctx.root)`, `tracker.searchIssues({ archived: true })`, warnings from `found.problems`, text tables as in the spec.
+- [ ] **Step 4: Register** the command in `golden-cases.mjs` and the READS map, generate the goldens as `scripts/goldens.test.mjs` explains, run `node --test scripts/cli-todos.test.mjs scripts/cli.test.mjs scripts/goldens.test.mjs`. Expected: PASS.
+- [ ] **Step 5: Commit** `feat(todos): add todos scan (PMK-64)`.
+
+### Task 3: The command file and docs
+
+**Files:**
+- Create: `commands/issues/todos.md`, `scripts/__scenarios__/issues-todos.mjs`, `scripts/__scenarios__/issues-todos.after.txt`
+- Modify: `scripts/plugin.test.mjs` (COMMANDS list), `scripts/scenarios.test.mjs`, `scripts/scenarios-live.mjs` (counts), `README.md` (table row), `skills/pmkit/SKILL.md`, `CHANGELOG.md` (top of `## Unreleased`)
+
+- [ ] **Step 1: Write the scenario** modeled on `issues-breakdown.mjs` and add `todos` to the `issues` list in `plugin.test.mjs`. Run `node --test scripts/plugin.test.mjs scripts/scenarios.test.mjs`. Expected: FAIL.
+- [ ] **Step 2: Write `commands/issues/todos.md`** following `breakdown.md`: scan, show matched and candidates, always ask (bulk), dry run each, create in order, stop at the first failure.
+- [ ] **Step 3: Update counts and docs**, run the same tests. Expected: PASS.
+- [ ] **Step 4: Commit** `feat(issues): add the issues todos command (PMK-64)`.
+
+### Task 4: Verify
+
+- [ ] Run `npm test`. Expected: all pass.

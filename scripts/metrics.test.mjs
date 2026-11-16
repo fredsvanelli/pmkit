@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  aging, businessDaysBetween, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, leadTimes, rangeInstant, sprintIssues, throughput, summary, velocity,
+  aging, businessDaysBetween, categoryLookup, cycleTimes, doneInRange, eventInstant, groupEventsByIssue, leadTimes, rangeInstant, sprintIssues, throughput, summary, velocity,
 } from './lib/metrics.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { fixedNow, makeRepo } from './test-helpers.mjs'
@@ -283,6 +283,13 @@ test('aging leaves out an archived issue from its archive event', () => {
   assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }).map((i) => [i.issue, i.days]), [['ISS-2', 9]])
 })
 
+test('aging counts an issue again after an unarchive event', () => {
+  const events = {
+    'ISS-1': [move('2026-10-01T12:00:00Z', 'doing'), { at: '2026-10-05T10:00:00Z', by: 'fred', op: 'archive' }, { at: '2026-10-06T10:00:00Z', by: 'fred', op: 'unarchive' }],
+  }
+  assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }).map((i) => i.issue), ['ISS-1'])
+})
+
 test('aging on the team fixture gives the spec numbers', () => {
   const tracker = createLocalTracker(makeRepo('team'), { now: fixedNow(), random: () => 0 })
   const result = aging(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf: '2026-10-23T12:00:00Z' })
@@ -387,4 +394,20 @@ test('the helpers give what the Local tracker gives, on every golden fixture', (
       `${name} sprintIssues`,
     )
   }
+})
+
+test('eventInstant reads a time with a zone as it is and a time without a zone as UTC, with a T or a space', () => {
+  const utc = Date.parse('2026-01-01T10:00:00Z')
+  const cases = {
+    '2026-01-01T10:00:00Z': utc,
+    '2026-01-01T10:00:00': utc,
+    '2026-01-01 10:00': utc,
+    '2026-01-01 10:00Z': utc,
+    '2026-01-01 10:00+05:00': Date.parse('2026-01-01T05:00:00Z'),
+    '2026-01-01 10:00-0300': Date.parse('2026-01-01T13:00:00Z'),
+    '2026-01-01T10:00:00+05:00': Date.parse('2026-01-01T05:00:00Z'),
+    '2026-01-01': Date.parse('2026-01-01T00:00:00Z'),
+  }
+  for (const [text, instant] of Object.entries(cases)) assert.equal(eventInstant(text), instant, text)
+  assert.ok(Number.isNaN(eventInstant('not a date')))
 })

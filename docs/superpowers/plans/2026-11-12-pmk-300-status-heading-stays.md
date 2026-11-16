@@ -1,0 +1,6 @@
+# PMK-300 plan
+
+1. TDD (scripts/adr.test.mjs): adr-status on `## Status\nAccepted\n---` and `===`, with no other status, a `Status:` line and a `status:` key: real write says the heading and its underline stay below the new status; dry run says "would stay"; same status (nothing written) keeps the old note without "stays"; adr-get note unchanged (test exists, add the exact-equality check). Update the two older assertions (`before the write`, `remove the underline` in setNote).
+2. Change `runAdrStatus` in scripts/pmkit.mjs: compute `after` first, then push the written-note when `before !== after`, else `statusHeadingNote` as is.
+3. Update the docs: README row for adr-status, CHANGELOG line under Unreleased.
+4. Tick criteria, `npm test` on Node 22, commit, PR.

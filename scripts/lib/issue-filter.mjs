@@ -71,3 +71,10 @@ export function issueComparator(sort, priorities) {
   }[sort]
   return (a, b) => by(a, b) || compareIds(a.id, b.id)
 }
+
+/** The limit and sort that `views run` replaces for one run, checked: only the keys given, so a bad flag is never blamed on the view. */
+export function viewOverrides({ limit, sort } = {}) {
+  const given = Object.fromEntries(Object.entries({ limit, sort }).filter(([, value]) => value !== undefined))
+  checkFilter(given)
+  return given
+}

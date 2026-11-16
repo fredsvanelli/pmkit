@@ -1,0 +1,11 @@
+{"at":"2026-11-14T15:52:57Z","by":"fred","op":"create","to":{"id":"PMK-318","title":"Catch a wrong replaced line and duplicated or moved lines in the adr-commonmark-diff write check","type":"chore","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T15:52:57.323Z","updated":"2026-11-14T15:52:57Z"}}
+{"at":"2026-11-14T17:25:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-14T17:25:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T17:26:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-318-catch-a-wrong-replaced-line-and"}
+{"at":"2026-11-14T17:26:40Z","by":"fred","op":"comment","to":"2026-11-14T17-26-40Z-fred.md"}
+{"at":"2026-11-14T17:35:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T17:35:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T17:35:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T17:36:01Z","by":"fred","op":"comment","to":"2026-11-14T17-36-01Z-fred.md"}
+{"at":"2026-11-14T17:36:02Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-14T19:12:31Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

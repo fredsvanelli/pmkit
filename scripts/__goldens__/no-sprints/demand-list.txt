@@ -1,0 +1,48 @@
+$ pmkit demand list
+exit 0
+--- stdout
+Issue    | Title             | Status    | Requests | Important | Asked by
+---------|-------------------|-----------|----------|-----------|----------
+ISS-9B2X | Dead-letter queue | in_review | 1        | 1         | Acme Corp
+--- stderr
+(empty)
+
+$ pmkit demand list --json
+exit 0
+--- stdout
+{
+  "signals": [
+    {
+      "issue": {
+        "id": "ISS-9B2X",
+        "title": "Dead-letter queue",
+        "status": {
+          "name": "in_review",
+          "category": "in_review"
+        },
+        "priority": "high"
+      },
+      "count": 1,
+      "important": 1,
+      "requests": [
+        "REQ-5H2M"
+      ],
+      "customers": [
+        {
+          "id": "CUS-3T7W",
+          "name": "Acme Corp",
+          "tier": {
+            "id": "enterprise",
+            "name": "enterprise"
+          },
+          "revenue": 120000,
+          "size": 450
+        }
+      ],
+      "from": []
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)

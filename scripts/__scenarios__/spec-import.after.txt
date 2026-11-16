@@ -5,19 +5,19 @@ exit 0
 $ pmkit milestone list --json  [step 2, read]
 exit 0
 ? Step 5  [confirmed]
-$ pmkit epic create --title 'Webhook delivery platform' --dry-run --json  [step 6, dry run]
+$ pmkit epic create --title-file <inputs>/title-webhook-delivery-platform.md --dry-run --json  [step 6, dry run]
 exit 0
-$ pmkit issues create --title 'Retry failed deliveries with backoff' --type feature --estimate 3 --dry-run --json  [step 6, dry run]
+$ pmkit issues create --title-file <inputs>/title-retry-failed-deliveries-with-backoff.md --type feature --estimate 3 --dry-run --json  [step 6, dry run]
 exit 0
-$ pmkit issues create --title 'Park exhausted deliveries in a dead-letter queue' --type feature --estimate 5 --dry-run --json  [step 6, dry run]
+$ pmkit issues create --title-file <inputs>/title-park-exhausted-deliveries-in-a-dead-lett.md --type feature --estimate 5 --dry-run --json  [step 6, dry run]
 exit 0
-$ pmkit epic create --title 'Webhook delivery platform' --json  [step 7.1, write]
+$ pmkit epic create --title-file <inputs>/title-webhook-delivery-platform.md --json  [step 7.1, write]
 exit 0
-$ pmkit issues create --title 'Retry failed deliveries with backoff' --type feature --estimate 3 --parent EPC-M0GZ --json  [step 8, write]
+$ pmkit issues create --title-file <inputs>/title-retry-failed-deliveries-with-backoff.md --type feature --estimate 3 --parent EPC-M0GZ --json  [step 8, write]
 exit 0
-$ pmkit issues create --title 'Park exhausted deliveries in a dead-letter queue' --type feature --estimate 5 --parent EPC-M0GZ --json  [step 8, write]
+$ pmkit issues create --title-file <inputs>/title-park-exhausted-deliveries-in-a-dead-lett.md --type feature --estimate 5 --parent EPC-M0GZ --json  [step 8, write]
 exit 0
-$ pmkit issues create --title 'Replay a parked delivery' --type task --estimate 2 --parent ISS-Y8KQ --json  [step 8, write]
+$ pmkit issues create --title-file <inputs>/title-replay-a-parked-delivery.md --type task --estimate 2 --parent ISS-Y8KQ --json  [step 8, write]
 exit 0
 $ pmkit issues link ISS-M0GZ ISS-Y8KQ --kind blocks --json  [step 9, write]
 exit 0

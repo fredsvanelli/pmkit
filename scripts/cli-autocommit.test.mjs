@@ -139,6 +139,10 @@ const WRITES = [
   { args: ['epic', 'create', '--title', 'E'], expectedMessage: /^pmkit: epic create EPC-[0-9A-Z]{4}$/ },
   { args: ['epic', 'update-status', 'EPC-2M9D', '--health', 'at_risk', '--body-file', '-'], input: 'Late on retries.\n', expectedMessage: 'pmkit: epic update-status EPC-2M9D' },
   { args: ['docs', 'create', 'notes.md', '--body-file', '-'], input: 'hello\n', expectedMessage: 'pmkit: docs create notes.md' },
+  { args: ['views', 'save', 'mine', '--category', 'done'], expectedMessage: 'pmkit: views save mine' },
+  { args: ['goal', 'create', '--title', 'G'], expectedMessage: /^pmkit: goal create GOAL-[0-9A-Z]{4}$/ },
+  { args: ['customers', 'create', '--name', 'Acme'], expectedMessage: /^pmkit: customers create CUS-[0-9A-Z]{4}$/ },
+  { args: ['requests', 'create', '--title', 'R'], expectedMessage: /^pmkit: requests create REQ-[0-9A-Z]{4}$/ },
 ]
 
 const head = (root) => git(root, 'rev-parse', 'HEAD').stdout.trim()
@@ -274,4 +278,265 @@ test('a no-op write after a hand edit commits issue.md with its drift events', (
     assert.deepEqual(committedFiles(root), driftFiles)
     assert.deepEqual(status(root, '.issues/issues/ISS-0G5E'), [])
   })
+})
+
+// PMK-212 review: views delete and rename commit only what git tracks, and a case-only rename reaches the index.
+const writeView = (root, name, text = 'filter:\n  blocked: true\n') => {
+  fs.mkdirSync(path.join(root, '.issues/views'), { recursive: true })
+  fs.writeFileSync(path.join(root, `.issues/views/${name}.yaml`), text)
+}
+const committedPaths = (root) => git(root, 'show', '--name-only', '--no-renames', '--format=', 'HEAD').stdout.trim().split('\n').filter(Boolean).sort()
+const trackedViews = (root) => git(root, 'ls-files', '.issues/views').stdout.trim().split('\n').filter(Boolean).sort()
+
+test('views delete and rename of a view git never tracked succeed and commit what git tracks', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    writeView(root, 'hand')
+    writeView(root, 'hand2')
+    const before = commits(root)
+    const deleted = run(root, ['views', 'delete', 'hand'])
+    assert.equal(deleted.status, 0, deleted.stdout + deleted.stderr)
+    assert.equal(commits(root), before, 'nothing git tracked changed')
+    const renamed = run(root, ['views', 'rename', 'hand2', 'hand3'])
+    assert.equal(renamed.status, 0, renamed.stdout + renamed.stderr)
+    assert.equal(commits(root), before + 1)
+    assert.deepEqual(committedFiles(root), ['.issues/views/hand3.yaml'])
+    assert.deepEqual(trackedViews(root), ['.issues/views/hand3.yaml'])
+  })
+})
+
+test('views delete and rename of a tracked view commit the removal and the move', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    writeView(root, 'kept')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'view')
+    const renamed = run(root, ['views', 'rename', 'kept', 'moved'])
+    assert.equal(renamed.status, 0, renamed.stdout + renamed.stderr)
+    assert.deepEqual(committedPaths(root), ['.issues/views/kept.yaml', '.issues/views/moved.yaml'])
+    assert.deepEqual(trackedViews(root), ['.issues/views/moved.yaml'])
+    const deleted = run(root, ['views', 'delete', 'moved'])
+    assert.equal(deleted.status, 0, deleted.stdout + deleted.stderr)
+    assert.deepEqual(trackedViews(root), [])
+    assert.deepEqual(status(root, '.issues/views'), [])
+  })
+})
+
+test('a case-only rename is refused, and the two-step rename reaches the index, so the next delete works', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    writeView(root, 'tracked2')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'view')
+    const before = commits(root)
+    const refused = run(root, ['views', 'rename', 'tracked2', 'Tracked2', '--json'])
+    assert.equal(refused.status, 2, refused.stdout + refused.stderr)
+    assert.equal(JSON.parse(refused.stdout).error.code, 'INVALID_INPUT')
+    assert.equal(commits(root), before)
+    for (const [from, to] of [['tracked2', 'step'], ['step', 'Tracked2']]) {
+      const renamed = run(root, ['views', 'rename', from, to])
+      assert.equal(renamed.status, 0, renamed.stdout + renamed.stderr)
+    }
+    assert.equal(commits(root), before + 2)
+    assert.deepEqual(trackedViews(root), ['.issues/views/Tracked2.yaml'])
+    const deleted = run(root, ['views', 'delete', 'Tracked2'])
+    assert.equal(deleted.status, 0, deleted.stdout + deleted.stderr)
+    assert.deepEqual(trackedViews(root), [])
+  })
+})
+
+test('auto_commit true: goal update, close and delete each make one commit, tracker clean afterwards (PMK-213)', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    const id = JSON.parse(run(root, ['goal', 'create', '--title', 'G', '--json']).stdout).after.id
+    for (const args of [['goal', 'update', id, '--status', 'planned'], ['goal', 'close', id], ['goal', 'delete', id]]) {
+      const before = commits(root)
+      const result = run(root, args)
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(commits(root), before + 1, args.join(' '))
+      assert.equal(subject(root), `pmkit: ${args.slice(0, 2).join(' ')} ${id}`)
+      assert.deepEqual(status(root, '.issues'), [])
+    }
+  })
+})
+
+// PMK-221 review B1 and B2: an accept that fails after the create commits the issue, names both ids, and a retry creates no second issue.
+test('requests accept --create that fails on a read-only request commits the new issue, and the retry points to it', () => {
+  withRepo('no-sprints', { autoCommit: true }, (root) => {
+    const request = JSON.parse(run(root, ['requests', 'create', '--title', 'CSV export', '--json']).stdout).after
+    const dir = path.join(root, '.issues', 'requests')
+    const file = path.join(dir, `${request.id}.md`)
+    fs.chmodSync(file, 0o444)
+    fs.chmodSync(dir, 0o555)
+    let failed
+    try {
+      failed = run(root, ['requests', 'accept', request.id, '--create', '--json'])
+    } finally {
+      fs.chmodSync(dir, 0o755)
+      fs.chmodSync(file, 0o644)
+    }
+    assert.equal(failed.status, 2, failed.stdout + failed.stderr)
+    const error = JSON.parse(failed.stdout).error
+    const created = /^issue (\S+) was created, but request /.exec(error.message)?.[1]
+    assert.ok(created, error.message)
+    assert.match(error.message, new RegExp(`request ${request.id} was not accepted: .*EACCES.*; the request is still open$`))
+    assert.equal(error.nextStep, `pmkit requests accept ${request.id} ${created}`)
+    assert.equal(git(root, 'log', '-1', '--format=%s').stdout.trim(), `pmkit: requests accept ${request.id} ${created}`)
+    assert.deepEqual(status(root, '.issues'), [])
+    const retry = run(root, ['requests', 'accept', request.id, '--create', '--json'])
+    assert.equal(retry.status, 2)
+    assert.equal(JSON.parse(retry.stdout).error.code, 'CONFLICT')
+    assert.equal(JSON.parse(retry.stdout).error.nextStep, `pmkit requests accept ${request.id} ${created}`)
+    const linked = run(root, ['requests', 'accept', request.id, created, '--json'])
+    assert.equal(linked.status, 0, linked.stderr)
+    assert.equal(JSON.parse(linked.stdout).after.target.id, created)
+  })
+})
+
+// PMK-268: auto_commit with a tracker outside the repository, in a git repository of its own.
+function withOutsideTracker(fn, { init = true } = {}) {
+  const root = makeRepo('team')
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  try {
+    const config = path.join(root, '.pmkit/config.yaml')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+    fs.renameSync(path.join(root, '.issues'), outside)
+    const file = path.join(outside, 'config.yaml')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^auto_commit: .*$/m, 'auto_commit: true'))
+    if (init) {
+      git(outside, 'init', '-q')
+      git(outside, 'config', 'user.name', 'Test')
+      git(outside, 'config', 'user.email', 'test@example.com')
+      git(outside, 'add', '-A')
+      git(outside, 'commit', '-q', '-m', 'init')
+    }
+    fn({ root, outside })
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+}
+
+for (const { args, message } of [
+  { args: ['issues', 'update', 'ISS-3F7H', '--priority', 'urgent'], message: 'pmkit: issues update ISS-3F7H' },
+  { args: ['issues', 'assign', 'ISS-0G5E', 'fred'], message: 'pmkit: issues assign ISS-0G5E' },
+  { args: ['issues', 'create', '--title', 'New'], message: /^pmkit: issues create ISS-[0-9A-Z]{4}$/ },
+]) {
+  test(`auto_commit true: ${label({ args })} with a tracker outside the repository commits in the tracker's git repository (PMK-268)`, () => {
+    withOutsideTracker(({ root, outside }) => {
+      const before = commits(outside)
+      const result = run(root, [...args, '--json'])
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(commits(outside), before + 1)
+      if (message instanceof RegExp) assert.match(subject(outside), message)
+      else assert.equal(subject(outside), message)
+      assert.ok(committedFiles(outside).every((file) => file.startsWith('issues/ISS-')), committedFiles(outside).join(' '))
+      assert.deepEqual(status(outside), [])
+      assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+    })
+  })
+}
+
+test('auto_commit true with a tracker outside the repository: a failed commit names files relative to the tracker, never an absolute path (PMK-268)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    // A stale lock: git refuses and quotes the absolute path of the lock file.
+    fs.writeFileSync(path.join(outside, '.git/index.lock'), '')
+    const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'])
+    assert.equal(result.status, 2)
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'UPSTREAM')
+    const everything = result.stdout + result.stderr
+    for (const forbidden of [outside, fs.realpathSync(outside), os.tmpdir(), fs.realpathSync(os.tmpdir())]) assert.ok(!everything.includes(forbidden), `${forbidden} in ${everything}`)
+    assert.match(error.message, /auto_commit failed/)
+    assert.match(error.message, /index\.lock/)
+    assert.match(error.nextStep, /issues\/ISS-0G5E\/issue\.md/)
+  })
+})
+
+// PMK-271: every absolute path is hidden, and the next step names the tracker folder.
+test('auto_commit true: a git failure that quotes an absolute path with a space shows no part of it (PMK-271)', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    const dir = path.join(path.dirname(root), `John Doe-${path.basename(root)}`)
+    fs.mkdirSync(dir)
+    try {
+      // git fails with "fatal: bad config line 1 in file <dir>/.gitconfig".
+      fs.writeFileSync(path.join(dir, '.gitconfig'), 'not a config line\n')
+      const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'], { env: { GIT_CONFIG_GLOBAL: path.join(dir, '.gitconfig') } })
+      assert.equal(result.status, 2, result.stdout + result.stderr)
+      const { error } = JSON.parse(result.stdout)
+      assert.equal(error.code, 'UPSTREAM')
+      assert.match(error.message, /auto_commit failed: fatal: bad config line 1 in file <path>$/)
+      const everything = result.stdout + result.stderr
+      for (const part of ['John', 'Doe', '.gitconfig', fs.realpathSync(os.tmpdir())]) assert.ok(!everything.includes(part), `${part} in ${everything}`)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+test('auto_commit true with more than 5 files outside the repository: a failed commit names the tracker folder from tracker.path, never an absolute path (PMK-271)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    // The fixture's one issue with conflict markers would stop a bulk write.
+    fs.rmSync(path.join(outside, 'issues/ISS-3Q6T'), { recursive: true })
+    fs.writeFileSync(path.join(outside, '.git/index.lock'), '')
+    const bulk = ['issues', 'bulk', 'priority', 'low', '--category', 'backlog,todo,in_progress,in_review,done', '--json']
+    const { digest } = JSON.parse(run(root, [...bulk, '--dry-run']).stdout)
+    const result = run(root, [...bulk, '--expect', digest])
+    assert.equal(result.status, 2, result.stdout + result.stderr)
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'UPSTREAM', result.stdout)
+    assert.equal(error.nextStep, `Commit the tracker files in ../${path.basename(outside)} (in the git repository that holds the tracker) yourself`)
+    assert.ok(!(result.stdout + result.stderr).includes(fs.realpathSync(os.tmpdir())), 'no absolute path')
+  })
+})
+
+// PMK-279: only "not a git repository" is the quiet note; any other rev-parse failure in the tracker folder is an error.
+test('auto_commit true with a tracker outside the repository: a rev-parse failure that is not "not a git repository" is an UPSTREAM error, the write stays (PMK-279)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmk279-'))
+    try {
+      fs.writeFileSync(path.join(dir, '.gitconfig'), 'not a config line\n')
+      const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'], { env: { GIT_CONFIG_GLOBAL: path.join(dir, '.gitconfig') } })
+      assert.equal(result.status, 2, result.stdout + result.stderr)
+      const { error } = JSON.parse(result.stdout)
+      assert.equal(error.code, 'UPSTREAM')
+      assert.match(error.message, /the write succeeded but auto_commit failed: fatal: bad config line 1 in file <path>$/)
+      assert.match(error.nextStep, /^Commit the tracker files .*yourself$/)
+      assert.ok(!/nothing was committed/.test(result.stdout + result.stderr))
+      assert.match(fs.readFileSync(path.join(outside, 'issues/ISS-0G5E/issue.md'), 'utf8'), /assignee: fred/)
+      const everything = result.stdout + result.stderr
+      for (const forbidden of [dir, fs.realpathSync(dir), outside, fs.realpathSync(outside), '.gitconfig']) assert.ok(!everything.includes(forbidden), `${forbidden} in ${everything}`)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+test('auto_commit true with a tracker outside the repository and outside any git repository keeps the note (PMK-279)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'])
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.match(result.stderr, /^note: .*not in a git repository, so nothing was committed/m)
+    assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+  }, { init: false })
+})
+
+test('auto_commit true with a tracker outside any git repository keeps the note when git is localized (PMK-279 review)', () => {
+  const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim()
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'pmk279-bin-'))
+  // A git that answers rev-parse in Portuguese unless LC_ALL is C, and passes everything else to the real git.
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = rev-parse ] && [ "$LC_ALL" != C ]; then
+    echo 'fatal: não é um repositório git (nem qualquer dos diretórios pais): .git' >&2
+    exit 128
+  fi
+done
+exec '${realGit}' "$@"
+`, { mode: 0o755 })
+  try {
+    withOutsideTracker(({ root }) => {
+      const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'], { env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, LC_ALL: 'pt_BR.UTF-8' } })
+      assert.equal(result.status, 0, result.stdout + result.stderr)
+      assert.match(result.stderr, /^note: .*not in a git repository, so nothing was committed/m)
+    }, { init: false })
+  } finally {
+    fs.rmSync(bin, { recursive: true, force: true })
+  }
 })

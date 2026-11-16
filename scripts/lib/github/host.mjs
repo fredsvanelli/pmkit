@@ -1,16 +1,29 @@
 import { spawnSync } from 'node:child_process'
 import { PmkitError } from '../errors.mjs'
+import { FAILED_RUN } from '../risks.mjs'
+import { hideAbsolutePaths } from '../paths.mjs'
+
+// A failed run log can pass the 1 MiB default of spawnSync. 256 MiB leaves room for the largest logs.
+const MAX_OUTPUT = 256 * 1024 * 1024
+// Only the diff reads have a time limit. A push can run a pre-push hook or git-lfs for longer, and a timeout would kill git but not the hook.
+const DIFF_TIMEOUT_MS = 120 * 1000
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
+// What pr blockers needs beyond the view, read in the same gh pr view and nested in `detail`.
+const DETAIL_FIELDS = ['reviews', 'reviewRequests', 'mergeable', 'mergeStateStatus', 'reviewDecision', 'baseRefName']
+// GitHub pages the rules of a branch; 100 is the largest page.
+const RULES_PAGE = 100
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
+const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }'
+const STATUS_QUERY = 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } }'
 const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
 export const defaultExec =
   ({ root, env }) =>
-  (cmd, args, { input } = {}) => {
-    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input })
+  (cmd, args, { input, timeout } = {}) => {
+    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT, timeout })
     if (result.error) throw result.error
     return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
   }
@@ -26,7 +39,15 @@ function failure(cmd, args, result) {
     return new PmkitError('RATE_LIMITED', 'GitHub rate limit reached', 'Wait a few minutes and retry')
   }
   const detail = firstLine(stderr) || `exit status ${result.status}`
-  return new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${detail}`, 'Check the output of the same command in a terminal')
+  const error = new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${hideAbsolutePaths(detail)}`, 'Check the output of the same command in a terminal')
+  // gh api ends its error line with "(HTTP 404)" or starts it with "HTTP 502:". The free text may name a branch, so only these two spots count.
+  const http = /\(HTTP (\d{3})\)\s*$/.exec(detail) ?? /^(?:gh: )?HTTP (\d{3})\b/.exec(detail)
+  if (http) error.httpStatus = Number(http[1])
+  // gh pr view and gh pr checks report a token that cannot read the data as "GraphQL: Resource not accessible ...", with no HTTP status.
+  else if (/^GraphQL: Resource not accessible/.test(detail)) error.httpStatus = 403
+  // A SAML enforcement or a token without the scopes is a refusal too. The text must start the line, so a branch name cannot fake it.
+  else if (/^(?:(?:gh|GraphQL|error): )+(?:Resource protected by organization SAML enforcement|Your token has not been granted the required scopes|your authentication token is missing required scopes)/i.test(detail)) error.httpStatus = 403
+  return error
 }
 
 /** Refuses a ref that git or gh would read as an option. */
@@ -45,6 +66,12 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     } catch (error) {
       if (error?.code === 'ENOENT') {
         throw new PmkitError('NOT_CONFIGURED', `${cmd} is not installed`, INSTALL_STEP)
+      }
+      if (error?.code === 'ENOBUFS') {
+        throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} output is too large to read`, 'Read it in the GitHub web UI, or run the same command in a terminal and page the output')
+      }
+      if (error?.code === 'ETIMEDOUT') {
+        throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} timed out`, 'Check the network and retry')
       }
       throw error
     }
@@ -65,26 +92,67 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     }
   }
 
-  const getPullRequest = (selector) => {
+  /** The pull request of a number or a head branch, or null. With `detail`, the same call also reads DETAIL_FIELDS into `pr.detail`. */
+  const getPullRequest = (selector, { detail = false } = {}) => {
     const target = selector?.number ?? selector?.head
     if (target === undefined || target === '') {
       throw new PmkitError('INVALID_INPUT', 'getPullRequest needs a number or a head', 'Pass a pull request number or a branch name')
     }
     if (selector.number === undefined) refArg('head', target)
-    const args = ['pr', 'view', String(target), '--json', VIEW_FIELDS]
-    const result = run('gh', args)
-    if (result.status !== 0) {
-      if (/no pull requests? found/i.test(result.stderr ?? '')) return null
-      throw failure('gh', args, result)
+    const read = (fields) => {
+      const args = ['pr', 'view', String(target), '--json', [VIEW_FIELDS, ...fields].join(',')]
+      const result = run('gh', args)
+      if (result.status !== 0) {
+        if (/no pull requests? found/i.test(result.stderr ?? '')) return null
+        throw failure('gh', args, result)
+      }
+      return parse(result.stdout, 'the pull request')
     }
-    return parse(result.stdout, 'the pull request')
+    if (!detail) return read([])
+    let pr
+    let reviewRequestsError
+    try {
+      pr = read(DETAIL_FIELDS)
+    } catch (error) {
+      // A token without read:org cannot read a team asked for review, and gh then refuses the whole view. Without that one field
+      // the rest still reads, and the caller says the review requests were not checked.
+      if (!(error instanceof PmkitError) || error.httpStatus !== 403) throw error
+      pr = read(DETAIL_FIELDS.filter((field) => field !== 'reviewRequests'))
+      reviewRequestsError = { code: error.code, message: error.message, nextStep: 'Run gh auth refresh -s read:org, or read the review requests on the pull request page' }
+    }
+    if (pr === null) return null
+    const view = { ...pr }
+    for (const field of DETAIL_FIELDS) delete view[field]
+    const details = Object.fromEntries(DETAIL_FIELDS.map((field) => [field, pr[field]]))
+    return { ...view, detail: reviewRequestsError ? { ...details, reviewRequests: null, reviewRequestsError } : details }
+  }
+
+  const workingTree = (branch) => {
+    refArg('branch', branch)
+    const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+    const current = git(['branch', '--show-current'])
+    if (current.status !== 0) throw failure('git', ['branch', '--show-current'], current)
+    if (current.stdout.trim() !== branch) return null
+    // --no-optional-locks keeps a read from writing the index. --untracked-files=all lists files, not a folder per entry.
+    const args = ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all']
+    const result = git(args)
+    if (result.status !== 0) throw failure('git', args, result)
+    const lines = result.stdout.split('\n').filter((line) => line !== '')
+    const untracked = lines.filter((line) => line.startsWith('??')).length
+    return { uncommitted: lines.length > untracked, untracked }
+  }
+
+  const listRuns = ({ branch }) => {
+    const args = ['run', 'list', '--branch', refArg('branch', branch), '--limit', '50', '--json', RUN_FIELDS]
+    return parse(check('gh', args).stdout, 'the workflow runs')
   }
 
   return {
     currentBranch: () => check('git', ['branch', '--show-current']).stdout.trim(),
 
     createBranch(name, { from }) {
-      check('git', ['switch', '-c', refArg('branch', name), refArg('from', from)])
+      // --no-track: a remote ref as the base would make git set it as upstream, and a bare git push would then target the default branch.
+      check('git', ['switch', '--no-track', '-c', refArg('branch', name), refArg('from', from)])
     },
 
     push(branch) {
@@ -108,33 +176,244 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       return getPullRequest({ number })
     },
 
+    /** Posts one review that only comments (never approves or requests changes). GitHub takes the review whole or refuses it whole. */
+    postReview(number, { body, comments, commitId }) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      // commit_id pins the inline lines to the commit they were checked against, so a push after the read cannot move them.
+      const input = JSON.stringify({ event: 'COMMENT', body, ...(commitId ? { commit_id: commitId } : {}), comments: comments.map(({ path, line, body: text }) => ({ path, line, side: 'RIGHT', body: text })) })
+      const review = parse(check('gh', ['api', `repos/{owner}/{repo}/pulls/${number}/reviews`, '--method', 'POST', '--input', '-'], { input }).stdout, 'the review')
+      return { id: review.id, url: review.html_url }
+    },
+
     prChecks(number) {
-      const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket']
+      const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket,link']
+      // The link of a check run holds the workflow run it belongs to, the id `ci logs --run` takes. Other CI has none.
+      const withRun = (list) => list.map((c) => ({ ...c, runId: Number(/\/actions\/runs\/(\d+)/.exec(c.link ?? '')?.[1]) || null }))
       const result = run('gh', args)
       // gh exits non-zero while checks fail or are pending, and still prints the list.
       if (result.status !== 0) {
         try {
           const list = JSON.parse(result.stdout)
-          if (Array.isArray(list)) return list
+          if (Array.isArray(list)) return withRun(list)
         } catch {}
         // A pull request without checks makes gh exit 1 with this message.
         if (/no checks reported/i.test(result.stderr ?? '')) return []
         throw failure('gh', args, result)
       }
-      return parse(result.stdout, 'the checks')
+      return withRun(parse(result.stdout, 'the checks'))
     },
 
-    prReviews(number) {
-      return parse(check('gh', ['pr', 'view', String(number), '--json', 'reviews,reviewRequests']).stdout, 'the reviews')
+    /** Every review thread of a pull request, one graphql call per page of 100. */
+    prThreads(number) {
+      const threads = []
+      let cursor = null
+      for (;;) {
+        const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `number=${number}`, '-f', `query=${THREADS_QUERY}`, ...(cursor === null ? [] : ['-f', `endCursor=${cursor}`])]
+        const result = run('gh', args)
+        if (result.status !== 0) {
+          // A graphql error makes gh exit 1 with the reply on stdout and "gh: <message>" on stderr.
+          const error = failure('gh', args, result)
+          let type
+          try { type = JSON.parse(result.stdout)?.errors?.[0]?.type } catch {}
+          const httpStatus = { FORBIDDEN: 403, INSUFFICIENT_SCOPES: 403, NOT_FOUND: 404 }[type]
+          if (httpStatus) error.httpStatus = httpStatus
+          throw error
+        }
+        const reply = parse(result.stdout, 'the review threads')
+        const connection = reply?.data?.repository?.pullRequest?.reviewThreads
+        if (!connection) throw new PmkitError('UPSTREAM', 'gh api graphql returned no review threads', 'Update the GitHub CLI and retry')
+        for (const t of connection.nodes) {
+          const first = t.comments?.nodes?.[0]
+          threads.push({ isResolved: t.isResolved, isOutdated: t.isOutdated, path: t.path ?? null, line: t.line ?? null, url: first?.url ?? null, author: first?.author?.login ?? null })
+        }
+        if (connection.pageInfo?.hasNextPage !== true) return { threads }
+        cursor = connection.pageInfo.endCursor
+        // Without a cursor the next page cannot be asked, and a partial list must not pass for the whole one.
+        if (!cursor) throw new PmkitError('UPSTREAM', 'gh api graphql returned no cursor for the next page of review threads', 'Retry, or update the GitHub CLI')
+      }
+    },
+
+    /** The branch protection of a base branch, or null when it has none. */
+    branchProtection(base) {
+      const args = ['api', `repos/{owner}/{repo}/branches/${encodeURIComponent(refArg('base', base))}/protection`]
+      const result = run('gh', args)
+      if (result.status === 0) return parse(result.stdout, 'the branch protection')
+      if (/branch not protected/i.test(result.stderr ?? '')) return null
+      throw failure('gh', args, result)
+    },
+
+    /** The open pull requests with their review requests (PMK-225), the 200 most recently created. */
+    listReviewRequests() {
+      return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,url,title,headRefName,author,reviewRequests']).stdout, 'the review requests')
+    },
+
+    /** The active rules of the repository and organization rulesets that apply to a base branch, read page by page. */
+    branchRules(base) {
+      const branch = encodeURIComponent(refArg('base', base))
+      const rules = []
+      for (let page = 1; ; page++) {
+        const batch = parse(check('gh', ['api', `repos/{owner}/{repo}/rules/branches/${branch}?per_page=${RULES_PAGE}&page=${page}`]).stdout, 'the branch rules')
+        if (!Array.isArray(batch)) throw new PmkitError('UPSTREAM', 'gh api returned no list of branch rules', 'Update the GitHub CLI and retry')
+        rules.push(...batch)
+        if (batch.length < RULES_PAGE) return rules
+      }
     },
 
     listPullRequests() {
       return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', LIST_FIELDS]).stdout, 'the pull requests')
     },
 
-    listRuns({ branch }) {
-      const args = ['run', 'list', '--branch', refArg('branch', branch), '--limit', '50', '--json', RUN_FIELDS]
-      return parse(check('gh', args).stdout, 'the workflow runs')
+    listDeploys({ environment, ref, limit = 20 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        throw new PmkitError('INVALID_INPUT', `limit "${limit}" is not valid`, 'Use a whole number from 1 to 100')
+      }
+      const env = environment === undefined ? '' : `&environment=${encodeURIComponent(environment)}`
+      const byRef = ref === undefined ? '' : `&ref=${encodeURIComponent(ref)}`
+      const deployments = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments?per_page=${limit}${env}${byRef}`]).stdout, 'the deployments')
+      if (deployments.length === 0) return []
+      // One graphql call reads the latest status of every deployment. A read that fails keeps the list, with the state unknown (null).
+      // gh needs -f before each field, or it refuses the call ("accepts 1 arg(s), received N").
+      const args = ['api', 'graphql', '-f', `query=${STATUS_QUERY}`, ...deployments.flatMap((d) => ['-f', `ids[]=${d.node_id}`])]
+      let nodes = null
+      let errors = []
+      let statusError = null
+      try {
+        const result = run('gh', args)
+        // A node that does not resolve makes gh exit 1 with the other nodes still in the reply: use them.
+        let reply = null
+        try { reply = JSON.parse(result.stdout) } catch {}
+        if (Array.isArray(reply?.data?.nodes)) {
+          nodes = reply.data.nodes
+          errors = Array.isArray(reply.errors) ? reply.errors : []
+        } else if (result.status !== 0) throw failure('gh', args, result)
+        else throw new PmkitError('UPSTREAM', 'gh api graphql returned no deployment statuses', 'Update the GitHub CLI and retry')
+      } catch (error) {
+        if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM') throw error
+        statusError = error.message
+      }
+      return deployments.map((d, i) => {
+        const base = { id: d.id, environment: d.environment, ref: d.ref, sha: d.sha, createdAt: d.created_at }
+        const node = nodes?.[i]
+        if (!node) {
+          const why = errors.find((e) => e.path?.[0] === 'nodes' && e.path?.[1] === i)?.message
+          return { ...base, state: null, url: null, statusError: statusError ?? why ?? 'GitHub returned no status for this deployment' }
+        }
+        const status = node.latestStatus
+        // The url is the log of the deploy, as target_url was. environmentUrl is the published site, not a log.
+        return { ...base, state: status ? String(status.state).toLowerCase() : 'pending', url: status?.logUrl ?? null }
+      })
     },
+
+    ciLogs({ branch, runId } = {}) {
+      let run
+      let newerRun
+      if (runId !== undefined) {
+        if (!Number.isInteger(runId) || runId < 1) throw new PmkitError('INVALID_INPUT', `run id "${runId}" is not valid`, 'Pass the number of a workflow run')
+        const meta = parse(check('gh', ['run', 'view', String(runId), '--json', 'workflowName,url,conclusion,status,createdAt,headSha']).stdout, 'the workflow run')
+        run = { databaseId: runId, ...meta }
+      } else {
+        const runs = listRuns({ branch })
+        run = runs.find((r) => FAILED_RUN.has(r.conclusion))
+        if (!run) return null
+        // A newer successful run of the workflow makes this failure old news. A cancelled, skipped or other run says nothing about the code.
+        const newest = runs
+          .filter((r) => r.workflowName === run.workflowName && r.status === 'completed' && r.conclusion === 'success' && Date.parse(r.createdAt) > Date.parse(run.createdAt))
+          .reduce((a, r) => (a === null || Date.parse(r.createdAt) > Date.parse(a.createdAt) ? r : a), null)
+        newerRun = newest ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha ?? null } : null
+      }
+      const conclusion = run.conclusion || null
+      // A run that succeeded, is still going or never started a job has no failed-step log: gh would only answer with nothing.
+      // A run that was cancelled or skipped can still have failed steps, so only these three skip the call.
+      const hasFailedSteps = conclusion !== null && conclusion !== 'success' && conclusion !== 'startup_failure'
+      const log = hasFailedSteps ? check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout : ''
+      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, conclusion, status: run.status ?? null, createdAt: run.createdAt ?? null, headSha: run.headSha ?? null, ...(newerRun === undefined ? {} : { newerRun }), log }
+    },
+
+    prDiff(number) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      const args = ['pr', 'diff', String(number), '--color', 'never']
+      const result = run('gh', args, { timeout: DIFF_TIMEOUT_MS })
+      if (result.status === 0) return result.stdout
+      // GitHub refuses a diff over its size limit with HTTP 406. The caller reads the local diff instead.
+      if (/HTTP 406|diff exceeded the maximum/i.test(result.stderr ?? '')) return null
+      throw failure('gh', args, result)
+    },
+
+    /**
+     * The changes of a branch since it left its base. The base is origin/<base> when that exists, so commits of other people
+     * on a stale local base stay out. The branch is the local one, or origin/<branch> when only origin has it. For the branch
+     * that is checked out the diff also holds the index and the working tree (tracked files), because it starts at the
+     * merge base and ends at the working tree. Returns { diff, base, ref, uncommitted, untracked, committedEmpty, treeError }: committedEmpty is true when the commits alone
+     * change nothing, and treeError holds why the working tree could not be read, or null.
+     */
+    localDiff({ branch, base }) {
+      refArg('branch', branch)
+      refArg('base', base)
+      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+      const exists = (ref) => git(['rev-parse', '--verify', '--quiet', ref]).status === 0
+      const from = [[`refs/remotes/origin/${base}`, `origin/${base}`], [`refs/heads/${base}`, base], [base, base]].find(([ref]) => exists(ref))?.[1]
+      if (from === undefined) throw new PmkitError('INVALID_INPUT', `the base branch "${base}" does not exist here or on origin`, 'Pass --base <branch>, or run git fetch origin')
+      const local = exists(`refs/heads/${branch}`)
+      if (!local && !exists(`refs/remotes/origin/${branch}`)) throw new PmkitError('INVALID_INPUT', `the branch "${branch}" does not exist here or on origin`, 'Pass --branch <branch>, or run git fetch origin')
+      const ref = local ? branch : `origin/${branch}`
+      // A working tree that cannot be read must not stop the committed diff: the caller gets the reason in treeError.
+      let tree = null
+      let treeError = null
+      if (local) {
+        try { tree = workingTree(branch) } catch (error) { treeError = error.message }
+      }
+      const uncommitted = tree?.uncommitted === true
+      const untracked = tree?.untracked ?? 0
+      const diffOf = (args) => {
+        const result = git(args)
+        if (result.status !== 0) throw failure('git', args, result)
+        return result.stdout
+      }
+      if (!uncommitted) {
+        const diff = diffOf(['diff', '--no-color', `${from}...${ref}`])
+        return { diff, base: from, ref, uncommitted, untracked, committedEmpty: diff === '', treeError }
+      }
+      const mergeBase = diffOf(['merge-base', from, ref]).trim()
+      const quiet = git(['diff', '--quiet', `${from}...${ref}`])
+      if (quiet.status > 1) throw failure('git', ['diff', '--quiet', `${from}...${ref}`], quiet)
+      return { diff: diffOf(['diff', '--no-color', mergeBase]), base: from, ref, uncommitted, untracked, committedEmpty: quiet.status === 0, treeError }
+    },
+
+    /**
+     * The state of the working tree when `branch` is the checked out branch, else null. `uncommitted` is true when the index or
+     * a tracked file has changes (the changes localDiff includes); `untracked` counts the files git does not track, which no diff holds.
+     */
+    workingTree,
+
+    /**
+     * Whether the commit `oidOf()` returns is on the branch: a tip of the local branch or of origin/<branch>, or behind one of them. Null when the
+     * branch exists in neither place. The local branch may be ahead of or behind what a pull request merged, so one tip is not enough.
+     */
+    branchHas(branch, oidOf) {
+      refArg('branch', branch)
+      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+      const tips = [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`].map((ref) => git(['rev-parse', '--verify', '--quiet', ref])).filter((r) => r.status === 0).map((r) => r.stdout.trim())
+      if (tips.length === 0) return null
+      const oid = oidOf()
+      return tips.some((tip) => tip === oid || git(['merge-base', '--is-ancestor', oid, tip]).status === 0)
+    },
+
+    /** The base branch name and the head commit of a pull request. */
+    prRefs(number) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      return parse(check('gh', ['pr', 'view', String(number), '--json', 'baseRefName,headRefOid']).stdout, 'the pull request refs')
+    },
+
+    /** The commits of the local branch that origin/<branch> lacks, or null when either ref is missing. */
+    unpushedCommits(branch) {
+      refArg('branch', branch)
+      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+      if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).status !== 0) return null
+      if (git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]).status !== 0) return null
+      const result = git(['rev-list', '--count', `origin/${branch}..${branch}`])
+      return result.status === 0 ? Number(result.stdout.trim()) : null
+    },
+
+    listRuns,
   }
 }

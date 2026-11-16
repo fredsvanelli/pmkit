@@ -1,0 +1,14 @@
+{"at":"2026-11-08T20:37:23Z","by":"fred","op":"create","to":{"id":"PMK-216","title":"Improve estimate-issue","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:23.568Z","updated":"2026-11-08T20:37:23Z"}}
+{"at":"2026-11-08T20:37:23Z","by":"fred","op":"link","field":"related","to":"PMK-59"}
+{"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T05:14:41Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T05:14:41Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T05:14:43Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-216-improve-estimate-issue"}
+{"at":"2026-11-10T05:15:58Z","by":"fred","op":"comment","to":"2026-11-10T05-15-58Z-fred.md"}
+{"at":"2026-11-10T05:48:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T05:48:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T05:54:44Z","by":"fred","op":"comment","to":"2026-11-10T05-54-44Z-fred.md"}
+{"at":"2026-11-10T05:54:45Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-10T06:46:44Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

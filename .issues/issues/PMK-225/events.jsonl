@@ -1,0 +1,14 @@
+{"at":"2026-11-08T20:37:24Z","by":"fred","op":"create","to":{"id":"PMK-225","title":"Improve user inbox","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:24.875Z","updated":"2026-11-08T20:37:24Z"}}
+{"at":"2026-11-08T20:37:24Z","by":"fred","op":"link","field":"related","to":"PMK-47"}
+{"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
+{"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":5}
+{"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T00:55:52Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T00:55:52Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T00:55:55Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-225-improve-user-inbox"}
+{"at":"2026-11-10T00:59:15Z","by":"fred","op":"comment","to":"2026-11-10T00-59-15Z-fred.md"}
+{"at":"2026-11-10T01:22:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T01:23:12Z","by":"fred","op":"comment","to":"2026-11-10T01-23-12Z-fred.md"}
+{"at":"2026-11-10T01:23:12Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-10T02:11:05Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

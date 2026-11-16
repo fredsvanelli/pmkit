@@ -9,9 +9,12 @@ const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixt
 
 const made = []
 
-/** Makes a temp folder under os.tmpdir() and records it, so the test run removes it. */
+/**
+ * Makes a temp folder under os.tmpdir() and records it, so the test run removes it. The path is the real one: on macOS
+ * os.tmpdir() goes through the /var symlink, and the CLI and git print the resolved /private/var path.
+ */
 export function tempDir(prefix = 'pmkit-') {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
   made.push(dir)
   return dir
 }
@@ -36,10 +39,16 @@ export function userStoreEnv() {
   return { home, env: { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: path.join(home, '.config'), PMKIT_HOME: store } }
 }
 
+/** Copies a fixture folder to `dest`, leaving out `.issues/.cache`: a CLI run inside a fixture writes one, and a copy must not carry it. */
+export function copyFixture(src, dest) {
+  const cache = path.join(src, '.issues', '.cache')
+  fs.cpSync(src, dest, { recursive: true, filter: (file) => file !== cache })
+}
+
 /** Copies a fixture into a fresh temp folder and returns its path. */
 export function makeRepo(name = 'basic') {
   const root = tempDir('pmkit-')
-  fs.cpSync(path.join(fixtures, name), root, { recursive: true })
+  copyFixture(path.join(fixtures, name), root)
   return root
 }
 

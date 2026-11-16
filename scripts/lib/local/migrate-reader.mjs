@@ -52,6 +52,7 @@ export function readLocalSnapshot({ root, config, tracker, commit = null, now = 
       release: issue.release ?? null,
       due: issue.due ?? null,
       branch: issue.branch ?? null,
+      docs: issue.docs ?? [],
       description: issue.description ?? '',
       acceptanceCriteria: issue.acceptanceCriteria ?? [],
       archived: Boolean(issue.archived),
@@ -111,6 +112,10 @@ export function readLocalSnapshot({ root, config, tracker, commit = null, now = 
       timeLogs,
       documents: countFiles(path.join(issuesDir, 'docs')),
       milestones: local.listMilestones().length,
+      views: countFiles(path.join(issuesDir, 'views')),
+      goals: countFiles(path.join(issuesDir, 'goals')),
+      customers: countFiles(path.join(issuesDir, 'customers')),
+      requests: countFiles(path.join(issuesDir, 'requests')),
     },
   }
 }

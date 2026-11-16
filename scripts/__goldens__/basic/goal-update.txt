@@ -1,0 +1,41 @@
+$ pmkit goal update GOAL-8K2W --status planned --target none
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: goal GOAL-8K2W does not exist
+next: pmkit goal list
+
+$ pmkit goal update GOAL-8K2W --status planned --target none --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "goal GOAL-8K2W does not exist",
+    "nextStep": "pmkit goal list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit goal update GOAL-8K2W --status planned --target none --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: goal GOAL-8K2W does not exist
+next: pmkit goal list
+
+$ pmkit goal update GOAL-8K2W --status planned --target none --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "goal GOAL-8K2W does not exist",
+    "nextStep": "pmkit goal list"
+  }
+}
+--- stderr
+(empty)

@@ -25,7 +25,7 @@ test('ERROR_CODES lists the eight codes', () => {
 test('the constants match the common model', () => {
   assert.deepEqual(CATEGORIES, ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled'])
   assert.deepEqual(TERMINAL, ['done', 'canceled'])
-  assert.deepEqual(EVENT_OPS, ['create', 'update', 'move', 'assign', 'link', 'unlink', 'comment', 'log_time', 'archive'])
+  assert.deepEqual(EVENT_OPS, ['create', 'update', 'move', 'assign', 'link', 'unlink', 'comment', 'log_time', 'archive', 'unarchive'])
   assert.deepEqual(LINK_KINDS, ['blocks', 'related', 'duplicate'])
   assert.ok(isCategory('todo'))
   assert.ok(!isCategory('blocked'))

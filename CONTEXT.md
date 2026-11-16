@@ -33,8 +33,12 @@ An issue whose `parent` names another issue or an epic. The parent's `children` 
 _Avoid_: subtask, child ticket
 
 **Epic**:
-A larger body of work with a status, an optional start and target date, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
+A larger body of work with a status, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
+
+**Goal**:
+A strategic outcome, kept as `goals/<ID>.md` with a title, an optional target date and a description. Epics link to it through their `goal` key, and its progress adds up the progress of those epics. Its ID is `GOAL-` and a code that follows the ID style. A sprint's `goal` is a sentence about that sprint, not a Goal.
+_Avoid_: initiative (Linear's name for it), objective, OKR
 
 **Milestone**:
 A named target with an optional due date that issues and epics point to by id.
@@ -47,6 +51,22 @@ _Avoid_: milestone (a milestone is a target, not a version), version (outside th
 **Release notes**:
 The done issues of a release, a sprint or a period, grouped by type and written for a user of the product. The command says which basis it used and whether the notes are a draft. `/pmkit:report:release-notes` writes them and saves them as a document after the user confirms.
 _Avoid_: changelog (that is the plugin's own `CHANGELOG.md`), release (the object, not its notes)
+
+**Customer**:
+A company or person the team builds for, kept as `customers/<ID>.md` with a name and an optional status, tier, revenue, size and owner. Its ID is `CUS-` and a code that follows the ID style. Linear has customers of its own, which `/pmkit:linear:customers` reads.
+_Avoid_: client, account
+
+**Request**:
+Something a customer or another team asked for, kept as `requests/<ID>.md`. It is `open` in the inbox until someone accepts it into an issue or declines it. Its ID is `REQ-` and a code that follows the ID style.
+_Avoid_: ticket, ask (Linear's name for requests that arrive through Slack), need (Linear's API name)
+
+**User inbox**:
+The assignments and `@member` mentions a member has not seen yet. The Local tracker finds them in the event log and in comment and description text, gives each a key that does not depend on a clock, and keeps the keys the member has seen in the user store, never in `.issues/`. `inbox mark-read` adds keys to that set. Not to be confused with the request inbox, which holds open requests.
+_Avoid_: notifications (Linear's name), unread
+
+**Demand signal**:
+An accepted request, read as a sign that someone wants its issue. `demand list` groups them by issue with the customers who asked.
+_Avoid_: vote, upvote
 
 **Sprint**:
 A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.

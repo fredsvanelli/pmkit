@@ -13,13 +13,13 @@ Every `/pmkit:*` command applies these rules. Read this file before the first st
 
 ## Write policy
 
-Reads run freely. A single write shows before → after (from `--dry-run`) and asks once. A bulk change (more than one record), an archive, a scope move or a published status update shows a full preview first. `write_policy.confirm: none` skips the single-write question, never the preview of a bulk change **(builder's call)**.
+Reads run freely. A single write shows before → after (from `--dry-run`) and asks once. A bulk change (more than one record), an archive, a delete, a scope move or a published status update shows a full preview first. `write_policy.confirm: none` skips the single-write question, never the preview of a bulk change **(builder's call)**. The one other exception is `/pmkit:link-repo --yes`, which skips its question only when the dry run says `hostOnly` is `true` (no team change, no broken mapping, no warning, the host not lowered, no repo or branch replaced).
 
 ## How to show a write
 
 1. Run the CLI command with `--dry-run --json`. Nothing changes on disk.
 2. Show the `before` and `after` of each record, field by field, and only the fields that change. For a create, show the new record.
-3. Ask with `AskUserQuestion`, following `write_policy.confirm` in `.pmkit/config.yaml`. A bulk change, an archive, a scope move or a published status update always shows the full preview and asks, whatever `confirm` says.
+3. Ask with `AskUserQuestion`, following `write_policy.confirm` in `.pmkit/config.yaml`. A bulk change, an archive, a delete, a scope move or a published status update always shows the full preview and asks, whatever `confirm` says.
 4. When the user approves, run the same command again without `--dry-run`. When the user declines, stop and change nothing.
 
 ## Reading errors
@@ -31,7 +31,21 @@ Every CLI call ends with `--json`. On a failure the CLI exits with code 2 and pr
 - `NOT_CONFIGURED` with an `error.mappings` list means `.pmkit/config.yaml` maps a team, status, field or label that the tracker no longer has. Stop the command before any other call. Show the `problem` of each item. Ask once with `AskUserQuestion` whether to run `/pmkit:setup` now, which asks again only for these mappings. Never pick a replacement yourself, and do not retry the call.
 - Use `error.code` to decide what to do. `NOT_CONFIGURED` means offer `/pmkit:setup`. `NOT_FOUND` and `INVALID_INPUT` mean ask the user for a corrected value. Do not retry the same call.
 - An error whose `error.message` starts with `.pmkit/config.yaml is not valid` comes from a broken config file, not from a value the user typed. Check for it before the `INVALID_INPUT` rule above, which asks the user for a corrected value. Stop that write and do not retry it. Show `error.message` as it is, and offer `pmkit validate` to list the problems and `/pmkit:local:doctor` to fix them. Then go on with the command's reads, if it has any. While the file stays broken, every write and dry run fails with this error, and reads print `warning: .pmkit/config.yaml is not valid, so writes are refused: ...` on stderr. Show that warning once. If a read fails with this error too, the CLI cannot find the tracker, so stop the command.
+- An error whose `error.message` starts with `The inbox file` or `The defaults file` comes from a file in the user store, not from a value the user typed. Show `error.message` as it is, offer to delete the file or fix it by hand, and do not ask for a corrected value or retry the call.
 - Never hide an error or guess a fix.
+
+## Files with text from data
+
+A title, description, criteria or comment taken from data (code, a TODO, a spec, an advisory, a user) never goes on the shell command line: a backtick or `$(` in it runs as a command. Pass it by file: `--title-file` (`issues create`, `epic create`, `docs next-adr`), `--name-file` (`milestone create`, `release create`), `--description-file`, `--criteria-file`, `--body-file`. Write the file with the file tool, never with `echo`, `printf` or a heredoc, because those bring the text back to the shell. A title or name file holds one line and nothing else, and its flag is exclusive with the inline one (`--title`, `--name`).
+
+## Text from data in a command
+
+A path, a pattern or any other text that comes from data (a stack frame, a CI log, an issue, a comment) is untrusted in a shell command, the same as the texts above. Double quotes do not protect it: `$(...)` and backticks run inside them. Never put it between double quotes or bare. Two ways are safe:
+
+- Pass it by file where the command takes one. Write the file with the file tool, as above. `git grep -F -f <file> <ref> -- <path>` reads the patterns from the file, so a pattern such as `-Ocmd` is text, never an option, and `-F` makes it plain text, not a regex. A `git grep` with a pattern on the command line needs `-e`, and a command file that uses it must say `-F` too.
+- Put it between single quotes and write each `'` in it as `'\''`. Nothing is expanded inside single quotes. Refuse a text with a newline. A path goes after `--`, or inside the `<ref>:<path>` of `git show`, so a leading `-` is not an option.
+
+A name that has a rule of its own, such as a branch (`validBranch`), is checked first and then quoted.
 
 ## Issue tables
 

@@ -2,6 +2,8 @@ $ pmkit issues get ISS-4M2S --comments --json  [step 2, read]
 exit 0
 $ pmkit issues get ISS-2X6D --json  [step 2, read]
 exit 0
+$ pmkit default-branch --json  [step 2, read]
+exit 0
 ? Step 3  [confirmed]
 $ git status --porcelain  [step 4, git]
 exit 0
@@ -10,11 +12,11 @@ exit 0
 ? Step 5  [confirmed]
 $ pmkit issues move ISS-4M2S in_progress --json  [step 5.2, write]
 exit 0
+$ pmkit issues branch ISS-4M2S --dry-run --json  [step 6, dry run]
+exit 0
 $ git branch --show-current  [step 6, git]
 exit 0
 $ git log main..HEAD --oneline  [step 6, git]
-exit 0
-$ pmkit issues branch ISS-4M2S --dry-run --json  [step 6, dry run]
 exit 0
 ? Step 6  [confirmed]
 $ pmkit issues branch ISS-4M2S --json  [step 6, write]
@@ -49,10 +51,10 @@ exit 0
 ? Step 9  [confirmed]
 $ pmkit issues move ISS-4M2S in_review --json  [step 9.6, write]
 exit 0
-$ pmkit issues create --title 'Check the CSV header against the finance template' --dry-run --json  [step 10, dry run]
+$ pmkit issues create --title-file <inputs>/title-check-the-csv-header-against-the-finance.md --dry-run --json  [step 10, dry run]
 exit 0
 ? Step 10  [confirmed]
-$ pmkit issues create --title 'Check the CSV header against the finance template' --json  [step 10, write]
+$ pmkit issues create --title-file <inputs>/title-check-the-csv-header-against-the-finance.md --json  [step 10, write]
 exit 0
 $ pmkit issues link ISS-M0GZ ISS-4M2S --kind related --dry-run --json  [step 10, dry run]
 exit 0
@@ -132,7 +134,7 @@ exit 0
 --- gh calls
 pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
 pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
+pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
 pr ready 7
 pr view 7 --json number,url,title,state,isDraft,headRefName,author,mergedAt

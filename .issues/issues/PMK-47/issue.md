@@ -2,14 +2,17 @@
 id: PMK-47
 title: Keep a user inbox for the Local tracker
 type: feature
-status: backlog
+status: done
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
 blocked_by: [PMK-32, PMK-2]
+related: [PMK-195, PMK-225]
 milestone: generic-commands
+branch: pmk-47-keep-a-user-inbox-for-the-local-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-11-08T20:37:24Z
 ---
 
 ## Description
@@ -18,5 +21,5 @@ Source: Local adapter, Capabilities (`user_inbox`: "Mentions (`@user`) and assig
 
 ## Acceptance criteria
 
-- [ ] The CLI lists the mentions and assignments since the last check
-- [ ] Marking read records the check in the user store
+- [x] The CLI lists the mentions and assignments since the last check
+- [x] Marking read records the check in the user store

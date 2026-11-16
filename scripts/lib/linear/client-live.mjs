@@ -221,6 +221,7 @@ test('Linear accepts every project document pmkit reads, and the epic reads agre
     const adapter = createLinearTracker({ root, pmkit: { tracker: scoped, git_host: { system: 'none' } } }, { env, fetch: guardedFetch })
     assert.ok(Array.isArray(await adapter.listDeliverables()))
     assert.ok(Array.isArray(await adapter.listMilestones()))
+    assert.ok(Array.isArray(await adapter.listDocuments()))
     // The three keys of one project find it and answer one id.
     for (const key of [project.id, project.slugId, ...(project.identifier ? [project.identifier, project.identifier.toLowerCase()] : [])]) {
       assert.notEqual(epicKey(key).kind, 'other', 'a project key has a shape epicKey does not know')

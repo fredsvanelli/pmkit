@@ -3,7 +3,7 @@
 
 export const TRACKER_OPERATIONS = [
   'discover', 'capabilities',
-  'searchIssues', 'getIssue', 'createIssue', 'updateIssue', 'moveToCategory', 'assign', 'archive',
+  'searchIssues', 'getIssue', 'createIssue', 'updateIssue', 'moveToCategory', 'assign', 'delegate', 'archive', 'delete', 'unarchive', 'restore',
   'link', 'unlink', 'setParent',
   'getHistory', 'listComments', 'comment', 'resolveThread',
   'listCycles', 'currentCycle', 'cycleIssues', 'openCycle', 'closeCycle', 'moveToCycle',
@@ -12,8 +12,12 @@ export const TRACKER_OPERATIONS = [
   'listReleases', 'getRelease', 'createRelease', 'releaseIssues', 'markReleased',
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
   'metricEvents',
-  'readDocument', 'createDocument',
-  'logTime',
+  'readDocument', 'createDocument', 'updateDocument', 'listDocuments',
+  'saveView', 'listViews', 'runView', 'deleteView', 'renameView',
+  'listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal', 'updateGoal', 'deleteGoal',
+  'listCustomers', 'getCustomer', 'createCustomer', 'updateCustomer', 'listRequests', 'getRequest', 'createRequest', 'updateRequest', 'acceptRequest', 'declineRequest', 'listDemandSignals',
+  'listNotifications', 'markRead',
+  'logTime', 'listTimeEntries',
 ]
 
 /** Throws a TypeError that lists every contract operation the object lacks. */

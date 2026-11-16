@@ -16,8 +16,8 @@ export const PROJECT_TYPE_OF_CATEGORY = Object.freeze({
 })
 
 export const EXPORT_LOSSES = [
-  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents',
-  'branch names', 'ids', 'estimates', 'members', 'links', 'capacity',
+  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents', 'views', 'goals', 'customers', 'requests',
+  'branch names', 'doc links', 'ids', 'estimates', 'members', 'links', 'capacity',
 ]
 
 export const EXPORT_READ_REQUESTS = 10
@@ -233,6 +233,10 @@ export function mapExport(snapshot, target) {
       dropped.push('branch')
       losses.add('branch names', issue.id, '')
     }
+    if (issue.docs?.length > 0) {
+      dropped.push('docs')
+      losses.add('doc links', issue.id, '')
+    }
     const description = buildDescription(issue.description ?? '', issue.acceptanceCriteria ?? [])
     records.issue.push({
       key: issue.id,
@@ -328,12 +332,19 @@ export function mapExport(snapshot, target) {
   const milestones = losses.get('milestones')
   if (milestones) milestones.why = `${plural(milestones.count, 'record')} lose their milestone; pmkit cannot create Linear milestones`
   const releases = losses.get('releases')
-  if (releases) releases.why = `${plural(releases.count, 'issue')} lose their release; pmkit has no Linear release mapping`
-  else if (out.releases > 0) losses.set('releases', out.releases, [], `${plural(out.releases, 'release')} stay in .issues/releases/; pmkit has no Linear release mapping`)
+  if (releases) releases.why = `${plural(releases.count, 'issue')} lose their release; pmkit does not carry releases into Linear`
+  else if (out.releases > 0) losses.set('releases', out.releases, [], `${plural(out.releases, 'release')} stay in .issues/releases/; pmkit does not carry releases into Linear`)
   losses.set('time logs', out.timeLogs ?? 0, [], `${plural(out.timeLogs ?? 0, 'time log')} stay in events.jsonl; Linear has no time tracking`)
   losses.set('documents', out.documents ?? 0, [], `${plural(out.documents ?? 0, 'document')} stay in .issues/docs/`)
+  losses.set('views', out.views ?? 0, [], `${plural(out.views ?? 0, 'view')} stay in .issues/views/; pmkit does not create Linear views`)
+  losses.set('goals', out.goals ?? 0, [], `${plural(out.goals ?? 0, 'goal')} stay in .issues/goals/; pmkit does not create Linear initiatives, so epics lose their goal links`)
+  const stay = (n) => (n === 1 ? 'stays' : 'stay')
+  losses.set('customers', out.customers ?? 0, [], `${plural(out.customers ?? 0, 'customer')} ${stay(out.customers ?? 0)} in .issues/customers/; pmkit does not create Linear customers`)
+  losses.set('requests', out.requests ?? 0, [], `${plural(out.requests ?? 0, 'request')} ${stay(out.requests ?? 0)} in .issues/requests/; pmkit does not create Linear customer requests`)
   const branches = losses.get('branch names')
   if (branches) branches.why = `${plural(branches.count, 'issue')} get the branch name Linear gives them; the map keeps the old id`
+  const docLinks = losses.get('doc links')
+  if (docLinks) docLinks.why = `${plural(docLinks.count, 'issue')} ${docLinks.count === 1 ? 'loses its' : 'lose their'} docs field; a Linear doc is a link pmkit makes on the issue, and the migration does not create it, so the docs are not carried over`
   const ids = snapshot.issues.length + snapshot.epics.length
   losses.set('ids', ids, [], `${plural(ids, 'record')} get new Linear identifiers; the map keeps the old ones`)
   const estimates = losses.get('estimates')

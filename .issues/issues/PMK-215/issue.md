@@ -1,0 +1,33 @@
+---
+id: PMK-215
+title: Improve track-agents
+type: feature
+status: done
+priority: low
+estimate: 2
+assignee: fred
+related: [PMK-58]
+branch: pmk-215-improve-track-agents
+created: 2026-11-08T20:37:23.421Z
+updated: 2026-11-10T06:46:43Z
+---
+
+## Description
+
+### Context
+
+Improvements suggested by the implementer and reviewers of PMK-58 (track-agents) during EPC-6, collected in `docs/superpowers/epc-6-follow-ups.md`. None of them is a defect. Source: PMK-58.
+
+### Scope (in)
+
+- A Linear fallback that finds pull requests by agent authors, instead of `NOT_SUPPORTED`.
+- An `--agent` filter.
+
+### Out of scope
+
+- The defects found in the same reviews, which are their own bug issues.
+
+## Acceptance criteria
+
+- [x] A Linear fallback that finds pull requests by agent authors, instead of `NOT_SUPPORTED`
+- [x] An `--agent` filter

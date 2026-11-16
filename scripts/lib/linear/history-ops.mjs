@@ -1,12 +1,15 @@
 // The History and Comments families of the Linear tracker: getHistory, listComments, comment, resolveThread and metricEvents.
 // See docs/superpowers/specs/2026-10-28-pmk-36-linear-history-comments-design.md.
 
-import { PmkitError } from '../errors.mjs'
+import { AGENT_ID, delegationComment } from '../delegation.mjs'
+import { PmkitError, isPmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
-import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUE_UPDATE } from './documents.mjs'
 import { translateFilter } from './filter.mjs'
 import { toComment, toEvents } from './history.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
+import { toIssue } from './issues.mjs'
+import { NO_AGENT_HINT } from './manifest.mjs'
 
 const PAGE = 100
 const COMMENT_ID = /^[A-Za-z0-9-]+$/
@@ -156,5 +159,76 @@ export function historyOperations({ client, ops }) {
     return flagTruncated(events, hasMore)
   }
 
-  return { getHistory, listComments, comment, resolveThread, metricEvents }
+  /**
+   * Native delegation (PMK-214): the delegation comment, then the issue's delegate. Linear keeps the person as assignee and starts the
+   * agent's session when the delegate is set, so the comment goes first and the agent reads the instructions. Every check runs before the
+   * first mutation. Linear has no transaction: when the delegate update fails after the comment, an unconfirmed update is read back,
+   * and the error lists what was written, what is missing or unknown, and says not to delegate again.
+   */
+  async function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
+    await ops.requireViewer(actor)
+    const agentsOf = (ctx) => ctx.raw.users.filter((user) => user.app).map((user) => `agent:${user.id}`)
+    let agents = agentsOf(await ops.context())
+    const shaped = typeof agent === 'string' && AGENT_ID.test(agent)
+    // Only a well-formed id that discovery does not know yet is worth a refresh.
+    if (shaped && !agents.includes(agent)) agents = agentsOf(await ops.context({ refresh: true }))
+    if (agents.length === 0) throw new PmkitError('NOT_SUPPORTED', NO_AGENT_HINT, NO_AGENT_HINT)
+    const nextStep = `Use one of: ${agents.join(', ')}`
+    if (!shaped) throw new PmkitError('INVALID_INPUT', `"${agent}" is not an agent: an agent id starts with agent:`, nextStep)
+    if (!agents.includes(agent)) throw new PmkitError('INVALID_INPUT', `agent "${agent}" is not an app user of this workspace`, nextStep)
+    const beforeNode = await ops.readNode(id)
+    const current = await ops.contextFor([beforeNode])
+    const before = toIssue(beforeNode, current)
+    const body = delegationComment({ issue: before.id, agent, by: actor, instructions, run: 'native' })
+    const input = { delegateId: agent.slice('agent:'.length) }
+    const changes = before.delegate !== agent
+    // The issue with the delegate set, computed without a request: the dry run's answer, and the fallback when a read after the update fails.
+    const preview = changes ? (await ops.writeUpdate(beforeNode, before, input, current, true)).after : before
+    if (dryRun) return { before, after: preview, comment: await comment(before.id, body, actor, { dryRun: true }), run: 'native' }
+    const posted = await comment(before.id, body, actor)
+    if (!changes) return { before, after: before, comment: posted, run: 'native' }
+    // Once Linear has the delegate, the delegation succeeded: a read that fails while mapping the answer does not change that.
+    const done = async (node) => {
+      try {
+        return { before, after: await ops.mapped(node), comment: posted, run: 'native' }
+      } catch (error) {
+        if (!isPmkitError(error)) throw error
+        return { before, after: preview, comment: posted, run: 'native' }
+      }
+    }
+    let updated
+    try {
+      updated = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input })).issueUpdate.issue
+    } catch (error) {
+      if (!isPmkitError(error)) throw error
+      // The comment is posted either way: a retry would only post it again, so the next step never says to delegate again.
+      const record = { comment: posted.id, written: [`comment ${posted.id}`] }
+      const once = `do not delegate again: the delegation comment ${posted.id} is already posted`
+      if (isUnconfirmed(error)) {
+        // The answer was lost, so the delegate may be set. One read tells.
+        let node
+        try {
+          node = await ops.readNode(before.id)
+        } catch (readError) {
+          if (!isPmkitError(readError)) throw readError
+          throw new PmkitError(
+            error.code,
+            `Linear posted the delegation comment ${posted.id}, but Linear did not confirm the delegate of ${before.id} and it could not be read back: ${readError.message}`,
+            `Check the delegate of ${before.id} in Linear; ${once}`,
+            { ...error.details, ...record, unknown: ['delegate'] },
+          )
+        }
+        if (node.delegate?.id === input.delegateId) return done(node)
+      }
+      throw new PmkitError(
+        error.code,
+        `Linear posted the delegation comment ${posted.id} on ${before.id}, but the delegate is not ${agent}: ${error.message}`,
+        `Set the delegate of ${before.id} to ${agent} in Linear; ${once}`,
+        { ...error.details, ...record, missing: ['delegate'] },
+      )
+    }
+    return done(updated)
+  }
+
+  return { getHistory, listComments, comment, resolveThread, metricEvents, delegate }
 }

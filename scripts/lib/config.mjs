@@ -18,6 +18,13 @@ export const MEMBER_ID = /^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$/
 export const NAME = /\S/
 export const WORKSPACE_KEY = /^[a-z0-9][a-z0-9-]*$/
 
+// goal_prefix has no entry in DEFAULTS: the config checks must tell an absent key from a set one (PMK-213).
+export const DEFAULT_GOAL_PREFIX = 'GOAL'
+/** The goal prefix of a local config: the key, or GOAL when it is absent. */
+export const goalPrefixOf = (local) => local.goal_prefix ?? DEFAULT_GOAL_PREFIX
+// The id prefixes of customers and requests (CUSTOMER_PREFIX, REQUEST_PREFIX). A test pins them; an import would make a cycle.
+export const RESERVED_PREFIXES = ['CUS', 'REQ']
+
 const DEFAULTS = {
   default_status: 'backlog',
   epic_prefix: 'EPC',
@@ -34,6 +41,7 @@ const DEFAULTS = {
     sprint_start_weekday: 'mon',
     velocity_window: 3,
     status_update_window_days: 14,
+    overload_factor: 1.5,
   },
   auto_commit: false,
 }
@@ -107,6 +115,27 @@ export function withLocalDefaults(obj) {
   return result
 }
 
+// A branch name git accepts, with letters and digits of any script. No space, quote, `$`, `;`, `|`, backtick or leading `-` passes, so the name is also safe in a shell command.
+const BRANCH_NAME = /^[\p{L}\p{N}_][\p{L}\p{M}\p{N}._/-]*$/u
+// What git check-ref-format also refuses: an empty component, one that starts with `.` or ends with `.` or `.lock`, and `..`.
+export const validBranch = (name) =>
+  typeof name === 'string' && BRANCH_NAME.test(name) && !name.includes('..') && name.split('/').every((part) => part !== '' && !part.startsWith('.') && !part.endsWith('.') && !part.endsWith('.lock'))
+
+/** The default branch every reader uses: git_host.default_branch when it is a valid name, `main` when it is unset or invalid. `configured` is what the file holds (null when unset) and `note` says why `main` replaced an invalid value. */
+export function resolveDefaultBranch(pmkit, { originHead } = {}) {
+  const configured = pmkit?.git_host?.default_branch
+  if (configured === undefined || configured === null) {
+    // PMK-228: the remote's own default branch, when git knows it and it is a valid name. Anything else keeps main, as before.
+    const head = originHead?.() ?? null
+    if (typeof head === 'string' && validBranch(head)) return { branch: head, configured: null, valid: true, note: `git_host.default_branch is not set, so origin/HEAD (${head}) is used` }
+    // The name itself is not echoed: it failed the check that keeps a name safe to print and to pass on.
+    if (typeof head === 'string') return { branch: 'main', configured: null, valid: true, note: 'origin/HEAD does not name a valid branch, so main is used' }
+    return { branch: 'main', configured: null, valid: true, note: null }
+  }
+  if (validBranch(configured)) return { branch: configured, configured, valid: true, note: null }
+  return { branch: 'main', configured, valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' }
+}
+
 export function validatePmkitConfig(obj) {
   if (!isObject(obj)) return ['config must be a map']
   const problems = []
@@ -143,6 +172,7 @@ export function localConfigShapeProblems(obj) {
   const { id_prefix: idPrefix, epic_prefix: epicPrefix } = obj
   if (typeof idPrefix !== 'string' || !PREFIX.test(idPrefix)) problems.push(`id_prefix must be 2 to 5 capital letters, found ${found(idPrefix)}`)
   if (typeof epicPrefix !== 'string' || !PREFIX.test(epicPrefix)) problems.push(`epic_prefix must be 2 to 5 capital letters, found ${found(epicPrefix)}`)
+  if (obj.goal_prefix !== undefined && (typeof obj.goal_prefix !== 'string' || !PREFIX.test(obj.goal_prefix))) problems.push(`goal_prefix must be 2 to 5 capital letters, found ${found(obj.goal_prefix)}`)
   if (obj.id_style !== undefined && !ID_STYLES.includes(obj.id_style)) problems.push(`id_style must be ${ID_STYLES.join(' or ')}, found ${found(obj.id_style)}`)
 
   if (!isObject(obj.statuses)) {
@@ -195,6 +225,8 @@ export function localConfigShapeProblems(obj) {
     for (const [key, value] of Object.entries(obj.defaults ?? {})) {
       if (key === 'sprint_start_weekday') {
         if (!WEEKDAYS.includes(value)) problems.push(`defaults.${key} must be one of ${WEEKDAYS.join(', ')}, found ${found(value)}`)
+      } else if (key === 'overload_factor') {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) problems.push(`defaults.overload_factor must be a number of 1 or more, found ${found(value)}`)
       } else if (!Number.isInteger(value) || value <= 0) {
         problems.push(`defaults.${key} must be a positive integer, found ${found(value)}`)
       }
@@ -208,6 +240,11 @@ export function localConfigShapeProblems(obj) {
 export function validateLocalConfig(obj) {
   const problems = localConfigShapeProblems(obj)
   if (obj.id_prefix === obj.epic_prefix) problems.push('id_prefix and epic_prefix must differ')
+  // Only a set key is checked: a project from before goal_prefix may use GOAL as id_prefix or epic_prefix, and its goal files
+  // keep the GOAL default in their own folder, as they did before the key existed.
+  if (obj.goal_prefix !== undefined && [obj.id_prefix, obj.epic_prefix, ...RESERVED_PREFIXES].includes(obj.goal_prefix)) {
+    problems.push(`goal_prefix must differ from id_prefix, epic_prefix and the customer and request prefixes (${RESERVED_PREFIXES.join(', ')})`)
+  }
   const statuses = isObject(obj.statuses) ? obj.statuses : {}
   const used = new Set(Object.values(statuses).map((s) => (isObject(s) ? s.category : undefined)))
   for (const category of CATEGORIES) {

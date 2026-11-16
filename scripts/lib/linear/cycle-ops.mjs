@@ -148,13 +148,14 @@ export function cycleOperations({ client, issues, config }) {
   const getDaysOff = async (id) => (await readEntry(id)).daysOff
 
   /** Capacity and days off live in .pmkit/capacity.yaml, so Linear is not written and the viewer check only keeps --as honest. */
-  async function updateCycleCapacity(id, { capacity, daysOff } = {}, actor, { dryRun = false } = {}) {
+  async function updateCycleCapacity(id, { capacity, capacityPatch, capacityBasePatch, daysOff } = {}, actor, { dryRun = false } = {}) {
     await issues.requireViewer(actor)
     const { context, team } = await scope()
     const node = await requireCycle(team, id)
     const sprint = toSprint(node)
-    const members = context.raw.users.filter((user) => !user.app).map((user) => user.id)
-    const { before, after } = writeEntry(config.root, team.key, String(node.number), { capacity, daysOff }, { sprint, members, dryRun })
+    // Only the users of the scope team count: `team capacity` lists them, and a user of another team has no place in this team's capacity.
+    const members = context.raw.users.filter((user) => !user.app && (user.teams ?? []).includes(team.id)).map((user) => user.id)
+    const { before, after } = writeEntry(config.root, team.key, String(node.number), { capacity, capacityPatch, capacityBasePatch, daysOff }, { sprint, members, dryRun })
     return { before: toSprint(node, before), after: toSprint(node, after) }
   }
 

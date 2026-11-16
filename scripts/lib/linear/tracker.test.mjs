@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_LABELS, ACME_TEAM, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
@@ -35,9 +35,9 @@ test('the tracker passes assertTracker', () => {
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup(), { fetch: fakeLinearFetch(fakeWorkspace({ releasesEnabled: true })) })
-  await assert.rejects(linear.listReleases(), {
+  await assert.rejects(linear.createRelease({ id: '1.0' }, 'user-1'), {
     code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement listReleases yet',
+    message: 'the Linear adapter does not implement createRelease yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -49,10 +49,9 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
 })
 
-// Two operations that stay stubs after PMK-38, so the mapping check is all these tests reach.
-// listReleases is a stub only where the workspace has releases; on Free it answers empty (PMK-40).
+// Two operations that stay stubs, so the mapping check is all these tests reach. listReleases reads Linear releases since PMK-246.
 const stubs = {
-  read: (linear) => linear.listReleases(),
+  read: (linear) => linear.listTimeEntries({}),
   write: (linear) => linear.logTime('ACME-1', 5, 'x'),
 }
 
@@ -277,15 +276,15 @@ test('no file under the store holds the key', async () => {
 
 // A Linear tracker over the stateful fake, scoped to team ACME, with in_review and two types mapped.
 function linearSetup({ mappings = { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } }, scope = { workspace: 'acme', team: 'ACME' },
-  workspace = {}, issues = {}, nestedPage, uuid, now = at(0), context = setup({ scope }) } = {}) {
+  workspace = {}, issues = {}, nestedPage, uuid, now = at(0), context = setup({ scope }), routes = () => ({}) } = {}) {
   const fake = fakeLinearIssues({ ...workspace, ...issues, ...(nestedPage ? { nestedPage } : {}) })
   const projects = fakeLinearProjects({ issues: fake, teams: workspace.teams, states: workspace.states })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes, ...projects.routes })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes, ...projects.routes, ...routes(fake) })
   context.config.pmkit.mappings = mappings
   const linear = createLinearTracker(context.config, { env: context.env, now, fetch, ...(uuid ? { uuid } : {}) })
   return { tracker: linear, fake, projects, fetch, context }
 }
-const seed = (fake, input) => fake.seed(input)
+const seed = (fake, input, extra) => fake.seed(input, extra)
 const namesOf = (fetch) => fetch.calls.map((call) => operationName(call.body.query))
 const lastVariables = (fetch, name) => fetch.calls.filter((call) => operationName(call.body.query) === name).at(-1).body.variables
 
@@ -1092,6 +1091,27 @@ test('createIssue with an epic parent puts the issue in the epic, and updateIssu
   await assert.rejects(linear.updateIssue('ACME-1', { parent: 'P-ACM-1' }, 'user-1'), { code: 'INVALID_INPUT', message: 'parent cannot be set here' })
 })
 
+test('createIssue sets the milestone of the epic parent, and refuses a foreign milestone or no epic before any write', async () => {
+  const { tracker: linear, fake, fetch, projects } = epicSetup()
+  const MS = '22222222-2222-4222-8222-222222222222'
+  projects.seedMilestone(PID, { id: MS, name: 'Alpha' })
+  projects.seed({ id: 'p-other', name: 'Other', teamIds: ['team-acme'] })
+  projects.seedMilestone('p-other', { id: '33333333-3333-4333-8333-333333333333', name: 'Beta' })
+  const dry = await linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: MS }, 'user-1', { dryRun: true })
+  assert.equal(dry.after.milestone, MS)
+  assert.equal(mutationsIn(fetch), 0)
+  const { after } = await linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: MS }, 'user-1')
+  assert.equal(after.milestone, MS)
+  assert.equal(lastVariables(fetch, 'PmkitIssueCreate').input.projectMilestoneId, MS)
+  const before = fake.records.length
+  await assert.rejects(linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: '33333333-3333-4333-8333-333333333333' }, 'user-1'), { code: 'INVALID_INPUT', message: 'milestone 33333333-3333-4333-8333-333333333333 is not in the project of the issue' })
+  await assert.rejects(linear.createIssue({ title: 'M', milestone: MS }, 'user-1', { dryRun: true }), { code: 'INVALID_INPUT', message: 'a milestone on a new Linear issue needs an epic parent', nextStep: 'Add --parent <epic>' })
+  await assert.rejects(linear.createIssue({ title: 'M', parent: 'ACME-1', milestone: MS }, 'user-1', { dryRun: true }), { code: 'INVALID_INPUT', message: /needs an epic as its parent/, nextStep: 'Add --parent <epic>' })
+  await assert.rejects(linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: '44444444-4444-4444-8444-444444444444' }, 'user-1'), { code: 'NOT_FOUND' })
+  assert.equal((await linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: null }, 'user-1')).after.milestone, undefined)
+  assert.equal(fake.records.length, before + 1)
+})
+
 test('each of the three project keys works as a parent and reads back as the canonical id', async () => {
   const { tracker: linear, projects } = epicSetup()
   const slug = projects.projects[0].slugId
@@ -1124,6 +1144,7 @@ const PROJECT_OPERATIONS = {
   listMilestones: [],
   getMilestone: ['11111111-1111-4111-8111-111111111111'],
   readDocument: ['abcdef012345'],
+  listDocuments: [],
 }
 
 test('the project operations are implemented and the milestone and document writes are NOT_SUPPORTED', async () => {
@@ -1139,6 +1160,7 @@ test('the project operations are implemented and the milestone and document writ
   assert.equal((await linear.listDeliverables())[0].id, 'P-ACM-1')
   await assert.rejects(linear.createMilestone({ id: 'm' }, 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the milestone in Linear' })
   await assert.rejects(linear.createDocument('a.md', 'x', 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the document in Linear' })
+  await assert.rejects(linear.updateDocument('a.md', 'x', 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Edit the document in Linear' })
 })
 
 test('a broken mapping stops each project operation through guarded', async () => {
@@ -1153,10 +1175,134 @@ test('a broken mapping stops each project operation through guarded', async () =
 test('logTime, createRelease and markReleased refuse with the manifest reason and send no request after discovery', async () => {
   const { fetch, tracker: linear } = tracker(setup())
   await assert.rejects(linear.logTime('ACME-1', 5, 'x'), { code: 'NOT_SUPPORTED', message: 'Linear has no time tracking', nextStep: 'Linear has no time tracking' })
+  await assert.rejects(linear.listTimeEntries('ACME-1'), { code: 'NOT_SUPPORTED', message: 'Linear has no time tracking' })
   for (const call of [() => linear.createRelease({ name: 'r' }), () => linear.markReleased('r')]) {
     await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /needs releases/.test(error.message) && /Business or Enterprise plan/.test(error.nextStep))
   }
   assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
+})
+
+// PMK-214: native delegation through Linear's delegate field. user-4 is the fake's app user.
+test('delegate posts the instructions, then sets the delegate, and runs natively', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'For the agent', assigneeId: 'user-2' })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')
+  assert.equal(result.run, 'native')
+  assert.equal(result.before.delegate, undefined)
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.equal(result.after.assignee, 'user-2')
+  assert.equal(result.comment.body.split('\n')[0], 'Delegated to agent:user-4 by user-1, to run in the tracker.')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { delegateId: 'user-4' })
+  assert.equal((await linear.getIssue('ACME-1')).delegate, 'agent:user-4')
+  // The same agent again posts new instructions and sends no update.
+  const again = await linear.delegate('ACME-1', 'agent:user-4', 'Do it again.', 'user-1')
+  assert.equal(again.before.delegate, 'agent:user-4')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate', 'PmkitCommentCreate'])
+})
+
+test('a delegate dry run shows the delegate and the comment and sends no mutation', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1', { dryRun: true })
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.equal(result.comment.id, null)
+  assert.equal(result.run, 'native')
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('delegate refuses a person, an unknown agent and another actor before any mutation', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  for (const who of ['user-2', 'agent:user-2', 'agent:nobody']) {
+    await assert.rejects(linear.delegate('ACME-1', who, 'x', 'user-1'), (error) => error.code === 'INVALID_INPUT' && /agent:user-4/.test(error.nextStep), who)
+  }
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'x', 'user-2'), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.delegate('ACME-9', 'agent:user-4', 'x', 'user-1'), { code: 'NOT_FOUND' })
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('an unconfirmed delegate update that Linear applied is read back as a success', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  fake.unconfirm('PmkitIssueUpdate', { applied: true })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+})
+
+test('a delegate update that did not apply says the comment is posted, so the agent does not delegate again', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  fake.unconfirm('PmkitIssueUpdate', { applied: false })
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1'), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /^Linear posted the delegation comment \S+ on ACME-1, but the delegate is not agent:user-4:/)
+    assert.match(error.nextStep, /^Set the delegate of ACME-1 to agent:user-4 in Linear; do not delegate again/)
+    assert.equal(error.details.comment, fake.comments.at(-1).id)
+    assert.deepEqual(error.details.written, [`comment ${error.details.comment}`])
+    assert.deepEqual(error.details.missing, ['delegate'])
+    return true
+  })
+  assert.equal((await linear.getIssue('ACME-1')).delegate, undefined)
+})
+
+test('a delegate update that is not confirmed and cannot be read back leaves the delegate unknown', async () => {
+  const issues = fakeLinearIssues()
+  issues.seed({ title: 'For the agent' })
+  issues.unconfirm('PmkitIssueUpdate', { applied: false })
+  let reads = 0
+  const forbidden = { status: 200, json: { data: null, errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] } }
+  // The delegate and its comment read the issue once each; the read after the unconfirmed update is refused.
+  const byId = (body) => (++reads <= 2 ? issues.routes.PmkitIssueById(body) : forbidden)
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, PmkitIssueById: byId })
+  const context = setup()
+  context.config.pmkit.mappings = { status: { in_review: 'In Review' } }
+  const linear = createLinearTracker(context.config, { env: context.env, now: at(0), fetch })
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1'), (error) => {
+    assert.match(error.message, /Linear did not confirm the delegate of ACME-1 and it could not be read back/)
+    assert.deepEqual(error.details.unknown, ['delegate'])
+    assert.match(error.nextStep, /^Check the delegate of ACME-1 in Linear; do not delegate again/)
+    return true
+  })
+})
+
+test('a read that fails after a confirmed delegate update does not turn the delegation into a failure', async () => {
+  // One label per page, so mapping the issue the update returns reads a second labels page; that read is refused.
+  const issues = fakeLinearIssues({ nestedPage: 1 })
+  issues.seed({ title: 'For the agent', labelIds: ['label-bug', 'label-docs'] })
+  const forbidden = { status: 200, json: { data: null, errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] } }
+  const labelsPage = issues.routes.PmkitIssueLabelsPage
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, PmkitIssueLabelsPage: (body) => (issues.mutations.includes('PmkitIssueUpdate') ? forbidden : labelsPage(body)) })
+  const context = setup()
+  context.config.pmkit.mappings = { status: { in_review: 'In Review' } }
+  const linear = createLinearTracker(context.config, { env: context.env, now: at(0), fetch })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.deepEqual(issues.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+})
+
+test('delegate checks the shape of the agent id before it refreshes discovery', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  await assert.rejects(linear.delegate('ACME-1', 'claude', 'x', 'user-1'), { code: 'INVALID_INPUT' })
+  assert.equal(callsOf(fetch, 'PmkitUsers'), 1)
+})
+
+test('deleting an issue delegated to an agent warns that the agent may still be working on it', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent', delegateId: 'user-4' })
+  const result = await linear.delete('ACME-1', 'user-1', { dryRun: true })
+  assert.ok(result.warnings.includes('it is delegated to agent:user-4, which may still be working on it'), result.warnings.join('; '))
+})
+
+test('delegate on a workspace without an app user answers NOT_SUPPORTED with the hint and sends no mutation', async () => {
+  const users = ACME_USERS.filter((user) => !user.app)
+  const { tracker: linear, fake } = linearSetup({ workspace: { users }, issues: { users } })
+  seed(fake, { title: 'For the agent' })
+  const hint = 'Install an agent in this Linear workspace to delegate issues to it'
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1'), { code: 'NOT_SUPPORTED', message: hint, nextStep: hint })
+  assert.deepEqual(fake.mutations, [])
 })
 
 test('release reads on a workspace without releases answer empty, getRelease is NOT_FOUND, and no release query is sent', async () => {
@@ -1166,4 +1312,675 @@ test('release reads on a workspace without releases answer empty, getRelease is 
   assert.deepEqual(await linear.releaseIssues('1.0', { archived: false }), [])
   await assert.rejects(linear.getRelease('1.0'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings', nextStep: 'pmkit release list' })
   assert.ok(!namesOf(fetch).some((name) => /Release/.test(name)))
+})
+
+const refusal = (promise) => promise.then(() => assert.fail('expected a refusal'), (error) => error)
+
+test('delete refuses for a blocks out of the issue, a related either way, a duplicate into the issue and a child, and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-3', 'ACME-1')
+  const first = await refusal(linear.delete('ACME-1', 'user-1'))
+  assert.equal(first.code, 'CONFLICT')
+  assert.deepEqual(first.details.references, [{ id: 'ACME-2', kind: 'blockedBy' }, { id: 'ACME-3', kind: 'related' }])
+  assert.match(first.nextStep, /issues link ACME-1 ACME-2 --kind blocks --remove/)
+  assert.equal(mutationsIn(fetch), 0)
+
+  const dup = linearSetup()
+  three(dup.fake)
+  dup.fake.relate('duplicate', 'ACME-2', 'ACME-1')
+  assert.deepEqual((await refusal(dup.tracker.delete('ACME-1', 'user-1', { dryRun: true }))).details.references, [{ id: 'ACME-2', kind: 'duplicateOf' }])
+
+  const out = linearSetup()
+  three(out.fake)
+  out.fake.relate('related', 'ACME-1', 'ACME-2')
+  assert.deepEqual((await refusal(out.tracker.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'related' }])
+
+  const child = linearSetup()
+  three(child.fake)
+  await child.tracker.setParent('ACME-2', 'ACME-1', 'user-1')
+  assert.deepEqual((await refusal(child.tracker.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'parent' }])
+})
+
+test('an archived child and an archived related issue block a Linear delete, a dry run too, and nothing is sent', async () => {
+  const child = linearSetup()
+  three(child.fake)
+  await child.tracker.setParent('ACME-2', 'ACME-1', 'user-1')
+  await child.tracker.archive('ACME-2', 'user-1')
+  const sent = mutationsIn(child.fetch)
+  for (const flags of [{}, { dryRun: true }]) {
+    assert.deepEqual((await refusal(child.tracker.delete('ACME-1', 'user-1', flags))).details.references, [{ id: 'ACME-2', kind: 'parent' }])
+  }
+  assert.equal(mutationsIn(child.fetch), sent)
+
+  const related = linearSetup()
+  three(related.fake)
+  related.fake.relate('related', 'ACME-3', 'ACME-1')
+  related.fake.relate('blocks', 'ACME-1', 'ACME-2')
+  await related.tracker.archive('ACME-3', 'user-1')
+  await related.tracker.archive('ACME-2', 'user-1')
+  assert.deepEqual((await refusal(related.tracker.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'blockedBy' }, { id: 'ACME-3', kind: 'related' }])
+})
+
+test('a Linear delete finds an archived reference on a later page of the nested connection', async () => {
+  const { tracker: linear, fake } = linearSetup({ nestedPage: 1 })
+  three(fake)
+  fake.relate('related', 'ACME-2', 'ACME-1')
+  fake.relate('related', 'ACME-3', 'ACME-1')
+  await linear.archive('ACME-3', 'user-1')
+  assert.deepEqual((await refusal(linear.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'related' }, { id: 'ACME-3', kind: 'related' }])
+})
+
+test('the own blockedBy and duplicateOf of the issue do not block a Linear delete', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-2', 'ACME-1')
+  fake.relate('duplicate', 'ACME-1', 'ACME-3')
+  const dry = await linear.delete('ACME-1', 'user-1', { dryRun: true })
+  assert.deepEqual(dry.references, [])
+})
+
+test('a Linear dry run sends no mutation, a delete sends issueDelete once, and the issue is then NOT_FOUND', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const dry = await linear.delete('ACME-3', 'user-1', { dryRun: true })
+  assert.equal(dry.after, null)
+  assert.equal(dry.before.id, 'ACME-3')
+  assert.deepEqual(dry.removes, { trash: true })
+  assert.ok(dry.unchecked.includes('Linear documents'), dry.unchecked.join('; '))
+  assert.equal(mutationsIn(fetch), 0)
+  const done = await linear.delete('ACME-3', 'user-1')
+  assert.equal(done.after, null)
+  assert.equal(mutationsIn(fetch), 1)
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssueDelete').length, 1)
+  await assert.rejects(linear.getIssue('ACME-3'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.delete('ACME-3', 'user-1'), { code: 'NOT_FOUND' })
+})
+
+test('a Linear delete as another actor is refused', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.delete('ACME-1', 'user-2'), { code: 'INVALID_INPUT' })
+})
+
+test('goal reads refuse with the plan hint on Free and send no initiative query, and read initiatives on Business (PMK-213)', async () => {
+  const free = tracker(setup())
+  for (const call of [() => free.tracker.listGoals(), () => free.tracker.getGoal('INI-1'), () => free.tracker.goalProgress('INI-1')]) {
+    await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /Business or Enterprise plan/.test(error.message))
+  }
+  assert.ok(!namesOf(free.fetch).includes('PmkitInitiatives'))
+  const node = { id: 'i-1', slugId: 'abcdef123456', identifier: 'INI-1', name: 'Grow', description: '', content: null, status: 'Active', targetDate: null, url: 'u', projects: { nodes: [], pageInfo: { hasNextPage: false } } }
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ subscription: { type: 'business' } }), PmkitInitiatives: { status: 200, json: { data: { initiatives: { nodes: [node], pageInfo: { hasNextPage: false, endCursor: null } } } } } })
+  const business = tracker(setup(), { fetch })
+  assert.deepEqual((await business.tracker.listGoals()).goals.map((goal) => [goal.id, goal.status]), [['INI-1', 'active']])
+  assert.equal((await business.tracker.getGoal('ini-1')).title, 'Grow')
+  assert.equal((await business.tracker.goalProgress('INI-1')).total, 0)
+  await assert.rejects(business.tracker.createGoal({ title: 'X' }, 'user-1'), (error) => error.code === 'NOT_SUPPORTED' && /does not implement createGoal/.test(error.message))
+})
+
+// PMK-222: restore from Linear's trash, and the edge cases of a delete.
+const answer = (field, payload) => () => ({ status: 200, json: { data: { [field]: payload } } })
+
+test('restore brings a trashed issue back: a dry run sends no mutation, the real run sends issueUnarchive once', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  await linear.delete('ACME-3', 'user-1')
+  const before = mutationsIn(fetch)
+  const dry = await linear.restore('ACME-3', 'user-1', { dryRun: true })
+  assert.equal(dry.before, null)
+  assert.equal(dry.after.id, 'ACME-3')
+  assert.equal(dry.after.archived, false)
+  assert.equal(mutationsIn(fetch), before)
+  await assert.rejects(linear.getIssue('ACME-3'), { code: 'NOT_FOUND' })
+  const done = await linear.restore('ACME-3', 'user-1')
+  assert.equal(done.after.id, 'ACME-3')
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssueUnarchive').length, 1)
+  assert.equal((await linear.getIssue('ACME-3')).title, 'Three')
+})
+
+// PMK-250: unarchive is Local only.
+test('unarchive is NOT_SUPPORTED on Linear and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.unarchive('ACME-1', 'user-1'), { code: 'NOT_SUPPORTED' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('restore of an issue that is not in the trash is INVALID_INPUT and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.restore('ACME-1', 'user-1'), { code: 'INVALID_INPUT', message: "ACME-1 is not in Linear's trash", nextStep: 'pmkit issues get ACME-1' })
+  await assert.rejects(linear.restore('ACME-99', 'user-1'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.restore('../ACME-1', 'user-1'), { code: 'NOT_FOUND' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('restore answered with success false is UPSTREAM and the issue stays in the trash', async () => {
+  const { tracker: linear, fake } = linearSetup({ routes: () => ({ PmkitIssueUnarchive: answer('issueUnarchive', { success: false }) }) })
+  three(fake)
+  await linear.delete('ACME-3', 'user-1')
+  await assert.rejects(linear.restore('ACME-3', 'user-1'), { code: 'UPSTREAM', message: 'Linear did not restore ACME-3' })
+  await assert.rejects(linear.getIssue('ACME-3'), { code: 'NOT_FOUND' })
+})
+
+test('a restore that worked but whose read-back fails says the issue is restored and the read failed', async () => {
+  // Linear answers the read right after issueUnarchive with the issue still in the trash.
+  const routes = (fake) => {
+    let restored = false
+    return {
+      PmkitIssueUnarchive: (body) => { restored = true; return fake.routes.PmkitIssueUnarchive(body) },
+      PmkitIssueById: (body) => {
+        const answer = fake.routes.PmkitIssueById(body)
+        if (restored) for (const node of answer.json?.data?.issues?.nodes ?? []) node.trashed = true
+        return answer
+      },
+    }
+  }
+  const { tracker: linear, fake, fetch } = linearSetup({ routes })
+  three(fake)
+  await linear.delete('ACME-3', 'user-1')
+  const done = await linear.restore('ACME-3', 'user-1')
+  assert.equal(done.after.id, 'ACME-3')
+  assert.equal(done.after.archived, false)
+  assert.deepEqual(done.warnings, ['ACME-3 is restored, but reading it back failed (issue ACME-3 does not exist), so this record is the one read before the restore: pmkit issues get ACME-3 shows it as it is now'])
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssueUnarchive').length, 1)
+})
+
+test('a delete answered with issueDelete success false is UPSTREAM and the issue is still there', async () => {
+  const { tracker: linear, fake } = linearSetup({ routes: () => ({ PmkitIssueDelete: answer('issueDelete', { success: false }) }) })
+  three(fake)
+  await assert.rejects(linear.delete('ACME-3', 'user-1'), { code: 'UPSTREAM', message: 'Linear did not delete ACME-3' })
+  assert.equal((await linear.getIssue('ACME-3')).title, 'Three')
+})
+
+test('a delete of an ID with ../ is NOT_FOUND and sends no request', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const sent = fetch.calls.length
+  for (const id of ['../ACME-1', 'ACME-1/..', '../../etc']) await assert.rejects(linear.delete(id, 'user-1', { dryRun: true }), { code: 'NOT_FOUND' })
+  assert.ok(fetch.calls.slice(sent).every((call) => !/PmkitIssue(ById|Delete|References)/.test(operationName(call.body.query))), namesOf(fetch).join(', '))
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a delete of an epic key is NOT_FOUND and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const epic = (await linear.createDeliverable({ title: 'An epic' }, 'user-1')).after.id
+  const before = mutationsIn(fetch)
+  await assert.rejects(linear.delete(epic, 'user-1'), { code: 'NOT_FOUND' })
+  assert.equal(mutationsIn(fetch), before)
+  assert.equal((await linear.getDeliverable(epic)).title, 'An epic')
+})
+
+// PMK-246: Linear releases. Ids are UUIDs, as Linear's are.
+const REL = {
+  one: '00000000-0000-4000-8000-0000000000b1',
+  two: '00000000-0000-4000-8000-0000000000b2',
+  ten: '00000000-0000-4000-8000-0000000000b3',
+  gone: '00000000-0000-4000-8000-0000000000b4',
+  away: '00000000-0000-4000-8000-0000000000b5',
+}
+const PIPELINES = [{ id: 'pipe-acme', name: 'Web', teams: ['team-acme'] }, { id: 'pipe-other', name: 'Other', teams: ['team-other'] }]
+const RELEASES = [
+  { id: REL.ten, name: 'Ten', version: '1.10', pipeline: 'pipe-acme' },
+  { id: REL.two, name: 'Two', version: '1.2', pipeline: 'pipe-acme', targetDate: '2026-12-01' },
+  { id: REL.one, name: 'One', version: '1.1', pipeline: 'pipe-acme', stage: 'completed', completedAt: '2026-10-01T00:00:00.000Z' },
+  { id: REL.gone, name: 'Gone', version: '1.3', pipeline: 'pipe-acme', stage: 'canceled' },
+  { id: REL.away, name: 'Away', version: '0.1', pipeline: 'pipe-other' },
+]
+const releaseSetup = (options = {}) => linearSetup({ workspace: { releasesEnabled: true }, issues: { pipelines: PIPELINES, releases: RELEASES }, ...options })
+
+test('listReleases lists the scope team releases, oldest version first, without canceled ones, across pages', async () => {
+  const { tracker: linear, fetch } = releaseSetup({ issues: { pipelines: PIPELINES, releases: [...RELEASES, ...Array.from({ length: 120 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `Bulk ${i}`, version: `9.${i}`, pipeline: 'pipe-other' }))] } })
+  const listed = await linear.listReleases()
+  assert.deepEqual(listed.map((release) => release.name), ['One', 'Two', 'Ten'])
+  assert.deepEqual(listed[0], { id: REL.one, name: 'One', released: '2026-10-01T00:00:00.000Z', state: 'released', description: '' })
+  assert.deepEqual(lastVariables(fetch, 'PmkitReleases').filter, { pipeline: { teams: { some: { key: { eq: 'ACME' } } } } })
+  assert.deepEqual((await linear.listReleases({ state: 'planned' })).map((release) => release.name), ['Two', 'Ten'])
+  assert.deepEqual((await linear.listReleases({ state: 'released' })).map((release) => release.name), ['One'])
+})
+
+test('listReleases with more releases than one page reads every page', async () => {
+  const many = Array.from({ length: 120 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `R${i}`, version: `1.${i}`, pipeline: 'pipe-acme' }))
+  const { tracker: linear, fetch } = releaseSetup({ issues: { pipelines: PIPELINES, releases: many } })
+  assert.equal((await linear.listReleases()).length, 120)
+  assert.ok(callsOf(fetch, 'PmkitReleases') >= 2)
+})
+
+test('listReleases rejects a bad state', async () => {
+  const { tracker: linear } = releaseSetup()
+  await assert.rejects(linear.listReleases({ state: 'shipped' }), { code: 'INVALID_INPUT', message: 'state must be planned or released' })
+})
+
+test('getRelease answers a release, NOT_FOUND for an unknown or malformed id, and NOT_FOUND for a canceled one', async () => {
+  const { tracker: linear, fetch } = releaseSetup()
+  assert.deepEqual(await linear.getRelease(REL.two), { id: REL.two, name: 'Two', target: '2026-12-01', state: 'planned', description: '' })
+  await assert.rejects(linear.getRelease('00000000-0000-4000-8000-0000000000ff'), { code: 'NOT_FOUND', message: 'release 00000000-0000-4000-8000-0000000000ff does not exist', nextStep: 'pmkit release list' })
+  const sent = callsOf(fetch, 'PmkitRelease')
+  await assert.rejects(linear.getRelease('1.2'), { code: 'NOT_FOUND', message: 'release 1.2 does not exist' })
+  assert.equal(callsOf(fetch, 'PmkitRelease'), sent)
+  await assert.rejects(linear.getRelease(REL.gone), { code: 'NOT_FOUND', message: `release ${REL.gone} was canceled in Linear`, nextStep: 'pmkit release list' })
+})
+
+test('getIssue shows the one release, releases for two, and nothing on a workspace with releases off (no release query)', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two, REL.gone] })
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  seed(fake, { title: 'None' })
+  assert.equal((await linear.getIssue('ACME-1')).release, REL.two)
+  const two = await linear.getIssue('ACME-2')
+  assert.deepEqual(two.releases, [REL.two, REL.ten].sort())
+  assert.equal('release' in two, false)
+  const none = await linear.getIssue('ACME-3')
+  assert.equal('release' in none || 'releases' in none, false)
+  const off = linearSetup({ issues: { pipelines: PIPELINES, releases: RELEASES } })
+  seed(off.fake, { title: 'Off', releaseIds: [REL.two] })
+  assert.equal('release' in (await off.tracker.getIssue('ACME-1')), false)
+  assert.equal(callsOf(off.fetch, 'PmkitIssueReleases'), 0)
+})
+
+test('updateIssue --release swaps the release, previews it in a dry run, and reads the releases again after the write', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  const dry = await linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1', { dryRun: true })
+  assert.equal(dry.before.release, REL.two)
+  assert.equal(dry.after.release, REL.ten)
+  assert.equal(mutationsIn(fetch), 0)
+  const real = await linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { addedReleaseIds: [REL.ten], removedReleaseIds: [REL.two] })
+  assert.equal(real.after.release, REL.ten)
+  assert.equal((await linear.getIssue('ACME-1')).release, REL.ten)
+})
+
+test('updateIssue --release none removes it, and the same release or none on no release sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  seed(fake, { title: 'Bare' })
+  const same = await linear.updateIssue('ACME-1', { release: REL.two }, 'user-1')
+  assert.equal(same.after.release, REL.two)
+  const bare = await linear.updateIssue('ACME-2', { release: null }, 'user-1')
+  assert.equal('release' in bare.after, false)
+  assert.equal(mutationsIn(fetch), 0)
+  const cleared = await linear.updateIssue('ACME-1', { release: null }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { removedReleaseIds: [REL.two] })
+  assert.equal('release' in cleared.after, false)
+})
+
+test('an issue whose only release is canceled gets the new release without removing the canceled one', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.gone] })
+  const result = await linear.updateIssue('ACME-1', { release: REL.two }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { addedReleaseIds: [REL.two] })
+  assert.equal(result.after.release, REL.two)
+})
+
+test('an issue in two releases is refused with the count', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  for (const release of [REL.one, null]) {
+    await assert.rejects(linear.updateIssue('ACME-1', { release }, 'user-1', { dryRun: true }), {
+      code: 'INVALID_INPUT',
+      message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue',
+      nextStep: 'Change the releases of the issue in Linear',
+    })
+  }
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a canceled or unknown target release is refused before any mutation', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One' })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: REL.gone }, 'user-1'), { code: 'NOT_FOUND', message: `release ${REL.gone} was canceled in Linear` })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: '1.0' }, 'user-1'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('releases off: --release and none refuse NOT_SUPPORTED with the hint and send no release query', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup({ issues: { pipelines: PIPELINES, releases: RELEASES } })
+  seed(fake, { title: 'One' })
+  for (const release of [REL.two, null]) {
+    await assert.rejects(linear.updateIssue('ACME-1', { release }, 'user-1', { dryRun: true }), {
+      code: 'NOT_SUPPORTED',
+      message: 'Linear releases are off in this workspace',
+      nextStep: 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings',
+    })
+  }
+  assert.equal(callsOf(fetch, 'PmkitRelease') + callsOf(fetch, 'PmkitIssueReleases'), 0)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('createIssue with a release refuses NOT_SUPPORTED', async () => {
+  const { tracker: linear, fetch } = releaseSetup()
+  await assert.rejects(linear.createIssue({ title: 'New', release: REL.two }, 'user-1', { dryRun: true }), {
+    code: 'NOT_SUPPORTED',
+    message: 'issues create does not set a Linear release',
+    nextStep: 'Create the issue, then run pmkit issues update <id> --release <release>',
+  })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('releaseIssues refuses a cut read instead of answering with part of the issues', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}`, releaseIds: [REL.two] })
+  await assert.rejects(linear.releaseIssues(REL.two), { code: 'UPSTREAM', message: `release ${REL.two} has more issues than pmkit reads at once, and pmkit does not answer with part of them` })
+})
+
+test('releaseIssues reads the release first, so a canceled one is NOT_FOUND', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  fake.seed({ title: 'In', releaseIds: [REL.two] })
+  fake.seed({ title: 'Out' })
+  assert.deepEqual((await linear.releaseIssues(REL.two)).map((issue) => issue.title), ['In'])
+  await assert.rejects(linear.releaseIssues(REL.gone), { code: 'NOT_FOUND' })
+})
+
+// PMK-246 review: the release comes back wherever an issue does, read in one batch per page.
+test('searchIssues and an update without --release show the release, with one batched read per page', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  seed(fake, { title: 'None' })
+  const found = await linear.searchIssues({})
+  assert.deepEqual(found.issues.map((issue) => [issue.id, issue.release ?? null, issue.releases ?? null]), [['ACME-1', REL.two, null], ['ACME-2', null, [REL.two, REL.ten].sort()], ['ACME-3', null, null]])
+  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), 1)
+  const updated = await linear.updateIssue('ACME-1', { title: 'Renamed' }, 'user-1')
+  assert.equal(updated.before.release, REL.two)
+  assert.equal(updated.after.release, REL.two)
+})
+
+test('a release of another team is refused for get and for an issue', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One' })
+  const refusal = { code: 'INVALID_INPUT', message: `release ${REL.away} is not in a release pipeline of team ACME`, nextStep: 'Pick a release from pmkit release list' }
+  await assert.rejects(linear.getRelease(REL.away), refusal)
+  await assert.rejects(linear.updateIssue('ACME-1', { release: REL.away }, 'user-1', { dryRun: true }), refusal)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('an unknown release on an issue in two releases is NOT_FOUND, not the count', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: '00000000-0000-4000-8000-0000000000ff' }, 'user-1', { dryRun: true }), { code: 'NOT_FOUND' })
+})
+
+// Review cycle 2 of PR #208: Linear refuses a query above 10000 complexity points (PMK-41 hit it with nested lists).
+// By Linear's rule (field 0.1, object 1, a connection times its page) the release lists cost: PmkitReleases 100 x ~3.8,
+// PmkitIssueReleases 100 x ~2.1, PmkitIssuesReleases 100 issues x 20 releases x ~2.1 (about 4300). Only PmkitRelease reads
+// the pipeline's teams (250 x 1.1, one release). These page sizes and selections must not grow.
+test('the release queries keep their page sizes, and only PmkitRelease reads the pipeline teams', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  await linear.listReleases()
+  await linear.getRelease(REL.two)
+  await linear.searchIssues({})
+  await linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1')
+  const sent = (name) => fetch.calls.filter((call) => operationName(call.body.query) === name)
+  for (const name of ['PmkitReleases', 'PmkitIssuesReleases', 'PmkitRelease']) assert.ok(sent(name).length > 0, name)
+  // The one-issue read runs only for an issue with more than 20 releases, so its document is checked as it is.
+  const { ISSUE_RELEASES_QUERY } = await import('./documents.mjs')
+  assert.doesNotMatch(ISSUE_RELEASES_QUERY, /teams\(|\bname\b/)
+  for (const name of ['PmkitReleases', 'PmkitIssueReleases', 'PmkitIssuesReleases']) {
+    for (const call of sent(name)) {
+      assert.doesNotMatch(call.body.query, /teams\(/, name)
+      assert.ok(call.body.variables.first <= 100, name)
+    }
+  }
+  for (const call of sent('PmkitIssueReleases').concat(sent('PmkitIssuesReleases'))) assert.doesNotMatch(call.body.query, /releases\([^)]*\)\s*\{\s*nodes\s*\{[^}]*\bname\b/)
+  for (const call of sent('PmkitIssuesReleases')) assert.match(call.body.query, /releases\(first: 20\)/)
+  assert.match(sent('PmkitRelease')[0].body.query, /teams\(first: 250\)/)
+})
+
+// A refused or failed release read leaves the release unknown, with a note, and never fails the read or the write.
+const failingReleases = () => ({
+  PmkitIssuesReleases: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+  PmkitIssueReleases: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+})
+
+test('a failed release read shows the release as unknown with a note, and get, list and a write still answer', async () => {
+  const { tracker: linear, fake } = releaseSetup({ routes: failingReleases })
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('release' in issue, false)
+  assert.match(issue.releaseUnknown, /Query too complex/)
+  assert.match((await linear.searchIssues({})).issues[0].releaseUnknown, /Query too complex/)
+  const renamed = await linear.updateIssue('ACME-1', { title: 'Renamed' }, 'user-1')
+  assert.equal(renamed.after.title, 'Renamed')
+  assert.match(renamed.after.releaseUnknown, /Query too complex/)
+  const notes = linear.takeNotes()
+  assert.ok(notes.length > 0)
+  assert.match(notes[0], /^the release of ACME-1 is unknown, because pmkit could not read it: .*Query too complex/)
+  assert.deepEqual(linear.takeNotes(), [])
+})
+
+test('a write with --release refuses when the issue releases could not be read', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup({ routes: failingReleases })
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1'), { code: 'UPSTREAM' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a node that already has its releases is not read again, and a new issue reads none', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  await linear.archive('ACME-1', 'user-1')
+  // readNode before the archive, then readNode for the result: mapped does not read them a third time.
+  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), 2)
+  const before = callsOf(fetch, 'PmkitIssuesReleases')
+  const made = await linear.createIssue({ title: 'New' }, 'user-1')
+  assert.equal('release' in made.after, false)
+  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), before)
+})
+
+// PMK-252: the docs of an issue are the attachments pmkit made (metadata.pmkitDoc), read like the releases.
+const REPO = { system: 'github', repo: 'acme/app', default_branch: 'develop' }
+const docsSetup = ({ gitHost = REPO, ...options } = {}) => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  context.config.pmkit.git_host = gitHost
+  return linearSetup({ context, ...options })
+}
+const docAttachment = (path, n) => ({ id: `att-${n}`, url: `https://github.com/acme/app/blob/develop/${path}`, title: path, metadata: { pmkitDoc: path }, createdAt: `2026-10-27T12:00:${String(n).padStart(2, '0')}.000Z` })
+const prAttachment = { id: 'att-pr', url: 'https://github.com/acme/app/pull/3', title: 'PR 3', metadata: {}, createdAt: '2026-10-27T11:00:00.000Z' }
+const failingAttachments = () => ({
+  PmkitIssuesAttachments: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+  PmkitIssueAttachments: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+})
+
+test('getIssue lists the docs pmkit linked, in the order added, and ignores other attachments', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment, docAttachment('docs/adr/0002-b.md', 2), docAttachment('docs/adr/0001-a.md', 1)] })
+  assert.deepEqual((await linear.getIssue('ACME-1')).docs, ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'])
+})
+
+test('an issue with no pmkit attachment has no docs key', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('docs' in issue, false)
+  assert.equal('docsUnknown' in issue, false)
+})
+
+test('an issue with more attachments than one batch page reads every page', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup({ nestedPage: 20 })
+  seed(fake, { title: 'One' }, { attachments: Array.from({ length: 25 }, (_, i) => docAttachment(`docs/d${String(i).padStart(2, '0')}.md`, i + 1)) })
+  assert.equal((await linear.getIssue('ACME-1')).docs.length, 25)
+  assert.ok(callsOf(fetch, 'PmkitIssueAttachments') > 0)
+})
+
+test('a list and a search read the docs in one request per 100 issues, never one per issue', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  for (let i = 1; i <= 3; i++) seed(fake, { title: `T${i}` }, { attachments: [docAttachment(`docs/d${i}.md`, i)] })
+  const found = await linear.searchIssues({})
+  assert.deepEqual(found.issues.map((issue) => issue.docs), [['docs/d1.md'], ['docs/d2.md'], ['docs/d3.md']])
+  assert.equal(callsOf(fetch, 'PmkitIssuesAttachments'), 1)
+  assert.equal(callsOf(fetch, 'PmkitIssueAttachments'), 0)
+})
+
+test('the attachment queries keep their page sizes and selections (Linear refuses above 10000 complexity points)', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  await linear.searchIssues({})
+  const [call] = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitIssuesAttachments')
+  assert.ok(call.body.variables.first <= 100)
+  assert.match(call.body.query, /attachments\(first: 20\)/)
+  assert.doesNotMatch(call.body.query, /\b(?:title|subtitle|creator|source)\b/)
+  const { ISSUE_ATTACHMENTS_QUERY, ISSUE_FRAGMENT } = await import('./documents.mjs')
+  assert.doesNotMatch(ISSUE_ATTACHMENTS_QUERY, /\b(?:title|subtitle|creator)\b/)
+  assert.doesNotMatch(ISSUE_FRAGMENT, /attachments/)
+})
+
+test('a failed attachment read shows the docs as unknown with a note, and get, list and a write still answer', async () => {
+  const { tracker: linear, fake } = docsSetup({ routes: failingAttachments })
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('docs' in issue, false)
+  assert.match(issue.docsUnknown, /Query too complex/)
+  assert.match((await linear.searchIssues({})).issues[0].docsUnknown, /Query too complex/)
+  assert.equal((await linear.updateIssue('ACME-1', { title: 'Renamed' }, 'user-1')).after.title, 'Renamed')
+  const notes = linear.takeNotes()
+  assert.match(notes[0], /^the docs of ACME-1 are unknown, because pmkit could not read them: .*Query too complex/)
+})
+
+test('updateIssue with docs links each new path as an attachment, and again changes nothing', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' })
+  const added = await linear.updateIssue('ACME-1', { docs: ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'] }, 'user-1')
+  assert.equal('docs' in added.before, false)
+  assert.deepEqual(added.after.docs, ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'])
+  const [first] = fake.records[0].attachments
+  assert.equal(first.url, 'https://github.com/acme/app/blob/develop/docs/adr/0001-a.md')
+  assert.deepEqual(first.metadata, { pmkitDoc: 'docs/adr/0001-a.md' })
+  assert.equal(first.title, 'docs/adr/0001-a.md')
+  const before = mutationsIn(fetch)
+  const again = await linear.updateIssue('ACME-1', { docs: ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'] }, 'user-1')
+  assert.deepEqual(again.after, again.before)
+  assert.equal(mutationsIn(fetch), before)
+})
+
+test('updateIssue with docs unlinks the removed path and leaves other attachments alone', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment, docAttachment('docs/a.md', 1), docAttachment('docs/b.md', 2)] })
+  const removed = await linear.updateIssue('ACME-1', { docs: ['docs/b.md'] }, 'user-1')
+  assert.deepEqual(removed.after.docs, ['docs/b.md'])
+  assert.deepEqual(fake.records[0].attachments.map((item) => item.id), ['att-pr', 'att-2'])
+  const cleared = await linear.updateIssue('ACME-1', { docs: [] }, 'user-1')
+  assert.equal('docs' in cleared.after, false)
+  assert.deepEqual(fake.records[0].attachments.map((item) => item.id), ['att-pr'])
+})
+
+test('updateIssue with docs and another field writes both', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' })
+  const result = await linear.updateIssue('ACME-1', { title: 'Two', docs: ['docs/a.md'] }, 'user-1')
+  assert.equal(result.after.title, 'Two')
+  assert.deepEqual(result.after.docs, ['docs/a.md'])
+})
+
+test('a dry run with docs shows the new list and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  const result = await linear.updateIssue('ACME-1', { docs: ['docs/b.md'] }, 'user-1', { dryRun: true })
+  assert.deepEqual(result.before.docs, ['docs/a.md'])
+  assert.deepEqual(result.after.docs, ['docs/b.md'])
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('adding a doc with no GitHub repo in git_host is NOT_CONFIGURED and writes nothing, and removing one still works', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup({ gitHost: { system: 'none' } })
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/b.md'] }, 'user-1', { dryRun: true }), { code: 'NOT_CONFIGURED', nextStep: '/pmkit:link-repo' })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/b.md'] }, 'user-1'), { code: 'NOT_CONFIGURED' })
+  assert.equal(mutationsIn(fetch), 0)
+  const removed = await linear.updateIssue('ACME-1', { docs: [] }, 'user-1')
+  assert.equal('docs' in removed.after, false)
+})
+
+test('a docs write refuses when the attachments could not be read, and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup({ routes: failingAttachments })
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: [] }, 'user-1'), { code: 'UPSTREAM' })
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('a docs write that fails midway says what was linked and what was not', async () => {
+  const failOnB = (fake) => ({
+    PmkitAttachmentCreate: (body) => (body.variables.input.url.endsWith('b.md')
+      ? { status: 200, json: { data: null, errors: [{ message: 'Attachment refused', extensions: { code: 'INPUT_ERROR' } }] } }
+      : fake.routes.PmkitAttachmentCreate(body)),
+  })
+  const { tracker: linear, fake } = docsSetup({ routes: failOnB })
+  seed(fake, { title: 'One' })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/b.md', 'docs/c.md'] }, 'user-1'), (error) => {
+    assert.match(error.message, /Attachment refused/)
+    assert.match(error.message, /linked: docs\/a\.md/)
+    assert.match(error.message, /not done: docs\/b\.md, docs\/c\.md/)
+    return true
+  })
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('issues create takes no docs', async () => {
+  const { tracker: linear } = docsSetup()
+  await assert.rejects(linear.createIssue({ title: 'New', docs: ['docs/a.md'] }, 'user-1', { dryRun: true }), { code: 'INVALID_INPUT' })
+})
+
+// PMK-252 review: the link branch, hand-made attachments and paths.
+const urlsOf = (fake) => fake.records[0].attachments.map((item) => item.url)
+
+test('the link uses the default branch the caller resolved, then git_host.default_branch, then main', async () => {
+  const given = docsSetup({ gitHost: { system: 'github', repo: 'acme/app' } })
+  seed(given.fake, { title: 'One' })
+  await given.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1', { docsBranch: 'trunk' })
+  assert.deepEqual(urlsOf(given.fake), ['https://github.com/acme/app/blob/trunk/docs/a.md'])
+  const unset = docsSetup({ gitHost: { system: 'github', repo: 'acme/app' } })
+  seed(unset.fake, { title: 'One' })
+  await unset.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1')
+  assert.deepEqual(urlsOf(unset.fake), ['https://github.com/acme/app/blob/main/docs/a.md'])
+  const invalid = docsSetup({ gitHost: { system: 'github', repo: 'acme/app', default_branch: 'a..b' } })
+  seed(invalid.fake, { title: 'One' })
+  await invalid.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1')
+  assert.deepEqual(urlsOf(invalid.fake), ['https://github.com/acme/app/blob/main/docs/a.md'])
+})
+
+test('adding a doc whose link a person attached by hand is a CONFLICT, and the attachment is never changed or removed', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  const handMade = { id: 'att-hand', url: 'https://github.com/acme/app/blob/develop/docs/a.md', title: 'Design notes', metadata: {}, createdAt: '2026-10-27T11:00:00.000Z' }
+  seed(fake, { title: 'One' }, { attachments: [handMade] })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1', { dryRun: true }), { code: 'CONFLICT' })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1'), (error) => /Design notes|attachment/.test(error.message) && error.code === 'CONFLICT')
+  const cleared = await linear.updateIssue('ACME-1', { docs: [] }, 'user-1')
+  assert.equal('docs' in cleared.after, false)
+  assert.equal(mutationsIn(fetch), 0)
+  assert.deepEqual(fake.records[0].attachments, [handMade])
+})
+
+test('a docs path that is not relative to the repository is INVALID_INPUT before any write, and the same path twice links once', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' })
+  for (const path of ['/Users/x/a.md', 'tracker:docs/adr/0001-a.md', '../a.md', 'docs/../../a.md', 'C:/a.md', '', '.', './']) {
+    await assert.rejects(linear.updateIssue('ACME-1', { docs: [path] }, 'user-1'), { code: 'INVALID_INPUT' }, path)
+  }
+  assert.equal(mutationsIn(fetch), 0)
+  await linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/a.md'] }, 'user-1')
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('a failure after the other fields were written says so', async () => {
+  const failing = (fake) => ({ PmkitAttachmentCreate: () => ({ status: 200, json: { data: null, errors: [{ message: 'Attachment refused', extensions: { code: 'INPUT_ERROR' } }] } }) })
+  const { tracker: linear, fake } = docsSetup({ routes: failing })
+  seed(fake, { title: 'One' })
+  await assert.rejects(linear.updateIssue('ACME-1', { title: 'Two', docs: ['docs/a.md'] }, 'user-1'), /already written.*title/s)
+})
+
+test('one issue whose attachments cannot be read alone does not make the rest of the batch unknown', async () => {
+  const { tracker: linear, fake } = docsSetup({
+    nestedPage: 1,
+    routes: (f) => ({ PmkitIssueAttachments: ({ body } = {}) => ({ status: 200, json: { data: null, errors: [{ message: 'Rate limited', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }) }),
+  })
+  seed(fake, { title: 'Big' }, { attachments: [docAttachment('docs/a.md', 1), docAttachment('docs/b.md', 2)] })
+  seed(fake, { title: 'Small' }, { attachments: [docAttachment('docs/c.md', 3)] })
+  const { issues } = await linear.searchIssues({})
+  assert.match(issues[0].docsUnknown, /Rate limited/)
+  assert.deepEqual(issues[1].docs, ['docs/c.md'])
 })

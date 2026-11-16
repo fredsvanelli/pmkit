@@ -4,10 +4,12 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
-  findRoot, loadConfig, loadPmkitConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
+  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, RESERVED_PREFIXES, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
+  findRoot, goalPrefixOf, loadConfig, loadPmkitConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, unsupportedTracker, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
+import { CUSTOMER_PREFIX } from './lib/local/customers.mjs'
+import { REQUEST_PREFIX } from './lib/local/requests.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
 import { useLinear, withLinear } from './fake-hosted.mjs'
 
@@ -247,6 +249,21 @@ test('validateLocalConfig checks prefixes, members, estimate and defaults', () =
   assert.equal(problems.length, 8)
 })
 
+test('validateLocalConfig takes defaults.overload_factor as a number of 1 or more', () => {
+  const local = template('issues.config.yaml')
+  assert.equal(local.defaults.overload_factor, 1.5)
+  assert.equal(withLocalDefaults({}).defaults.overload_factor, 1.5)
+  for (const good of [1.2, 1, 3]) {
+    local.defaults.overload_factor = good
+    assert.deepEqual(validateLocalConfig(local), [], String(good))
+  }
+  for (const bad of [0.99, 0, 'x', Infinity, null]) {
+    local.defaults.overload_factor = bad
+    assert.equal(validateLocalConfig(local).length, 1, String(bad))
+    assert.ok(validateLocalConfig(local)[0].startsWith('defaults.overload_factor must be a number of 1 or more'), String(bad))
+  }
+})
+
 test('validateLocalConfig accepts a missing id_style and refuses an unknown one', () => {
   const local = template('issues.config.yaml')
   delete local.id_style
@@ -416,4 +433,59 @@ test('validatePmkitConfig accepts tracker.path absent, null and .issues for the 
     else pmkit.tracker.path = path
     assert.deepEqual(validatePmkitConfig(pmkit), [], String(path))
   }
+})
+
+test('validBranch accepts the names git accepts, with letters of any script, and refuses what a shell or git would misread', () => {
+  for (const name of ['main', 'develop', 'release/1.0', 'feat/a_b-c', 'développement', 'ветка', '_x']) assert.equal(validBranch(name), true, name)
+  for (const name of ['main.', 'a.lock/b', 'a./b', 'a/b.', 'x.lock/', '/a', 'main; curl x|sh', '-x', '--upload-pack=x', 'a..b', 'a//b', 'a/.b', '.hidden', 'x.lock', 'a/', 'a b', '$(id)', 'a`b`', 'a\nb', '', 'a@{1}']) assert.equal(validBranch(name), false, JSON.stringify(name))
+})
+
+test('resolveDefaultBranch returns main for an unset, non-string or invalid name, and says which', () => {
+  const host = (default_branch) => ({ git_host: { system: 'github', default_branch } })
+  assert.deepEqual(resolveDefaultBranch(host('develop')), { branch: 'develop', configured: 'develop', valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch(host('développement')), { branch: 'développement', configured: 'développement', valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch(host(undefined)), { branch: 'main', configured: null, valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch({}), { branch: 'main', configured: null, valid: true, note: null })
+  const bad = resolveDefaultBranch(host('main; curl x|sh'))
+  assert.deepEqual(bad, { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
+  assert.equal(resolveDefaultBranch(host(7)).valid, false)
+})
+
+test('resolveDefaultBranch reads origin/HEAD only when default_branch is unset, and keeps main when it is unknown or not a name (PMK-228)', () => {
+  const host = (default_branch) => ({ git_host: { system: 'github', default_branch } })
+  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => 'trunk' }), { branch: 'trunk', configured: null, valid: true, note: 'git_host.default_branch is not set, so origin/HEAD (trunk) is used' })
+  assert.deepEqual(resolveDefaultBranch({}, { originHead: () => 'trunk' }).branch, 'trunk')
+  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => null }), { branch: 'main', configured: null, valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => 'a..b' }), { branch: 'main', configured: null, valid: true, note: 'origin/HEAD does not name a valid branch, so main is used' })
+  const never = () => assert.fail('origin/HEAD is read only when default_branch is unset')
+  assert.equal(resolveDefaultBranch(host('develop'), { originHead: never }).branch, 'develop')
+  assert.equal(resolveDefaultBranch(host('main; curl x|sh'), { originHead: never }).branch, 'main')
+})
+
+test('validBranch accepts a name in NFC and in NFD, and the combining marks of other scripts', () => {
+  const nfc = 'développement'.normalize('NFC')
+  const nfd = 'développement'.normalize('NFD')
+  assert.notEqual(nfc, nfd)
+  assert.equal(validBranch(nfc), true)
+  assert.equal(validBranch(nfd), true)
+  assert.equal(validBranch('feat/' + nfd), true)
+  assert.equal(validBranch('शाखा'), true)
+  assert.equal(validBranch('\u0301x'), false, 'a combining mark cannot start a name')
+})
+
+test('goal_prefix is optional and takes 2 to 5 capital letters; only a set key must differ from the other prefixes (PMK-213)', () => {
+  const local = withLocalDefaults(template('issues.config.yaml'))
+  assert.equal(goalPrefixOf(local), 'GOAL')
+  assert.equal(goalPrefixOf({ ...local, goal_prefix: 'OKR' }), 'OKR')
+  assert.deepEqual(validateLocalConfig(local), [])
+  assert.ok(localConfigShapeProblems({ ...local, goal_prefix: 'ok' }).includes('goal_prefix must be 2 to 5 capital letters, found "ok"'))
+  assert.deepEqual(localConfigShapeProblems({ ...local, goal_prefix: 'OKR' }), [])
+  // A project from before goal_prefix with id_prefix or epic_prefix GOAL keeps working: goal files live in their own folder.
+  assert.deepEqual(validateLocalConfig({ ...local, id_prefix: 'GOAL' }), [])
+  assert.deepEqual(validateLocalConfig({ ...local, epic_prefix: 'GOAL' }), [])
+  const clash = 'goal_prefix must differ from id_prefix, epic_prefix and the customer and request prefixes (CUS, REQ)'
+  assert.ok(validateLocalConfig({ ...local, id_prefix: 'GOAL', goal_prefix: 'GOAL' }).includes(clash))
+  assert.ok(validateLocalConfig({ ...local, goal_prefix: local.epic_prefix }).includes(clash))
+  for (const prefix of ['CUS', 'REQ']) assert.ok(validateLocalConfig({ ...local, goal_prefix: prefix }).includes(clash), prefix)
+  assert.deepEqual(RESERVED_PREFIXES, [CUSTOMER_PREFIX, REQUEST_PREFIX])
 })

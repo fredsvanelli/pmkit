@@ -1,0 +1,9 @@
+# PMK-215 plan: track-agents on Linear and `--agent`
+
+Spec: `docs/superpowers/specs/2026-11-10-pmk-215-improve-track-agents-design.md`. Each task is test first.
+
+1. **`--agent` on the Local path** (criterion 2). Test in `scripts/cli-track-agents.test.mjs`: `--agent agent:claude` and `--agent claude` keep only that agent's rows and read only their pull requests; `--agent codex` with no issue gives the empty answer, not "nothing assigned" wording of the unfiltered list; an empty value is `INVALID_INPUT`. Add `flags: ['agent']` to the command entry and a pure `agentName(value)` + `matchesAgent` in `scripts/lib/track-agents.mjs` (unit test in `scripts/track-agents.test.mjs`).
+2. **Pull request path helpers.** In `scripts/lib/track-agents.mjs`: `isAgentAuthor(pr)` (`author.is_bot`), `authorName(login)` (strip `app/` and `[bot]`), with unit tests.
+3. **Linear fallback** (criterion 1). Tests in `scripts/cli-linear.test.mjs` (fake Linear API with an app user, fake `gh` with `pr list`): bot PR matched to an issue by branch, bot PR without an issue, human PR skipped, `--agent` filter on the author, 200-entry list incomplete, `git_host: none` is `NOT_SUPPORTED`, no agent in the workspace still `NOT_SUPPORTED`. Implement `runTrackAgentPullRequests(ctx, tracker, filter)` in `scripts/pmkit.mjs` next to `runTrackAgents`, reusing the cached host, `prSummary`, `collectBlockers`, `delegationOf`, `prText`, and the incomplete handling; `source` in the result.
+4. **Docs and contract.** `commands/issues/track-agents.md` (parameter, fallback, `source`), `README.md` and `skills/pmkit/SKILL.md` text, `CHANGELOG.md` line under `## Unreleased`, scenario `scripts/__scenarios__/issues-track-agents.*` and golden agree, `manifest.mjs` comment, ADR-0001 line if counts change (they do not: `path` is unchanged).
+5. **Verify.** `npm test` in the foreground, exit code 0. Check the two acceptance criteria with `issues update PMK-215 --check`, commit `.issues/`.

@@ -1,0 +1,243 @@
+$ pmkit team capacity
+exit 0
+--- stdout
+sprint 2026-10-05 (2026-10-05 to 2026-10-11), capacity
+Member | Availability | Capacity | Days off | Working days | Load | Flags
+-------|--------------|----------|----------|--------------|------|------
+ana    | 0.8          | 8        |          | 5            | ?    |
+fred   | 1            | 8        |          | 5            | ?    |
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: counted issues instead of estimates: no issue in scope has an estimate
+
+$ pmkit team capacity --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-05",
+    "name": "Sprint 2026-10-05",
+    "start": "2026-10-05",
+    "end": "2026-10-11"
+  },
+  "unit": "issues",
+  "sprintWorkingDays": 5,
+  "members": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "availability": 0.8,
+      "capacity": 8,
+      "daysOff": [],
+      "workingDays": 5,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "availability": 1,
+      "capacity": 8,
+      "daysOff": [],
+      "workingDays": 5,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    }
+  ],
+  "imbalances": null,
+  "notes": [
+    "counted issues instead of estimates: no issue in scope has an estimate"
+  ],
+  "warnings": [
+    "ISS-4: CONFLICT The issue file contains git conflict markers.",
+    "ISS-5: CONFLICT The issue file contains git conflict markers."
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: counted issues instead of estimates: no issue in scope has an estimate
+
+$ pmkit team capacity --dry-run
+exit 0
+--- stdout
+sprint 2026-10-05 (2026-10-05 to 2026-10-11), capacity
+Member | Availability | Capacity | Days off | Working days | Load | Flags
+-------|--------------|----------|----------|--------------|------|------
+ana    | 0.8          | 8        |          | 5            | ?    |
+fred   | 1            | 8        |          | 5            | ?    |
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: counted issues instead of estimates: no issue in scope has an estimate
+
+$ pmkit team capacity --dry-run --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-05",
+    "name": "Sprint 2026-10-05",
+    "start": "2026-10-05",
+    "end": "2026-10-11"
+  },
+  "unit": "issues",
+  "sprintWorkingDays": 5,
+  "members": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "availability": 0.8,
+      "capacity": 8,
+      "daysOff": [],
+      "workingDays": 5,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "availability": 1,
+      "capacity": 8,
+      "daysOff": [],
+      "workingDays": 5,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    }
+  ],
+  "imbalances": null,
+  "notes": [
+    "counted issues instead of estimates: no issue in scope has an estimate"
+  ],
+  "warnings": [
+    "ISS-4: CONFLICT The issue file contains git conflict markers.",
+    "ISS-5: CONFLICT The issue file contains git conflict markers."
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: counted issues instead of estimates: no issue in scope has an estimate
+
+$ pmkit team capacity --sprint 2026-10-12
+exit 0
+--- stdout
+sprint 2026-10-12 (2026-10-12 to 2026-10-25), capacity in points
+Member | Availability | Capacity (points) | Days off | Working days | Load | Flags
+-------|--------------|-------------------|----------|--------------|------|------
+ana    | 0.8          | 10                |          | 10           | ?    |
+fred   | 1            | 8                 |          | 10           | ?    |
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit team capacity --sprint 2026-10-12 --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-12",
+    "name": "Sprint 2026-10-12",
+    "start": "2026-10-12",
+    "end": "2026-10-25"
+  },
+  "unit": "points",
+  "sprintWorkingDays": 10,
+  "members": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "availability": 0.8,
+      "capacity": 10,
+      "daysOff": [],
+      "workingDays": 10,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "availability": 1,
+      "capacity": 8,
+      "daysOff": [],
+      "workingDays": 10,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    }
+  ],
+  "imbalances": null,
+  "notes": [],
+  "warnings": [
+    "ISS-4: CONFLICT The issue file contains git conflict markers.",
+    "ISS-5: CONFLICT The issue file contains git conflict markers."
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit team capacity --sprint 2026-10-12 --dry-run
+exit 0
+--- stdout
+sprint 2026-10-12 (2026-10-12 to 2026-10-25), capacity in points
+Member | Availability | Capacity (points) | Days off | Working days | Load | Flags
+-------|--------------|-------------------|----------|--------------|------|------
+ana    | 0.8          | 10                |          | 10           | ?    |
+fred   | 1            | 8                 |          | 10           | ?    |
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit team capacity --sprint 2026-10-12 --dry-run --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-12",
+    "name": "Sprint 2026-10-12",
+    "start": "2026-10-12",
+    "end": "2026-10-25"
+  },
+  "unit": "points",
+  "sprintWorkingDays": 10,
+  "members": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "availability": 0.8,
+      "capacity": 10,
+      "daysOff": [],
+      "workingDays": 10,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "availability": 1,
+      "capacity": 8,
+      "daysOff": [],
+      "workingDays": 10,
+      "estimate": null,
+      "load": null,
+      "flags": null
+    }
+  ],
+  "imbalances": null,
+  "notes": [],
+  "warnings": [
+    "ISS-4: CONFLICT The issue file contains git conflict markers.",
+    "ISS-5: CONFLICT The issue file contains git conflict markers."
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.

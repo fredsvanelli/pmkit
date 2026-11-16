@@ -1,0 +1,92 @@
+$ pmkit requests list
+exit 0
+--- stdout
+ID       | Title                   | State | Customer | From    | Issue | Created
+---------|-------------------------|-------|----------|---------|-------|-------------------------
+REQ-6J8P | Export the board to CSV | open  |          | support |       | 2026-10-15T08:00:00.000Z
+--- stderr
+(empty)
+
+$ pmkit requests list --json
+exit 0
+--- stdout
+{
+  "requests": [
+    {
+      "id": "REQ-6J8P",
+      "title": "Export the board to CSV",
+      "body": "Two tickets this week asked for it.",
+      "priority": 0,
+      "important": false,
+      "customer": null,
+      "from": "support",
+      "state": "open",
+      "target": null,
+      "created": "2026-10-15T08:00:00.000Z",
+      "triaged": null,
+      "reason": null
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit requests list --state all
+exit 0
+--- stdout
+ID       | Title                           | State    | Customer  | From    | Issue    | Created
+---------|---------------------------------|----------|-----------|---------|----------|-------------------------
+REQ-5H2M | Retry failed webhook deliveries | accepted | Acme Corp |         | ISS-9B2X | 2026-10-14T09:30:00.000Z
+REQ-6J8P | Export the board to CSV         | open     |           | support |          | 2026-10-15T08:00:00.000Z
+--- stderr
+(empty)
+
+$ pmkit requests list --state all --json
+exit 0
+--- stdout
+{
+  "requests": [
+    {
+      "id": "REQ-5H2M",
+      "title": "Retry failed webhook deliveries",
+      "body": "We lost three orders when a delivery timed out.",
+      "priority": 1,
+      "important": true,
+      "customer": {
+        "id": "CUS-3T7W",
+        "name": "Acme Corp"
+      },
+      "from": null,
+      "state": "accepted",
+      "target": {
+        "type": "issue",
+        "id": "ISS-9B2X",
+        "title": "Dead-letter queue"
+      },
+      "created": "2026-10-14T09:30:00.000Z",
+      "triaged": {
+        "at": "2026-10-14T10:00:00Z",
+        "by": "fred"
+      },
+      "reason": null
+    },
+    {
+      "id": "REQ-6J8P",
+      "title": "Export the board to CSV",
+      "body": "Two tickets this week asked for it.",
+      "priority": 0,
+      "important": false,
+      "customer": null,
+      "from": "support",
+      "state": "open",
+      "target": null,
+      "created": "2026-10-15T08:00:00.000Z",
+      "triaged": null,
+      "reason": null
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)

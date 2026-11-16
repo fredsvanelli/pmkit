@@ -1,0 +1,6 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit requests list --json  [step 2, read]
+exit 0
+
+(no file changed)

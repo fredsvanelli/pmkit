@@ -1,0 +1,9 @@
+# PMK-293 plan
+
+1. Test first (`scripts/adr.test.mjs`, next to the PMK-282 tests): a table of title headings through `adrInfo`; one test for `## Status #` (section found, status `Accepted`) and for `## Status # #` and `## Status \#` (not a section, status `null`; only the last `#` run closes a heading, as CommonMark reads it, so `# X # #` gives `X #`); one CLI test of `docs adr-get` with `# 5. Use X #` giving `5. Use X`. Run: the title test fails on `# 5. Use X #`.
+2. `scripts/lib/adr.mjs`: in `adrInfo`, replace `lines[title].replace(/^ {0,3}#/, '').trim()` with `headingText(lines[title])`. Run `scripts/adr.test.mjs`: green.
+3. Compare develop and the branch on a battery of title headings and report the differences. 
+4. `CHANGELOG.md` line under `## Unreleased`. `npm test` (Node 22, foreground, exit 0).
+5. Check both criteria with `issues update PMK-293 --check <n>`, commit `.issues/`, open the PR, comment, move to `in_review`.
+
+Criteria 1 -> steps 1-2. Criterion 2 -> step 1.

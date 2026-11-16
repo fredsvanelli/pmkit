@@ -14,7 +14,7 @@ const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
 
 export const ISSUE_FRAGMENT = `fragment PmkitIssueFields on Issue {
   id identifier title description priority estimate dueDate branchName archivedAt trashed createdAt updatedAt
-  team { id key } state { id name type } assignee { id } parent { identifier } project { id slugId identifier } projectMilestone { id }
+  team { id key } state { id name type } assignee { id } delegate { id } parent { identifier } project { id slugId identifier } projectMilestone { id }
   cycle { id number }
 ${Object.entries(NODE_FIELDS).map(([field, fields]) => `  ${field}(first: ${NESTED}) { nodes { ${fields} } ${PAGE_INFO} }`).join('\n')}
 }`
@@ -66,6 +66,20 @@ export const NESTED_PAGES = Object.fromEntries(
   ]),
 )
 export const NESTED_PAGE_SIZE = NESTED
+
+// PMK-187: what the delete check reads. The shared fragment leaves archived children and relations out, as Linear does by default,
+// so the check asks for them on purpose, with the same fields and paging.
+export const REFERENCE_FIELDS = ['children', 'relations', 'inverseRelations']
+const archivedConnection = (field, paging) => `${field}(first: ${paging}, includeArchived: true) { nodes { ${NODE_FIELDS[field]} } ${PAGE_INFO} }`
+export const ISSUE_REFERENCES_QUERY = `query PmkitIssueReferences($id: ID!) {
+  issues(filter: { id: { eq: $id } }, includeArchived: true, first: 1) { nodes { id identifier ${REFERENCE_FIELDS.map((field) => archivedConnection(field, NESTED)).join(' ')} } }
+}`
+export const REFERENCE_PAGES = Object.fromEntries(
+  REFERENCE_FIELDS.map((field) => [
+    field,
+    `query ${pageName(field).replace('Page', 'ArchivedPage')}($id: String!, $first: Int!, $after: String) { issue(id: $id) { ${field}(first: $first, after: $after, includeArchived: true) { nodes { ${NODE_FIELDS[field]} } ${PAGE_INFO} } } }`,
+  ]),
+)
 
 // PMK-36: history and comments, added after the PMK-35 documents.
 const HISTORY_PAGE = 50
@@ -143,3 +157,62 @@ export const LABEL_DELETE = 'mutation PmkitLabelDelete($id: String!) { issueLabe
 
 // Without permanentlyDelete, Linear moves the issue to its trash.
 export const ISSUE_DELETE = 'mutation PmkitIssueDelete($id: String!) { issueDelete(id: $id) { success } }'
+// PMK-222: unarchiving a trashed issue brings it back from Linear's trash.
+export const ISSUE_UNARCHIVE = 'mutation PmkitIssueUnarchive($id: String!) { issueUnarchive(id: $id) { success } }'
+
+// Custom views (PMK-212). Linear runs the view's own filter, so pmkit never translates filterData.
+export const CUSTOM_VIEWS_QUERY = `query PmkitCustomViews($first: Int!, $after: String) {
+  customViews(first: $first, after: $after) { nodes { id name modelName shared filterData team { id key } } ${PAGE_INFO} }
+}`
+
+export const CUSTOM_VIEW_QUERY = `query PmkitCustomView($id: String!) {
+  customView(id: $id) { id name modelName shared filterData team { id key } }
+}`
+
+export const CUSTOM_VIEW_ISSUES_QUERY = `${ISSUE_FRAGMENT}
+query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String, $sort: [IssueSortInput!]) {
+  customView(id: $id) { issues(first: $first, after: $after, sort: $sort) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }
+}`
+
+// PMK-246: Linear releases. A release node carries its stage type, so pmkit can leave canceled releases out.
+// Linear refuses a query above 10000 complexity points (field 0.1, object 1, a connection times its page; PMK-41 hit it),
+// so the lists keep small selections: about 3.8 points a release in a list and 2.1 an issue's release. Only the read of one
+// release takes the pipeline's teams, so a release of another team is refused. ponytail: 250 teams per pipeline is read as all.
+const RELEASE_FIELDS = 'id name version description targetDate completedAt stage { type } pipeline { id }'
+// What an issue's release needs: the id and whether it is canceled.
+const ISSUE_RELEASE_FIELDS = 'id stage { type }'
+// An issue's releases in the batch read: 100 issues x 20 releases x 2.1 is about 4300 points.
+export const BATCH_RELEASES_PAGE = 20
+
+export const RELEASES_QUERY = `query PmkitReleases($filter: ReleaseFilter, $first: Int!, $after: String) {
+  releases(filter: $filter, first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} }
+}`
+
+export const RELEASE_QUERY = `query PmkitRelease($id: String!) { release(id: $id) { ${RELEASE_FIELDS.replace('pipeline { id }', 'pipeline { id teams(first: 250) { nodes { key } } }')} } }`
+
+// The releases of up to 100 issues in one request (review of PMK-246). An issue whose list has a next page is read again alone.
+export const ISSUES_RELEASES_QUERY = `query PmkitIssuesReleases($ids: [ID!], $first: Int!) {
+  issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id releases(first: ${BATCH_RELEASES_PAGE}) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } } }
+}`
+
+export const ISSUE_RELEASES_QUERY = `query PmkitIssueReleases($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { releases(first: $first, after: $after) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } }
+}`
+
+// PMK-252: the docs of an issue are attachments pmkit made (metadata.pmkitDoc). Read like the releases: the fragment stays as it is
+// (it is at the complexity budget), 100 issues x 20 attachments x about 1.4 points is about 2800 points, and an issue with more
+// than 20 is read again alone, 50 at a time.
+const ATTACHMENT_FIELDS = 'id url metadata createdAt'
+export const BATCH_ATTACHMENTS_PAGE = 20
+
+export const ISSUES_ATTACHMENTS_QUERY = `query PmkitIssuesAttachments($ids: [ID!], $first: Int!) {
+  issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id attachments(first: ${BATCH_ATTACHMENTS_PAGE}) { nodes { ${ATTACHMENT_FIELDS} } ${PAGE_INFO} } } }
+}`
+
+export const ISSUE_ATTACHMENTS_QUERY = `query PmkitIssueAttachments($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { attachments(first: $first, after: $after) { nodes { ${ATTACHMENT_FIELDS} } ${PAGE_INFO} } }
+}`
+
+export const ATTACHMENT_CREATE = 'mutation PmkitAttachmentCreate($input: AttachmentCreateInput!) { attachmentCreate(input: $input) { success attachment { id } } }'
+
+export const ATTACHMENT_DELETE = 'mutation PmkitAttachmentDelete($id: String!) { attachmentDelete(id: $id) { success } }'

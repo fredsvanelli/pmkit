@@ -1,0 +1,18 @@
+$ pmkit default-branch
+exit 0
+--- stdout
+main
+--- stderr
+(empty)
+
+$ pmkit default-branch --json
+exit 0
+--- stdout
+{
+  "branch": "main",
+  "configured": null,
+  "valid": true,
+  "note": null
+}
+--- stderr
+(empty)

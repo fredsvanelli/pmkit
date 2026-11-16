@@ -18,7 +18,7 @@ This command edits title, type, priority, estimate, labels, sprint (a sprint id,
 - status: `/pmkit:issues:move`;
 - assignee: `/pmkit:issues:assign`;
 - parent, blocks, related and duplicate links: `/pmkit:issues:link`;
-- archive: not done by this command; archiving is a separate write with its own preview.
+- archive and unarchive: not done by this command; `issues archive` and `issues unarchive` (Local tracker) are separate writes with their own preview.
 
 `issues update` refuses parent, links and archived. Never try them here. Point the user to the command above.
 
@@ -46,6 +46,6 @@ The updated issue as a one-row issue table, and the list of fields that changed.
 
 - No ID: ask for it.
 - No change: ask what to change.
-- The change is only a parent, a link or an archive: do not run `issues update`. Say which command to use.
+- The change is only a parent, a link, an archive or an unarchive: do not run `issues update`. Say which command to use.
 - `--sprint current` with no active sprint: the dry run in step 5 answers `INVALID_INPUT` "there is no active sprint" before the confirmation question. Say so, show no preview, and offer `/pmkit:cycle:plan` or applying the other changes without `--sprint`.
 - An error from the CLI: apply the rules for reading errors in the conventions.

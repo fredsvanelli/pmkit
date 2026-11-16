@@ -1,0 +1,215 @@
+$ pmkit issues bulk priority high --category done
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issues bulk needs the digest of its preview before it writes
+next: Run the same command with --dry-run, show the preview, then pass its digest with --expect
+
+$ pmkit issues bulk priority high --category done --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "issues bulk needs the digest of its preview before it writes",
+    "nextStep": "Run the same command with --dry-run, show the preview, then pass its digest with --expect"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk priority high --category done --dry-run
+exit 0
+--- stdout
+set priority to high: 2 matched, 1 to write
+
+ID       | Title                   | Status | Assignee | Estimate | Change
+---------|-------------------------|--------|----------|----------|------------------------
+ISS-2K5P | Sign webhook payloads   | done   | ana      | 5        | priority: medium → high
+ISS-6R3N | Retry failed deliveries | done   | fred     | 8        | no change
+
+digest: sha256:ad66850ebf637da7acd32635e33fda2a1640ed061711d09017c0f98a2657caf4
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues bulk priority high --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "priority",
+    "value": "high",
+    "text": "set priority to high"
+  },
+  "matched": 2,
+  "writes": 1,
+  "items": [
+    {
+      "id": "ISS-2K5P",
+      "title": "Sign webhook payloads",
+      "status": "done",
+      "assignee": "ana",
+      "estimate": 5,
+      "updated": "2026-10-08T17:00:00Z",
+      "state": "change",
+      "changes": [
+        {
+          "field": "priority",
+          "from": "medium",
+          "to": "high"
+        }
+      ]
+    },
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 8,
+      "updated": "2026-10-22T10:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    }
+  ],
+  "blockers": [],
+  "writable": true,
+  "digest": "sha256:ad66850ebf637da7acd32635e33fda2a1640ed061711d09017c0f98a2657caf4",
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true,
+  "warnings": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done
+exit 0
+--- stdout
+add label backend: 2 matched, 0 to write
+
+ID       | Title                   | Status | Assignee | Estimate | Change
+---------|-------------------------|--------|----------|----------|----------
+ISS-2K5P | Sign webhook payloads   | done   | ana      | 5        | no change
+ISS-6R3N | Retry failed deliveries | done   | fred     | 8        | no change
+nothing to write
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "label-add",
+    "value": "backend",
+    "text": "add label backend"
+  },
+  "matched": 2,
+  "writes": 0,
+  "items": [
+    {
+      "id": "ISS-2K5P",
+      "title": "Sign webhook payloads",
+      "status": "done",
+      "assignee": "ana",
+      "estimate": 5,
+      "updated": "2026-10-08T17:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    },
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 8,
+      "updated": "2026-10-22T10:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    }
+  ],
+  "blockers": [],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": false,
+  "warnings": [],
+  "applied": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --dry-run
+exit 0
+--- stdout
+add label backend: 2 matched, 0 to write
+
+ID       | Title                   | Status | Assignee | Estimate | Change
+---------|-------------------------|--------|----------|----------|----------
+ISS-2K5P | Sign webhook payloads   | done   | ana      | 5        | no change
+ISS-6R3N | Retry failed deliveries | done   | fred     | 8        | no change
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "label-add",
+    "value": "backend",
+    "text": "add label backend"
+  },
+  "matched": 2,
+  "writes": 0,
+  "items": [
+    {
+      "id": "ISS-2K5P",
+      "title": "Sign webhook payloads",
+      "status": "done",
+      "assignee": "ana",
+      "estimate": 5,
+      "updated": "2026-10-08T17:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    },
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 8,
+      "updated": "2026-10-22T10:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    }
+  ],
+  "blockers": [],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true,
+  "warnings": []
+}
+--- stderr
+(empty)

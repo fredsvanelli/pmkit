@@ -231,9 +231,9 @@ const NOT_FOUND = 'Could not find referenced Issue.'
 const failProject = () => {
   throw new FakeInputError('Could not find referenced Project.')
 }
-const UPDATE_FIELDS = ['title', 'description', 'assigneeId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
+const UPDATE_FIELDS = ['title', 'description', 'assigneeId', 'delegateId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId', 'addedReleaseIds', 'removedReleaseIds']
 // PMK-41: a create may carry the dates of the record it migrates.
-const CREATE_FIELDS = ['id', ...UPDATE_FIELDS, 'createdAt', 'completedAt']
+const CREATE_FIELDS = ['id', ...UPDATE_FIELDS, 'createdAt', 'completedAt', 'releaseIds']
 const LABEL_FIELDS = ['id', 'name', 'teamId', 'parentId', 'isGroup']
 
 class FakeInputError extends Error {}
@@ -252,6 +252,8 @@ class FakeValidationError extends Error {}
  * `fake.cycles` adds more, lists them and moves the cycle clock (`setClock`), which starts at the `clock` option (default `start`) and decides isActive, isFuture and isPast.
  * `endsAt` is an exclusive boundary, as on Linear: at the instant `endsAt` a cycle is past, so a cycle that starts there is the active one.
  * A team with `cyclesEnabled: false` returns no cycles and takes no `cycleId`.
+ * PMK-246: `pipelines` ({ id, name, teams: [teamId] }) and `releases` ({ id, name, version, pipeline, stage, targetDate, completedAt, description })
+ * seed Linear releases. An issue holds `releaseIds`; `addedReleaseIds` and `removedReleaseIds` change them, and the filter takes `releases.some.id.eq`.
  */
 export function fakeLinearIssues({
   teams = [ACME_TEAM],
@@ -262,7 +264,16 @@ export function fakeLinearIssues({
   start = '2026-10-27T12:00:00.000Z',
   cycles: seededCycles = [],
   clock: startClock = start,
+  pipelines = [],
+  releases: seededReleases = [],
 } = {}) {
+  const releaseRecords = seededReleases.map((item) => ({ version: null, stage: 'planned', targetDate: null, completedAt: null, description: null, ...item }))
+  const releaseNode = (item) => ({
+    id: item.id, name: item.name, version: item.version, description: item.description, targetDate: item.targetDate, completedAt: item.completedAt,
+    stage: { type: item.stage },
+    pipeline: { id: item.pipeline, teams: { nodes: (pipelines.find((pipe) => pipe.id === item.pipeline)?.teams ?? []).map((id) => ({ key: teams.find((team) => team.id === id)?.key ?? id })) } },
+  })
+  const requireRelease = (id) => releaseRecords.find((item) => item.id === id) ?? (() => { throw new FakeInputError('Could not find referenced Release.') })()
   if (labels === ACME_LABELS) labels = [...ACME_LABELS]
   const records = []
   const relations = []
@@ -272,6 +283,7 @@ export function fakeLinearIssues({
   let tick = 0
   let issueCount = 0
   let relationCount = 0
+  let attachmentCount = 0
   let projectLookup = () => undefined
   const stamp = () => new Date(Date.parse(start) + ++tick * 1000).toISOString()
 
@@ -346,23 +358,26 @@ export function fakeLinearIssues({
     const state = stateById(record.stateId)
     return state ? { id: state.id, type: state.type } : null
   }
+  // Like Linear, a nested connection leaves out archived issues unless its field asks for includeArchived: true.
+  let currentQuery = ''
+  const shown = (field, other) => other.archivedAt === null || new RegExp(`\\b${field}\\([^)]*includeArchived: true`).test(currentQuery)
   const nested = {
     labels: (record) =>
       record.labelIds.map((id) => {
         const label = labels.find((item) => item.id === id)
         return { id, name: label.name, parent: label.parent ? { name: label.parent.name } : null }
       }),
-    children: (record) => records.filter((other) => other.parentId === record.id).map((other) => ({ identifier: other.identifier })),
+    children: (record) => records.filter((other) => other.parentId === record.id && shown('children', other)).map((other) => ({ identifier: other.identifier })),
     relations: (record) =>
       relations
-        .filter((relation) => relation.issueId === record.id)
+        .filter((relation) => relation.issueId === record.id && shown('relations', find(relation.relatedIssueId)))
         .map((relation) => {
           const other = find(relation.relatedIssueId)
           return { id: relation.id, type: relation.type, relatedIssue: { identifier: other.identifier, state: stateRef(other) } }
         }),
     inverseRelations: (record) =>
       relations
-        .filter((relation) => relation.relatedIssueId === record.id)
+        .filter((relation) => relation.relatedIssueId === record.id && shown('inverseRelations', find(relation.issueId)))
         .map((relation) => {
           const other = find(relation.issueId)
           return { id: relation.id, type: relation.type, issue: { identifier: other.identifier, state: stateRef(other) } }
@@ -389,6 +404,7 @@ export function fakeLinearIssues({
       team: { id: team.id, key: team.key },
       state: { id: state.id, name: state.name, type: state.type },
       assignee: record.assigneeId ? { id: record.assigneeId } : null,
+      delegate: record.delegateId ? { id: record.delegateId } : null,
       parent: parent ? { identifier: parent.identifier } : null,
       cycle: cycleOf(record) ? { id: cycleOf(record).id, number: cycleOf(record).number } : null,
       project: record.projectId ? projectLookup(record.projectId) : null,
@@ -408,6 +424,11 @@ export function fakeLinearIssues({
       record.stateId = input.stateId
     }
     if (input.assigneeId !== undefined) record.assigneeId = input.assigneeId
+    if (input.delegateId !== undefined) {
+      // Linear delegates only to app users (agents).
+      if (input.delegateId !== null && users.find((item) => item.id === input.delegateId)?.app !== true) throw new FakeInputError('Delegate must be an agent.')
+      record.delegateId = input.delegateId
+    }
     if (input.labelIds !== undefined) record.labelIds = [...input.labelIds]
     if (input.parentId !== undefined) record.parentId = input.parentId === null ? null : requireIssue(input.parentId).id
     if (input.cycleId !== undefined) {
@@ -423,6 +444,9 @@ export function fakeLinearIssues({
     }
     if (input.projectId !== undefined) record.projectId = input.projectId === null ? null : (projectLookup(input.projectId)?.id ?? failProject())
     if (input.projectMilestoneId !== undefined) record.projectMilestoneId = input.projectMilestoneId
+    for (const id of input.releaseIds ?? []) record.releaseIds.push(requireRelease(id).id)
+    for (const id of input.addedReleaseIds ?? []) if (!record.releaseIds.includes(requireRelease(id).id)) record.releaseIds.push(id)
+    if (input.removedReleaseIds) record.releaseIds = record.releaseIds.filter((id) => !input.removedReleaseIds.includes(id))
   }
 
   // PMK-36: history. recordHistory is the one place that turns a change of an issue into an entry, so a later issue can add a field row here.
@@ -501,6 +525,7 @@ export function fakeLinearIssues({
       updatedAt: at,
       stateId: (backlog.find((state) => state.type === 'backlog') ?? backlog[0]).id,
       assigneeId: null,
+      delegateId: null,
       parentId: null,
       labelIds: [],
       cycleId: null,
@@ -508,6 +533,9 @@ export function fakeLinearIssues({
       botActor: null,
       projectId: null,
       projectMilestoneId: null,
+      releaseIds: [],
+      // PMK-252: attachments ({ id, url, title, metadata, createdAt }); `seed(input, { attachments })` fills them.
+      attachments: [],
     }
     const { id, teamId, title, createdAt, completedAt, ...rest } = input
     applyFields(record, rest)
@@ -536,6 +564,7 @@ export function fakeLinearIssues({
       return parent !== null && (c.id.eq === undefined || idMatches(parent, c.id.eq)) && (c.id.in === undefined || c.id.in.some((value) => idMatches(parent, value)))
     },
     project: (record, c) => record.projectId !== null && record.projectId === (projectLookup(c.id.eq)?.id ?? c.id.eq),
+    releases: (record, c) => record.releaseIds.includes(c.some.id.eq),
     hasBlockedByRelations: (record, c) => relations.some((relation) => relation.type === 'blocks' && relation.relatedIssueId === record.id) === c.eq,
     updatedAt: (record, c) =>
       (c.lt === undefined || Date.parse(record.updatedAt) < Date.parse(c.lt))
@@ -570,6 +599,7 @@ export function fakeLinearIssues({
   }
 
   const answerOf = (operation, body, run) => {
+    currentQuery = body.query ?? ''
     try {
       const plan = pending.get(operation)
       if (plan) {
@@ -646,9 +676,12 @@ export function fakeLinearIssues({
     const record = records.find((item) => idMatches(item, id))
     return { issues: { nodes: record ? [chainOf(record, 10)] : [] } }
   })
+  routes.PmkitIssueReferences = query('PmkitIssueReferences', ({ id }) => ({ issues: search({ filter: { id: { eq: id } }, includeArchived: true, first: 1 }) }))
   for (const field of Object.keys(nested)) {
-    const name = `PmkitIssue${field[0].toUpperCase()}${field.slice(1)}Page`
-    routes[name] = query(name, ({ id, first, after }) => ({ issue: { [field]: connection(nested[field](requireIssue(id)), first, after) } }))
+    for (const suffix of ['Page', 'ArchivedPage']) {
+      const name = `PmkitIssue${field[0].toUpperCase()}${field.slice(1)}${suffix}`
+      routes[name] = query(name, ({ id, first, after }) => ({ issue: { [field]: connection(nested[field](requireIssue(id)), first, after) } }))
+    }
   }
 
   // PMK-36: comments.
@@ -746,6 +779,14 @@ export function fakeLinearIssues({
     record.updatedAt = at
     return { issueDelete: { success: true } }
   })
+  // PMK-222: an unarchive brings a trashed or archived issue back.
+  routes.PmkitIssueUnarchive = mutation('PmkitIssueUnarchive', ({ id }) => {
+    const record = requireIssue(id)
+    record.trashed = false
+    record.archivedAt = null
+    record.updatedAt = stamp()
+    return { issueUnarchive: { success: true } }
+  })
   routes.PmkitCommentsByIds = query('PmkitCommentsByIds', ({ ids }) => ({ comments: { nodes: commentRecords.filter((item) => (ids ?? []).includes(item.id)).map(commentNode) } }))
   // Created labels go into `labels`, so pass one array to fakeWorkspace and fakeLinearIssues and discovery lists them.
   routes.PmkitLabelCreate = mutation('PmkitLabelCreate', ({ input }) => {
@@ -760,6 +801,48 @@ export function fakeLinearIssues({
     if (index < 0) throw new FakeInputError('Could not find referenced IssueLabel.')
     labels.splice(index, 1)
     return { issueLabelDelete: { success: true } }
+  })
+
+  routes.PmkitReleases = query('PmkitReleases', ({ filter, first = 50, after = null }) => {
+    const team = filter?.pipeline?.teams?.some?.key?.eq
+    const teamId = team === undefined ? undefined : teams.find((item) => item.key === team)?.id
+    const listed = releaseRecords.filter((item) => team === undefined || pipelines.find((pipe) => pipe.id === item.pipeline)?.teams.includes(teamId))
+    return { releases: connection(listed.map(releaseNode), first, after) }
+  })
+  routes.PmkitRelease = query('PmkitRelease', ({ id }) => {
+    const found = releaseRecords.find((item) => item.id === id)
+    if (!found) throw new FakeInputError('Entity not found: Release')
+    return { release: releaseNode(found) }
+  })
+  routes.PmkitIssuesReleases = query('PmkitIssuesReleases', ({ ids = [], first = 50 }) => ({
+    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, releases: connection(record.releaseIds.map((rid) => releaseNode(requireRelease(rid))), nestedPage) })), first),
+  }))
+  routes.PmkitIssueReleases = query('PmkitIssueReleases', ({ id, first, after }) => ({
+    issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
+  }))
+
+  // PMK-252: issue attachments. attachmentCreate upserts by issue and url, as Linear does.
+  const attachmentNode = (item) => ({ id: item.id, url: item.url, metadata: item.metadata, createdAt: item.createdAt })
+  routes.PmkitIssuesAttachments = query('PmkitIssuesAttachments', ({ ids = [], first = 50 }) => ({
+    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, attachments: connection(record.attachments.map(attachmentNode), nestedPage) })), first),
+  }))
+  routes.PmkitIssueAttachments = query('PmkitIssueAttachments', ({ id, first, after }) => ({
+    issue: { attachments: connection(requireIssue(id).attachments.map(attachmentNode), first, after) },
+  }))
+  routes.PmkitAttachmentCreate = mutation('PmkitAttachmentCreate', ({ input }) => {
+    checkFields(input, ['id', 'issueId', 'title', 'subtitle', 'url', 'metadata'])
+    const record = requireIssue(input.issueId)
+    const found = record.attachments.find((item) => item.url === input.url)
+    const item = found ?? { id: input.id ?? `attachment-${++attachmentCount}`, createdAt: stamp() }
+    Object.assign(item, { url: input.url, title: input.title, metadata: input.metadata ?? {} })
+    if (!found) record.attachments.push(item)
+    return { attachmentCreate: { success: true, attachment: { id: item.id } } }
+  })
+  routes.PmkitAttachmentDelete = mutation('PmkitAttachmentDelete', ({ id }) => {
+    const record = records.find((issue) => issue.attachments.some((item) => item.id === id))
+    if (!record) throw new FakeInputError('Entity not found: Attachment')
+    record.attachments = record.attachments.filter((item) => item.id !== id)
+    return { attachmentDelete: { success: true } }
   })
 
   seededCycles.forEach(addCycle)
@@ -788,6 +871,7 @@ export function fakeLinearIssues({
       projectLookup = byRef
     },
     relate: (type, from, to) => relate({ type, issueId: from, relatedIssueId: to }),
+    search,
     comment: (ref, input) => commentNode(addComment({ ...input, issueId: ref }, { author: input.userId === undefined && input.botActor === undefined && input.externalUser === undefined })),
     comments: commentRecords,
     records,
@@ -981,7 +1065,13 @@ export function fakeLinearProjects({
     PmkitDocument: query('PmkitDocument', ({ filter }) => {
       for (const key of Object.keys(filter ?? {})) if (key !== 'slugId') throw new FakeValidationError(`Unknown filter ${key}`)
       const found = documents.filter((item) => item.slugId === filter?.slugId?.eq).slice(0, 1)
-      return { documents: { nodes: found.map((item) => ({ id: item.id, slugId: item.slugId, title: item.title, content: item.content ?? null, project: refOf(item.project) })) } }
+      return { documents: { nodes: found.map((item) => ({ id: item.id, slugId: item.slugId, title: item.title, content: item.content ?? null, project: item.project ? refOf(item.project) : null })) } }
+    }),
+    PmkitDocuments: query('PmkitDocuments', ({ filter, first, after }) => {
+      for (const key of Object.keys(filter ?? {})) if (key !== 'project') throw new FakeValidationError(`Unknown filter ${key}`)
+      if (filter?.project) checkFilter(filter.project)
+      const found = documents.filter((item) => !filter?.project || (item.project && Object.entries(filter.project).every(([key, value]) => comparators[key](item.project, value))))
+      return { documents: connection(found.map((item) => ({ slugId: item.slugId, title: item.title, project: item.project ? { id: item.project.id } : null })), first, after) }
     }),
     PmkitEpicIssues: (body) => issues.routes.PmkitIssues(body),
     PmkitProjectsByIds: query('PmkitProjectsByIds', ({ ids }) => ({
@@ -1005,7 +1095,7 @@ export function fakeLinearProjects({
       milestones.push({ ...input, project: requireProject(ref) })
     },
     seedDocument: (ref, input) => {
-      documents.push({ id: input.id ?? `document-${documents.length + 1}`, ...input, project: requireProject(ref) })
+      documents.push({ id: input.id ?? `document-${documents.length + 1}`, ...input, project: ref == null ? null : requireProject(ref) })
     },
     seedUpdate: (ref, input) => addUpdate({ ...input, projectId: requireProject(ref).id }, { checkHealth: false }),
     projects,
@@ -1080,10 +1170,11 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
     },
     PmkitCustomerShow: (body) => {
       if (disabledError) return disabled()
+      // Customer.needs is [CustomerNeed!]! without arguments in Linear's schema, so validation refuses a connection form (PMK-221 review).
+      if (/\bneeds\s*\(/.test(body.query)) return graphqlError('Unknown argument "first" on field "Customer.needs".', 'GRAPHQL_VALIDATION_FAILED')
       const found = customerOf(body.variables?.id)
       if (!found) return graphqlError('Entity not found: Customer', 'INPUT_ERROR')
-      const mine = needs.filter((need) => need.customerId === found.id).sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
-      return json({ customer: { ...found, needs: page(mine.map(needNode)) } })
+      return json({ customer: found })
     },
     PmkitCustomerStatuses: json({ customerStatuses: page(statuses) }),
     PmkitCustomerTiers: json({ customerTiers: page(tiers) }),
@@ -1103,6 +1194,23 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
       const changes = Object.entries(input).reduce((all, [key, value]) => ({ ...all, ...(FIELD_OF_INPUT[key]?.(value) ?? {}) }), {})
       return { success: true, customer: { ...found, ...changes } }
     }),
+    // PMK-221: the generic commands create customers and read every request of the workspace.
+    PmkitCustomerCreate: mutation('customerCreate', ({ input = {} }) => {
+      const { name, ...rest } = input
+      const changes = Object.entries(rest).reduce((all, [key, value]) => ({ ...all, ...(FIELD_OF_INPUT[key]?.(value) ?? {}) }), {})
+      return { success: true, customer: { id: 'cust-new', name, status: ref(statuses, 'st-1'), tier: null, revenue: null, size: null, owner: null, approximateNeedCount: 0, url: null, ...changes } }
+    }),
+    PmkitCustomerNeeds: (body) => {
+      if (disabledError) return disabled()
+      const { first = 50, after = null, filter } = body.variables ?? {}
+      const wanted = filter?.customer?.id?.eq
+      const matching = wanted === undefined ? needs : needs.filter((need) => need.customerId === wanted)
+      const start = Number(after ?? 0)
+      const end = start + first
+      const hasNextPage = end < matching.length
+      const nodes = matching.slice(start, end).map((need) => ({ ...needNode(need), customer: customerOf(need.customerId) ?? { id: need.customerId } }))
+      return json({ customerNeeds: page(nodes, { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
+    },
     PmkitCustomerNeedCreate: mutation('customerNeedCreate', ({ input = {} }) => {
       if (!customerOf(input.customerId)) throw new FakeInputError('Entity not found: Customer')
       const need = { id: 'need-new', body: input.body ?? '', priority: input.priority ?? 0, createdAt: '2026-10-28T12:00:00.000Z', customerId: input.customerId, issueId: input.issueId, projectId: input.projectId }
@@ -1116,3 +1224,36 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
     }),
   }
 }
+
+/**
+ * Routes for Linear custom views (PMK-212). `views` are CustomView nodes ({ id, name, modelName, shared, filterData, team });
+ * `issues` is a fakeLinearIssues store, whose search runs a view's filterData as Linear does. `endless` makes the
+ * view list report one more page forever, so the read is cut.
+ */
+export function fakeCustomViews({ views = [], issues, endless = false, extra = [] } = {}) {
+  // `extra` views exist in the workspace but sit past the cut of the list, so only a read by id finds them.
+  const all = [...views, ...extra]
+  return {
+    PmkitCustomView: (body) => {
+      const view = all.find((item) => item.id === body.variables.id)
+      return view ? json({ customView: view }) : graphqlError('Entity not found: CustomView', 'INPUT_ERROR')
+    },
+    PmkitCustomViews: (body) => {
+      const first = body.variables?.first ?? 50
+      const start = Number(body.variables?.after ?? 0)
+      const end = start + first
+      const hasNextPage = endless || end < views.length
+      return json({ customViews: page(views.slice(start, end), { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
+    },
+    PmkitCustomViewIssues: (body) => {
+      const view = all.find((item) => item.id === body.variables.id)
+      if (!view) return graphqlError('Entity not found: CustomView', 'INPUT_ERROR')
+      // Like issues, the order is the request's sort; without one the fake answers newest first, so a missing sort shows.
+      const { first, after, sort } = body.variables
+      return json({ customView: { issues: issues.search({ filter: view.filterData, first, after, sort }) } })
+    },
+  }
+}
+
+/** A CustomView node for fakeCustomViews. */
+export const customView = (id, name, filterData, { team = { id: ACME_TEAM_ID, key: 'ACME' }, modelName = 'Issue', shared = true } = {}) => ({ id, name, modelName, shared, filterData, team })

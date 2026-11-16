@@ -39,12 +39,25 @@ function linearContract({ cycles = [ACTIVE, PLANNED] } = {}) {
   }
   return {
     tracker, env, fake, root, today: TODAY, actor: 'user-1', cycles: { active: pick('active'), planned: pick('planned') },
+    // Two documents, out of order, so the list case has something to check: the sandbox of the live run may hold none.
+    // They are seeded on demand, because a project of their own would show in the epic tests.
+    seedDocuments: () => {
+      const home = projects.seed({ name: 'Docs home', teamIds: [ACME_TEAM.id] })
+      projects.seedDocument(home.id, { slugId: 'bbbbbbbbbbbb', title: 'B', content: '' })
+      projects.seedDocument(home.id, { slugId: 'aaaaaaaaaaaa', title: 'A', content: '' })
+      return ['aaaaaaaaaaaa', 'bbbbbbbbbbbb']
+    },
     teardown: () => fs.rmSync(root, { recursive: true, force: true }),
   }
 }
 
 // The cycle-lifecycle family stays out: Linear has no call that opens or closes a cycle.
-runTrackerContract({ name: 'Linear tracker contract over the fake', families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'documents'], setup: linearContract })
+// user-4 is the fake's app user, so the agents family runs native delegation (PMK-214).
+runTrackerContract({
+  name: 'Linear tracker contract over the fake',
+  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'documents', 'agents'],
+  setup: () => ({ ...linearContract(), agent: 'agent:user-4' }),
+})
 
 test('openCycle and closeCycle answer NOT_SUPPORTED and name the schedule of Linear', async () => {
   const { tracker, actor, teardown } = linearContract()

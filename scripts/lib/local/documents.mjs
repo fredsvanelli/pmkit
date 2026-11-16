@@ -42,3 +42,35 @@ export function createDocumentFile(docsDir, docPath, body, { dryRun = false, onW
   }
   return { before: null, after: { path: docPath, body: text } }
 }
+
+/** Replaces the body of an existing document. `onWrite(file)` gets the absolute file once it is written (PMK-228). */
+export function updateDocumentFile(docsDir, docPath, body, { dryRun = false, onWrite } = {}) {
+  const before = readDocumentFile(docsDir, docPath)
+  if (typeof body !== 'string' || body.trim() === '') throw invalid('document body must be a non-empty string')
+  const text = normalize(body)
+  if (!dryRun) {
+    const file = resolveDocPath(docsDir, docPath)
+    writeFileAtomic(file, text)
+    onWrite?.(file)
+  }
+  return { before, after: { path: docPath, body: text } }
+}
+
+/** The regular files under the docs folder, as { path } sorted by path. Hidden entries and symlinks are skipped, and a missing folder lists nothing. */
+export function listDocumentFiles(docsDir) {
+  if (!fs.existsSync(docsDir)) return []
+  if (!fs.statSync(docsDir).isDirectory()) {
+    throw new PmkitError('CONFLICT', 'the docs folder is a file, not a folder', 'Rename or remove that file so pmkit can keep its docs folder there')
+  }
+  const found = []
+  const walk = (dir, prefix) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
+      const relative = [...prefix, entry.name]
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), relative)
+      else if (entry.isFile()) found.push({ path: relative.join('/') })
+    }
+  }
+  walk(docsDir, [])
+  return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}

@@ -1,0 +1,380 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { NO_MOVE_MESSAGES, OVER_AVERAGE, chooseUnit, noMoveMessage, proposeMoves, suggestMoves, teamLoad } from './lib/team-load.mjs'
+
+const issue = (id, category, assignee, estimate, extra = {}) => ({ id, title: `Title ${id}`, status: { name: category, category }, assignee, estimate, ...extra })
+const MEMBERS = [
+  { id: 'fred', name: 'Fred', availability: 1 },
+  { id: 'ana', name: 'Ana', availability: 1 },
+  { id: 'agent:claude', name: 'Claude' },
+]
+const rowOf = (report, id) => report.rows.find((row) => row.member === id)
+
+test('the threshold is 1.5 times the average', () => assert.equal(OVER_AVERAGE, 1.5))
+
+const NATIVE = (unit) => ({ path: 'native', detail: { unit, scale: [] } })
+
+test('chooseUnit counts issues when estimation is absent, with the reason', () => {
+  assert.deepEqual(chooseUnit([issue('A-1', 'todo', 'fred', 3)], { path: 'absent' }), { unit: 'issues', reason: 'estimates are off' })
+})
+
+test('chooseUnit counts issues when no issue in scope has an estimate', () => {
+  assert.deepEqual(chooseUnit([issue('A-1', 'todo', 'fred')], NATIVE('points')), { unit: 'issues', reason: 'no issue in scope has an estimate' })
+  assert.deepEqual(chooseUnit([], NATIVE('points')), { unit: 'issues', reason: 'no issue in scope has an estimate' })
+})
+
+test('chooseUnit uses the estimate unit of the tracker when at least one issue has an estimate', () => {
+  const issues = [issue('A-1', 'todo', 'fred'), issue('A-2', 'todo', 'ana', 2)]
+  assert.deepEqual(chooseUnit(issues, NATIVE('points')), { unit: 'points', reason: null })
+  assert.deepEqual(chooseUnit(issues, NATIVE('hours')), { unit: 'hours', reason: null })
+})
+
+test('chooseUnit counts issues for t-shirt sizes and says the sizes do not add up', () => {
+  const issues = [issue('A-1', 'todo', 'fred', 'M'), issue('A-2', 'todo', 'ana', 'L')]
+  assert.deepEqual(chooseUnit(issues, NATIVE('sizes')), { unit: 'issues', reason: 'estimates are sizes and do not add up' })
+})
+
+test('chooseUnit handles a conditional estimation (Linear teams that differ) by what the issues carry', () => {
+  const conditional = { path: 'conditional', detail: { teams: ['ACME'] } }
+  assert.deepEqual(chooseUnit([issue('A-1', 'todo', 'fred', 3), issue('A-2', 'todo', 'ana')], conditional), { unit: 'points', reason: null })
+  assert.deepEqual(chooseUnit([issue('A-1', 'todo', 'fred')], conditional), { unit: 'issues', reason: 'no issue in scope has an estimate' })
+})
+
+test('teamLoad counts issues, points, unestimated, wip and the oldest wip per member', () => {
+  const issues = [
+    issue('A-1', 'todo', 'fred', 3), issue('A-2', 'in_progress', 'fred', 5), issue('A-3', 'in_review', 'fred'), issue('A-4', 'todo', 'ana', 2),
+  ]
+  const aging = [{ issue: 'A-2', days: 4.5 }, { issue: 'A-3', days: 1 }, { issue: 'A-9', days: 40 }]
+  const report = teamLoad(issues, { members: MEMBERS, aging, unit: 'points' })
+  assert.deepEqual(report.rows.map((row) => row.member), ['fred', 'ana', 'agent:claude'])
+  const fred = rowOf(report, 'fred')
+  assert.deepEqual([fred.issues, fred.estimate, fred.unestimated, fred.wip, fred.oldestWipDays, fred.load], [3, 8, 1, 2, 4.5, 8])
+  assert.deepEqual(rowOf(report, 'ana').oldestWipDays, null)
+})
+
+test('teamLoad counts issues as the load when the unit is issues', () => {
+  const report = teamLoad([issue('A-1', 'todo', 'fred', 3), issue('A-2', 'todo', 'fred', 5)], { members: MEMBERS, unit: 'issues' })
+  assert.equal(rowOf(report, 'fred').load, 2)
+})
+
+test('teamLoad keeps agents and non-members out of the average, noWork and the flags', () => {
+  const issues = [
+    issue('A-1', 'todo', 'agent:claude', 1), issue('A-2', 'todo', 'agent:claude', 1), issue('A-3', 'todo', 'agent:claude', 1),
+    issue('A-4', 'todo', 'gone', 1), issue('A-5', 'todo', undefined, 2), issue('A-6', 'todo', 'fred', 1), issue('A-7', 'todo', 'ana', 1),
+  ]
+  const report = teamLoad(issues, { members: MEMBERS, unit: 'points' })
+  assert.deepEqual(report.rows.map((row) => [row.member, row.agent, row.isMember]), [['fred', false, true], ['ana', false, true], ['agent:claude', true, true], ['gone', false, false]])
+  assert.equal(report.average, 1)
+  assert.deepEqual(report.imbalances, [])
+  assert.deepEqual(report.noWork, [])
+  assert.deepEqual([report.unassigned.issues, report.unassigned.estimate, report.unassigned.ids], [1, 2, ['A-5']])
+})
+
+test('teamLoad lists the humans with no work and skips availability 0', () => {
+  const members = [...MEMBERS, { id: 'bia', name: 'Bia', availability: 0 }, { id: 'caio', name: 'Caio', availability: 1 }]
+  const report = teamLoad([issue('A-1', 'todo', 'fred', 3)], { members, daysOff: { caio: ['2026-10-16'] }, unit: 'points' })
+  assert.deepEqual(report.noWork, [{ member: 'ana', name: 'Ana', daysOff: [] }, { member: 'caio', name: 'Caio', daysOff: ['2026-10-16'] }])
+})
+
+test('teamLoad flags over_average above 1.5 times the average of the humans', () => {
+  const issues = [issue('A-1', 'todo', 'fred', 8), issue('A-2', 'todo', 'ana', 2)]
+  const report = teamLoad(issues, { members: MEMBERS, unit: 'points' })
+  assert.equal(report.average, 5)
+  assert.deepEqual(report.imbalances, [{ member: 'fred', flag: 'over_average', load: 8, limit: 7.5 }])
+  assert.deepEqual(rowOf(report, 'fred').flags, ['over_average'])
+})
+
+test('teamLoad flags no over_average with one human, and none at exactly 1.5 times', () => {
+  const one = teamLoad([issue('A-1', 'todo', 'fred', 8)], { members: [MEMBERS[0]], unit: 'points' })
+  assert.deepEqual(one.imbalances, [])
+  const edge = teamLoad([issue('A-1', 'todo', 'fred', 3), issue('A-2', 'todo', 'ana', 1)], { members: MEMBERS, unit: 'points' })
+  assert.equal(edge.average, 2)
+  assert.deepEqual(edge.imbalances, [])
+})
+
+test('teamLoad flags over_capacity on points above the sprint capacity', () => {
+  const issues = [issue('A-1', 'todo', 'fred', 5), issue('A-2', 'todo', 'ana', 5)]
+  const report = teamLoad(issues, { members: MEMBERS, capacity: { fred: 4, ana: 10 }, unit: 'points' })
+  assert.deepEqual(report.imbalances, [{ member: 'fred', flag: 'over_capacity', load: 5, limit: 4 }])
+  const counted = teamLoad(issues, { members: MEMBERS, capacity: { fred: 4 }, unit: 'issues' })
+  assert.deepEqual(counted.imbalances, [])
+})
+
+test('suggestMoves moves todo issues, largest first, from an over member to the lowest load human', () => {
+  const issues = [
+    issue('A-1', 'todo', 'fred', 3), issue('A-2', 'todo', 'fred', 5), issue('A-3', 'in_progress', 'fred', 8), issue('A-4', 'todo', 'ana', 1),
+  ]
+  const members = [...MEMBERS, { id: 'caio', name: 'Caio', availability: 1 }]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(report.imbalances.map((item) => item.member), ['fred'])
+  assert.deepEqual(suggestMoves(report, issues), [{ issue: 'A-2', from: 'fred', to: 'caio' }, { issue: 'A-1', from: 'fred', to: 'ana' }])
+})
+
+test('suggestMoves never leaves the target above the source and skips agents as targets', () => {
+  const issues = [issue('A-1', 'todo', 'fred', 8), issue('A-2', 'todo', 'ana', 7)]
+  const report = teamLoad(issues, { members: MEMBERS, capacity: { fred: 4 }, unit: 'points' })
+  assert.deepEqual(suggestMoves(report, issues), [])
+})
+
+test('suggestMoves suggests nothing without a flag', () => {
+  const issues = [issue('A-1', 'todo', 'fred', 3), issue('A-2', 'todo', 'ana', 3)]
+  assert.deepEqual(suggestMoves(teamLoad(issues, { members: MEMBERS, unit: 'points' }), issues), [])
+})
+
+test('teamLoad keeps a member whose open issues have no estimate out of noWork, the average and the flags', () => {
+  const members = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }, { id: 'd', name: 'D' }]
+  const issues = [issue('A-1', 'todo', 'a'), issue('A-2', 'todo', 'a'), issue('A-3', 'todo', 'b', 2), issue('A-4', 'todo', 'c', 9), issue('A-5', 'todo', 'c', 1)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  const a = rowOf(report, 'a')
+  assert.deepEqual([a.issues, a.unestimated, a.load, a.unknown], [2, 2, null, true])
+  assert.deepEqual(report.unknownLoad, ['a'])
+  assert.deepEqual(report.noWork, [{ member: 'd', name: 'D', daysOff: [] }])
+  assert.equal(report.average, 4)
+  assert.deepEqual(report.imbalances.map((item) => item.member), ['c'])
+})
+
+test('teamLoad with one estimated member and one without estimates flags nobody', () => {
+  const issues = [issue('A-1', 'todo', 'a'), issue('A-2', 'todo', 'a'), issue('A-3', 'todo', 'b', 5)]
+  const report = teamLoad(issues, { members: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], unit: 'points' })
+  assert.deepEqual([report.average, report.imbalances, report.noWork, report.unknownLoad], [5, [], [], ['a']])
+  assert.deepEqual(suggestMoves(report, issues), [])
+})
+
+test('teamLoad marks a member with a partly estimated load as partial, not unknown', () => {
+  const report = teamLoad([issue('A-1', 'todo', 'a'), issue('A-2', 'todo', 'a', 3)], { members: [{ id: 'a', name: 'A' }], unit: 'points' })
+  const a = rowOf(report, 'a')
+  assert.deepEqual([a.load, a.unknown, a.partial, report.unknownLoad], [3, false, true, []])
+})
+
+test('teamLoad marks no row partial when the unit is issues or every issue has an estimate', () => {
+  const issues = [issue('A-1', 'todo', 'a', 2), issue('A-2', 'todo', 'b')]
+  const members = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }]
+  assert.deepEqual(teamLoad(issues, { members, unit: 'issues' }).rows.map((row) => row.partial), [false, false])
+  assert.deepEqual(teamLoad([issue('A-1', 'todo', 'a', 2)], { members, unit: 'points' }).rows.map((row) => row.partial), [false, false])
+})
+
+test('suggestMoves never moves an issue to a member with a partial load', () => {
+  const members = [{ id: 'fred', name: 'Fred' }, { id: 'ana', name: 'Ana' }, { id: 'caio', name: 'Caio' }]
+  const issues = [issue('A-1', 'todo', 'fred', 2), issue('A-2', 'todo', 'fred', 2), issue('A-6', 'todo', 'fred', 2), issue('A-3', 'todo', 'ana', 1), issue('A-4', 'todo', 'ana'), issue('A-5', 'todo', 'caio', 3)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.equal(rowOf(report, 'ana').partial, true)
+  assert.deepEqual(suggestMoves(report, issues), [])
+})
+
+test('teamLoad compares with the unrounded average and rounds only the output', () => {
+  const members = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }]
+  const report = teamLoad([issue('A-1', 'todo', 'a', 1), issue('A-2', 'todo', 'b', 1), issue('A-3', 'todo', 'c', 2)], { members, unit: 'points' })
+  assert.deepEqual(report.imbalances, [])
+  assert.equal(report.average, 1.33)
+  const over = teamLoad([issue('A-1', 'todo', 'a', 1), issue('A-2', 'todo', 'b', 1), issue('A-3', 'todo', 'c', 3)], { members, unit: 'points' })
+  assert.deepEqual(over.imbalances, [{ member: 'c', flag: 'over_average', load: 3, limit: 2.5 }])
+})
+
+test('suggestMoves also proposes moves for a member that is only over_capacity', () => {
+  const members = [{ id: 'fred', name: 'Fred' }, { id: 'ana', name: 'Ana' }, { id: 'caio', name: 'Caio' }]
+  const issues = [issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'fred', 4), issue('A-3', 'todo', 'ana', 8)]
+  const report = teamLoad(issues, { members, capacity: { fred: 6 }, unit: 'points' })
+  assert.deepEqual(report.imbalances.map((item) => item.flag), ['over_capacity'])
+  assert.deepEqual(suggestMoves(report, issues), [{ issue: 'A-1', from: 'fred', to: 'caio' }])
+})
+
+test('suggestMoves never leaves a target above its own capacity', () => {
+  const members = [{ id: 'fred', name: 'Fred' }, { id: 'ana', name: 'Ana' }, { id: 'caio', name: 'Caio' }]
+  const issues = [issue('A-1', 'todo', 'fred', 3), issue('A-2', 'todo', 'fred', 3), issue('A-3', 'todo', 'fred', 3)]
+  const report = teamLoad(issues, { members, capacity: { ana: 2 }, unit: 'points' })
+  assert.deepEqual(suggestMoves(report, issues), [{ issue: 'A-1', from: 'fred', to: 'caio' }])
+  const only = teamLoad(issues, { members: members.slice(0, 2), capacity: { ana: 2 }, unit: 'points' })
+  assert.deepEqual(suggestMoves(only, issues), [])
+})
+
+test('suggestMoves never moves an issue to a member who is over the average, and proposes nothing without a target', () => {
+  const members = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id.toUpperCase() }))
+  const many = (owner, count, estimate) => Array.from({ length: count }, (_, i) => issue(`${owner.toUpperCase()}-${i + 1}`, 'todo', owner, estimate))
+  const issues = [...many('a', 10, 2), ...many('b', 7, 2), issue('C-1', 'todo', 'c', 1), issue('C-2', 'todo', 'c'), issue('D-1', 'todo', 'd', 1), issue('D-2', 'todo', 'd')]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(report.imbalances.map((item) => [item.member, item.flag]), [['a', 'over_average'], ['b', 'over_average']])
+  assert.deepEqual(suggestMoves(report, issues), [])
+})
+
+const people = (...ids) => ids.map((id) => ({ id, name: id.toUpperCase() }))
+const todo = (owner, ...estimates) => estimates.map((estimate, i) => issue(`${owner.toUpperCase()}-${i + 1}`, 'todo', owner, estimate))
+const movesFor = (members, issues) => suggestMoves(teamLoad(issues, { members, unit: 'points' }), issues)
+
+test('suggestMoves lets a target reach the overload limit, 1.5 times the average, but not pass it', () => {
+  // 12, 0, 0: the limit is 6, so b takes one issue of 6, and a second move would leave a below c.
+  assert.deepEqual(movesFor(people('a', 'b', 'c'), todo('a', 6, 6)), [{ issue: 'A-1', from: 'a', to: 'b' }])
+  // 9, 1, 2: the issue of 5 would leave every target above a, so the issue of 4 moves to b.
+  assert.deepEqual(movesFor(people('a', 'b', 'c'), [...todo('a', 5, 4), ...todo('b', 1), ...todo('c', 2)]), [{ issue: 'A-2', from: 'a', to: 'b' }])
+  // 13, 5, 5, 3, 4: the issue of 8 would put d at 11, above the limit of 9, so the issue of 5 moves to d.
+  const five = [...todo('a', 8, 5), ...todo('b', 5), ...todo('c', 5), ...todo('d', 3), ...todo('e', 4)]
+  assert.deepEqual(movesFor(people('a', 'b', 'c', 'd', 'e'), five), [{ issue: 'A-2', from: 'a', to: 'd' }])
+})
+
+test('suggestMoves keeps its answer for 10 against 0 and 8 against 2', () => {
+  assert.deepEqual(movesFor(people('a', 'b'), todo('a', 5, 5)), [{ issue: 'A-1', from: 'a', to: 'b' }])
+  assert.deepEqual(movesFor(people('a', 'b'), [...todo('a', 4, 4), ...todo('b', 2)]), [])
+})
+
+test('suggestMoves never moves an issue to a row that the report flags, whatever its load', () => {
+  const members = people('a', 'b', 'c')
+  const issues = [...todo('a', 3, 3, 3), ...todo('c', 3)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(suggestMoves(report, issues), [{ issue: 'A-1', from: 'a', to: 'b' }])
+  const flagged = { ...report, rows: report.rows.map((row) => (row.member === 'b' ? { ...row, flags: ['over_average'] } : row)) }
+  assert.deepEqual(suggestMoves(flagged, issues), [{ issue: 'A-1', from: 'a', to: 'c' }])
+})
+
+test('proposeMoves gives the moves and, when there are none, the reason', () => {
+  const members = people('a', 'b')
+  const give = (issues) => proposeMoves(teamLoad(issues, { members, unit: 'points' }), issues)
+  assert.deepEqual(give(todo('a', 5, 5)), { moves: [{ issue: 'A-1', from: 'a', to: 'b' }], reason: null })
+  assert.equal(give([...todo('a', 10), issue('A-9', 'in_progress', 'a', 2)]).reason, 'no_target')
+  assert.deepEqual(give([issue('A-1', 'in_progress', 'a', 8), ...todo('b', 1)]), { moves: [], reason: 'no_candidates' })
+  assert.deepEqual(give([...todo('a', 3), ...todo('b', 3)]), { moves: [], reason: null }, 'nobody is overloaded, so there is nothing to explain')
+})
+
+test('proposeMoves says the movable work has no estimate when that is the only work in todo', () => {
+  const members = people('a', 'b')
+  const issues = [issue('A-1', 'in_progress', 'a', 10), issue('A-2', 'todo', 'a'), ...todo('b', 1)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(report.imbalances.map((item) => item.member), ['a'])
+  assert.deepEqual(proposeMoves(report, issues), { moves: [], reason: 'unestimated' })
+})
+
+test('suggestMoves never moves an issue to a member with an unknown load', () => {
+  const members = [{ id: 'fred', name: 'Fred' }, { id: 'ana', name: 'Ana' }, { id: 'caio', name: 'Caio' }]
+  const issues = [issue('A-1', 'todo', 'fred', 5), issue('A-2', 'todo', 'fred', 5), issue('A-3', 'todo', 'ana')]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(suggestMoves(report, issues).map((move) => move.to), ['caio'])
+})
+
+// PMK-183
+test('chooseUnit says sizes do not add up when a conditional estimation carries only sizes, and when it mixes sizes and numbers', () => {
+  const conditional = { path: 'conditional', detail: { teams: ['ACME'] } }
+  const reason = 'estimates are sizes or mix scales and do not add up'
+  assert.deepEqual(chooseUnit([issue('A-1', 'todo', 'fred', 'M'), issue('A-2', 'todo', 'ana', 'L')], conditional), { unit: 'issues', reason })
+  assert.deepEqual(chooseUnit([issue('A-1', 'todo', 'fred', 'M'), issue('A-2', 'todo', 'ana', 3)], conditional), { unit: 'issues', reason })
+})
+
+test('proposeMoves says a move would not even the load when the only refusal is the target ending above the source', () => {
+  const members = people('a', 'b')
+  const issues = [issue('A-9', 'in_progress', 'a', 4), ...todo('a', 6)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(proposeMoves(report, issues), { moves: [], reason: 'would_not_improve' })
+  assert.match(NO_MOVE_MESSAGES.would_not_improve, /even the load/)
+  assert.doesNotMatch(NO_MOVE_MESSAGES.would_not_improve, /overloading/)
+})
+
+test('proposeMoves reports an estimate of 0 as zero_estimate, not unestimated', () => {
+  const members = people('a', 'b')
+  const issues = [issue('A-9', 'in_progress', 'a', 10), issue('A-1', 'todo', 'a', 0), ...todo('b', 1)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(proposeMoves(report, issues), { moves: [], reason: 'zero_estimate' })
+  const mixed = [...issues, issue('A-2', 'todo', 'a')]
+  assert.equal(proposeMoves(teamLoad(mixed, { members, unit: 'points' }), mixed).reason, 'unestimated')
+})
+
+test('teamLoad flags a member with availability 0 and open work, and nobody else for it', () => {
+  const members = [{ id: 'a', name: 'A', availability: 0 }, { id: 'b', name: 'B', availability: 1 }, { id: 'c', name: 'C', availability: 1 }, { id: 'd', name: 'D', availability: 0 }]
+  const issues = [...todo('a', 3, 2), ...todo('b', 3), ...todo('c', 3)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(report.imbalances, [{ member: 'a', flag: 'no_availability', load: 5, limit: 0 }])
+  assert.deepEqual(rowOf(report, 'a').flags, ['no_availability'])
+  assert.deepEqual(rowOf(report, 'd').flags, [], 'availability 0 without work is not flagged')
+  assert.equal(report.average, 3, 'the member stays out of the average')
+})
+
+test('proposeMoves gives all the todo work of a member with availability 0 to the others, even when it does not even the load', () => {
+  const members = [{ id: 'a', name: 'A', availability: 0 }, { id: 'b', name: 'B', availability: 1 }, { id: 'c', name: 'C', availability: 1 }]
+  const issues = [...todo('a', 1), ...todo('b', 3), ...todo('c', 3)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(proposeMoves(report, issues), { moves: [{ issue: 'A-1', from: 'a', to: 'b' }], reason: null })
+})
+
+const away = [{ id: 'a', name: 'A', availability: 0 }, { id: 'b', name: 'B', availability: 1 }, { id: 'c', name: 'C', availability: 1 }]
+
+test('proposeMoves moves the work of a member with availability 0 to a member with none, past the overload limit', () => {
+  const alone = [{ id: 'a', name: 'A', availability: 0 }, { id: 'b', name: 'B', availability: 1 }]
+  const one = todo('a', 3)
+  assert.deepEqual(proposeMoves(teamLoad(one, { members: alone, unit: 'points' }), one), { moves: [{ issue: 'A-1', from: 'a', to: 'b' }], reason: null })
+  const many = [...todo('a', 5), ...todo('b', 1), ...todo('c', 1)]
+  assert.deepEqual(proposeMoves(teamLoad(many, { members: away, unit: 'points' }), many).moves, [{ issue: 'A-1', from: 'a', to: 'b' }])
+})
+
+test('proposeMoves proposes the issues of a member with availability 0 that have no estimate or an estimate of 0, and says so', () => {
+  const issues = [issue('A-1', 'todo', 'a', 4), issue('A-2', 'todo', 'a'), issue('A-3', 'todo', 'a', 0), ...todo('b', 1), ...todo('c', 1)]
+  const { moves } = proposeMoves(teamLoad(issues, { members: away, unit: 'points' }), issues)
+  assert.deepEqual(moves.map((move) => [move.issue, move.unsized]), [['A-1', undefined], ['A-2', 'unestimated'], ['A-3', 'zero_estimate']])
+})
+
+test('proposeMoves does not stop at a member with availability 0 whose load is unknown', () => {
+  const issues = [issue('A-1', 'todo', 'a'), issue('A-2', 'todo', 'a'), issue('B-1', 'todo', 'b', 2), issue('C-1', 'todo', 'c', 2)]
+  const report = teamLoad(issues, { members: away, unit: 'points' })
+  assert.equal(rowOf(report, 'a').load, null)
+  assert.deepEqual(proposeMoves(report, issues).moves.map((move) => move.issue), ['A-1', 'A-2'])
+})
+
+test('noMoveMessage does not talk about overload when a flagged member has no availability', () => {
+  const idle = [{ member: 'a', flag: 'no_availability', load: null, limit: 0 }]
+  for (const reason of ['no_candidates', 'no_target']) {
+    assert.doesNotMatch(noMoveMessage(reason, idle), /overload/i)
+    assert.match(noMoveMessage(reason, [{ member: 'a', flag: 'over_average', load: 9, limit: 4 }]), /overload/i)
+  }
+  assert.equal(noMoveMessage('unestimated', idle), NO_MOVE_MESSAGES.unestimated)
+})
+
+test('teamLoad takes the overload factor from the options, and the report carries it', () => {
+  const issues = [issue('A-1', 'todo', 'fred', 6), issue('A-2', 'todo', 'ana', 4)]
+  const standard = teamLoad(issues, { members: MEMBERS, unit: 'points' })
+  assert.equal(standard.overloadFactor, OVER_AVERAGE)
+  assert.deepEqual(standard.imbalances, [])
+  const strict = teamLoad(issues, { members: MEMBERS, unit: 'points', overloadFactor: 1.1 })
+  assert.equal(strict.overloadFactor, 1.1)
+  assert.deepEqual(strict.imbalances, [{ member: 'fred', flag: 'over_average', load: 6, limit: 5.5 }])
+})
+
+test('proposeMoves uses the overload factor of the report for the target limit', () => {
+  const members = [...MEMBERS, { id: 'bia', name: 'Bia', availability: 1 }]
+  const issues = [issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'fred', 4), issue('A-3', 'todo', 'fred', 4), issue('A-4', 'todo', 'ana', 1), issue('A-5', 'todo', 'bia', 1)]
+  assert.equal(proposeMoves(teamLoad(issues, { members, unit: 'points' }), issues).moves.length > 0, true)
+  const strict = teamLoad(issues, { members, unit: 'points', overloadFactor: 1.05 })
+  assert.deepEqual(proposeMoves(strict, issues), { moves: [], reason: 'no_target' })
+})
+
+test('teamLoad counts delivered issues per member, and null when the read is not verified', () => {
+  const done = [issue('D-1', 'done', 'fred', 3), issue('D-2', 'done', 'fred', 1), issue('D-3', 'done', 'gone', 2), issue('D-4', 'done', undefined, 1)]
+  const report = teamLoad([issue('A-1', 'todo', 'ana', 2)], { members: MEMBERS, unit: 'points', delivered: done })
+  assert.deepEqual(report.rows.map((row) => [row.member, row.delivered]), [['fred', 2], ['ana', 0], ['agent:claude', 0], ['gone', 1]])
+  assert.equal(rowOf(report, 'gone').isMember, false)
+  assert.equal(report.unassigned.delivered, 1)
+  assert.equal(report.average, 1, 'delivered stays out of the load')
+  const unknown = teamLoad([issue('A-1', 'todo', 'ana', 2)], { members: MEMBERS, unit: 'points' })
+  assert.deepEqual(unknown.rows.map((row) => row.delivered), [null, null, null])
+  assert.equal(unknown.unassigned.delivered, null)
+})
+
+test('proposeMoves skips a blocked issue, keeps moving the others, and says blocked when only blocked ones could move', () => {
+  const members = [...MEMBERS, { id: 'bia', name: 'Bia', availability: 1 }]
+  const issues = [issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'fred', 4), issue('A-3', 'todo', 'fred', 4), issue('A-4', 'todo', 'ana', 1), issue('A-5', 'todo', 'bia', 1)]
+  const free = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(proposeMoves(free, issues).moves.map((move) => move.issue), ['A-1'])
+  const blocked = teamLoad(issues, { members, unit: 'points', blocked: new Set(['A-1']) })
+  assert.deepEqual(rowOf(blocked, 'fred').blockedIds, ['A-1'])
+  assert.deepEqual(proposeMoves(blocked, issues).moves.map((move) => move.issue), ['A-2'])
+  const all = teamLoad(issues, { members, unit: 'points', blocked: new Set(['A-1', 'A-2', 'A-3']) })
+  assert.deepEqual(proposeMoves(all, issues), { moves: [], reason: 'blocked' })
+  assert.equal(NO_MOVE_MESSAGES.blocked, 'the issues in todo that could move are blocked, so moving them would not free anyone')
+})
+
+test('proposeMoves still gives away the blocked work of a member with no availability', () => {
+  const members = [{ id: 'fred', name: 'Fred', availability: 0 }, { id: 'ana', name: 'Ana', availability: 1 }]
+  const issues = [issue('A-1', 'todo', 'fred', 5)]
+  const report = teamLoad(issues, { members, unit: 'points', blocked: new Set(['A-1']) })
+  assert.deepEqual(proposeMoves(report, issues).moves.map((move) => move.issue), ['A-1'])
+})
+
+test('teamLoad with an overload factor of 1 flags every member above the average', () => {
+  const report = teamLoad([issue('A-1', 'todo', 'fred', 5), issue('A-2', 'todo', 'ana', 4)], { members: MEMBERS, unit: 'points', overloadFactor: 1 })
+  assert.deepEqual(report.imbalances, [{ member: 'fred', flag: 'over_average', load: 5, limit: 4.5 }])
+  assert.deepEqual(teamLoad([issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'ana', 4)], { members: MEMBERS, unit: 'points', overloadFactor: 1 }).imbalances, [], 'equal loads are not above the average')
+})

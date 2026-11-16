@@ -64,7 +64,10 @@ Entities in the MVP:
 | Comment | `id`, `issue`, `author`, `body`, `created`, and two optional thread keys: `parent` (the root comment, on a reply only) and `resolved` (`{ at, by }`, on a resolved root only) |
 | Event | `at`, `by`, `op`, `field`, `from`, `to`, `minutes`, `synthetic` |
 | Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `closed` (optional, ISO timestamp of the close with `Z` or an offset, set by `closeCycle`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
-| Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `description` |
+| Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `goal`, `description` |
+| Goal | `id`, `title`, `target`, `description`, `epics` (computed from the epics whose `goal` names it) |
+| Customer | `id`, `name`, `status`, `tier`, `revenue`, `size`, `owner`, `requests` (computed count), `notes` |
+| Request | `id`, `title`, `body`, `customer`, `from`, `important`, `state` (`open`, `accepted`, `declined`), `target` (the issue, when accepted), `reason`, `created`, `triaged` (`{ at, by }`) |
 | Milestone | `id`, `name`, `due`, `description` |
 | Release | `id`, `name`, `tag`, `target`, `released`, `state` (`planned`, `released`; computed from `released`), `description` |
 | Status update | `epic`, `at`, `author`, `health` (`on_track`, `at_risk`, `off_track`), `body` |
@@ -76,7 +79,7 @@ Event ops: `create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `l
 
 The 20 capabilities of the Unified model (`cycles`, `estimation`, `multilevel_hierarchy`, `dependencies`, `native_triage`, `deliverables`, `strategic_goals`, `status_update`, `releases`, `capacity`, `native_metrics`, `saved_views`, `documents`, `demand_signals`, `request_queue`, `time_tracking`, `linked_code`, `agent_delegation`, `security_alerts`, `user_inbox`). Each has a path (`native`, `derived`, `conditional`, `absent`), an optional `detail` map and an optional `enableHint`.
 
-The Local tracker serves 12 of the 20: 10 native and 2 derived (`native_metrics`, `linked_code`). It reports the other eight as `absent`, each with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
+The Local tracker serves all 20: 16 native and 4 derived (`native_metrics`, `linked_code`, `agent_delegation`, `security_alerts`). A tracker that lacks a capability reports it as `absent`, with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
 
 `pmkit capabilities [--json]` prints it. `/pmkit:help` reads it.
 
@@ -93,10 +96,12 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)`, `listStatusUpdates(epic)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
+| Goals | `listGoals()`, `getGoal(id)`, `createGoal(input, actor)`, `goalProgress(id)`, `setEpicGoal(epic, goal, actor)` |
+| Customers and requests | `listCustomers()`, `getCustomer(idOrName)`, `createCustomer(input, actor)`, `listRequests({ state, customer })`, `getRequest(id)`, `createRequest(input, actor)`, `acceptRequest(id, issue, actor)`, `declineRequest(id, reason, actor)`, `listDemandSignals()` |
 | Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id, { archived })`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |
-| Documents | `readDocument(path)`, `createDocument(path, body, actor)` |
+| Documents | `readDocument(path)`, `createDocument(path, body, actor)`, `listDocuments()` |
 | Time | `logTime(id, minutes, actor)` |
 
 Natural-language queries are translated by the command, not by the contract **(builder's call)**. `/pmkit:issues:find` turns the question into CLI filter flags, shows the flags in one line, and runs them. The contract's `searchIssues` takes a structured filter: `text`, `categories`, `types`, `assignee` (member id, `me` or `none`), `labels`, `sprint` (id, `current` or `none`), `parent`, `blocked`, `updatedBefore`, `updatedAfter`, `sort` (`priority`, `updated`, `created`, `due`; `created` by default, oldest first), `limit`. Every issue table a command shows uses creation order, oldest first, unless the user asks for another order. The same order picks the next issue in `/pmkit:issues:work` and `/pmkit:issues:mine`, and the sprint scope in `/pmkit:cycle:plan`.
@@ -170,7 +175,7 @@ Rules: every status maps to exactly one category, and every category has at leas
 
 ### User store
 
-`~/.config/pmkit/` (or `$XDG_CONFIG_HOME/pmkit/`, `%APPDATA%\pmkit\` on Windows) **(builder's call)**. In the MVP it holds only `inbox/<repo-hash>.json`, the time of the user's last inbox check. Nothing in it is required for a command to work.
+`~/.config/pmkit/` (or `$XDG_CONFIG_HOME/pmkit/`, `%APPDATA%\pmkit\` on Windows) **(builder's call)**. In the MVP it holds only `inbox/<repo-hash>.json`, the time of each member's last inbox check on that checkout (`inbox mark-read`, PMK-47). Nothing in it is required for a command to work.
 
 ### Actor
 
@@ -373,6 +378,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `metrics aging [--until d]` | days since work started for each issue in `in_progress` or `in_review` at `--until` (default now), oldest first |
 | `events [--since d] [--until d]` | all events in a range, for digests |
 | `risks` | blockers, stalled issues and PRs, late epics, epics without a recent status update, and broken CI; reads only, and without a git host lists issues stalled by tracker activity **(builder's call)** |
+| `alerts list [--severity s,..]` | security alerts from the scanners the repository has (`npm audit`), with a severity of `critical`, `high`, `medium` or `low`; reads only and never calls the tracker **(builder's call)** |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` **(builder's call)** |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review; `INVALID_INPUT` when there is none or it is not a draft **(builder's call)** |
 | `pr status [--branch b]`, `pr sync` | git host |

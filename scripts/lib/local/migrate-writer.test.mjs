@@ -113,6 +113,15 @@ test('epics and updates keep their dates', async () => {
   assert.equal(update.author, 'fred')
 })
 
+test('exists ignores a comment file inside the leftover of a failed delete', async () => {
+  const { root, writer } = setup()
+  const leftover = path.join(root, '.issues', 'issues', '.deleting-ISS-X-4242', 'comments')
+  fs.mkdirSync(leftover, { recursive: true })
+  fs.writeFileSync(path.join(leftover, '2026-10-03T10-00-00Z-fred.md'), 'old')
+  const found = await writer().exists('comment', [{ key: 'k', uuid: '2026-10-03T10-00-00Z-fred' }])
+  assert.deepEqual([...found.keys()], [])
+})
+
 test('exists finds what create wrote', async () => {
   const { writer } = setup()
   const w = writer()

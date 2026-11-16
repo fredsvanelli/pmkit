@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { test } from 'node:test'
 import { run } from './pmkit.mjs'
-import { makeRepo } from './test-helpers.mjs'
+import { copyFixture, makeRepo, tempDir } from './test-helpers.mjs'
 
 const env = { PMKIT_NOW: '2026-10-23T12:00:00Z', PMKIT_USER: 'fred' }
 
@@ -112,4 +112,21 @@ test('no-sprints: docs read specs/overview.md exits 0', async () => {
     const result = await call('docs', 'read', 'specs/overview.md')
     assert.equal(result.code, 0, result.stderr)
   })
+})
+
+test('copyFixture leaves .issues/.cache out of the copy', () => {
+  const src = tempDir('pmkit-src-')
+  fs.mkdirSync(path.join(src, '.issues', '.cache'), { recursive: true })
+  fs.writeFileSync(path.join(src, '.issues', '.cache', 'index.json'), '{}')
+  fs.writeFileSync(path.join(src, '.issues', 'config.yaml'), 'x: 1\n')
+  const dest = tempDir('pmkit-dest-')
+  copyFixture(src, dest)
+  assert.ok(fs.existsSync(path.join(dest, '.issues', 'config.yaml')))
+  assert.equal(fs.existsSync(path.join(dest, '.issues', '.cache')), false)
+})
+
+test('the scenarios-live.mjs header gives no count of runs, entries or dollars', () => {
+  const source = fs.readFileSync(new URL('./scenarios-live.mjs', import.meta.url), 'utf8')
+  const header = source.slice(0, source.indexOf('// Spike findings'))
+  assert.doesNotMatch(header, /\d+ runs|of \d+ entries|\$\d+/)
 })

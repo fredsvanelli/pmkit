@@ -1,0 +1,9 @@
+# PMK-199 plan
+
+Spec: `docs/superpowers/specs/2026-11-09-pmk-199-track-agents-fixes-design.md`. Tests in `scripts/cli-track-agents.test.mjs` and `scripts/track-agents.test.mjs`, TDD.
+
+1. (AC1) Test: a comment file with a tab in its frontmatter marks the issue `unknown`, `incomplete: true`, exit 0, other rows listed. Fix: catch `FrontmatterError` next to the `PmkitError` check.
+2. (AC2) Test: protection read fails once with a 502, the next issue (same base) reads again and succeeds. Fix: cache only on success.
+3. (AC3) Tests: `prText` with `blocked: true` and `unknown`/`unchecked` shows them; empty rows + incomplete text; warning without "GitHub" when only an issue file is broken. Fix: `prText`, the empty text, the cause-built warning.
+4. Update `commands/issues/track-agents.md` step 4 and Output, add a CHANGELOG line, check ACs (`issues update PMK-199 --check n`), commit `.issues/`.
+5. `npm test` in the foreground, exit 0.

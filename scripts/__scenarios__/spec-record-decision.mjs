@@ -1,0 +1,225 @@
+// /pmkit:spec:record-decision on the team fixture, which has no docs/adr/ folder and a Local tracker, so the ADR is a
+// tracker document. The prompt carries the context and the consequence, so the command has nothing to ask.
+//   entry 0: no ADR yet, so the number is 0001. It affects two issues, so the two comments are a bulk change: the
+//            previews come first and the user approves them once. The two docs links follow under the same rule.
+//   entry 1: the tracker folder already holds 0002 and a README with no number, so the number is 0003. One issue,
+//            so the comment is a single write.
+// Neither expect reads `saved`, so a live run checks the whole of both.
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const inputs = path.join(import.meta.dirname, '_inputs')
+const decision = 'We keep estimates in points, not hours. Context: two members argued about the precision of hours in the last sprint planning, and velocity already uses points. Consequence: time logged on an issue stays separate from its estimate. Rejected: estimating in hours.'
+const nextAdr = ['docs', 'next-adr', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-keep-estimates-in-points.md')]
+
+const NO_OLD = 'the decision replaces no ADR, so the older ADR is neither looked up nor marked (PMK-251)'
+const added = (repo) => repo.git('ls-files', '--others', '--exclude-standard').split('\n').filter(Boolean)
+
+export default [
+  {
+    command: 'spec/record-decision',
+    fixture: 'team',
+    git: true,
+    prompt: `/pmkit:spec:record-decision ${decision} --issues ISS-5N1R,ISS-4P8A`,
+    answers: ['Yes', 'Yes', 'Yes'],
+    steps: [
+      { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
+      { step: '2', read: ['issues', 'get', 'ISS-4P8A'] },
+      { step: '3', read: nextAdr },
+      { step: '5', read: nextAdr },
+      { step: '5', dryRun: ['docs', 'create', 'adr/0001-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr.md')] },
+      { confirm: 'Step 5' },
+      { step: '5', write: ['docs', 'create', 'adr/0001-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr.md')] },
+      { step: '6', dryRun: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment.md')] },
+      { step: '6', dryRun: ['issues', 'comment', 'ISS-4P8A', '--body-file', path.join(inputs, 'adr-comment.md')] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment.md')] },
+      { step: '6', write: ['issues', 'comment', 'ISS-4P8A', '--body-file', path.join(inputs, 'adr-comment.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-4P8A', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
+      { step: '6', write: ['issues', 'update', 'ISS-4P8A', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
+    ],
+    skip: { '2 docs adr-get': NO_OLD, '4 docs adr-get': NO_OLD, '7 docs adr-status': NO_OLD },
+    notHit: { 'Step 7': NO_OLD },
+    expect(repo) {
+      const file = added(repo).find((name) => name.endsWith('adr/0001-keep-estimates-in-points.md'))
+      assert.equal(file, '.issues/docs/adr/0001-keep-estimates-in-points.md')
+      assert.match(repo.file(file), /ISS-5N1R/)
+      for (const id of ['ISS-5N1R', 'ISS-4P8A']) {
+        assert.equal(repo.newEvents(id).filter((event) => event.op === 'comment').length, 1, `${id} got one comment`)
+        assert.deepEqual(repo.newEvents(id).filter((event) => event.field === 'docs').map((event) => event.to), [[file]], `${id} links the ADR in docs`)
+      }
+    },
+  },
+  {
+    command: 'spec/record-decision',
+    fixture: 'team',
+    git: true,
+    setup({ root }) {
+      const dir = path.join(root, '.issues', 'docs', 'adr')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, '0002-existing.md'), '# Existing\n')
+      fs.writeFileSync(path.join(dir, 'README.md'), '# ADRs\n')
+    },
+    prompt: `/pmkit:spec:record-decision ${decision} --issues ISS-5N1R`,
+    answers: ['Yes', 'Yes', 'Yes'],
+    steps: [
+      { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
+      { step: '3', read: nextAdr },
+      { step: '5', read: nextAdr },
+      { step: '5', dryRun: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003.md')] },
+      { confirm: 'Step 5' },
+      { step: '5', write: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003.md')] },
+      { step: '6', dryRun: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+    ],
+    skip: { '2 docs adr-get': NO_OLD, '4 docs adr-get': NO_OLD, '7 docs adr-status': NO_OLD },
+    notHit: { 'Step 7': NO_OLD },
+    expect(repo) {
+      const files = added(repo).filter((name) => name.includes('docs/adr/'))
+      assert.ok(files.includes('.issues/docs/adr/0003-keep-estimates-in-points.md'), files.join('\n'))
+      assert.ok(!files.some((name) => name.includes('0001-')), 'a gap or a README does not restart the numbers')
+      assert.equal(repo.newEvents('ISS-5N1R').filter((event) => event.op === 'comment').length, 1)
+    },
+  },
+  {
+    // PMK-251: the decision replaces ADR 0002. The Supersedes line is in the draft, the older ADR is looked up before the
+    // write and marked superseded after it, with its own confirmation. The lookup is `docs adr-get`, which only reads (PMK-263).
+    command: 'spec/record-decision',
+    fixture: 'team',
+    git: true,
+    setup({ root }) {
+      const dir = path.join(root, '.issues', 'docs', 'adr')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, '0002-existing.md'), '# Existing\n')
+    },
+    prompt: `/pmkit:spec:record-decision ${decision} It replaces ADR 0002. --issues ISS-5N1R`,
+    answers: ['Yes', 'Yes', 'Yes', 'Yes'],
+    steps: [
+      { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
+      { step: '2', read: ['docs', 'adr-get', '2'] },
+      { step: '3', read: nextAdr },
+      { step: '4', read: ['docs', 'adr-get', '2', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '5', read: nextAdr },
+      { step: '5', dryRun: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes.md')] },
+      { confirm: 'Step 5' },
+      { step: '5', write: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes.md')] },
+      { step: '6', dryRun: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '7', dryRun: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+      { confirm: 'Step 7' },
+      { step: '7', write: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+    ],
+    skip: {},
+    notHit: {},
+    expect(repo) {
+      assert.match(repo.file('.issues/docs/adr/0003-keep-estimates-in-points.md'), /^Supersedes: ADR 0002, \.issues\/docs\/adr\/0002-existing\.md$/m)
+      assert.match(repo.file('.issues/docs/adr/0002-existing.md'), /superseded by .*0003-keep-estimates-in-points\.md/i)
+    },
+  },
+  {
+    // PMK-263: the decision replaces ADR 0001 and ADR 0002. The draft has one Supersedes line per ADR, and the two marks are one bulk
+    // change: both previews first, one confirmation, then the two writes in the order of the numbers.
+    command: 'spec/record-decision',
+    fixture: 'team',
+    git: true,
+    setup({ root }) {
+      const dir = path.join(root, '.issues', 'docs', 'adr')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, '0001-first.md'), '# First\n')
+      fs.writeFileSync(path.join(dir, '0002-existing.md'), '# Existing\n')
+    },
+    prompt: `/pmkit:spec:record-decision ${decision} It replaces ADR 0001 and ADR 0002. --issues ISS-5N1R`,
+    answers: ['Yes', 'Yes', 'Yes', 'Yes'],
+    steps: [
+      { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
+      { step: '2', read: ['docs', 'adr-get', '1'] },
+      { step: '2', read: ['docs', 'adr-get', '2'] },
+      { step: '3', read: nextAdr },
+      { step: '4', read: ['docs', 'adr-get', '1', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '4', read: ['docs', 'adr-get', '2', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '5', read: nextAdr },
+      { step: '5', dryRun: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes-two.md')] },
+      { confirm: 'Step 5' },
+      { step: '5', write: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes-two.md')] },
+      { step: '6', dryRun: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '7', dryRun: ['docs', 'adr-status', '1', 'superseded', '--by', '3'] },
+      { step: '7', dryRun: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+      { confirm: 'Step 7' },
+      { step: '7', write: ['docs', 'adr-status', '1', 'superseded', '--by', '3'] },
+      { step: '7', write: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+    ],
+    skip: {},
+    notHit: {},
+    expect(repo) {
+      const adr = repo.file('.issues/docs/adr/0003-keep-estimates-in-points.md')
+      assert.match(adr, /^Supersedes: ADR 0001, \.issues\/docs\/adr\/0001-first\.md$/m)
+      assert.match(adr, /^Supersedes: ADR 0002, \.issues\/docs\/adr\/0002-existing\.md$/m)
+      assert.match(repo.file('.issues/docs/adr/0001-first.md'), /superseded by .*0003-keep-estimates-in-points\.md/i)
+      assert.match(repo.file('.issues/docs/adr/0002-existing.md'), /superseded by .*0003-keep-estimates-in-points\.md/i)
+    },
+  },
+  {
+    // PMK-311: the same two older ADRs, but ADR 0001 is MADR (`Accepted` and a date line) and ADR 0002 is Nygard (`Accepted` and a `Supersedes` line). The mark
+    // replaces only the status line, so neither is refused and the date and the `Supersedes` line stay.
+    command: 'spec/record-decision',
+    fixture: 'team',
+    git: true,
+    setup({ root }) {
+      const dir = path.join(root, '.issues', 'docs', 'adr')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, '0001-first.md'), '# First\n\n## Status\n\nAccepted\nDate: 2024-01-02\n')
+      fs.writeFileSync(path.join(dir, '0002-existing.md'), '# Existing\n\n## Status\n\nAccepted\n\nSupersedes [ADR 3](0003-x.md)\n')
+    },
+    prompt: `/pmkit:spec:record-decision ${decision} It replaces ADR 0001 and ADR 0002. --issues ISS-5N1R`,
+    answers: ['Yes', 'Yes', 'Yes', 'Yes'],
+    steps: [
+      { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
+      { step: '2', read: ['docs', 'adr-get', '1'] },
+      { step: '2', read: ['docs', 'adr-get', '2'] },
+      { step: '3', read: nextAdr },
+      { step: '4', read: ['docs', 'adr-get', '1', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '4', read: ['docs', 'adr-get', '2', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '5', read: nextAdr },
+      { step: '5', dryRun: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes-two.md')] },
+      { confirm: 'Step 5' },
+      { step: '5', write: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes-two.md')] },
+      { step: '6', dryRun: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '7', dryRun: ['docs', 'adr-status', '1', 'superseded', '--by', '3'] },
+      { step: '7', dryRun: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+      { confirm: 'Step 7' },
+      { step: '7', write: ['docs', 'adr-status', '1', 'superseded', '--by', '3'] },
+      { step: '7', write: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+    ],
+    skip: {},
+    notHit: {},
+    expect(repo) {
+      const adr = repo.file('.issues/docs/adr/0003-keep-estimates-in-points.md')
+      assert.match(adr, /^Supersedes: ADR 0001, \.issues\/docs\/adr\/0001-first\.md$/m)
+      assert.match(adr, /^Supersedes: ADR 0002, \.issues\/docs\/adr\/0002-existing\.md$/m)
+      assert.equal(repo.file('.issues/docs/adr/0001-first.md'), '# First\n\n## Status\n\nSuperseded by .issues/docs/adr/0003-keep-estimates-in-points.md\nDate: 2024-01-02\n')
+      assert.equal(repo.file('.issues/docs/adr/0002-existing.md'), '# Existing\n\n## Status\n\nSuperseded by .issues/docs/adr/0003-keep-estimates-in-points.md\n\nSupersedes [ADR 3](0003-x.md)\n')
+    },
+  },
+]

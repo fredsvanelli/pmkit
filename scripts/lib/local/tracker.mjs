@@ -1,30 +1,45 @@
 // The Local tracker: issues as files under .issues/. Every write goes through
 // `change` (existing issue) or `createIssue`, and both end in `save`.
 
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
-import { loadConfig, validateLocalConfig } from '../config.mjs'
+import { goalPrefixOf, loadConfig, validateLocalConfig } from '../config.mjs'
+import { formatMinutes, isPositiveMinutes } from '../duration.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
+import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
-import { appendEvents, driftEvents, readEvents } from './events.mjs'
+import { appendEvents, driftEvents, parseEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
-  HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
+  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
-import { lastEntry } from '../metrics.mjs'
-import { createDocumentFile, readDocumentFile } from './documents.mjs'
+import { eventInstant, lastEntry } from '../metrics.mjs'
+import { AGENT_ID, delegationComment } from '../delegation.mjs'
+import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
+import { mentionedIn } from '../mentions.mjs'
+import { createDocumentFile, listDocumentFiles, readDocumentFile, updateDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
+import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
+import { GOAL_STATUSES, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
+import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
+import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import { viewOverrides } from '../issue-filter.mjs'
+import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
+import { inboxGet, inboxUpdate } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
+import { hideAbsolutePaths } from '../paths.mjs'
 import {
-  SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate,
+  SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, applyBasePatch, applyCapacityPatch, requireCapacity, requireDaysOff, serializeSprint, validDate, validTimestamp,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
@@ -34,6 +49,8 @@ const LINKS = {
   duplicate: { field: 'duplicate_of', prop: 'duplicateOf' },
 }
 const BODY_FIELDS = { description: 'description', acceptanceCriteria: 'acceptance_criteria' }
+// The codes a read-only file or folder inside gives on Node 22 (EACCES) and Node 26 (ENOTEMPTY): the warning names permissions for them.
+const PERMISSION_CODES = new Set(['EACCES', 'EPERM', 'ENOTEMPTY'])
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep || undefined)
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -64,6 +81,7 @@ function readBack(label, parse) {
 
 export function createLocalTracker(root, {
   config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env, index = true, onIndexRead = () => {},
+  sign,
 } = {}) {
   const { local } = config
   if (![true, 'read', false].includes(index)) throw invalid('index must be true, read or false')
@@ -155,7 +173,7 @@ export function createLocalTracker(root, {
     return release
   }
 
-  const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
+  const sprintExists = (id) => sprintFileExists(issuesDir, id)
 
   function requireSprint(value) {
     if (value === 'current') return requireActiveSprintId()
@@ -211,6 +229,12 @@ export function createLocalTracker(root, {
       if (!isBranchName(name)) throw invalid(`branch "${name}" is not a valid git branch name`, 'Use a name git accepts, like iss-7k3q-retry-webhooks, that does not start with -')
       return name
     },
+    docs: (value) => {
+      if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) throw invalid('docs must be a list of paths')
+      const paths = value.map((item) => oneLine('doc', item.trim()))
+      if (paths.some((item) => item === '')) throw invalid('a doc path cannot be blank', 'Pass the path of the document, such as docs/adr/0001-use-points.md')
+      return [...new Set(paths)]
+    },
     description: (value) => noSectionHeading('description', plainText('description', value)),
     acceptanceCriteria: requireCriteria,
   }
@@ -225,6 +249,10 @@ export function createLocalTracker(root, {
         else delete issue[key]
       } else if (key === 'status') {
         issue.status = statusOf(NORMALIZE.status(value))
+      } else if (key === 'docs') {
+        const docs = NORMALIZE.docs(value)
+        if (docs.length > 0) issue.docs = docs
+        else delete issue.docs
       } else {
         issue[key] = NORMALIZE[key](value)
       }
@@ -317,6 +345,7 @@ export function createLocalTracker(root, {
       fileOf: (id) => issuePaths(issuesDir, normalizeId(id)).file,
       read: (id) => readIssue(id).issue,
       write,
+      sign,
     })
   }
 
@@ -476,6 +505,89 @@ export function createLocalTracker(root, {
     })
   }
 
+  /**
+   * Hands an issue to an agent member: assigns it and posts the delegation comment with the instructions for local execution.
+   * The Local tracker never starts the agent, so `run` is always 'local'.
+   * One write: the comment file first, then issue.md and both events. When any of them fails, issue.md is put back and the
+   * comment file removed, so the issue is either delegated with its record or left as it was; the error says which (CONFLICT).
+   */
+  function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const agents = Object.keys(local.members).filter((member) => AGENT_ID.test(member))
+    const nextStep = agents.length > 0 ? `Use one of: ${agents.join(', ')}` : 'Add an agent member such as agent:claude with /pmkit:setup'
+    if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw invalid(`"${agent}" is not an agent: an agent member id starts with agent:`, nextStep)
+    if (!agents.includes(agent)) throw invalid(`agent "${agent}" is not a member`, nextStep)
+    const { issue: current, paths } = readIssue(id)
+    const readOrNull = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null)
+    // change() may log drift events before the edit runs, so the rollback puts events.jsonl back too.
+    const original = { issue: readOrNull(paths.file), events: readOrNull(paths.events) }
+    const body = delegationComment({ issue: current.id, agent, by: actor, instructions })
+    // Already the agent's: only the new instructions are written, as a plain comment.
+    if (current.assignee === agent) return { before: current, after: current, comment: comment(current.id, body, actor, { dryRun }), run: 'local' }
+    let posted
+    let file
+    try {
+      const changed = change(id, actor, { dryRun }, (issue, meta, before) => {
+        const dir = issuePaths(issuesDir, issue.id).comments
+        const base = `${fileSafe(meta.at)}-${fileSafe(actor)}`
+        let name = base
+        for (let n = 2; fs.existsSync(path.join(dir, `${name}.md`)); n++) name = `${base}-${n}`
+        posted = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at }
+        if (!dryRun) {
+          fs.mkdirSync(dir, { recursive: true })
+          file = path.join(dir, `${name}.md`)
+          writeFile(file, joinFrontmatter({ author: actor, created: meta.at }, `${posted.body}\n`, { order: ['author', 'created', 'reply_to'] }))
+        }
+        issue.assignee = agent
+        return [fieldEvent('assign', 'assignee', before, issue, meta), { ...meta, op: 'comment', to: `${name}.md` }]
+      })
+      return { before: changed.before, after: changed.after, comment: posted, run: 'local' }
+    } catch (error) {
+      if (dryRun) throw error
+      // save() writes issue.md, then appends the events: a failed append leaves issue.md changed, so it is put back too.
+      const left = rollBackDelegation(paths, original, file, readOrNull)
+      // A PmkitError (the read-back check) leaves nothing behind once rolled back, so it is already the answer.
+      if (error instanceof PmkitError && left.length === 0) throw error
+      const where = path.relative(config.root, paths.dir).split(path.sep).join('/')
+      if (left.length === 0) {
+        throw new PmkitError('CONFLICT', `could not write the delegation of ${current.id}: ${error.message}; nothing was changed: issue.md, the comments and events.jsonl are as they were`,
+          `Check that ${where} and its files are writable, then delegate again`, { written: [] })
+      }
+      const names = { comment: `the delegation comment ${posted?.id}.md`, 'issue.md': 'issue.md', 'events.jsonl': 'events.jsonl' }
+      throw new PmkitError('CONFLICT', `could not write the delegation of ${current.id}: ${error.message}; these could not be put back: ${left.map((item) => names[item]).join(', ')}`,
+        `Restore ${where} with git checkout (and remove a new comment file), check that its files are writable, then delegate again`, { written: left })
+    }
+  }
+
+  /**
+   * Puts issue.md and events.jsonl back to `original` and removes the comment file. Each step runs on its own, so one failure
+   * never hides the delegation's error or skips the others. Returns what could not be put back: 'comment', 'issue.md', 'events.jsonl'.
+   */
+  function rollBackDelegation(paths, original, commentFile, readOrNull) {
+    const left = []
+    const step = (name, undo) => {
+      try {
+        undo()
+      } catch {
+        left.push(name)
+      }
+    }
+    if (commentFile !== undefined) {
+      step('comment', () => {
+        fs.rmSync(commentFile, { force: true })
+        writtenPaths.delete(commentFile)
+      })
+    }
+    for (const [name, file, text] of [['issue.md', paths.file, original.issue], ['events.jsonl', paths.events, original.events]]) {
+      step(name, () => {
+        if (readOrNull(file) === text) return
+        if (text === null) fs.rmSync(file, { force: true })
+        else fs.writeFileSync(file, text)
+      })
+    }
+    return left
+  }
+
   function archive(id, actor, { dryRun } = {}) {
     requireWriter(actor)
     return change(id, actor, { dryRun }, (issue, meta, before) => {
@@ -483,6 +595,130 @@ export function createLocalTracker(root, {
       issue.archived = true
       return [{ ...meta, op: 'archive' }]
     })
+  }
+
+  /** The way back of `archive` (PMK-250): an issue that is not archived writes nothing. */
+  function unarchive(id, actor, { dryRun } = {}) {
+    requireWriter(actor)
+    return change(id, actor, { dryRun }, (issue, meta, before) => {
+      if (!before.archived) return []
+      issue.archived = false
+      return [{ ...meta, op: 'unarchive' }]
+    })
+  }
+
+  const commentTexts = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.md')).map((name) => fs.readFileSync(path.join(dir, name), 'utf8')) : [])
+  const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => (entry.isDirectory() ? filesUnder(path.join(dir, entry.name)) : [path.join(dir, entry.name)]))
+    .sort()
+
+  /** What a delete warns about: the issue's own sprint, release, assignee, time, todo-key and branch, and the views that filter on it. */
+  function deleteWarnings(issue, paths) {
+    const warnings = []
+    if (issue.sprint !== undefined) {
+      const state = sprintExists(issue.sprint) ? readSprint(sprintsDir, String(issue.sprint)).state : undefined
+      const closed = state === 'closed' ? '; the velocity of that closed sprint no longer counts it' : ''
+      warnings.push(`it belongs to sprint ${issue.sprint}${state ? ` (${state})` : ''}, which loses it${closed}`)
+    }
+    if (issue.release !== undefined) {
+      try {
+        if (getRelease(issue.release).released) warnings.push(`release ${issue.release} is already released and loses this issue`)
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        warnings.push(`release ${issue.release} could not be read, so it was not checked`)
+      }
+    }
+    if (issue.assignee !== undefined && AGENT_ID.test(issue.assignee)) warnings.push(`it is assigned to ${issue.assignee}, which may still be working on it`)
+    const minutes = readEvents(paths.events).events
+      .filter((event) => event.op === 'log_time' && Number.isInteger(event.minutes) && event.minutes > 0)
+      .reduce((sum, event) => sum + event.minutes, 0)
+    if (minutes > 0) warnings.push(`${minutes} minutes logged on it are deleted with it`)
+    if (/^todo-key:[ \t]*[0-9a-f]{12}[ \t]*\r?$/m.test(`${issue.description ?? ''}\n${issue.body ?? ''}`)) {
+      warnings.push('it holds a todo-key line, so the next todos run lists its comment as new again')
+    }
+    for (const name of [...viewStems(viewsDir)].filter(validViewName).sort()) {
+      try {
+        if (parseView(fs.readFileSync(path.join(viewsDir, `${name}.yaml`), 'utf8'), name).filter.parent === issue.id) warnings.push(`view ${name} filters on this issue as parent and will find nothing`)
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        warnings.push(`view ${name} could not be read, so it was not checked`)
+      }
+    }
+    if (issue.branch !== undefined) warnings.push(`branch ${issue.branch} and its pull request stay as they are`)
+    return warnings
+  }
+
+  /**
+   * Deletes the issue folder. It refuses, writing nothing, when another issue lists this one in blockedBy, related or duplicateOf or has it
+   * as parent, and when an issue file does not parse, because that file may hold a reference. Archived issues count.
+   * A sprint or release, logged time, a view and the branch are warnings, and the issues that cite the ID in text are listed as mentions.
+   */
+  function deleteIssue(id, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const { issue, paths } = readIssue(id)
+    // Never saves the index here: a refusal and a dry run write nothing, and a delete refreshes it after the folder is gone.
+    const { issues, problems } = readAll({ save: false })
+    if (problems.length > 0) {
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `${problems.length} issue ${problems.length === 1 ? 'file does' : 'files do'} not parse (${problems.map((problem) => problem.id).join(', ')}), so the references to ${issue.id} cannot be checked`,
+        'Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again',
+        { problems },
+      )
+    }
+    const others = issues.filter((other) => other.id !== issue.id)
+    const references = others.flatMap((other) => REFERENCE_KINDS
+      .filter((kind) => (kind === 'parent' ? other.parent === issue.id : other[kind].includes(issue.id)))
+      .map((kind) => ({ id: other.id, kind })))
+    if (references.length > 0) throw referencedError(issue.id, references)
+    const mentioned = mentionedIn(issue.id)
+    const mentions = others.flatMap((other) => [
+      ...(mentioned(`${other.description ?? ''}\n${other.body ?? ''}`) ? [{ id: other.id, in: 'description' }] : []),
+      ...(commentTexts(issuePaths(issuesDir, other.id).comments).some(mentioned) ? [{ id: other.id, in: 'comment' }] : []),
+    ])
+    const rel = (file) => path.relative(config.root, file).split(path.sep).join('/')
+    const files = filesUnder(paths.dir)
+    const removes = {
+      dir: rel(paths.dir),
+      files: files.map(rel),
+      events: readEvents(paths.events).events.length,
+      comments: files.filter((file) => file.startsWith(`${paths.comments}${path.sep}`)).length,
+      autoCommit: local.auto_commit === true,
+    }
+    const result = { before: withComputed(issue, issues), after: null, removes, references: [], mentions, warnings: deleteWarnings(issue, paths), unchecked: [REPO_UNCHECKED] }
+    if (dryRun) return result
+    // The rename is the delete: it happens whole or not at all. A failed cleanup after it leaves a hidden folder that no read lists, never an issue without issue.md.
+    const trash = path.join(path.dirname(paths.dir), `.deleting-${issue.id}-${process.pid}-${Date.now()}`)
+    fs.renameSync(paths.dir, trash)
+    writtenPaths.add(paths.dir)
+    try {
+      fs.rmSync(trash, { recursive: true })
+    } catch (error) {
+      const cause = PERMISSION_CODES.has(error.code) ? 'a file or folder inside could not be removed, often for lack of write permission; ' : ''
+      result.warnings.push(`the issue is deleted, but ${rel(trash)} could not be removed: ${error.code ?? error.message}; ${cause}run pmkit validate for the step to remove it`)
+    }
+    // A read drops an entry whose folder is gone. Reading now keeps the index file in step with the tree.
+    if (indexMode === true) {
+      try {
+        indexedRead(true)
+      } catch {
+        // The index only makes reads faster. The next search rebuilds it.
+      }
+    }
+    return result
+  }
+
+  /** The Local tracker has no trash (PMK-222): a deleted issue comes back from git history, and the error names the commands. */
+  function restore(id, actor) {
+    requireWriter(actor)
+    if (!isId(id, local.id_prefix)) throw invalid(`${id} is not an issue ID`, 'Pass the ID of the deleted issue')
+    const folder = issuePaths(issuesDir, id).dir
+    // Git commands on a live folder would overwrite it with an old copy.
+    if (fs.existsSync(folder)) throw invalid(`${id} is not deleted`, `pmkit issues get ${id}`)
+    // :(top) reads the path from the top of the repository, so the commands work from any folder of it.
+    const dir = `':(top)${path.relative(config.root, folder).split(path.sep).join('/')}'`
+    throw new PmkitError('NOT_SUPPORTED', 'the Local tracker has no trash: a deleted issue comes back from git history',
+      `git checkout HEAD -- ${dir} brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- ${dir} finds the commit and git checkout <commit>^ -- ${dir} brings the folder back`)
   }
 
   const knownIssue = (id) => readIssue(id).issue.id
@@ -622,6 +858,290 @@ export function createLocalTracker(root, {
     return grouped
   }
 
+  // The user inbox (PMK-47). See docs/superpowers/specs/2026-10-31-pmk-47-user-inbox-design.md.
+  const inboxStore = { env, now }
+  const DAY = 86400000
+  const FIRST_LIST_DAYS = 14
+  const PRUNE_DAYS = 30
+  const EPOCH = '1970-01-01T00:00:00Z'
+  const digest = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
+
+  /** The key of the assignment an event makes to `user`, or null when the event is not an assignment to the user by someone else. */
+  function assignmentKey(id, event, user) {
+    const assignee = event.op === 'create' ? event.to?.assignee : event.to
+    if (!(((event.op === 'assign' && event.field === 'assignee') || event.op === 'create') && assignee === user && event.by !== user)) return null
+    return `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
+  }
+
+  // The item kinds an entry covers once written. An entry written before PMK-225 has no kinds and never listed status changes, so
+  // the ones dated up to its last check count as seen: an old entry is not flooded with every old move. The next write records them.
+  const INBOX_KINDS = ['assignment', 'mention', 'status']
+  const seenBefore = (stored, entry) => stored !== null && stored.kinds === undefined && entry.kind === 'status' && entry.at <= stored.at
+
+  /**
+   * The status changes of an issue log that reach `user`: each `move` of the status by someone else while the user was the
+   * assignee, replayed from the `create` event and each `assign` event. Returns [{ key, event }] in log order.
+   */
+  function statusChanges(id, events, user) {
+    const found = []
+    let assignee = null
+    for (const event of events) {
+      if (event.op === 'create') assignee = event.to?.assignee ?? null
+      else if (event.op === 'assign' && event.field === 'assignee') assignee = event.to ?? null
+      else if (event.op === 'move' && event.field === 'status' && assignee === user && event.by !== user) {
+        found.push({ key: `status:${id}:${digest(JSON.stringify([event.at, event.by, event.from ?? null, event.to ?? null]))}`, event })
+      }
+    }
+    return found
+  }
+
+  /** A timestamp as `YYYY-MM-DDTHH:MM:SSZ`, or null when it is not a date. */
+  const inSeconds = (value) => {
+    const time = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(Number.NaN)
+    return Number.isNaN(time.getTime()) ? null : isoSeconds(time)
+  }
+
+  /** A `since` the user typed: only the strict timestamp with a zone that sprints use, as `YYYY-MM-DDTHH:MM:SSZ`, else null. */
+  const typedSeconds = (value) => (validTimestamp(value) ? isoSeconds(new Date(value)) : null)
+  const TIMESTAMP_STEP = 'Use a timestamp with a zone, such as 2026-10-31T10:00:00Z or 2026-10-31T12:00:00+02:00'
+  const modified = (file) => {
+    try {
+      return fileMtimeIso(file)
+    } catch {
+      return EPOCH
+    }
+  }
+
+  /**
+   * Every assignment and mention of the user, whatever the check, and a problem for each file that could not be read.
+   * Each item has a key that does not depend on a clock, so a clone that pulls an old item sees a key it has not seen.
+   * The time of an item only orders the list. A time that cannot be read falls back to the modified time of the file.
+   */
+  function scanInbox(user) {
+    const items = []
+    const problems = []
+    const { issues, problems: unparsed } = readAll({ save: false })
+    problems.push(...unparsed)
+    const byId = new Map(issues.map((issue) => [issue.id, issue]))
+    const item = (key, kind, issue, at, by, where, extra = {}) => ({
+      key, kind, issue, title: byId.get(issue)?.title ?? null, at, by, in: where, comment: null, excerpt: null, from: null, to: null, synthetic: false, ...extra,
+    })
+    for (const id of listIssueIds(issuesDir, local.id_prefix)) {
+      const paths = issuePaths(issuesDir, id)
+      const problem = (message) => problems.push({ id, code: 'INVALID_INPUT', message })
+      const { events, problems: lines } = readEvents(paths.events)
+      for (const line of lines) problem(`events.jsonl, ${line}`)
+      let described
+      let touched
+      for (const event of events) {
+        const at = inSeconds(event.at) ?? modified(paths.events)
+        const key = assignmentKey(id, event, user)
+        if (key !== null) {
+          items.push(item(key, 'assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
+        }
+        if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at }
+        if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) touched = { at }
+      }
+      for (const { key, event } of statusChanges(id, events, user)) {
+        const at = inSeconds(event.at) ?? modified(paths.events)
+        items.push(item(key, 'status', id, at, event.by ?? null, 'status', { from: event.from ?? null, to: event.to ?? null, synthetic: event.synthetic === true }))
+      }
+      const found = byId.get(id)
+      if (found !== undefined) {
+        // One item per line that mentions the user. The key is the issue and the text of the line, so editing that line is a new
+        // item and editing the rest of the body is not. The log does not say what an edit changed, so no line has a known author:
+        // `by` is null on every body item. No item is dropped for its author. Only the lines of the criteria list are criteria;
+        // a line under any other section, such as ## Notes, counts as description.
+        const inDescription = new Set(findMentions(found.description, user, { full: true }).map(mentionText))
+        const inCriteria = new Set(found.acceptanceCriteria.map((criterion) => mentionText(criterion.text)))
+        const lineKeys = new Set()
+        for (const line of findMentions(found.body, user, { full: true })) {
+          const text = mentionText(line)
+          if (lineKeys.has(text)) continue
+          lineKeys.add(text)
+          const where = !inDescription.has(text) && inCriteria.has(text) ? 'acceptance_criteria' : 'description'
+          const at = (where === 'description' ? described?.at : touched?.at) ?? inSeconds(found.created) ?? modified(paths.file)
+          items.push(item(`description:${id}:${digest(text)}`, 'mention', id, at, null, where, { excerpt: line.slice(0, MAX_EXCERPT) }))
+        }
+      }
+      if (!fs.existsSync(paths.comments)) continue
+      for (const name of fs.readdirSync(paths.comments).filter((entry) => entry.endsWith('.md')).sort()) {
+        const file = path.join(paths.comments, name)
+        try {
+          const text = fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n')
+          const split = splitFrontmatter(text)
+          const data = split ? parseYaml(split.yaml) : {}
+          const author = data.author == null || data.author === '' ? null : String(data.author)
+          const created = data.created == null ? null : inSeconds(String(data.created))
+          if (data.created != null && created === null) problem(`comment ${name} has created "${data.created}", which is not a time`)
+          const excerpt = findMention((split ? split.body : text).trim(), user)
+          if (excerpt !== null && author !== user) {
+            const stem = path.basename(name, '.md')
+            const at = created ?? modified(file)
+            items.push(item(`comment:${id}:${stem}`, 'mention', id, at, author, 'comment', { comment: stem, excerpt }))
+          }
+        } catch (error) {
+          problem(`comment ${name} cannot be read: ${error.message}`)
+        }
+      }
+    }
+    const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+    items.sort((a, b) => order(a.at, b.at) || order(a.issue, b.issue) || order(a.kind, b.kind) || order(a.key, b.key))
+    return { items, problems }
+  }
+
+  /**
+   * Reads files at the tips of the local and remote branches, for the prune: a seen key stays while its item is still on another
+   * branch, because a branch switch can take an item out of the checkout. The refs and each file are read once per call. Any git
+   * failure (no git, no repository, a timeout) throws, and the caller keeps the key. Reads only, so a timeout is safe.
+   */
+  function branchReader() {
+    const git = (...args) => spawnSync('git', args, { cwd: config.root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 10000 })
+    const files = new Map()
+    let refs
+    const text = (ref, file) => {
+      const slot = `${ref}\0${file}`
+      if (!files.has(slot)) {
+        const listed = git('ls-tree', '--name-only', ref, '--', file)
+        if (listed.status !== 0) throw new Error(`git ls-tree failed: ${listed.stderr ?? listed.error?.message}`)
+        const shown = listed.stdout.trim() === '' ? null : git('show', `${ref}:${file}`)
+        if (shown !== null && shown.status !== 0) throw new Error(`git show failed: ${shown.stderr ?? shown.error?.message}`)
+        files.set(slot, shown === null ? null : shown.stdout)
+      }
+      return files.get(slot)
+    }
+    const allRefs = () => {
+      if (refs === undefined) {
+        const listed = git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes')
+        if (listed.status !== 0) throw new Error(`git for-each-ref failed: ${listed.stderr ?? listed.error?.message}`)
+        refs = listed.stdout.split('\n').filter(Boolean)
+      }
+      return refs
+    }
+    /** True when the item of `key` is at the tip of any branch. */
+    const has = (key, user) => {
+      const [kind, id, ...rest] = key.split(':')
+      const tail = rest.join(':')
+      const folder = path.relative(config.root, path.join(issuesDir, 'issues', String(id))).split(path.sep).join('/')
+      return allRefs().some((ref) => {
+        if (kind === 'comment') return text(ref, `${folder}/comments/${tail}.md`) !== null
+        if (kind === 'assign') {
+          const log = text(ref, `${folder}/events.jsonl`)
+          return log !== null && parseEvents(log).events.some((event) => assignmentKey(id, event, user) === key)
+        }
+        if (kind === 'status') {
+          const log = text(ref, `${folder}/events.jsonl`)
+          return log !== null && statusChanges(id, parseEvents(log).events, user).some((change) => change.key === key)
+        }
+        if (kind === 'description') {
+          const file = text(ref, `${folder}/issue.md`)
+          const split = file === null ? null : splitFrontmatter(file.replace(/\r\n?/g, '\n'))
+          return split !== null && findMentions(split.body, user, { full: true }).some((line) => digest(mentionText(line)) === tail)
+        }
+        return false
+      })
+    }
+    return { has }
+  }
+
+  /**
+   * The mentions and assignments of `user` whose keys the member has not seen. `since` limits them to items from that time on,
+   * and `all` lists every item, seen or not. With no check yet, the first list shows the last 14 days and counts the older
+   * items in `hidden`. Reads only.
+   */
+  function listNotifications({ user, since, all = false } = {}) {
+    requireMember(user, 'user')
+    if (all && !blank(since)) throw invalid('all and since cannot be used together', 'Use one of them')
+    let cutoff = null
+    if (!blank(since) && (cutoff = typedSeconds(since)) === null) throw invalid(`since "${since}" is not a timestamp with a zone`, TIMESTAMP_STEP)
+    const stored = inboxGet(config.root, user, inboxStore)
+    const { items, problems } = scanInbox(user)
+    const seen = stored?.seen ?? {}
+    const marked = items.map((entry) => ({ ...entry, seen: Object.hasOwn(seen, entry.key) || seenBefore(stored, entry) }))
+    if (cutoff === null && stored === null && !all) cutoff = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
+    const pool = all ? marked : marked.filter((entry) => !entry.seen)
+    const shown = all || cutoff === null ? pool : pool.filter((entry) => entry.at >= cutoff)
+    return {
+      user,
+      checked: stored?.at ?? null,
+      since: all ? null : cutoff,
+      hidden: pool.length - shown.length,
+      items: shown,
+      counts: {
+        assignments: shown.filter((entry) => entry.kind === 'assignment').length,
+        mentions: shown.filter((entry) => entry.kind === 'mention').length,
+        statusChanges: shown.filter((entry) => entry.kind === 'status').length,
+      },
+      complete: problems.length === 0,
+      problems,
+    }
+  }
+
+  /**
+   * Records the keys of the items the member has seen. With no `keys` it marks every unseen item now. `keys` marks exactly those,
+   * so an item that arrived after the list stays unseen. A key no item has is not an error: it comes back in `unknown` and the
+   * other keys are marked. It writes nothing when the read is incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
+   * the 14 days the first list showed. It drops the seen keys of items that no longer exist, here and on every branch, once they are 30 days old.
+   */
+  function markRead({ user, keys, dryRun = false } = {}) {
+    requireMember(user, 'user')
+    if (keys !== undefined && (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string'))) throw invalid('keys must be a list of item keys')
+    const stored = inboxGet(config.root, user, inboxStore)
+    const { items, problems } = scanInbox(user)
+    if (problems.length > 0) {
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} in ${[...new Set(problems.map((problem) => problem.id))].join(', ')} left the inbox incomplete, so nothing was marked read`,
+        'Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again',
+        { problems },
+      )
+    }
+    const seen = stored?.seen ?? {}
+    const known = new Set(items.map((entry) => entry.key))
+    const unknown = [...new Set((keys ?? []).filter((key) => !known.has(key)))]
+    const unseen = (entry) => !Object.hasOwn(seen, entry.key) && !seenBefore(stored, entry)
+    const chosen = new Set(items.filter((entry) => unseen(entry) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
+    // With keys the member marks exactly those, so the older items stay for the next list.
+    if (stored === null && keys === undefined) {
+      const backlog = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
+      for (const entry of items) if (entry.at < backlog) chosen.add(entry.key)
+    }
+    // The status changes an entry without kinds counts as seen go into seen with the write that records the kinds, so they stay seen.
+    const adopted = items.filter((entry) => !Object.hasOwn(seen, entry.key) && seenBefore(stored, entry)).map((entry) => entry.key)
+    const recorded = stamp()
+    const oldest = now().getTime() - PRUNE_DAYS * DAY
+    const dropped = []
+    let note = null
+    const branches = branchReader()
+    for (const [key, at] of Object.entries(seen)) {
+      let keep = known.has(key) || Date.parse(at) > oldest
+      if (!keep) {
+        try {
+          keep = branches.has(key, user)
+        } catch (error) {
+          // The branches cannot be read, so nothing proves the item is gone. Keeping is the safe side: a dropped key shows the item as unread again.
+          keep = true
+          note = `old seen keys were kept because git could not read the branches (${hideAbsolutePaths(String(error.message).trim().split('\n')[0])})`
+        }
+      }
+      if (!keep) dropped.push(key)
+    }
+    const pruned = dropped.length
+    const marked = [...chosen].sort()
+    const changed = stored === null || marked.length > 0 || pruned > 0
+    if (changed && !dryRun) {
+      // The update runs under the lock on the entry as it is on disk now, so a key another run wrote since the read above stays.
+      inboxUpdate(config.root, user, (current) => {
+        const kept = { ...(current?.seen ?? {}) }
+        for (const key of dropped) delete kept[key]
+        for (const key of adopted) kept[key] ??= stored.at
+        for (const key of marked) kept[key] = recorded
+        return { at: recorded, seen: kept, kinds: INBOX_KINDS }
+      }, inboxStore)
+    }
+    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, unknown, pruned, changed, dryRun, note }
+  }
+
   function discover() {
     return {
       statuses: Object.keys(local.statuses).map(statusOf),
@@ -707,8 +1227,47 @@ export function createLocalTracker(root, {
 
   function logTime(id, minutes, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    if (!Number.isInteger(minutes) || minutes <= 0) throw invalid('minutes must be a positive integer')
+    if (!isPositiveMinutes(minutes)) throw invalid('minutes must be a positive integer')
     return change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => [{ ...meta, op: 'log_time', minutes }])
+  }
+
+  // A hand-edited log_time event whose minutes is not a positive integer is left out of the entries and the total, and counted in `ignored`.
+  // An entry counts for the sprint whose start..end holds the UTC date of its `at` (a zone is converted; the first by start when several
+  // sprints do), else for `sprint: null`. A sprint file that does not parse is skipped and sets `sprintsUnread`; validate reports it.
+  function listTimeEntries(id) {
+    const logged = getHistory(id).filter((event) => event.op === 'log_time')
+    const valid = logged.filter((event) => isPositiveMinutes(event.minutes))
+    const sprints = []
+    const sprintsUnread = []
+    if (valid.length > 0 && fs.existsSync(sprintsDir)) {
+      for (const name of fs.readdirSync(sprintsDir).filter((file) => file.endsWith('.yaml')).sort()) {
+        try { sprints.push(readSprint(sprintsDir, path.basename(name, '.yaml'))) } catch { sprintsUnread.push(path.basename(name, '.yaml')) }
+      }
+      sprints.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.id < b.id ? -1 : 1))
+    }
+    const sprintOf = (at) => {
+      const instant = eventInstant(at)
+      if (Number.isNaN(instant)) return null
+      const day = new Date(instant).toISOString().slice(0, 10)
+      return sprints.find((sprint) => sprint.start <= day && day <= sprint.end)?.id ?? null
+    }
+    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes, time: formatMinutes(event.minutes), sprint: sprintOf(event.at) }))
+    const sum = (key) => {
+      const totals = new Map()
+      for (const entry of entries) totals.set(entry[key], (totals.get(entry[key]) ?? 0) + entry.minutes)
+      return [...totals].map(([value, minutes]) => ({ [key]: value, minutes, time: formatMinutes(minutes) }))
+    }
+    const total = entries.reduce((acc, entry) => acc + entry.minutes, 0)
+    return {
+      issue: id,
+      entries: entries.map(({ sprint: _sprint, ...entry }) => entry),
+      total,
+      totalTime: formatMinutes(total),
+      byPerson: sum('by'),
+      bySprint: sum('sprint'),
+      ignored: logged.length - valid.length,
+      ...(sprintsUnread.length > 0 ? { sprintsUnread } : {}),
+    }
   }
 
   function cycleIssues(id) {
@@ -779,11 +1338,18 @@ export function createLocalTracker(root, {
 
   const getDaysOff = (id) => getSprint(id).daysOff
 
-  function updateCycleCapacity(id, { capacity, daysOff } = {}, actor, { dryRun = false } = {}) {
+  // `capacity` replaces the whole map. `capacityPatch` merges member to number (null removes) and checks only the keys it names. `capacityBasePatch` does the same for the base capacities `team capacity` keeps.
+  function updateCycleCapacity(id, { capacity, capacityPatch, capacityBasePatch, daysOff } = {}, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     const before = getSprint(id)
     const next = { ...before }
     if (capacity !== undefined) next.capacity = requireCapacity(capacity, local.members)
+    if (capacityPatch !== undefined) next.capacity = applyCapacityPatch(next.capacity, capacityPatch, local.members)
+    if (capacityBasePatch !== undefined) {
+      const base = applyBasePatch(before.capacityBase ?? {}, capacityBasePatch, local.members)
+      if (Object.keys(base).length > 0) next.capacityBase = base
+      else delete next.capacityBase
+    }
     if (daysOff !== undefined) {
       const merged = { ...before.daysOff }
       for (const [member, dates] of Object.entries(requireDaysOff(daysOff, local.members, before))) {
@@ -810,13 +1376,20 @@ export function createLocalTracker(root, {
 
   const getDeliverable = (id) => readEpic(id).epic
 
-  /** Every epic that parses. An epic file that does not parse is skipped, as searchIssues skips a bad issue. */
-  function listDeliverables() {
-    if (!fs.existsSync(epicsDir)) return []
-    const ids = fs.readdirSync(epicsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
+  /**
+   * Every epic that parses, and a problem for each epic file that does not. A folder with an epic.md whose name is not an epic id
+   * (epic_prefix changed, a folder renamed by hand) is not read, so it is a problem too: it may hold a link the caller needs.
+   */
+  function readDeliverables() {
+    if (!fs.existsSync(epicsDir)) return { epics: [], problems: [] }
+    const folders = fs.readdirSync(epicsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
       .map((entry) => entry.name)
+    const ids = folders.filter((name) => isId(name, local.epic_prefix))
     const epics = []
+    const problems = folders.filter((name) => !isId(name, local.epic_prefix)).map((name) => (
+      { id: name, kind: 'epic', code: 'INVALID_INPUT', message: `epic folder ${name} is not named after an epic id such as ${local.epic_prefix}-1, so pmkit does not read it` }
+    ))
     const created = {}
     for (const id of ids) {
       try {
@@ -824,14 +1397,18 @@ export function createLocalTracker(root, {
         created[id] = readEvents(path.join(epicsDir, id, 'events.jsonl')).events.find((event) => event.op === 'create')?.at
       } catch (error) {
         if (!(error instanceof PmkitError)) throw error
+        problems.push({ id, kind: 'epic', code: error.code, message: error.message })
       }
     }
-    return sortEpics(epics, created)
+    return { epics: sortEpics(epics, created), problems }
   }
+
+  /** Every epic that parses. An epic file that does not parse is skipped, as searchIssues skips a bad issue. */
+  const listDeliverables = () => readDeliverables().epics
 
   function createDeliverable(input, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    const allowed = ['title', 'start', 'target', 'milestone', 'description']
+    const allowed = ['title', 'start', 'target', 'milestone', 'goal', 'description']
     for (const key of Object.keys(input)) {
       if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
     }
@@ -842,6 +1419,7 @@ export function createLocalTracker(root, {
       epic[key] = input[key]
     }
     if (!blank(input.milestone)) epic.milestone = NORMALIZE.milestone(input.milestone)
+    if (!blank(input.goal)) epic.goal = requireGoal(input.goal)
     if (!blank(input.description)) epic.description = plainText('description', input.description)
     epic.id = nextId(local.epic_prefix, epicsDir)
     const content = serializeEpic(epic)
@@ -855,10 +1433,10 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
-  /** Counts the non-archived issues whose parent chain reaches the epic. */
-  function deliverableProgress(id) {
-    const { id: epic } = getDeliverable(id)
-    const issues = scanIssues()
+  const deliverableProgress = (id) => progressOf(getDeliverable(id).id, scanIssues())
+
+  /** Counts the non-archived issues whose parent chain reaches the epic. Canceled issues are counted apart, outside `total`. */
+  function progressOf(epic, issues) {
     const byId = new Map(issues.map((issue) => [issue.id, issue]))
     const parentOf = (key) => byId.get(key)?.parent
     const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
@@ -910,7 +1488,598 @@ export function createLocalTracker(root, {
     return sortUpdates(entries).map((entry) => entry.update)
   }
 
-  const readMilestone = (id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
+  const goalsDir = path.join(issuesDir, 'goals')
+  // The shape of an id with any prefix, as in GOAL-7K3Q or OKR-1.
+  const ID_SHAPE = /^[A-Za-z]{2,5}-[0-9A-Za-z]+$/
+  const goalNotFound = (id) => new PmkitError('NOT_FOUND', `goal ${id} does not exist`, 'pmkit goal list')
+
+  /** The goal file as stored, without its epics. A stem that is not a goal id is never a goal. */
+  function readGoalFile(id) {
+    const normalized = normalizeId(String(id))
+    if (!isId(normalized, goalPrefixOf(local)) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
+    return parseGoal(fs.readFileSync(path.join(goalsDir, `${normalized}.md`), 'utf8'), normalized)
+  }
+
+  /** A goal record: the file and the ids of the epics whose `goal` names it, in epic list order. */
+  const withEpics = (goal, epics = listDeliverables()) => ({ ...goal, epics: epics.filter((epic) => epic.goal === goal.id).map((epic) => epic.id) })
+
+  const getGoal = (id) => withEpics(readGoalFile(id))
+
+  /** The normalized id of a goal that exists and parses, for an epic's `goal` field. */
+  function requireGoal(value) {
+    try {
+      return readGoalFile(text('goal')(value)).id
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`goal ${value} does not exist`, 'pmkit goal list')
+      throw error
+    }
+  }
+
+  /** Goals by target date, then id. A file that does not parse, or whose stem is not a goal id, is skipped and reported in `problems`. */
+  function listGoals() {
+    const goals = []
+    const problems = []
+    for (const stem of [...goalStems(goalsDir)].sort()) {
+      if (!isId(stem, goalPrefixOf(local))) {
+        // A stem shaped like an id under another prefix (GOAL-1.md after goal_prefix changed) is a goal pmkit cannot read, so it
+        // keeps a reader from concluding; any other name (README.md) is a stray file.
+        const kind = ID_SHAPE.test(stem) ? 'goal' : 'file'
+        problems.push({ id: stem, kind, code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${goalPrefixOf(local)}-1` })
+        continue
+      }
+      try {
+        goals.push(parseGoal(fs.readFileSync(path.join(goalsDir, `${stem}.md`), 'utf8'), stem))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        problems.push({ id: stem, kind: 'goal', code: error.code, message: error.message })
+      }
+    }
+    // An epic that cannot be read may link to a goal, so it is a problem here: the goal's epics may be incomplete.
+    const read = readDeliverables()
+    return { goals: sortGoals(goals).map((goal) => withEpics(goal, read.epics)), problems: [...problems, ...read.problems] }
+  }
+
+  function createGoal(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'status', 'target', 'description']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const goal = { title: NORMALIZE.title(input.title), status: blank(input.status) ? 'active' : oneOf('status', input.status, GOAL_STATUSES), description: '' }
+    if (!blank(input.target)) {
+      if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD')
+      goal.target = input.target
+    }
+    if (!blank(input.description)) goal.description = plainText('description', input.description)
+    const stems = goalStems(goalsDir)
+    const id = local.id_style === 'numbered'
+      ? nextNumberedId(goalPrefixOf(local), [...stems])
+      : newId(goalPrefixOf(local), { random, exists: (candidate) => stems.has(candidate) })
+    const content = serializeGoal(goal)
+    const after = readBack('goal file', () => parseGoal(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(goalsDir, { recursive: true })
+      writeFile(path.join(goalsDir, `${id}.md`), content)
+    }
+    return { before: null, after: { ...after, epics: [] } }
+  }
+
+  /** The progress of each linked epic, as deliverableProgress counts it, and the sums of the epics that are not canceled. An issue reaches at most one epic, so none counts twice. */
+  function goalProgress(id) {
+    const read = readDeliverables()
+    const goal = withEpics(readGoalFile(id), read.epics)
+    const { issues, problems } = readAll()
+    // An epic file that does not parse may link to this goal, and an issue file that does not parse may hold work of a linked epic.
+    const warnings = [
+      ...read.problems.map((problem) => `${problem.id}: ${problem.code} ${problem.message}; it may link to this goal; run pmkit validate`),
+      ...problems.map((problem) => `${problem.id}: ${problem.code} ${problem.message}; goal progress may be low; run pmkit validate`),
+    ]
+    const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    const epics = goal.epics.map((epicId) => {
+      const { title, status } = getDeliverable(epicId)
+      const progress = progressOf(epicId, issues)
+      // A canceled epic is out of the goal: it is listed, but its issues are in none of the sums. An unknown category counts.
+      const counted = status.category !== 'canceled'
+      if (counted) {
+        for (const key of ['total', 'done', 'canceled', 'points', 'pointsDone']) sum[key] += progress[key]
+        for (const category of CATEGORIES) sum.byCategory[category] += progress.byCategory[category]
+      }
+      return { id: epicId, title, status, counted, progress }
+    })
+    return { goal, epics, ...sum, warnings }
+  }
+
+  /** Links an epic to a goal, or removes the link with a null goal. An unchanged link writes nothing. */
+  function setEpicGoal(epicId, goal, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const { epic: before, dir } = readEpic(epicId)
+    // Only null removes the link: an empty value, such as an empty $GOAL in a script, must not clear it.
+    if (goal !== null && (typeof goal !== 'string' || goal.trim() === '')) {
+      throw invalid('goal must be a goal id, or "none" to remove the link', 'pmkit goal list')
+    }
+    const next = goal === null ? undefined : requireGoal(goal)
+    // Only the goal line of the stored frontmatter is edited, so every other key, comment and the body stay as they are.
+    const file = path.join(dir, 'epic.md')
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited
+    try {
+      edited = next === undefined ? removeKey(yaml, ['goal']) : setScalar(yaml, ['goal'], next)
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
+    if (before.goal === after.goal || dryRun) return { before, after }
+    writeFile(file, content)
+    append(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'update', field: 'goal', from: before.goal ?? null, to: after.goal ?? null }])
+    return { before, after }
+  }
+
+  /** Changes the title, status or target of a goal; a null target removes it. Only the changed frontmatter lines are edited. */
+  function updateGoal(id, input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'status', 'target']
+    const keys = Object.keys(input ?? {})
+    if (keys.length === 0) throw invalid('goal update needs a title, a status or a target', 'pmkit goal update <id> --status completed')
+    for (const key of keys) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    // Every value is checked before the file is read for editing, so a refusal never touches it.
+    const set = {}
+    if (input.title !== undefined) set.title = NORMALIZE.title(input.title)
+    if (input.status !== undefined) set.status = oneOf('status', input.status, GOAL_STATUSES)
+    if (input.target !== undefined && input.target !== null) {
+      if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD, or none to remove it')
+      set.target = input.target
+    }
+    const goal = readGoalFile(id)
+    const file = path.join(goalsDir, `${goal.id}.md`)
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited = yaml
+    try {
+      for (const [key, value] of Object.entries(set)) edited = setScalar(edited, [key], value)
+      if (input.target === null) edited = removeKey(edited, ['target'])
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The goal frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = readBack('goal file', () => parseGoal(content, goal.id))
+    const before = withEpics(goal)
+    if (['title', 'status', 'target', 'description'].every((key) => goal[key] === after[key])) return { before, after: before }
+    if (!dryRun) writeFile(file, content)
+    return { before, after: { ...after, epics: before.epics } }
+  }
+
+  /**
+   * Deletes a goal file. It refuses, writing nothing, while an epic links to the goal, and while an epic file does not parse,
+   * because that epic may link to it. Goals have no event log, so no event is written.
+   */
+  function deleteGoal(id, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const goal = readGoalFile(id)
+    const { epics, problems } = readDeliverables()
+    if (problems.length > 0) {
+      // A folder outside epic_prefix parses fine: its fix is a rename, not the doctor.
+      const misnamed = problems.every((problem) => !isId(problem.id, local.epic_prefix))
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `the links to ${goal.id} cannot be checked, because pmkit cannot read ${problems.map((problem) => `${problem.id} (${problem.message})`).join('; ')}`,
+        misnamed ? 'Rename each epic folder to an epic id, or set epic_prefix back, then delete again' : 'Run pmkit validate, fix what it lists (/pmkit:local:doctor for a file that does not parse), then delete again',
+        { problems },
+      )
+    }
+    const linked = epics.filter((epic) => epic.goal === goal.id).map((epic) => epic.id)
+    if (linked.length > 0) {
+      throw new PmkitError(
+        'CONFLICT',
+        `goal ${goal.id} is linked to ${linked.length === 1 ? 'one epic' : `${linked.length} epics`}: ${linked.join(', ')}`,
+        `Remove each link, then delete again: ${linked.map((epic) => `pmkit epic goal ${epic} none`).join('; ')}`,
+        { epics: linked },
+      )
+    }
+    const file = path.join(goalsDir, `${goal.id}.md`)
+    const result = { before: { ...goal, epics: [] }, after: null, removes: { file: path.relative(config.root, file).split(path.sep).join('/') } }
+    if (dryRun) return result
+    fs.rmSync(file)
+    writtenPaths.add(file)
+    return result
+  }
+
+  // Customers and requests (PMK-46). The records use the keys of Linear's customer and request views.
+  // See docs/superpowers/specs/2026-10-31-pmk-46-customers-and-requests-design.md.
+  const customersDir = path.join(issuesDir, 'customers')
+  const requestsDir = path.join(issuesDir, 'requests')
+  const CUSTOMER = { dir: customersDir, prefix: CUSTOMER_PREFIX, label: 'customer', parse: parseCustomer, list: 'pmkit customers list' }
+  const REQUEST = { dir: requestsDir, prefix: REQUEST_PREFIX, label: 'request', parse: parseRequest, list: 'pmkit requests list' }
+  const problemOf = (id, error) => ({ id, code: error.code, message: error.message })
+
+  /** Every file of a record folder. A stem that is not an id of the kind, or a file that does not parse, is skipped and reported. */
+  function readRecords({ dir, prefix, label, parse }) {
+    const records = []
+    const problems = []
+    for (const stem of [...mdStems(dir)].sort()) {
+      if (!isId(stem, prefix)) {
+        problems.push({ id: stem, code: 'INVALID_INPUT', message: `${label} file ${stem}.md is not named after a ${label} id such as ${prefix}-1` })
+        continue
+      }
+      try {
+        records.push(parse(fs.readFileSync(path.join(dir, `${stem}.md`), 'utf8'), stem))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        problems.push(problemOf(stem, error))
+      }
+    }
+    return { records, problems }
+  }
+
+  /** One record file. The normalized id is checked before a path is built, so no input reaches outside the folder. */
+  function readRecord({ dir, prefix, label, parse, list }, id) {
+    const normalized = normalizeId(String(id))
+    if (!isId(normalized, prefix) || !mdStems(dir).has(normalized)) throw new PmkitError('NOT_FOUND', `${label} ${id} does not exist`, list)
+    return parse(fs.readFileSync(path.join(dir, `${normalized}.md`), 'utf8'), normalized)
+  }
+
+  const named = (value) => (value === undefined ? null : { id: value, name: value })
+
+  function customerView(customer, requests) {
+    return {
+      id: customer.id, name: customer.name, status: named(customer.status), tier: named(customer.tier),
+      revenue: customer.revenue ?? null, size: customer.size ?? null,
+      owner: customer.owner === undefined ? null : { id: customer.owner, name: local.members[customer.owner]?.name ?? null },
+      requests: requests.filter((request) => request.customer === customer.id).length, url: null, notes: customer.notes,
+    }
+  }
+
+  /** Reads issues once each. A miss or a file that does not parse gives null, and the caller reports it. */
+  function issueReader() {
+    const cache = new Map()
+    return (id) => {
+      if (!cache.has(id)) {
+        try {
+          cache.set(id, { issue: readIssue(id).issue })
+        } catch (error) {
+          if (!(error instanceof PmkitError)) throw error
+          cache.set(id, { error })
+        }
+      }
+      return cache.get(id)
+    }
+  }
+
+  /**
+   * Request records with their customer name and issue title. A customer or an issue that cannot be read keeps its id with a
+   * null name or title, and a problem names the request, so a read never guesses.
+   */
+  function requestViews(requests, customers, readIssueOnce = issueReader()) {
+    const byId = new Map(customers.map((customer) => [customer.id, customer]))
+    const problems = []
+    const views = requests.map((request) => {
+      let customer = null
+      if (request.customer !== undefined) {
+        const found = byId.get(request.customer)
+        if (!found) problems.push({ id: request.id, code: 'NOT_FOUND', message: `request ${request.id} names customer ${request.customer}, which has no readable file` })
+        customer = { id: request.customer, name: found?.name ?? null }
+      }
+      let target = null
+      if (request.issue !== undefined) {
+        const { issue, error } = readIssueOnce(request.issue)
+        if (error) problems.push({ id: request.id, code: error.code, message: `request ${request.id} names issue ${request.issue}, which cannot be read: ${error.message}` })
+        target = { type: 'issue', id: request.issue, title: issue?.title ?? null, ...(issue?.archived ? { archived: true } : {}) }
+      }
+      return {
+        id: request.id, title: request.title, body: request.body, priority: request.important ? 1 : 0, important: request.important, customer,
+        from: request.from ?? null, state: request.state, target, created: request.created ?? null,
+        triaged: request.triaged ? { at: request.triaged, by: request.triagedBy ?? null } : null, reason: request.reason ?? null,
+      }
+    })
+    return { views, problems }
+  }
+
+  function listCustomers() {
+    const customers = readRecords(CUSTOMER)
+    // A request file that does not parse could hold a customer, so its problem tells the reader the counts may be short.
+    const requests = readRecords(REQUEST)
+    const views = customers.records.map((customer) => customerView(customer, requests.records))
+    return { customers: sortCustomers(views), problems: [...customers.problems, ...requests.problems] }
+  }
+
+  /** A customer by id, or by a name matched exactly and case-insensitively. Returns the customer and every readable customer. */
+  function findCustomer(ref) {
+    const all = readRecords(CUSTOMER)
+    const normalized = normalizeId(String(ref ?? ''))
+    let customer
+    if (isId(normalized, CUSTOMER_PREFIX) && mdStems(customersDir).has(normalized)) {
+      customer = readRecord(CUSTOMER, normalized)
+    } else {
+      const matches = all.records.filter((item) => item.name.toLowerCase() === String(ref ?? '').trim().toLowerCase())
+      if (matches.length > 1) throw invalid(`${matches.length} customers are named "${ref}"`, `Pass one of these ids: ${matches.map((item) => item.id).join(', ')}`)
+      // An id is a file name, so an id with no file is plainly missing. Only a name can sit in a file that cannot be read.
+      if (matches.length === 0 && isId(normalized, CUSTOMER_PREFIX)) throw new PmkitError('NOT_FOUND', `customer ${ref} does not exist`, 'pmkit customers list')
+      if (matches.length === 0 && all.problems.length > 0) {
+        // A miss is not an answer while a file cannot be read: say the lookup is incomplete.
+        throw new PmkitError('NOT_FOUND', `no readable customer is named or identified "${ref}", but ${all.problems.map((problem) => problem.id).join(', ')} could not be read, so the lookup is incomplete`, 'pmkit validate')
+      }
+      if (matches.length === 0) throw new PmkitError('NOT_FOUND', `no customer is named or identified "${ref}"`, 'pmkit customers list')
+      customer = matches[0]
+    }
+    return { customer, all }
+  }
+
+  /** A customer by id or exact name (findCustomer), with its requests newest first, as Linear lists them. */
+  function getCustomer(ref) {
+    const { customer, all } = findCustomer(ref)
+    const requests = readRecords(REQUEST)
+    const own = sortRequestsNewest(requests.records.filter((request) => request.customer === customer.id))
+    const { views, problems } = requestViews(own, all.records)
+    return { customer: customerView(customer, requests.records), requests: views, problems: [...all.problems, ...requests.problems, ...problems] }
+  }
+
+  const oneLineText = (field, value) => {
+    const trimmed = text(field)(value).trim()
+    if (trimmed === '') throw invalid(`${field} must not be empty`)
+    return oneLine(field, trimmed)
+  }
+
+  /** The id of the next record of a folder, by id_style. */
+  function nextRecordId({ dir, prefix }) {
+    const stems = mdStems(dir)
+    return local.id_style === 'numbered' ? nextNumberedId(prefix, [...stems]) : newId(prefix, { random, exists: (candidate) => stems.has(candidate) })
+  }
+
+  /** One customer field checked as a create or an update stores it. */
+  const CUSTOMER_FIELD = {
+    status: (value) => oneLineText('status', value),
+    tier: (value) => oneLineText('tier', value),
+    revenue: (value) => {
+      if (!Number.isInteger(value) || value < 0) throw invalid('revenue must be a whole number of at least 0')
+      return value
+    },
+    size: (value) => {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw invalid('size must be a number of at least 0')
+      return value
+    },
+    owner: (value) => requireMember(value, 'owner'),
+  }
+
+  function createCustomer(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['name', 'status', 'tier', 'revenue', 'size', 'owner', 'notes']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name is required')
+    const customer = { name: oneLineText('name', input.name), notes: '' }
+    for (const key of ['status', 'tier', 'revenue', 'size', 'owner']) if (!blank(input[key])) customer[key] = CUSTOMER_FIELD[key](input[key])
+    if (!blank(input.notes)) customer.notes = plainText('notes', input.notes)
+    const id = nextRecordId(CUSTOMER)
+    const content = serializeCustomer(customer)
+    const after = readBack('customer file', () => parseCustomer(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(customersDir, { recursive: true })
+      writeFile(path.join(customersDir, `${id}.md`), content)
+    }
+    return { before: null, after: customerView(after, []) }
+  }
+
+  /**
+   * Edits a customer found by id or exact name. `changes` holds name, status, tier, revenue, size or owner; `none` (any case)
+   * removes status, tier or owner. Only those frontmatter lines change, so comments, unknown keys and the notes stay. A change
+   * that leaves every value as it was writes nothing and returns `before` equal to `after`.
+   */
+  function updateCustomer(ref, changes, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['name', 'status', 'tier', 'revenue', 'size', 'owner']
+    const keys = Object.keys(changes ?? {})
+    if (keys.length === 0) throw invalid('nothing to update', `Pass at least one of: ${allowed.join(', ')}`)
+    for (const key of keys) if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    const { customer: stored } = findCustomer(ref)
+    const requests = readRecords(REQUEST).records
+    const before = customerView(stored, requests)
+    const next = { ...stored }
+    for (const key of keys) {
+      const value = changes[key]
+      if (key === 'name') next.name = oneLineText('name', value)
+      else if (['status', 'tier', 'owner'].includes(key) && typeof value === 'string' && value.trim().toLowerCase() === 'none') delete next[key]
+      else next[key] = CUSTOMER_FIELD[key](value)
+    }
+    if (allowed.every((key) => next[key] === stored[key])) return { before, after: before }
+    const file = path.join(customersDir, `${stored.id}.md`)
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    let edited = yaml
+    try {
+      for (const key of allowed) {
+        if (next[key] === stored[key]) continue
+        edited = next[key] === undefined ? removeKey(edited, [key]) : setScalar(edited, [key], next[key])
+      }
+    } catch (error) {
+      if (error instanceof PmkitError) throw error
+      throw new PmkitError('INVALID_INPUT', `The customer frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = readBack('customer file', () => parseCustomer(content, stored.id))
+    if (!dryRun) writeFile(file, content)
+    return { before, after: customerView(after, requests) }
+  }
+
+  /** The normalized id of a customer whose file exists and parses. A missing file, an unreadable one and a value that is not an id each get their own message. */
+  function requireCustomer(value) {
+    const ref = text('customer')(value)
+    if (!isId(normalizeId(ref), CUSTOMER_PREFIX)) throw invalid(`customer "${ref}" is not a customer id such as ${CUSTOMER_PREFIX}-1`, 'pmkit customers list')
+    try {
+      return readRecord(CUSTOMER, ref).id
+    } catch (error) {
+      if (!(error instanceof PmkitError)) throw error
+      if (error.code === 'NOT_FOUND') throw invalid(`customer ${ref} does not exist`, 'pmkit customers list')
+      throw new PmkitError(error.code, `customer ${normalizeId(ref)} cannot be read: ${error.message}`, error.nextStep)
+    }
+  }
+
+  /** The normalized id of an issue whose file exists and parses. The issue folder is only read. */
+  function requireRequestIssue(value) {
+    try {
+      return readIssue(text('issue')(value)).issue.id
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`issue ${value} does not exist`, 'pmkit issues list')
+      throw error
+    }
+  }
+
+  const viewOfRequest = (request) => requestViews([request], readRecords(CUSTOMER).records).views[0]
+
+  /** One request view plus the `problems` of the links it could not read (a customer or an issue), as the list reports them. */
+  function getRequest(id) {
+    const { views, problems } = requestViews([readRecord(REQUEST, id)], readRecords(CUSTOMER).records)
+    return { ...views[0], problems }
+  }
+
+  function listRequests({ state = 'open', customer } = {}) {
+    if (![...REQUEST_STATES, 'all'].includes(state)) throw invalid(`state must be one of ${[...REQUEST_STATES, 'all'].join(', ')}`)
+    const requests = readRecords(REQUEST)
+    // An unknown or unreadable customer is refused, as `requests create --customer` does, instead of answering an empty list.
+    const wanted = blank(customer) ? undefined : requireCustomer(customer)
+    const chosen = requests.records.filter((request) => (state === 'all' || request.state === state) && (wanted === undefined || request.customer === wanted))
+    const { views, problems } = requestViews(sortRequests(chosen), readRecords(CUSTOMER).records)
+    return { requests: views, problems: [...requests.problems, ...problems] }
+  }
+
+  function createRequest(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'body', 'customer', 'from', 'important', 'issue']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const request = { title: NORMALIZE.title(input.title), body: blank(input.body) ? '' : plainText('body', input.body) }
+    if (!blank(input.customer)) request.customer = requireCustomer(input.customer)
+    if (!blank(input.from)) request.from = oneLineText('from', input.from)
+    if (!blank(input.important) && typeof input.important !== 'boolean') throw invalid('important must be true or false')
+    request.important = input.important === true
+    request.created = createdStamp()
+    request.state = 'open'
+    if (!blank(input.issue)) {
+      request.state = 'accepted'
+      request.issue = requireRequestIssue(input.issue)
+    }
+    const id = nextRecordId(REQUEST)
+    const content = serializeRequest(request)
+    const after = readBack('request file', () => parseRequest(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(requestsDir, { recursive: true })
+      writeFile(path.join(requestsDir, `${id}.md`), content)
+    }
+    return { before: null, after: viewOfRequest(after) }
+  }
+
+  /**
+   * Rewrites the state keys of a request. Only those lines of the stored frontmatter are edited, with the line editor of
+   * yaml-edit.mjs as `epic goal` does, so `#` comments, keys pmkit does not know, key order and the body stay as they are.
+   * The text is normalized to LF first, as every reader does. A change that leaves the state as it was writes nothing. The result has the `problems` of the links the request names that cannot be read.
+   * `change(stored, edit)` returns false for no change, or edits with `edit.set(key, value)` and `edit.remove(key)`.
+   */
+  function triage(id, actor, { dryRun }, change) {
+    requireWriter(actor)
+    const stored = readRecord(REQUEST, id)
+    const read = (request) => requestViews([request], readRecords(CUSTOMER).records)
+    const before = read(stored)
+    const file = path.join(requestsDir, `${stored.id}.md`)
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    let edited = yaml
+    const edit = { set: (key, value) => { edited = setScalar(edited, [key], value) }, remove: (key) => { edited = removeKey(edited, [key]) } }
+    try {
+      if (!change(stored, edit)) return { before: before.views[0], after: before.views[0], problems: before.problems }
+      edit.set('triaged', stamp())
+      edit.set('triaged_by', actor)
+    } catch (error) {
+      if (error instanceof PmkitError) throw error
+      throw new PmkitError('INVALID_INPUT', `The request frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = read(readBack('request file', () => parseRequest(content, stored.id)))
+    if (!dryRun) writeFile(file, content)
+    return { before: before.views[0], after: after.views[0], problems: after.problems }
+  }
+
+  /**
+   * Edits the text of a request: `title` (one line) and `body` (an empty body removes it). The title line is edited in place and
+   * the body after the frontmatter is replaced, so `#` comments, unknown keys and the triage keys stay; `triaged` does not change,
+   * since editing the text is not triage. The same text writes nothing and returns `before` equal to `after`.
+   */
+  function updateRequest(id, changes, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'body']
+    const keys = Object.keys(changes ?? {})
+    if (keys.length === 0) throw invalid('nothing to update', 'Pass --title or --body-file')
+    for (const key of keys) if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    const stored = readRecord(REQUEST, id)
+    const title = changes.title === undefined ? stored.title : NORMALIZE.title(changes.title)
+    const body = changes.body === undefined ? stored.body : (blank(changes.body) ? '' : plainText('body', changes.body))
+    const read = (request) => requestViews([request], readRecords(CUSTOMER).records)
+    const before = read(stored)
+    if (title === stored.title && body === stored.body) return { before: before.views[0], after: before.views[0], problems: before.problems }
+    const file = path.join(requestsDir, `${stored.id}.md`)
+    const { yaml } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    let edited
+    try {
+      edited = title === stored.title ? yaml : setScalar(yaml, ['title'], title)
+    } catch (error) {
+      if (error instanceof PmkitError) throw error
+      throw new PmkitError('INVALID_INPUT', `The request frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body === '' ? '' : `\n${body}\n`}`
+    const after = read(readBack('request file', () => parseRequest(content, stored.id)))
+    if (!dryRun) writeFile(file, content)
+    return { before: before.views[0], after: after.views[0], problems: after.problems }
+  }
+
+  /** Accepts a request into an existing issue, from any state. */
+  function acceptRequest(id, issue, actor, options = {}) {
+    requireWriter(actor)
+    const target = requireRequestIssue(issue)
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, edit) => {
+      if (stored.state === 'accepted' && stored.issue === target) return false
+      edit.set('state', 'accepted')
+      edit.set('issue', target)
+      edit.remove('reason')
+      return true
+    })
+  }
+
+  /** Declines a request, from any state, with an optional one-line reason. */
+  function declineRequest(id, reason, actor, options = {}) {
+    requireWriter(actor)
+    const why = blank(reason) ? undefined : oneLineText('reason', reason)
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, edit) => {
+      if (stored.state === 'declined' && stored.reason === why) return false
+      edit.set('state', 'declined')
+      edit.remove('issue')
+      edit.remove('reason')
+      if (why !== undefined) edit.set('reason', why)
+      return true
+    })
+  }
+
+  /** The accepted requests grouped by issue, with the issue and the customers who asked. See groupDemand for the order. */
+  function listDemandSignals() {
+    const requests = readRecords(REQUEST)
+    const customers = new Map(readRecords(CUSTOMER).records.map((customer) => [customer.id, customer]))
+    const readIssueOnce = issueReader()
+    const problems = requests.problems.map((problem) => ({ ...problem, about: 'request' }))
+    const signals = groupDemand(sortRequests(requests.records)).map((group) => {
+      const { issue, error } = readIssueOnce(group.issue)
+      if (error) problems.push({ id: group.issue, about: 'issue', code: error.code, message: `requests ${group.requests.join(', ')} name issue ${group.issue}, which cannot be read: ${error.message}` })
+      return {
+        ...group,
+        issue: { id: group.issue, title: issue?.title ?? null, status: issue?.status ?? null, priority: issue?.priority ?? null },
+        customers: group.customers.map((customerId) => {
+          const found = customers.get(customerId)
+          if (!found) problems.push({ id: customerId, about: 'customer', code: 'NOT_FOUND', message: `customer ${customerId} has no readable file; its name, tier and revenue are unknown` })
+          return { id: customerId, name: found?.name ?? null, tier: named(found?.tier), revenue: found?.revenue ?? null, size: found?.size ?? null }
+        }),
+      }
+    })
+    return { signals, problems }
+  }
+
+  const readMilestone =(id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
 
   function getMilestone(id) {
     if (!validMilestoneId(id) || !milestoneStems(milestonesDir).has(id)) {
@@ -1055,20 +2224,166 @@ export function createLocalTracker(root, {
     return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   }
 
+  /**
+   * Epic and milestone files that exist and do not parse, which listDeliverables and listMilestones skip. Not a contract
+   * operation; the roadmap review reports them so a skipped record never passes for a complete review.
+   */
+  function unreadableRecords() {
+    const bad = (read) => {
+      try {
+        read()
+        return null
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        return { code: error.code, message: error.message }
+      }
+    }
+    // readDeliverables names both an epic file that does not parse and a folder outside epic_prefix, which no read sees.
+    const epics = readDeliverables().problems.map(({ id, code, message }) => ({ id, code, message }))
+    const milestones = [...milestoneStems(milestonesDir)].filter(validMilestoneId).map((id) => ({ id, error: bad(() => readMilestone(id)) }))
+    const failed = (rows) => rows.filter((row) => row.error !== null).map(({ id, error }) => ({ id, ...error }))
+    return { epics, milestones: failed(milestones) }
+  }
+
   const docsDir = path.join(issuesDir, 'docs')
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
+  const listDocuments = () => listDocumentFiles(docsDir)
 
   function createDocument(docPath, body, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     return createDocumentFile(docsDir, docPath, body, { dryRun, onWrite: (file) => writtenPaths.add(file) })
   }
 
+  function updateDocument(docPath, body, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    return updateDocumentFile(docsDir, docPath, body, { dryRun, onWrite: (file) => writtenPaths.add(file) })
+  }
+
+  const viewsDir = path.join(issuesDir, 'views')
+
+  function requireViewName(name) {
+    if (!validViewName(name)) throw Object.assign(invalid(`view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use a name like open-bugs'), { details: { reason: 'invalid_view_name' } })
+  }
+
+  function readView(name) {
+    requireViewName(name)
+    if (!viewStems(viewsDir).has(name)) throw new PmkitError('NOT_FOUND', `view ${name} does not exist`, 'pmkit views list')
+    return parseView(fs.readFileSync(path.join(viewsDir, `${name}.yaml`), 'utf8'), name)
+  }
+
+  /** Saved views by name. A file whose name breaks the rule, or that does not parse, is skipped and reported in `problems`; `pmkit validate` lists it too. */
+  function listViews() {
+    const views = []
+    const problems = []
+    for (const name of [...viewStems(viewsDir)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+      try {
+        views.push(readView(name))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        problems.push({ id: name, code: error.code, ...(error.details?.reason && { reason: error.details.reason }), message: error.message })
+      }
+    }
+    return { views, problems }
+  }
+
+  /** Runs the stored filter as a search, with `overrides` (limit, sort) replacing the stored ones for this run. The stored values are checked again, so a view that names a removed type says it is out of date. */
+  function runView(name, overrides = {}) {
+    const view = readView(name)
+    const given = viewOverrides(overrides)
+    try {
+      return { ...search({ ...view.filter, ...given }), view, overrides: given }
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.code !== 'INVALID_INPUT') throw error
+      throw Object.assign(invalid(`view ${name} is out of date: ${error.message}`, `Save it again with pmkit views save ${name} <filter flags> --overwrite`), { details: { reason: 'view_out_of_date' } })
+    }
+  }
+
+  function saveView(name, filter, actor, { dryRun = false, replace = false } = {}) {
+    requireWriter(actor)
+    requireViewName(name)
+    if (filter === null || typeof filter !== 'object' || Array.isArray(filter) || Object.keys(filter).length === 0) {
+      throw invalid('a view needs at least one filter', 'Pass filter flags such as --category in_progress')
+    }
+    for (const [key, value] of Object.entries(filter)) {
+      if (value === '' || (Array.isArray(value) && value.length === 0)) throw invalid(`${key} must not be empty`, 'Leave the flag out, or give it a value')
+    }
+    checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
+    const clash = [...viewStems(viewsDir)].find((stem) => stem.toLowerCase() === name.toLowerCase())
+    if (clash !== undefined && !(replace && clash === name)) {
+      throw new PmkitError('CONFLICT', `view ${clash} already exists`, clash === name ? 'Pass --overwrite to replace it, or pick another name' : 'Pick another name')
+    }
+    const content = serializeView(filter)
+    const after = readBack('view file', () => parseView(content, name))
+    for (const key of Object.keys(filter)) {
+      if (JSON.stringify(filter[key]) !== JSON.stringify(after.filter[key])) throw invalid(`${key} would not read back as saved`, 'Use a value on one line')
+    }
+    let before = null
+    if (clash !== undefined) {
+      try {
+        before = readView(clash)
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        // A file that does not parse is replaced, and the result says what was lost.
+        before = { name: clash, unreadable: error.message }
+      }
+    }
+    if (!dryRun) {
+      fs.mkdirSync(viewsDir, { recursive: true })
+      writeFile(path.join(viewsDir, `${name}.yaml`), content)
+    }
+    return { before, after }
+  }
+
+  /** The view as stored, or { name, unreadable } when its file does not parse, so a broken view can still be deleted or renamed. */
+  function storedView(name) {
+    try {
+      return readView(name)
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.details?.reason !== 'view_file_broken') throw error
+      return { name, unreadable: error.message }
+    }
+  }
+
+  function deleteView(name, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const before = storedView(name)
+    if (!dryRun) {
+      const file = path.join(viewsDir, `${name}.yaml`)
+      fs.rmSync(file)
+      writtenPaths.add(file)
+    }
+    return { before, after: null }
+  }
+
+  /** Moves the file as it is, so the stored filter does not change. A case-only rename is refused: git cannot record it where the file system ignores case. */
+  function renameView(name, newName, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    requireViewName(newName)
+    const before = storedView(name)
+    if (newName !== name && newName.toLowerCase() === name.toLowerCase()) {
+      throw invalid(`renaming view ${name} to ${newName} changes only the case of the name, which git does not record where the file system ignores case`, `Rename ${name} to another name first, then to ${newName}`)
+    }
+    const clash = [...viewStems(viewsDir)].find((stem) => stem !== name && stem.toLowerCase() === newName.toLowerCase())
+    if (clash !== undefined) throw new PmkitError('CONFLICT', `view ${clash} already exists`, 'Pick another name, or delete that view first')
+    if (!dryRun && newName !== name) {
+      const [from, to] = [path.join(viewsDir, `${name}.yaml`), path.join(viewsDir, `${newName}.yaml`)]
+      fs.renameSync(from, to)
+      writtenPaths.add(from)
+      writtenPaths.add(to)
+    }
+    return { before, after: { ...before, name: newName } }
+  }
+
   return {
+    saveView, listViews, runView, deleteView, renameView,
+    listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
+    listCustomers, getCustomer, createCustomer, updateCustomer, listRequests, getRequest, createRequest, updateRequest, acceptRequest, declineRequest, listDemandSignals,
+    listNotifications, markRead,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
-    listMilestones, getMilestone, createMilestone, unfiledMilestones,
+    listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
-    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
-    comment, resolveThread, listComments, getHistory, logTime, readDocument, createDocument,
+    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, unarchive, delete: deleteIssue, restore, link, unlink, setParent,
+    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, updateDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
     writtenFiles,

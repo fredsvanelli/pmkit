@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import path from 'node:path'
 import { TRACKER_OPERATIONS, assertTracker, contractView } from './lib/contract.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { FAMILIES, cycleHelper, runTrackerContract } from './contract-suite.mjs'
@@ -8,6 +9,14 @@ import { makeRepo } from './test-helpers.mjs'
 
 test('resolveThread is a contract operation next to comment', () => {
   assert.equal(TRACKER_OPERATIONS.indexOf('resolveThread'), TRACKER_OPERATIONS.indexOf('comment') + 1)
+})
+
+test('unarchive is a contract operation after delete', () => {
+  assert.equal(TRACKER_OPERATIONS.indexOf('unarchive'), TRACKER_OPERATIONS.indexOf('delete') + 1)
+})
+
+test('delete is a contract operation next to archive', () => {
+  assert.equal(TRACKER_OPERATIONS.indexOf('delete'), TRACKER_OPERATIONS.indexOf('archive') + 1)
 })
 
 describe('assertTracker', () => {
@@ -27,11 +36,13 @@ describe('assertTracker', () => {
 // Fresh clock and ids per setup; the id source is a counter so ids never repeat.
 function setupLocal(options = {}) {
   const root = makeRepo()
+  const config = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace(/^members:\n/m, 'members:\n  agent:claude: { name: Claude, availability: 1 }\n'))
   let counter = 0
   const random = (n) => counter++ % n
   const now = () => new Date('2026-10-23T12:00:00Z')
   const tracker = createLocalTracker(root, { now, random, ...options })
-  return { tracker, actor: 'fred', today: '2026-10-23', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
+  return { tracker, actor: 'fred', assignee: 'fred', agent: 'agent:claude', today: '2026-10-23', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
 }
 
 runTrackerContract({ name: 'Local tracker contract', setup: setupLocal })
