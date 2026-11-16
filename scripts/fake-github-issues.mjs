@@ -186,6 +186,7 @@ function build(state) {
       blockedBy: ids(record.blockedByIds).map((other) => ({ ...refOf(other), projectItems: { nodes: itemsOf(other.id).map((item) => itemNode(item, vars)) } })),
       blocking: blockingOf(record).map(refOf),
       relatesTo: ids(record.relatesToIds).map(refOf),
+      projectItems: itemsOf(record.id).map((item) => itemNode(item, vars)),
     }
   }
 
@@ -208,7 +209,7 @@ function build(state) {
       blocking: nested('blocking'),
       duplicateOf: refById(record.duplicateOfId),
       linkedBranches: { nodes: record.linkedBranches.slice(0, NESTED.linkedBranches).map((name) => ({ ref: { name } })) },
-      projectItems: { nodes: itemsOf(record.id).slice(0, NESTED.projectItems).map((item) => itemNode(item, vars)) },
+      projectItems: nested('projectItems'),
     }
     if (features.relatesTo) node.relatesTo = nested('relatesTo')
     if (features.issueFields) node.issueFieldValues = connection(issueFieldNodes(record), NESTED.issueFieldValues)

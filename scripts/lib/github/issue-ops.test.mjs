@@ -79,6 +79,18 @@ test('a blockedBy list longer than a page is read in full, with the Status varia
   assert.equal(more.variables.fStatus, 'Status')
 })
 
+test('an issue in more than 20 Projects reads the configured Project item from a further page', async () => {
+  const { fake, ops } = await setup()
+  fake.seed({ title: 'Popular', item: { status: 'In Progress', archived: true } })
+  const others = Array.from({ length: 20 }, (_, index) => ({ id: `PVTI_X${index}`, projectId: `PVT_X${index}`, issueId: 'I_1', isArchived: false, values: {} }))
+  fake.state.items.unshift(...others)
+  const issue = await ops.getIssue('1')
+  assert.deepEqual(issue.status, { name: 'In Progress', category: 'in_progress' })
+  assert.equal(issue.archived, true)
+  const more = fake.reads.find((call) => call.name === 'PmkitIssueMore_projectItems')
+  assert.deepEqual(more.variables, { id: 'I_1', fStatus: 'Status', first: 100, after: null })
+})
+
 test('a search returns issues oldest first', async () => {
   const { fake, ops } = await setup()
   fake.seed({ number: 1, title: 'Newer', createdAt: '2026-03-01T00:00:00.000Z' })

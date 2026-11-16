@@ -68,6 +68,7 @@ function timelineNodes(features) {
 /** The documents of the issue operations for one host. projectFields says which Project field aliases the issue fragment carries. */
 export function issueDocuments(features, projectFields = {}) {
   const vars = fieldVariables(projectFields)
+  const ITEM_SELECTION = `id isArchived project { id } ${fieldSelections(projectFields)}`
   const fragment = `fragment PmkitIssueFields on Issue {
   id number title body state stateReason createdAt updatedAt url
   ${REPO}
@@ -81,7 +82,7 @@ export function issueDocuments(features, projectFields = {}) {
   blocking(first: 50) { nodes { ${REF} } pageInfo { hasNextPage } }
   duplicateOf { ${REF} }
 ${features.relatesTo ? `  relatesTo(first: 50) { nodes { ${REF} } pageInfo { hasNextPage } }\n` : ''}  linkedBranches(first: 5) { nodes { ref { name } } }
-  projectItems(first: 20, includeArchived: true) { nodes { id isArchived project { id } ${fieldSelections(projectFields)} } }
+  projectItems(first: 20, includeArchived: true) { nodes { ${ITEM_SELECTION} } pageInfo { hasNextPage } }
 ${features.issueFields ? `  ${ISSUE_FIELD_VALUES}\n` : ''}}`
 
   const issueMutation = (name, type, payload, { withFragment = false } = {}) => `mutation ${name}(${declare('$input: ' + type + '!', withFragment ? vars : [])}) {
@@ -97,12 +98,19 @@ ${features.issueFields ? `  ${ISSUE_FIELD_VALUES}\n` : ''}}`
     blockedBy: `${REF} ${statusSelection(projectFields)}`,
     blocking: REF,
     ...(features.relatesTo ? { relatesTo: REF } : {}),
+    // The items of every Project the issue is in: the configured Project's item may come after the first page.
+    projectItems: ITEM_SELECTION,
+  }
+  // The variables each connection's selection reads, past $id, $first and $after.
+  const moreVariables = (connection) => {
+    if (connection === 'projectItems') return vars
+    return connection === 'blockedBy' && projectFields?.status ? '$fStatus: String!' : []
   }
   const MORE = (connection) => {
     if (!Object.hasOwn(MORE_SELECTIONS, connection)) throw new Error(`No further pages for the connection ${connection}`)
-    const needsStatus = connection === 'blockedBy' && projectFields?.status
-    return `query PmkitIssueMore_${connection}(${declare('$id: ID!', '$first: Int!', '$after: String', needsStatus ? '$fStatus: String!' : [])}) {
-  node(id: $id) { ... on Issue { ${connection}(first: $first, after: $after) { nodes { ${MORE_SELECTIONS[connection]} } ${PAGE} } } }
+    const archived = connection === 'projectItems' ? ', includeArchived: true' : ''
+    return `query PmkitIssueMore_${connection}(${declare('$id: ID!', '$first: Int!', '$after: String', moreVariables(connection))}) {
+  node(id: $id) { ... on Issue { ${connection}(first: $first, after: $after${archived}) { nodes { ${MORE_SELECTIONS[connection]} } ${PAGE} } } }
 }`
   }
 

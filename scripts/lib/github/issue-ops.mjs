@@ -16,7 +16,12 @@ import { planMove, planWrite, projectName, requireAssignable } from './writes.mj
 
 const PAGE_SIZE = 100
 // The nested connections of the issue fragment that may have more pages than the fragment reads.
-const NESTED = ['labels', 'subIssues', 'blockedBy', 'blocking', 'relatesTo']
+const NESTED = ['labels', 'subIssues', 'blockedBy', 'blocking', 'relatesTo', 'projectItems']
+/** The field variables a further page of a nested connection reads: all of them for projectItems, the Status for blockedBy. */
+function moreVariables(field, context) {
+  if (field === 'projectItems') return context.fieldVariables
+  return field === 'blockedBy' && context.projectFields.status ? { fStatus: context.fieldVariables.fStatus } : {}
+}
 const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 
 /**
@@ -29,8 +34,7 @@ export function issueOperations({ client, config, getContext }) {
     const docs = docsOf(context)
     for (const field of NESTED) {
       if (node[field]?.pageInfo?.hasNextPage !== true) continue
-      const variables = { id: node.id }
-      if (field === 'blockedBy' && context.projectFields.status) variables.fStatus = context.fieldVariables.fStatus
+      const variables = { id: node.id, ...moreVariables(field, context) }
       const { nodes } = await client.paginate(docs.MORE(field), variables, { select: (data) => data.node[field], pageSize: PAGE_SIZE })
       node[field] = { nodes, pageInfo: { hasNextPage: false } }
     }
