@@ -391,6 +391,22 @@ function syncNotes(from, sync, created = null) {
 }
 
 /**
+ * The note for a tracker that creates the issue branch on origin itself, such as GitHub's linked branch (PMK-87): it starts at the head of
+ * origin/<base> there, so a `from` that lacks commits of it makes the push of `pr open` non-fast-forward. Local refs only, nothing is fetched.
+ * No note when origin/<base> is missing or `from` contains it; `could not check` when git cannot tell. `created` is true on the real run, after
+ * `branch` exists: the next step then moves it, instead of passing another --from.
+ */
+function linkedBranchNotes(ctx, from, base, branch, created = false) {
+  const remote = `refs/remotes/origin/${base}`
+  if (!refExists(ctx, remote)) return []
+  const result = readGit(ctx, ['merge-base', '--is-ancestor', remote, from])
+  if (!result.error && result.status === 0) return []
+  if (result.error || result.status !== 1) return [`could not check whether ${from} contains origin/${base}, so the push of pr open may be refused. Run git fetch origin, then check with git log ${from}..origin/${base}`]
+  const next = created ? `Run git fetch origin, then git rebase --onto origin/${base} ${from} ${branch}` : `Pass --from origin/${base}`
+  return [`GitHub creates ${branch} on origin at the head of ${base} there, and ${from} lacks commits of origin/${base} (as of the last fetch), so the push of pr open would be refused. ${next}`]
+}
+
+/**
  * The note for a branch that lacks commits of the last fetched origin/<base> (PMK-305): `pr open` pushes it, and a pull request from an old base may conflict.
  * Local refs only, nothing is fetched and the push is never refused. No note when origin/<base> is missing or the branch has them all;
  * `could not compare` when git cannot count, which is not the same as up to date.
@@ -2108,11 +2124,27 @@ export const COMMANDS = [
       const createdNote = syncNotes(from, sync, branch)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()
-      await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
-      if (ctx.dryRun) return { data: { branch, from, ...(syncNote.length > 0 ? { notes: syncNote } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...syncNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
+      // A tracker that creates the branch on origin itself, such as GitHub, starts it at the head there of the branch `from` names (PMK-87).
+      const base = from.replace(/^origin\//, '')
+      const remote = ctx.settings().remoteBranch === true
+      // The adapter's notes, such as GitHub's fallback to the default branch, then the note for a push pr open would have refused.
+      const linked = (result, created) => {
+        const notes = result.notes ?? []
+        if (!remote) return notes
+        // When GitHub lacks base, the adapter's note names the branch it started from instead, its default branch there.
+        const prefix = `GitHub has no branch ${base}, so pmkit linked ${branch} at the head of `
+        const fallback = notes.find((note) => note.startsWith(prefix) && note.endsWith(' there'))
+        return [...notes, ...linkedBranchNotes(ctx, from, fallback ? fallback.slice(prefix.length, -' there'.length) : base, branch, created)]
+      }
+      const dry = await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true, base })
+      if (ctx.dryRun) {
+        const notes = [...syncNote, ...linked(dry, false)]
+        return { data: { branch, from, ...(notes.length > 0 ? { notes } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
+      }
       host.createBranch(branch, { from })
-      const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, from, ...result, ...(createdNote.length > 0 ? { notes: createdNote } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...createdNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
+      const result = await tracker.updateIssue(issue.id, { branch }, actor, { base })
+      const notes = [...createdNote, ...linked(result, true)]
+      return { data: { branch, from, ...result, ...(notes.length > 0 ? { notes } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
