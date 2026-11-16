@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import test from 'node:test'
 import { fakeGhExec, standardFixture } from '../../fake-github-api.mjs'
 import { fakeGithubIssues } from '../../fake-github-issues.mjs'
@@ -96,6 +98,17 @@ test('discover lists the assignable users as members', async () => {
   assert.deepEqual(found.members.map((member) => member.id), ['octocat', 'hubot', 'monalisa'])
   assert.equal(found.raw.viewer.id, 'U_1')
   assert.equal(found.raw.repositoryId, 'R_1')
+})
+
+test('discover with refresh succeeds with a warning when the user store cannot take the cache', async () => {
+  const context = issuesContext()
+  // A file where the store folder should be makes every cache write fail.
+  const blocker = path.join(tempDir(), 'store-is-a-file')
+  fs.writeFileSync(blocker, '')
+  context.env = { ...context.env, PMKIT_HOME: blocker }
+  const found = await githubTracker(context, fakeGithubIssues()).discover({ refresh: true })
+  assert.equal(found.repo, 'acme/widgets')
+  assert.ok(found.warnings.some((warning) => warning.startsWith('could not write the GitHub discovery cache: ')), found.warnings.join('\n'))
 })
 
 test('a second tracker reads the discovery from the cache, while discover with refresh reads GitHub', async () => {

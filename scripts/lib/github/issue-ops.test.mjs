@@ -260,6 +260,18 @@ test('a failure after the create throws UPSTREAM naming the new issue', async ()
     error.code === 'UPSTREAM' && error.message.startsWith('GitHub created issue 1, but') && error.nextStep === 'pmkit issues get 1, then repeat the step that failed')
 })
 
+test('createIssue with a parent sends parentIssueId and reads the parent back; a missing parent fails before any mutation', async () => {
+  const { fake, ops } = await writeSetup()
+  fake.seed({ title: 'Epic' })
+  const result = await ops.createIssue({ title: 'Child', parent: '1' }, ME)
+  assert.equal(fake.mutations[0].name, 'PmkitCreateIssue')
+  assert.equal(fake.mutations[0].input.parentIssueId, 'I_1')
+  assert.equal(result.after.parent, '1')
+  fake.mutations.splice(0)
+  await assert.rejects(ops.createIssue({ title: 'Orphan', parent: '99' }, ME), { code: 'INVALID_INPUT', message: 'parent 99 is not an existing issue or epic' })
+  assert.deepEqual(fake.mutations, [])
+})
+
 test('createIssue in a repository with no Project sends only the create', async () => {
   const { fake, ops } = await writeSetup({ project: null, pmkit: NO_PROJECT })
   const result = await ops.createIssue({ title: 'Plain' }, ME)
@@ -507,6 +519,16 @@ test('delete refuses with CONFLICT while the issue blocks another, then deletes'
   assert.deepEqual(fake.mutations[0].input, { issueId: 'I_2' })
   assert.equal(result.after, null)
   await assert.rejects(ops.getIssue('2'), { code: 'NOT_FOUND' })
+})
+
+test('delete of an issue with a linked branch warns that the branch and its pull request stay', async () => {
+  const { fake, ops } = await writeSetup()
+  fake.seed({ title: 'Branched', branches: ['1-branched'] })
+  const dry = await ops.delete('1', ME, { dryRun: true })
+  assert.deepEqual(dry.warnings, ['branch 1-branched and its pull request stay as they are'])
+  const result = await ops.delete('1', ME)
+  assert.deepEqual(sent(fake), ['PmkitDeleteIssue'])
+  assert.deepEqual(result.warnings, ['branch 1-branched and its pull request stay as they are'])
 })
 
 test('every write by an actor other than the gh login fails with INVALID_INPUT', async () => {

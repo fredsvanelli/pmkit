@@ -223,6 +223,21 @@ test('issues branch on GitHub --from a branch GitHub lacks but that contains ori
   assert.deepEqual(noteLines(real).filter((line) => line.startsWith('GitHub')), [fallback])
 })
 
+test('issues branch on GitHub notes that it could not check the start when git cannot walk its history', async () => {
+  const { cli, root } = branchRepo({ behind: 1 })
+  git(root, 'checkout', '-q', '-b', 'feature')
+  git(root, 'commit', '--allow-empty', '-qm', 'f1')
+  const lost = git(root, 'rev-parse', 'HEAD')
+  git(root, 'commit', '--allow-empty', '-qm', 'f2')
+  git(root, 'checkout', '-q', 'main')
+  // With f1's object gone, git merge-base fails with status 128 instead of answering yes (0) or no (1).
+  fs.rmSync(path.join(root, '.git', 'objects', lost.slice(0, 2), lost.slice(2)))
+  const { id } = dataOf(await cli(['issues', 'create', '--title', 'Link me', '--json'])).after
+  const dry = dataOf(await cli(['issues', 'branch', id, '--dry-run', '--json', '--from', 'feature']))
+  const note = 'could not check whether feature contains origin/main, so the push of pr open may be refused. Run git fetch origin, then check with git log feature..origin/main'
+  assert.ok(dry.notes.includes(note), JSON.stringify(dry.notes))
+})
+
 test('issues branch on GitHub starts the linked branch at pmkit default branch develop, not at main', async () => {
   const { cli, fake, root } = branchRepo({ defaultBranch: 'develop', extra: ['develop'] })
   git(root, 'branch', '-f', 'develop', 'refs/remotes/origin/develop')
