@@ -217,7 +217,7 @@ With `tracker.scope.project: none`, `todo` reopens, `done` closes as completed a
 
 `archive(id, actor)` sends `archiveProjectV2Item` for the issue's item in the Project, and skips it when the item is already archived. An issue with no item fails with `INVALID_INPUT`, `<id> is not in <owner/number>`, next step `pmkit issues move <id> <category> adds it`. With no Project: `NOT_SUPPORTED`, next step `Set tracker.scope.project with /pmkit:setup`.
 
-`delete(id, actor)` reads the issue and refuses with `CONFLICT` through `referencedError` when another issue references it, as on Linear: it blocks one, is the parent of one, or is the duplicate target of one. Then it sends `deleteIssue`. GitHub refuses it for a user who is not a repository admin; the client turns that refusal into `AUTH`. `restore` and `unarchive` answer `NOT_SUPPORTED`.
+`delete(id, actor)` reads the issue and refuses with `CONFLICT` through `referencedError` when another issue references it, as on Linear: it blocks one or is the parent of one. GitHub has no list of the issues marked as duplicates of an issue, so the result names that check under `unchecked` **(builder's call, found in Task 8)**. Then it sends `deleteIssue`. GitHub refuses it for a user who is not a repository admin; the client turns that refusal into `AUTH`. `restore` and `unarchive` answer `NOT_SUPPORTED`.
 
 ### Relations
 
