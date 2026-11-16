@@ -10,7 +10,7 @@ const trimLines = (lines) => lines.join('\n').replace(/^(?:[ \t]*\n)+/, '').trim
 const squeeze = (lines) => lines.filter((line, index) => !(isBlank(line) && index > 0 && isBlank(lines[index - 1])))
 
 /**
- * Splits a Linear description into the pmkit description and the checklist of its acceptance criteria section.
+ * Splits an issue body into the pmkit description and the checklist of its acceptance criteria section.
  * The section starts at the line "## Acceptance criteria" and ends at the next "## " heading. A line in it that is
  * not a checklist item stays in the description, where it was, so a read never drops text.
  */
@@ -31,7 +31,7 @@ export function parseDescription(text) {
   return { description: parts.join('\n\n').trim(), acceptanceCriteria }
 }
 
-/** The Linear description for a pmkit description and its criteria. No criteria means no section. */
+/** The issue body for a pmkit description and its criteria. No criteria means no section. */
 export function buildDescription(description, criteria) {
   const section = criteria.length === 0 ? '' : [CRITERIA_HEADING, '', ...criteria.map((item) => `- [${item.done ? 'x' : ' '}] ${item.text}`)].join('\n')
   return [description.trim(), section].filter((part) => part !== '').join('\n\n')
