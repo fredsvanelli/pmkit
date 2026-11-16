@@ -154,58 +154,26 @@ const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((ke
 export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) {
   const held = { status: current.status ?? {}, fields: current.fields ?? {}, types: current.types }
   const given = { status: answers.status ?? {}, fields: answers.fields ?? {}, types: answers.types ?? {} }
-  const hasProject = raw.project !== null
-  const statusKeys = hasProject ? keysOf(STATUS_KEYS, held.status) : []
+  const statusKeys = raw.project !== null ? keysOf(STATUS_KEYS, held.status) : []
   const fieldKeys = keysOf(FIELD_ROLES, held.fields)
   const typeKeys = raw.issueTypes.length > 0 ? keysOf(types, held.types) : []
   checkKeys(given.status, statusKeys.length > 0 ? statusKeys : STATUS_KEYS, '--status')
-  if (!hasProject && Object.keys(given.status).length > 0) throw invalid('--status needs a Project, and tracker.scope.project is none', 'Remove --status, or pass --project <owner>/<number>')
+  if (raw.project === null && Object.keys(given.status).length > 0) throw invalid('--status needs a Project, and tracker.scope.project is none', 'Remove --status, or pass --project <owner>/<number>')
   checkKeys(given.fields, fieldKeys, '--field')
   if (raw.issueTypes.length > 0) checkKeys(given.types, typeKeys, '--type-label')
 
-  const applied = []
-  const questions = []
-  const broken = []
-  const notes = []
-  const values = { status: {}, fields: {} }
   const pmkit = { mappings: { status: held.status, fields: held.fields, ...(held.types === undefined ? {} : { types: held.types }) } }
-  const brokenAt = new Map(brokenGithubMappings(raw, pmkit).map((item) => [item.path, item]))
-
-  /** The held value when it is set and not broken; otherwise it asks, with the broken item when there is one. */
-  const heldOr = (path, value, question) => {
-    const item = brokenAt.get(path)
-    if (isSet(value) && !item) return { value }
-    if (item) {
-      question.broken = { was: item.value, problem: item.problem }
-      broken.push(item)
-    }
-    questions.push(question)
-    return {}
+  const state = {
+    raw, held, given,
+    applied: [], questions: [], broken: [], notes: [],
+    brokenAt: new Map(brokenGithubMappings(raw, pmkit).map((item) => [item.path, item])),
   }
+  const values = { status: {}, fields: {} }
 
   // Status: every category is asked on the first run (the issue's "Always asked: GitHub Status options").
-  const options = statusOptionsOf(raw)
   for (const key of statusKeys) {
-    const path = `mappings.status.${key}`
-    const required = REQUIRED_STATUS.includes(key)
-    const answer = given.status[key]
-    if (answer !== undefined) {
-      if (answer === NONE && required) throw invalid(`--status ${key} cannot be none: pmkit must be able to move an issue to ${words(key)}`, `Pass --status ${key}=<option> with one of: ${options.join(', ')}`)
-      if (answer !== NONE && !options.includes(answer)) throw invalid(`--status ${key}=${answer} is not an option of the Status field of ${projectId(raw)}`, `Pass one of: ${[...options, ...(required ? [] : [NONE])].join(', ')}`)
-      values.status[key] = answer
-      continue
-    }
-    const match = matchOf(key, options)
-    const question = {
-      path,
-      flag: `--status ${key}=<option>`,
-      candidates: recommendedFirst(options, match),
-      recommended: match ?? (required ? null : NONE),
-      none: required ? null : `No Status option means ${words(key)}`,
-      ...(required ? { required: true } : {}),
-    }
-    const found = heldOr(path, held.status[key], question)
-    if (found.value !== undefined) values.status[key] = found.value
+    const value = statusValue(state, key)
+    if (value !== undefined) values.status[key] = value
   }
   const usedBy = new Map()
   for (const [key, value] of Object.entries(values.status)) {
@@ -213,76 +181,117 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
     if (usedBy.has(value)) throw invalid(`option ${value} cannot answer both ${usedBy.get(value)} and ${key}`, `Pick another option for ${key}`)
     usedBy.set(value, key)
   }
-
-  // Field roles: issue fields first, then the Project's own fields of the matching type.
   for (const key of fieldKeys) {
-    const path = `mappings.fields.${key}`
-    const kinds = FIELD_TYPES[key]
-    const issue = raw.issueFields.filter((item) => !kinds || kinds.includes(item.dataType)).map((item) => `issue:${item.name}`)
-    const project = (raw.project?.fields ?? []).filter((item) => !item.issueField && item.name !== 'Status' && (!kinds || kinds.includes(item.dataType))).map((item) => `project:${item.name}`)
-    const nameOf = (value) => parseFieldSource(value).name
-    const match = matchOf(key, issue, nameOf) ?? matchOf(key, project, nameOf)
-    const candidates = [...recommendedFirst(issue, match), ...recommendedFirst(project, match)]
-    const answer = given.fields[key]
-    if (answer !== undefined) {
-      if (!parseFieldSource(answer)) throw invalid(`--field ${key}=${answer} is not issue:<name>, project:<name> or none`, `Pass one of: ${[...candidates, NONE].join(', ')}`)
-      if (answer !== NONE && !candidates.includes(answer)) throw invalid(`--field ${key}=${answer} is not a field that can hold the ${words(key)}`, `Pass one of: ${[...candidates, NONE].join(', ')}`)
-      values.fields[key] = answer
-      continue
-    }
-    const question = { path, flag: `--field ${key}=<value>`, candidates, recommended: match ?? NONE, none: `No field holds the ${words(key)}` }
-    if (!brokenAt.has(path) && !isSet(held.fields[key]) && FIELD_ROLES.includes(key)) {
-      if (candidates.length === 0) {
-        applied.push({ path, value: NONE, reason: `GitHub has no field that can hold the ${words(key)}` })
-        values.fields[key] = NONE
-        continue
-      }
-      if (candidates.length === 1 && match !== undefined) {
-        applied.push({ path, value: match, reason: 'the only field of its type, and its name matches' })
-        values.fields[key] = match
-        continue
-      }
-    }
-    const found = heldOr(path, held.fields[key], question)
-    if (found.value !== undefined) values.fields[key] = found.value
+    const value = fieldValue(state, key)
+    if (value !== undefined) values.fields[key] = value
   }
-
-  // Types: asked while the object is absent from the file; an issue type that broke is asked again.
+  const result = () => ({ applied: state.applied, questions: state.questions, broken: state.broken, notes: state.notes, values })
   if (raw.issueTypes.length === 0) {
-    notes.push(`${raw.repo} has no enabled issue type, so setup maps no pmkit type; PMK-89 adds labels as a fallback`)
-    return { applied, questions, broken, notes, values }
+    state.notes.push(`${raw.repo} has no enabled issue type, so setup maps no pmkit type; PMK-89 adds labels as a fallback`)
+    return result()
   }
-  const typeValues = {}
+  const typeValues = typesOf(state, typeKeys)
+  if (typeValues !== undefined) values.types = typeValues
+  return result()
+}
+
+/** The held value when it is set and not broken; otherwise it records the question, with the broken item when there is one. */
+function heldOr(state, path, value, question) {
+  const item = state.brokenAt.get(path)
+  if (isSet(value) && !item) return value
+  if (item) {
+    question.broken = { was: item.value, problem: item.problem }
+    state.broken.push(item)
+  }
+  state.questions.push(question)
+  return undefined
+}
+
+/** The value of one Status category: the answer, the held value, or undefined with a question recorded. */
+function statusValue(state, key) {
+  const options = statusOptionsOf(state.raw)
+  const required = REQUIRED_STATUS.includes(key)
+  const answer = state.given.status[key]
+  if (answer !== undefined) {
+    if (answer === NONE && required) throw invalid(`--status ${key} cannot be none: pmkit must be able to move an issue to ${words(key)}`, `Pass --status ${key}=<option> with one of: ${options.join(', ')}`)
+    if (answer !== NONE && !options.includes(answer)) throw invalid(`--status ${key}=${answer} is not an option of the Status field of ${projectId(state.raw)}`, `Pass one of: ${[...options, ...(required ? [] : [NONE])].join(', ')}`)
+    return answer
+  }
+  const match = matchOf(key, options)
+  const question = {
+    path: `mappings.status.${key}`,
+    flag: `--status ${key}=<option>`,
+    candidates: recommendedFirst(options, match),
+    recommended: match ?? (required ? null : NONE),
+    none: required ? null : `No Status option means ${words(key)}`,
+    ...(required ? { required: true } : {}),
+  }
+  return heldOr(state, question.path, state.held.status[key], question)
+}
+
+/** The fields that can hold a role: issue fields first, then the Project's own fields of the matching type, and the name match. */
+function fieldCandidates(raw, key) {
+  const kinds = FIELD_TYPES[key]
+  const fits = (item) => !kinds || kinds.includes(item.dataType)
+  const issue = raw.issueFields.filter(fits).map((item) => `issue:${item.name}`)
+  const project = (raw.project?.fields ?? []).filter((item) => !item.issueField && item.name !== 'Status' && fits(item)).map((item) => `project:${item.name}`)
+  const nameOf = (value) => parseFieldSource(value).name
+  const match = matchOf(key, issue, nameOf) ?? matchOf(key, project, nameOf)
+  return { match, candidates: [...recommendedFirst(issue, match), ...recommendedFirst(project, match)] }
+}
+
+/** The value of one field role: the answer, the held value, an inferred one, or undefined with a question recorded. */
+function fieldValue(state, key) {
+  const path = `mappings.fields.${key}`
+  const { match, candidates } = fieldCandidates(state.raw, key)
+  const answer = state.given.fields[key]
+  if (answer !== undefined) {
+    if (!parseFieldSource(answer)) throw invalid(`--field ${key}=${answer} is not issue:<name>, project:<name> or none`, `Pass one of: ${[...candidates, NONE].join(', ')}`)
+    if (answer !== NONE && !candidates.includes(answer)) throw invalid(`--field ${key}=${answer} is not a field that can hold the ${words(key)}`, `Pass one of: ${[...candidates, NONE].join(', ')}`)
+    return answer
+  }
+  const asked = state.brokenAt.has(path) || isSet(state.held.fields[key]) || !FIELD_ROLES.includes(key)
+  if (!asked && candidates.length === 0) {
+    state.applied.push({ path, value: NONE, reason: `GitHub has no field that can hold the ${words(key)}` })
+    return NONE
+  }
+  if (!asked && candidates.length === 1 && match !== undefined) {
+    state.applied.push({ path, value: match, reason: 'the only field of its type, and its name matches' })
+    return match
+  }
+  const question = { path, flag: `--field ${key}=<value>`, candidates, recommended: match ?? NONE, none: `No field holds the ${words(key)}` }
+  return heldOr(state, path, state.held.fields[key], question)
+}
+
+/** The value of one pmkit type, from the issue types still free: the answer, the held value, none, or undefined when asked. */
+function typeValue(state, type, free) {
+  const path = `mappings.types.${type}`
+  const answer = state.given.types[type]
+  if (answer !== undefined) {
+    if (answer !== NONE && !free.includes(answer)) throw invalid(`--type-label ${type}=${answer} is not a free issue type of ${state.raw.repo}`, `Pass one of: ${[...free, NONE].join(', ')}`)
+    return answer
+  }
+  const heldValue = state.held.types?.[type]
+  // A types object without this type means it was answered none.
+  if (state.held.types !== undefined && !isSet(heldValue) && !state.brokenAt.has(path)) return NONE
+  const same = free.find((name) => name.toLowerCase() === type.toLowerCase())
+  const question = { path, flag: `--type-label ${type}=<issue type>`, candidates: recommendedFirst(free, same), recommended: same ?? NONE, none: 'No issue type stands for this type' }
+  return heldOr(state, path, heldValue, question)
+}
+
+/** The types object, or undefined while a type is still a question. One issue type answers at most one pmkit type. */
+function typesOf(state, typeKeys) {
+  const names = state.raw.issueTypes.map((type) => type.name)
+  const values = {}
   const taken = new Set()
   let pending = false
-  const names = raw.issueTypes.map((type) => type.name)
   for (const type of typeKeys) {
-    const path = `mappings.types.${type}`
-    const free = names.filter((name) => !taken.has(name))
-    const answer = given.types[type]
-    let value
-    if (answer !== undefined) {
-      if (answer !== NONE && !free.includes(answer)) throw invalid(`--type-label ${type}=${answer} is not a free issue type of ${raw.repo}`, `Pass one of: ${[...free, NONE].join(', ')}`)
-      value = answer
-    } else {
-      const same = free.find((name) => name.toLowerCase() === type.toLowerCase())
-      const question = { path, flag: `--type-label ${type}=<issue type>`, candidates: recommendedFirst(free, same), recommended: same ?? NONE, none: 'No issue type stands for this type' }
-      const heldValue = held.types?.[type]
-      if (held.types !== undefined && !isSet(heldValue) && !brokenAt.has(path)) value = NONE
-      else {
-        const found = heldOr(path, heldValue, question)
-        if (found.value === undefined) {
-          pending = true
-          continue
-        }
-        value = found.value
-      }
-    }
-    if (value !== NONE) {
-      typeValues[type] = value
+    const value = typeValue(state, type, names.filter((name) => !taken.has(name)))
+    if (value === undefined) pending = true
+    else if (value !== NONE) {
+      values[type] = value
       taken.add(value)
     }
   }
-  if (!pending) values.types = typeValues
-  return { applied, questions, broken, notes, values }
+  return pending ? undefined : values
 }

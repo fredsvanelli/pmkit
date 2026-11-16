@@ -209,3 +209,19 @@ test('discoveryView warns about cut lists', async () => {
   const view = discoveryView(await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ typesMore: true }), PmkitProject: projectReply() } })), pmkitWith({}))
   assert.ok(view.warnings.includes('GitHub has more issue types than discovery reads; it kept the first 50'))
 })
+
+test('checkGhesVersion maps a timeout to UPSTREAM', async () => {
+  const slow = () => {
+    const error = new Error('spawnSync gh ETIMEDOUT')
+    error.code = 'ETIMEDOUT'
+    throw error
+  }
+  await rejectsWith(checkGhesVersion({ exec: slow, host: 'ghes.example.com' }), 'UPSTREAM', /did not answer.*ghes\.example\.com/)
+})
+
+test('discoveryView warns about a Project without a Status field', async () => {
+  const fixture = standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ extra: [{ __typename: 'ProjectV2Field', id: 'P', name: 'Notes', dataType: 'TEXT', isIssueField: false }] }) } })
+  const view = discoveryView(await rawOf(fixture), pmkitWith({}))
+  assert.deepEqual(view.statuses, [])
+  assert.ok(view.warnings.includes('GitHub Project acme/7 has no single-select Status field'))
+})

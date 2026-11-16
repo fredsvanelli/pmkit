@@ -63,6 +63,7 @@ export async function checkGhesVersion({ exec, host }) {
     result = exec('gh', ['api', '--hostname', host, 'meta'], { timeout: 30000 })
   } catch (error) {
     if (error.code === 'ENOENT') throw new PmkitError('NOT_CONFIGURED', 'gh is not installed', INSTALL_STEP)
+    if (error.code === 'ETIMEDOUT') throw new PmkitError('UPSTREAM', `gh api meta did not answer for ${host} within 30 s`, `Check that ${host} is reachable, then retry`)
     throw error
   }
   if (result.status !== 0) {
@@ -185,25 +186,27 @@ function estimateOf(raw, pmkit) {
   return { unit: 'points', scale: [] }
 }
 
+/** The statuses of the discover result: each Status option with its mapped category, or open and closed without a Project. */
+function statusesOf(raw, status, warnings) {
+  if (raw.project === null) {
+    warnings.push('tracker.scope.project is none; statuses are open and closed only until PMK-89 adds the rest')
+    return [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }]
+  }
+  const statusField = statusFieldOf(raw.project)
+  if (!statusField) warnings.push(`GitHub Project ${raw.project.owner}/${raw.project.number} has no single-select Status field`)
+  const categoryOf = new Map(Object.entries(status).filter(([category, value]) => category !== 'blocked' && typeof value === 'string' && value !== NONE).map(([category, value]) => [value, category]))
+  return (statusField?.options ?? []).map(({ name }) => {
+    const category = categoryOf.get(name)
+    if (!category) warnings.push(`Status option ${name} has no category in mappings.status; issues in it count as in_progress`)
+    return { name, category: category ?? 'in_progress' }
+  })
+}
+
 /** The discover result. pmkit is config.pmkit; the raw discovery stays on it as a hidden property. */
 export function discoveryView(raw, pmkit = {}) {
-  const status = pmkit?.mappings?.status ?? {}
   const warnings = raw.truncated.map((kind) => `GitHub has more ${kind} than discovery reads; it kept the first ${kind === 'labels' ? LABELS_FIRST : FIRST}`)
-  const statusField = statusFieldOf(raw.project)
-  const statusOptions = statusField ? statusField.options.map((item) => item.name) : []
-  let statuses
-  if (raw.project === null) {
-    statuses = [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }]
-    warnings.push('tracker.scope.project is none; statuses are open and closed only until PMK-89 adds the rest')
-  } else {
-    if (!statusField) warnings.push(`GitHub Project ${raw.project.owner}/${raw.project.number} has no single-select Status field`)
-    const categoryOf = new Map(Object.entries(status).filter(([category, value]) => category !== 'blocked' && typeof value === 'string' && value !== NONE).map(([category, value]) => [value, category]))
-    statuses = statusOptions.map((name) => {
-      const category = categoryOf.get(name)
-      if (!category) warnings.push(`Status option ${name} has no category in mappings.status; issues in it count as in_progress`)
-      return { name, category: category ?? 'in_progress' }
-    })
-  }
+  const statusOptions = (statusFieldOf(raw.project)?.options ?? []).map((item) => item.name)
+  const statuses = statusesOf(raw, pmkit?.mappings?.status ?? {}, warnings)
   warnings.push(...brokenGithubMappings(raw, pmkit).map((item) => item.problem))
 
   const types = Object.entries(pmkit?.mappings?.types ?? {}).filter(([, value]) => typeof value === 'string' && value !== NONE).map(([type]) => type)

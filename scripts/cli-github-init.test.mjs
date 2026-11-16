@@ -127,6 +127,9 @@ test('a full answer writes the scope and the mappings, and a second run keeps th
   const caps = await cli(context, ['capabilities', '--json'])
   assert.equal(caps.code, 0, caps.stderr)
   assert.equal(JSON.parse(caps.stdout).tracker, 'github')
+  const capsText = await cli(context, ['capabilities'])
+  assert.match(capsText.stdout, /^repository: acme\/widgets on github\.com$/m)
+  assert.match(capsText.stdout, /^project: acme\/7$/m)
 })
 
 test('project none asks no Status question and writes none', async () => {
@@ -168,6 +171,14 @@ test('host and repo come from the flags, and a GHES remote host is used as is', 
   const flagged = dataOf(await cli(fresh({ remote: null }), [...INIT, '--host', 'acme.ghe.com', '--repo', 'acme/widgets', '--dry-run', '--json']))
   assert.equal(flagged.host, 'acme.ghe.com')
   assert.ok(flagged.notes.includes('tracker.scope.host acme.ghe.com and tracker.scope.repo acme/widgets come from the flags'))
+})
+
+test('ssh.github.com and www.github.com remotes give the host github.com', async () => {
+  for (const remote of ['ssh://git@ssh.github.com:443/acme/widgets.git', 'https://www.github.com/acme/widgets']) {
+    const data = dataOf(await cli(fresh({ remote }), [...INIT, '--dry-run', '--json']))
+    assert.equal(data.host, 'github.com', remote)
+    assert.equal(data.repo, 'acme/widgets', remote)
+  }
 })
 
 test('GHES below 3.19 fails with NOT_SUPPORTED', async () => {
