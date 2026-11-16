@@ -1,6 +1,6 @@
 # PMK-87 design: issues, sub-issues and dependencies for GitHub Issues
 
-Issue PMK-87, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: draft for the user's approval. The user answered six questions on 2026-11-16, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-87, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: approved by the user on 2026-11-16, with the nine builder's calls. The user answered six questions on 2026-11-16, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
