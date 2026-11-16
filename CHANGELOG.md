@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 - 2026-11-15
 
 - The corpus of `scripts/dev/adr-commonmark-diff.mjs` reaches the PMK-323 and PMK-324 changes it missed (PMK-327; a developer check, `scripts/lib/adr.mjs` unchanged). After the older cases, which are the same and in order: an HTML block of kind 1 to 5 (`<!--`, `<?php`, `<![CDATA[`, `<!X`, `<script>`) in a quote or list item holding `## X`, with the PMK-321 ends and the end of the file with and without a final newline; pairs of a status line then a hard-break line and triples of two status lines then one; and status lines ending in exactly one space (not a break) among them and next to every line of the corpus, so a write that keeps that space as a hard break fails the run. 48,232 more cases (3,971,558 at the defaults). A test counts every generator loop, so dropping any one of them fails `npm test`.
 - The `docs adr-status` refusal names the status glued to the first paragraph the reader sees also when link reference definitions open the section as a block of their own, closed by a blank line (PMK-325; only the names change, what is refused, what is written and what `docs adr-get` reads do not). `[a]: /u` (or two definitions), a blank line, `Date: x`, `Accepted`, a blank line, `> Proposed` keeps `Accepted` and names every other line, as with no definition, also in a quote or list item and when the definitions come before a quote or item; with no later status it keeps `Accepted`, not the definition. A thematic break or indented code before the paragraph keeps the first line, as before.
@@ -158,6 +158,8 @@
 - Adds `deploys list` and `ci logs` (PMK-49), and `listDeploys` and `ciLogs` on the GitHub git host. `deploys list` prints the repository deployments with the state of the latest status of each. `ci logs` prints the log of the failed steps of a run, either the one `--run` names or the newest failed run of a branch, and keeps the last `--tail` lines (default 200). A run that failed, timed out or never started counts as failed.
 - Adds `issues time-entries <id>` (PMK-51), which lists the time logged on an issue with the total in minutes, as a table or with `--json`. On Linear it answers `NOT_SUPPORTED`, because Linear has no time tracking.
 - Adds `pmkit alerts list`, which reads `npm audit --json` when the repository has a `package-lock.json` or `npm-shrinkwrap.json` and returns each advisory with a severity of `critical`, `high`, `medium` or `low` (PMK-48). `--severity` filters the list. A failing scanner is a warning and the text output says the result is incomplete. The `security_alerts` capability is derived (`source=scanners`) on the Local and Linear trackers, because the command reads the repository and not the tracker.
+
+Tracker format: 2
 
 ## 0.4.0 - 2026-10-30
 
