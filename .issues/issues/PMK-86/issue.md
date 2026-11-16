@@ -2,7 +2,7 @@
 id: PMK-86
 title: "Discover issue types and Project fields, and ask the Status mapping"
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-85]
 milestone: github-issues
 branch: pmk-86-discover-issue-types-and-project-fields
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-16T19:27:44Z
+updated: 2026-11-16T19:47:51Z
 ---
 
 ## Description
