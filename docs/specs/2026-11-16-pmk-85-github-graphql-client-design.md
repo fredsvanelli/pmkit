@@ -135,11 +135,14 @@ The client checks the rows in order and stops at the first match. `<host step>` 
 | A GraphQL error without `type` (a parse or validation error) | `UPSTREAM` | `GitHub rejected pmkit's query: <GitHub message>` | `Update pmkit; if it still fails, report the query error` | no |
 | Any other GraphQL error | `UPSTREAM` | `GitHub answered with an error: <GitHub message>` | `Check the request against GitHub's message` | no |
 | A body that is not JSON, or JSON with neither `data` nor `errors` | `UPSTREAM` | `GitHub returned an unreadable answer (HTTP <status>)` | `Update the GitHub CLI and retry` | no |
+| The same on a mutation | `UPSTREAM` | `GitHub did not confirm the change: unreadable answer (HTTP <status>)` | `Check on GitHub whether the change was applied before you retry` | no |
+| Any other HTTP status that is not 2xx, with data and no errors | `UPSTREAM` | `GitHub answered HTTP <status>` (on a mutation: `GitHub did not confirm the change: HTTP <status>`) | `Retry, and check githubstatus.com if it keeps failing` | no |
 | Any other failure with no answer, on a query | `UPSTREAM` | `gh api graphql failed: <first stderr line>` | `Check the output of the same command in a terminal` | no |
 
 Rules for every row:
 
-- `<GitHub message>` is the first error's `message` on one line, cut to 200 characters. GitHub writes it, and it never holds the token.
+- Any other error the runner throws, such as `EACCES`, is thrown as it is, as `host.mjs` does.
+- `<GitHub message>` is the first error's `message` on one line, cut to 200 characters. For a 401 or 403 answer without `errors`, it is the body's `message`. GitHub writes it, and it never holds the token.
 - `<reason>` is `timed out after <n> s`, `error connecting to <host>`, or `HTTP <status>`.
 - `<first stderr line>` goes through `hideAbsolutePaths`, as in `host.mjs`.
 - `details.github` holds `{ status, errors: [{ type, code, path }] }`, with `status` null when no answer came. PMK-87 reads it to tell, for example, which node a `NOT_FOUND` names. The CLI prints no `details`.

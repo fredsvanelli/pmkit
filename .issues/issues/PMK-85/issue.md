@@ -2,14 +2,16 @@
 id: PMK-85
 title: Add the GitHub Issues and Projects client
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
+assignee: fred
 parent: EPC-8
 blocked_by: [PMK-84, PMK-31]
 milestone: github-issues
+branch: pmk-85-add-the-github-issues-and-projects
 created: 2026-10-25T19:13:23Z
-updated: 2026-10-25T19:13:27Z
+updated: 2026-11-16T18:13:30Z
 ---
 
 ## Description

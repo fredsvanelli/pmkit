@@ -17,7 +17,7 @@ const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statu
 const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }'
 const STATUS_QUERY = 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } }'
-const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
+export const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
 export const defaultExec =
