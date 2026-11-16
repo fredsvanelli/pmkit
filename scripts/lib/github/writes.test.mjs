@@ -111,6 +111,45 @@ test('planMove picks the option and the state of each category', async () => {
   assert.throws(() => planMove(open, 'nowhere', {}, context), { code: 'INVALID_INPUT' })
 })
 
+test('planMove takes the state statuses of discover as targets with no option', async () => {
+  const { fake, context } = await contextOf()
+  fake.seed({ item: { status: 'In Progress' } })
+  fake.seed({ state: 'CLOSED', stateReason: 'COMPLETED', item: { status: 'In Progress' } })
+  const open = nodeOf(fake, context, 1)
+  const closed = nodeOf(fake, context, 2)
+  const ops = (plan) => plan.steps.map((step) => [step.op, step.option?.name ?? step.reason])
+  assert.deepEqual(ops(planMove(open, 'done', { status: 'Closed' }, context)), [['close', 'COMPLETED']])
+  assert.deepEqual(ops(planMove(open, 'canceled', { status: 'Closed as not planned' }, context)), [['close', 'NOT_PLANNED']])
+  assert.deepEqual(planMove(open, 'canceled', { status: 'Closed as not planned' }, context).after.status, { name: 'In Progress', category: 'canceled' })
+  assert.throws(() => planMove(open, 'done', { status: 'Closed as not planned' }, context), { code: 'INVALID_INPUT', message: 'status Closed as not planned is not in category done' })
+  assert.throws(() => planMove(open, 'canceled', { status: 'Closed' }, context), { code: 'INVALID_INPUT' })
+  // Todo is mapped to an option, so Open is not a todo target here.
+  assert.throws(() => planMove(closed, 'todo', { status: 'Open' }, context), { code: 'INVALID_INPUT', message: 'status Open is not in category todo' })
+})
+
+test('planMove takes Open for todo, reopening and keeping the option, when no option maps to todo', async () => {
+  const pmkit = { ...PMKIT, mappings: { ...PMKIT.mappings, status: { ...PMKIT.mappings.status, todo: 'none' } } }
+  const { fake, context } = await contextOf({ pmkit })
+  fake.seed({ state: 'CLOSED', stateReason: 'COMPLETED', item: { status: 'Backlog' } })
+  const plan = planMove(nodeOf(fake, context, 1), 'todo', { status: 'Open' }, context)
+  assert.deepEqual(plan.steps.map((step) => step.op), ['reopen'])
+  assert.equal(plan.after.status.name, 'Backlog')
+})
+
+test('the first status of each category in discover moves an issue there, with canceled mapped to none', async () => {
+  const { fake, context } = await contextOf()
+  const { discoveryView } = await import('./discovery.mjs')
+  const statuses = discoveryView(context.raw, PMKIT).statuses
+  fake.seed({ item: { status: 'Todo' } })
+  let node = nodeOf(fake, context, 1)
+  for (const category of ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled', 'todo']) {
+    const status = statuses.find((candidate) => candidate.category === category)
+    const plan = planMove(node, category, { status: status.name }, context)
+    assert.equal(plan.after.status.category, category, `${category} through ${status.name}`)
+    node = plan.node
+  }
+})
+
 test('planMove reopens a closed issue and closes it again for the other terminal category', async () => {
   const { fake, context } = await contextOf()
   fake.seed({ state: 'CLOSED', stateReason: 'COMPLETED', item: { status: 'Done' } })

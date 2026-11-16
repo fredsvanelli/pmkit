@@ -114,9 +114,9 @@ ${features.issueFields ? `  ${ISSUE_FIELD_VALUES}\n` : ''}}`
   repository(owner: $owner, name: $name) { issue(number: $number) { ...PmkitIssueFields } }
 }
 ${fragment}`,
-    ISSUES: `query PmkitIssues(${declare('$owner: String!', '$name: String!', '$first: Int!', '$after: String', '$filterBy: IssueFilters', vars)}) {
+    ISSUES: `query PmkitIssues(${declare('$owner: String!', '$name: String!', '$first: Int!', '$after: String', '$filterBy: IssueFilters', '$orderBy: IssueOrder!', vars)}) {
   repository(owner: $owner, name: $name) {
-    issues(first: $first, after: $after, filterBy: $filterBy, orderBy: { field: CREATED_AT, direction: ASC }) { nodes { ...PmkitIssueFields } ${PAGE} }
+    issues(first: $first, after: $after, filterBy: $filterBy, orderBy: $orderBy) { nodes { ...PmkitIssueFields } ${PAGE} }
   }
 }
 ${fragment}`,

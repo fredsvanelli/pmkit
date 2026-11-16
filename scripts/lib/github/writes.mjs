@@ -8,6 +8,7 @@ import { PmkitError } from '../errors.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { CATEGORIES, TERMINAL } from '../model.mjs'
+import { CLOSED, CLOSED_NOT_PLANNED, OPEN } from './discovery.mjs'
 import { itemOf, optionForPriority, PRIORITIES, ROLES, statusOf, toIssue } from './issues.mjs'
 import { parseFieldSource } from './mappings.mjs'
 
@@ -20,6 +21,7 @@ const SETUP = '/pmkit:setup'
 const NO_PROJECT = 'tracker.scope.project is none, so issues have no status but open and closed'
 // The state each category asks for: closed with a reason for the terminal ones, open for the rest.
 const CLOSE_REASON = { done: 'COMPLETED', canceled: 'NOT_PLANNED' }
+const STATE_CATEGORY = { [OPEN]: 'todo', [CLOSED]: 'done', [CLOSED_NOT_PLANNED]: 'canceled' }
 
 const empty = () => ({ nodes: [], pageInfo: { hasNextPage: false } })
 const sameText = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
@@ -261,12 +263,17 @@ export function planWrite(patch, { mode, before = null, context, parentNode = nu
 export function planMove(node, category, { status } = {}, context) {
   if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
   let option = null
+  // A state status of discover (Open, Closed, Closed as not planned) moves without an option, unless an option has that name.
+  const stateTarget = status !== undefined && STATE_CATEGORY[status] === category
   if (!context.project) {
-    if (status !== undefined || !['todo', ...TERMINAL].includes(category)) throw notSupported(NO_PROJECT, SETUP)
+    if ((status !== undefined && !stateTarget) || !['todo', ...TERMINAL].includes(category)) throw notSupported(NO_PROJECT, SETUP)
   } else if (status !== undefined) {
     const inCategory = context.project.options.filter((item) => context.categoryOfOption(item.name) === category)
     option = inCategory.find((item) => item.name === status) ?? null
-    if (!option) throw invalid(`status ${status} is not in category ${category}`, inCategory.length > 0 ? `Use one of: ${inCategory.map((item) => item.name).join(', ')}` : SETUP)
+    const named = context.project.options.some((item) => item.name === status)
+    // Open stands for todo only when no option does.
+    const stateMove = stateTarget && !named && (category !== 'todo' || inCategory.length === 0)
+    if (!option && !stateMove) throw invalid(`status ${status} is not in category ${category}`, inCategory.length > 0 ? `Use one of: ${inCategory.map((item) => item.name).join(', ')}` : SETUP)
   } else {
     option = context.optionOf(category)
     // A closed issue reads done or canceled whatever its option, so those two still move without one.

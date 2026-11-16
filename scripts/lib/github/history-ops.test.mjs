@@ -75,6 +75,14 @@ test('getHistory on GHES 3.20 leaves the Status event type out and warns, withou
   assert.equal(fake.reads.find((call) => call.name === 'PmkitTimeline').variables.itemTypes.includes('PROJECT_V2_ITEM_STATUS_CHANGED_EVENT'), false)
 })
 
+test('metricEvents on GHES 3.20 warns that Status changes have no events', async () => {
+  const { ops, history } = await setup({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+  await ops.createIssue({ title: 'Old host' }, ME)
+  const events = await history.metricEvents()
+  assert.deepEqual(events.warnings, [STATUS_WARNING])
+  assert.equal(events.truncated, undefined)
+})
+
 test('getHistory reads every page of a long timeline', async () => {
   const { fake, ops, history, clear } = await setup()
   const { id } = (await ops.createIssue({ title: 'Busy' }, ME)).after
@@ -184,9 +192,13 @@ test('metricEvents warns, without a JSON key, when the issue read stops at 1000 
   const { fake, history, clear } = await setup()
   for (let index = 0; index < 1001; index += 1) fake.seed({ title: `S${index}` })
   clear()
+  fake.seed({ title: 'Old', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' })
+  clear()
   const events = await history.metricEvents()
+  assert.deepEqual(fake.reads[0].variables.orderBy, { field: 'UPDATED_AT', direction: 'DESC' })
   assert.equal(events.length, 1000)
+  assert.ok(!events.some((event) => event.at === '2026-01-01T00:00:00.000Z'), 'the least recently updated issue is the one left out')
   assert.equal(events.truncated, true)
-  assert.deepEqual(events.warnings, ['GitHub has more issues than the 1000 pmkit read; the result covers the 1000 oldest issues updated in the range'])
+  assert.deepEqual(events.warnings, ['GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'])
   assert.equal(JSON.stringify(events).includes('warnings'), false)
 })

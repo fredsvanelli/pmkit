@@ -78,7 +78,7 @@ export function issueOperations({ client, config, getContext }) {
     const translated = translateFilter(filter, context, viewer)
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const [owner, name] = context.repo.split('/')
-    const variables = { owner, name, ...translated.variables, ...context.fieldVariables }
+    const variables = { owner, name, ...translated.variables, orderBy: { field: 'CREATED_AT', direction: 'ASC' }, ...context.fieldVariables }
     // GitHub's order (created, oldest first) is pmkit's order for the created sort, so that read stops once limit issues passed.
     const enough = translated.sort === 'created' && translated.limit !== undefined ? translated.limit : Infinity
     const kept = []

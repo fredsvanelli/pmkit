@@ -212,9 +212,9 @@ test('init refuses a missing repository, bad flags and Linear flags', async () =
   assert.match(errorOf(local).message, /--host applies only with --tracker github/)
 })
 
-test('a cut read on GitHub names GitHub, and the metric events name the oldest issues', () => {
+test('a cut read on GitHub names GitHub', () => {
   assert.equal(capWarning('history', '12', 'github'), 'GitHub has more history for 12 than the 1000 entries pmkit read; the newest are missing')
   assert.equal(capWarning('comments', '12', 'github'), 'GitHub has more comments for 12 than the 1000 pmkit read')
-  assert.equal(capWarning('issues', undefined, 'github'), 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 oldest issues updated in the range')
+  assert.equal(capWarning('issues', undefined, 'github'), 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
   assert.equal(capWarning('issues', undefined, 'linear'), 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
 })

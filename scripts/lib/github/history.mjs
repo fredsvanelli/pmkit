@@ -46,6 +46,7 @@ function eventOf(item, node, context) {
       return change('move', 'status', null, canceled ? CLOSED_NOT_PLANNED : CLOSED)
     }
     // GitHub does not say which option the reopened issue went back to: the move names the status the issue reads now when it is open.
+    // Limit: an issue reopened and later moved to Done reads its current option here, not the one it had right after the reopen.
     case 'ReopenedEvent': return change('move', 'status', null, node.state === 'OPEN' ? statusOf(node, context).name : OPEN)
     case 'ProjectV2ItemStatusChangedEvent':
       if (!context.project || item.project?.id !== context.project.id) return null

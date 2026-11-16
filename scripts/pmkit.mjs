@@ -833,14 +833,13 @@ async function requireMember(ctx) {
 
 /**
  * The warning for a hosted read that a page cap cut: `history` and `comments` of one issue, or `issues` for the metric events.
- * `system` is tracker.system. GitHub reads timelines and issues oldest first, so a cut drops the newest ones.
+ * `system` is tracker.system. GitHub reads a timeline oldest first, so a cut drops its newest entries.
  */
 export function capWarning(kind, id, system) {
   const name = system === 'github' ? 'GitHub' : 'Linear'
   if (kind === 'history') return `${name} has more history for ${id} than the 1000 entries pmkit read; the ${system === 'github' ? 'newest' : 'oldest'} are missing`
   if (kind === 'comments') return `${name} has more comments for ${id} than the 1000 pmkit read`
-  if (system === 'github') return 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 oldest issues updated in the range'
-  return 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
+  return `${name} has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated`
 }
 const capWarnings = (list, kind, id, system) => (list.truncated === true ? [capWarning(kind, id, system)] : [])
 

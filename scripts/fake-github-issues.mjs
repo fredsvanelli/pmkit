@@ -384,7 +384,9 @@ function build(state) {
         .filter((record) => !labels?.length || labelNames(record).some((label) => labels.includes(label)))
         .filter((record) => !type || (record.issueTypeId && typeById(record.issueTypeId).name === type))
         .filter((record) => !since || record.updatedAt >= since)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.number - b.number)
+        .sort(vars.orderBy?.field === 'UPDATED_AT' && vars.orderBy.direction === 'DESC'
+          ? (a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.number - a.number
+          : (a, b) => a.createdAt.localeCompare(b.createdAt) || a.number - b.number)
       return { repository: { issues: connection(listed.map((record) => issueNode(record, vars)), vars.first, vars.after) } }
     },
     PmkitIssueMore(vars, name) {

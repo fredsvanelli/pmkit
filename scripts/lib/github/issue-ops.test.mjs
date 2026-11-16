@@ -115,6 +115,7 @@ test('a search sends filterBy and applies the sort and the limit', async () => {
   const result = await ops.searchIssues({ assignee: 'me', categories: ['todo'], limit: 1, sort: 'updated' })
   assert.deepEqual(result.issues.map((issue) => issue.id), ['3'])
   assert.deepEqual(fake.reads[0].variables.filterBy, { states: ['OPEN'], assignee: 'octocat' })
+  assert.deepEqual(fake.reads[0].variables.orderBy, { field: 'CREATED_AT', direction: 'ASC' })
 })
 
 test('an empty categories list and limit 0 send no request', async () => {

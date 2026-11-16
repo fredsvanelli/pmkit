@@ -74,8 +74,8 @@ test('makeContext without a Project has no project fields', () => {
 test('status rule', () => {
   const c = ctx()
   assert.deepEqual(statusOf(withItem(item({ status: sel('In Progress') }), { state: 'CLOSED', stateReason: 'COMPLETED' }), c), { name: 'In Progress', category: 'done' })
-  assert.equal(statusOf(node({ state: 'CLOSED', stateReason: 'NOT_PLANNED' }), c).category, 'canceled')
-  assert.equal(statusOf(node({ state: 'CLOSED', stateReason: 'DUPLICATE' }), c).category, 'canceled')
+  assert.deepEqual(statusOf(node({ state: 'CLOSED', stateReason: 'NOT_PLANNED' }), c), { name: 'Closed as not planned', category: 'canceled' })
+  assert.deepEqual(statusOf(node({ state: 'CLOSED', stateReason: 'DUPLICATE' }), c), { name: 'Closed as not planned', category: 'canceled' })
   assert.deepEqual(statusOf(withItem(item({ status: sel('Done') })), c), { name: 'Done', category: 'done' })
   assert.deepEqual(statusOf(node(), c), { name: 'Open', category: 'todo' })
   assert.deepEqual(statusOf(withItem(item({ status: null })), c), { name: 'Open', category: 'todo' })
@@ -86,7 +86,7 @@ test('status rule without a Project', () => {
   const c = ctx({ project: null })
   assert.deepEqual(statusOf(node(), c), { name: 'Open', category: 'todo' })
   assert.deepEqual(statusOf(node({ state: 'CLOSED', stateReason: 'COMPLETED' }), c), { name: 'Closed', category: 'done' })
-  assert.deepEqual(statusOf(node({ state: 'CLOSED', stateReason: 'NOT_PLANNED' }), c), { name: 'Closed', category: 'canceled' })
+  assert.deepEqual(statusOf(node({ state: 'CLOSED', stateReason: 'NOT_PLANNED' }), c), { name: 'Closed as not planned', category: 'canceled' })
 })
 
 test('priority rule', () => {
