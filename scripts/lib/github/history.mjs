@@ -26,38 +26,51 @@ const LINKS = {
   UnmarkedAsDuplicateEvent: ['unlink', 'duplicateOf', 'canonical'],
 }
 
+const typeOf = (issueType, context) => (issueType ? (context.typeOf(issueType.name) ?? issueType.name) : null)
+
+function closedTo(item) {
+  const canceled = item.stateReason === 'NOT_PLANNED' || item.stateReason === 'DUPLICATE'
+  return canceled ? CLOSED_NOT_PLANNED : CLOSED
+}
+
+// The update, assign and move events: [op, field, from, to] of an item, or null for an item pmkit does not map.
+const CHANGES = {
+  RenamedTitleEvent: (item) => ['update', 'title', item.previousTitle, item.currentTitle],
+  LabeledEvent: (item) => ['update', 'labels', null, item.label?.name],
+  UnlabeledEvent: (item) => ['update', 'labels', item.label?.name, null],
+  IssueTypeAddedEvent: (item, node, context) => ['update', 'type', null, typeOf(item.issueType, context)],
+  IssueTypeChangedEvent: (item, node, context) => ['update', 'type', typeOf(item.prevIssueType, context), typeOf(item.issueType, context)],
+  IssueTypeRemovedEvent: (item, node, context) => ['update', 'type', typeOf(item.issueType, context), null],
+  AssignedEvent: (item) => ['assign', 'assignee', null, loginOf(item.assignee)],
+  UnassignedEvent: (item) => ['assign', 'assignee', loginOf(item.assignee), null],
+  ClosedEvent: (item) => ['move', 'status', null, closedTo(item)],
+  // GitHub does not say which option the reopened issue went back to: the move names the status the issue reads now when it is open.
+  // Limit: an issue reopened and later moved to Done reads its current option here, not the one it had right after the reopen.
+  ReopenedEvent: (item, node, context) => ['move', 'status', null, node.state === 'OPEN' ? statusOf(node, context).name : OPEN],
+  ProjectV2ItemStatusChangedEvent: (item, node, context) => {
+    if (!context.project || item.project?.id !== context.project.id) return null
+    return ['move', 'status', item.previousStatus || null, item.status || null]
+  },
+}
+
+/** The link or unlink event of a relation item, or null when the other issue is not readable. */
+function linkEvent(item, meta, context) {
+  const link = LINKS[item.__typename]
+  const other = link && item[link[2]]
+  if (!other?.repository) return null
+  return { ...meta, op: link[0], field: link[1], to: issueIdOf(other, context.repo) }
+}
+
 /** The event of one timeline item, or null for an item pmkit does not map. */
 function eventOf(item, node, context) {
   const meta = { at: item.createdAt, by: loginOf(item.__typename === 'IssueComment' ? item.author : item.actor) }
-  const change = (op, field, from, to) => ({ ...meta, op, field, from: from ?? null, to: to ?? null })
-  const typeOf = (issueType) => (issueType ? (context.typeOf(issueType.name) ?? issueType.name) : null)
-  switch (item.__typename) {
-    case 'IssueComment': return { ...meta, op: 'comment', to: item.id }
-    case 'RenamedTitleEvent': return change('update', 'title', item.previousTitle, item.currentTitle)
-    case 'LabeledEvent': return change('update', 'labels', null, item.label?.name)
-    case 'UnlabeledEvent': return change('update', 'labels', item.label?.name, null)
-    case 'IssueTypeAddedEvent': return change('update', 'type', null, typeOf(item.issueType))
-    case 'IssueTypeChangedEvent': return change('update', 'type', typeOf(item.prevIssueType), typeOf(item.issueType))
-    case 'IssueTypeRemovedEvent': return change('update', 'type', typeOf(item.issueType), null)
-    case 'AssignedEvent': return change('assign', 'assignee', null, loginOf(item.assignee))
-    case 'UnassignedEvent': return change('assign', 'assignee', loginOf(item.assignee), null)
-    case 'ClosedEvent': {
-      const canceled = item.stateReason === 'NOT_PLANNED' || item.stateReason === 'DUPLICATE'
-      return change('move', 'status', null, canceled ? CLOSED_NOT_PLANNED : CLOSED)
-    }
-    // GitHub does not say which option the reopened issue went back to: the move names the status the issue reads now when it is open.
-    // Limit: an issue reopened and later moved to Done reads its current option here, not the one it had right after the reopen.
-    case 'ReopenedEvent': return change('move', 'status', null, node.state === 'OPEN' ? statusOf(node, context).name : OPEN)
-    case 'ProjectV2ItemStatusChangedEvent':
-      if (!context.project || item.project?.id !== context.project.id) return null
-      return change('move', 'status', item.previousStatus || null, item.status || null)
-    default: {
-      const link = LINKS[item.__typename]
-      const other = link && item[link[2]]
-      if (!other?.repository) return null
-      return { ...meta, op: link[0], field: link[1], to: issueIdOf(other, context.repo) }
-    }
-  }
+  if (item.__typename === 'IssueComment') return { ...meta, op: 'comment', to: item.id }
+  const changeOf = CHANGES[item.__typename]
+  if (!changeOf) return linkEvent(item, meta, context)
+  const change = changeOf(item, node, context)
+  if (!change) return null
+  const [op, field, from, to] = change
+  return { ...meta, op, field, from: from ?? null, to: to ?? null }
 }
 
 /**

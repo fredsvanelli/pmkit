@@ -92,11 +92,8 @@ export function requireAssignable(context, login) {
   return { id: found.id, login: found.login }
 }
 
-/**
- * The write of one field role: { role, value, source, fieldId, write, shown }. `write` is GitHub's value (null clears it for a
- * Project field), `shown` the value the issue fragment would read after it.
- */
-function fieldWrite(role, value, context) {
+/** The { source, field } a role writes to. Throws when the mapping names no field pmkit can write. */
+function mappedField(role, context) {
   const key = ROLES[role].key
   const parsed = parseFieldSource(context.pmkit?.mappings?.fields?.[key])
   if (parsed?.source === 'issue' && !context.features?.issueFields) {
@@ -104,30 +101,48 @@ function fieldWrite(role, value, context) {
   }
   const mapped = context.field(role)
   if (!mapped) throw notSupported(`mappings.fields.${key} names no GitHub field, so pmkit does not write ${role}`, SETUP)
-  const { source, field } = mapped
-  if (value === null) {
-    return { role, value, source, fieldId: field.id, write: source === 'project' ? null : { fieldId: field.id, delete: true }, shown: null }
-  }
-  const project = source === 'project'
-  if (field.dataType === 'SINGLE_SELECT') {
-    const option = role === 'priority' ? optionForPriority(field.options, value) : field.options.find((item) => item.name === value)
-    if (role === 'priority' && !PRIORITIES.includes(value)) throw invalid(`priority must be one of ${PRIORITIES.join(', ')}`)
-    if (!option) throw invalid(`${role} ${value} has no option in the field ${field.name}`, `Use one of: ${field.options.map((item) => item.name).join(', ')}`)
-    const write = project ? { singleSelectOptionId: option.id } : { fieldId: field.id, singleSelectOptionId: option.id }
-    const shown = { __typename: project ? 'ProjectV2ItemFieldSingleSelectValue' : 'IssueFieldSingleSelectValue', name: option.name, optionId: option.id }
-    return { role, value, source, fieldId: field.id, write, shown }
-  }
-  if (role === 'estimate' && field.dataType === 'NUMBER') {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw invalid('estimate must be a number of 0 or more')
-    const write = project ? { number: value } : { fieldId: field.id, numberValue: value }
-    return { role, value, source, fieldId: field.id, write, shown: project ? { __typename: 'ProjectV2ItemFieldNumberValue', number: value } : { __typename: 'IssueFieldNumberValue', value } }
-  }
-  if (role === 'due' && field.dataType === 'DATE') {
-    if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
-    const write = project ? { date: value } : { fieldId: field.id, dateValue: value }
-    return { role, value, source, fieldId: field.id, write, shown: project ? { __typename: 'ProjectV2ItemFieldDateValue', date: value } : { __typename: 'IssueFieldDateValue', value } }
-  }
+  return mapped
+}
+
+function selectWrite(role, value, field, project) {
+  const option = role === 'priority' ? optionForPriority(field.options, value) : field.options.find((item) => item.name === value)
+  if (role === 'priority' && !PRIORITIES.includes(value)) throw invalid(`priority must be one of ${PRIORITIES.join(', ')}`)
+  if (!option) throw invalid(`${role} ${value} has no option in the field ${field.name}`, `Use one of: ${field.options.map((item) => item.name).join(', ')}`)
+  const write = project ? { singleSelectOptionId: option.id } : { fieldId: field.id, singleSelectOptionId: option.id }
+  const shown = { __typename: project ? 'ProjectV2ItemFieldSingleSelectValue' : 'IssueFieldSingleSelectValue', name: option.name, optionId: option.id }
+  return { write, shown }
+}
+
+function numberWrite(value, field, project) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw invalid('estimate must be a number of 0 or more')
+  if (project) return { write: { number: value }, shown: { __typename: 'ProjectV2ItemFieldNumberValue', number: value } }
+  return { write: { fieldId: field.id, numberValue: value }, shown: { __typename: 'IssueFieldNumberValue', value } }
+}
+
+function dateWrite(value, field, project) {
+  if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
+  if (project) return { write: { date: value }, shown: { __typename: 'ProjectV2ItemFieldDateValue', date: value } }
+  return { write: { fieldId: field.id, dateValue: value }, shown: { __typename: 'IssueFieldDateValue', value } }
+}
+
+/** The { write, shown } of a value that is not null, by the field's data type. */
+function valueWrite(role, value, field, project) {
+  if (field.dataType === 'SINGLE_SELECT') return selectWrite(role, value, field, project)
+  if (role === 'estimate' && field.dataType === 'NUMBER') return numberWrite(value, field, project)
+  if (role === 'due' && field.dataType === 'DATE') return dateWrite(value, field, project)
   throw notSupported(`the field ${field.name} is a ${field.dataType} field, which pmkit cannot write as ${role}`, SETUP)
+}
+
+/**
+ * The write of one field role: { role, value, source, fieldId, write, shown }. `write` is GitHub's value (null clears it for a
+ * Project field), `shown` the value the issue fragment would read after it.
+ */
+function fieldWrite(role, value, context) {
+  const { source, field } = mappedField(role, context)
+  const project = source === 'project'
+  if (value === null) return { role, value, source, fieldId: field.id, write: project ? null : { fieldId: field.id, delete: true }, shown: null }
+  const { write, shown } = valueWrite(role, value, field, project)
+  return { role, value, source, fieldId: field.id, write, shown }
 }
 
 /** The item of the configured Project on a preview node, added with no id when the node has none. */
@@ -179,6 +194,91 @@ function applyPlan(node, plan, context, parentNode) {
   return next
 }
 
+const given = (value) => value !== undefined && value !== null
+
+function checkPatch(patch, create) {
+  checkKeys(patch, create ? CREATE_KEYS : UPDATE_KEYS)
+  if (patch.docs !== undefined) throw notSupported('the GitHub adapter does not link docs to issues yet')
+  for (const key of ['sprint', 'milestone', 'release']) {
+    if (given(patch[key])) throw notSupported(`the GitHub adapter does not set ${key} yet`)
+  }
+}
+
+function planTitle(patch, node, create) {
+  if (!create && patch.title === undefined) return {}
+  if (typeof patch.title !== 'string' || patch.title.trim() === '') throw invalid('title is required')
+  const title = oneLine('title', patch.title.trim())
+  return create || title !== node.title ? { title } : {}
+}
+
+function planBody(patch, node, create) {
+  const body = bodyOf(patch, node.body)
+  if (body === undefined) return {}
+  const changed = create ? body !== '' : body !== node.body
+  return changed ? { body } : {}
+}
+
+function planType(patch, node, create, context) {
+  if (patch.type === undefined) return {}
+  const id = issueTypeId(patch.type, context)
+  const changed = create ? id !== null : id !== (node.issueType?.id ?? null)
+  return changed ? { issueTypeId: id } : {}
+}
+
+function planLabels(patch, node, create, context) {
+  if (patch.labels === undefined) return {}
+  if (patch.labels !== null && !Array.isArray(patch.labels)) throw invalid('labels must be a list of strings')
+  const ids = [...new Set((patch.labels ?? []).map((name) => requireLabel(context, oneLine('label', name)).id))]
+  const current = (node.labels?.nodes ?? []).map((label) => label.id)
+  const same = ids.length === current.length && ids.every((id) => current.includes(id))
+  const changed = create ? ids.length > 0 : !same
+  return changed ? { labelIds: ids } : {}
+}
+
+/** The assignee and parent of a create. An update sets them through assign and setParent. */
+function planCreateOnly(patch, create, context, parentNode) {
+  const slice = {}
+  if (!create) return slice
+  if (given(patch.assignee)) {
+    const login = patch.assignee === 'me' ? context.raw.viewer?.login : patch.assignee
+    slice.assigneeIds = [requireAssignable(context, login).id]
+  }
+  if (given(patch.parent)) {
+    if (!parentNode) throw invalid(`parent ${patch.parent} is not an existing issue or epic`, 'pmkit issues list')
+    slice.parentIssueId = parentNode.id
+  }
+  return slice
+}
+
+/** One field write per role the patch changes. A create skips the null roles, an update the roles that keep their value. */
+function planFields(patch, create, beforeIssue, context) {
+  const changes = (role) => {
+    if (patch[role] === undefined) return false
+    return create ? patch[role] !== null : (beforeIssue[role] ?? null) !== patch[role]
+  }
+  return Object.keys(ROLES).filter(changes).map((role) => fieldWrite(role, patch[role], context))
+}
+
+/** The branch name an update links, or undefined. */
+function planBranch(patch, create) {
+  if (patch.branch === undefined) return undefined
+  if (patch.branch === null) {
+    if (create) return undefined
+    throw notSupported('the GitHub adapter does not unlink a branch from an issue', 'Unlink it in the Development section of the issue on GitHub')
+  }
+  if (create) throw invalid('GitHub links a branch to an existing issue only', 'Create the issue, then run pmkit issues branch <id>')
+  if (!validBranch(patch.branch)) throw invalid(`branch ${patch.branch} is not a valid branch name`)
+  return patch.branch
+}
+
+/** The move of a create's status, from the preview of the new issue. */
+function planCreateStatus(status, preview, context) {
+  if (!context.project) throw notSupported('tracker.scope.project is none, so a new issue takes no status', 'Create the issue, then run pmkit issues move <id> done')
+  const option = context.project.options.find((item) => item.name === status)
+  if (!option) throw invalid(`status ${status} is not a Status option of ${projectName(context)}`, `Use one of: ${context.project.options.map((item) => item.name).join(', ')}`)
+  return planMove(preview, context.categoryOfOption(option.name), { status: option.name }, context)
+}
+
 /**
  * The GitHub input of a patch. mode is create or update; before is the issue's fragment node (null on create); parentNode the
  * fragment node of patch.parent on create (the caller reads it). Returns { input, fields, branch, move, after }: input for
@@ -188,72 +288,88 @@ function applyPlan(node, plan, context, parentNode) {
  */
 export function planWrite(patch, { mode, before = null, context, parentNode = null, now = new Date().toISOString() }) {
   const create = mode === 'create'
-  checkKeys(patch, create ? CREATE_KEYS : UPDATE_KEYS)
-  if (patch.docs !== undefined) throw notSupported('the GitHub adapter does not link docs to issues yet')
-  for (const key of ['sprint', 'milestone', 'release']) {
-    if (patch[key] !== undefined && patch[key] !== null) throw notSupported(`the GitHub adapter does not set ${key} yet`)
-  }
+  checkPatch(patch, create)
   const node = before ?? skeletonNode(context, now)
   const beforeIssue = before ? toIssue(before, context) : null
   const input = create ? { repositoryId: context.raw.repositoryId } : {}
-
-  if (create || patch.title !== undefined) {
-    if (typeof patch.title !== 'string' || patch.title.trim() === '') throw invalid('title is required')
-    const title = oneLine('title', patch.title.trim())
-    if (create || title !== node.title) input.title = title
-  }
-  const body = bodyOf(patch, node.body)
-  if (body !== undefined && (create ? body !== '' : body !== node.body)) input.body = body
-  if (patch.type !== undefined) {
-    const id = issueTypeId(patch.type, context)
-    if (create ? id !== null : id !== (node.issueType?.id ?? null)) input.issueTypeId = id
-  }
-  if (patch.labels !== undefined) {
-    if (patch.labels !== null && !Array.isArray(patch.labels)) throw invalid('labels must be a list of strings')
-    const ids = [...new Set((patch.labels ?? []).map((name) => requireLabel(context, oneLine('label', name)).id))]
-    const current = (node.labels?.nodes ?? []).map((label) => label.id)
-    const same = ids.length === current.length && ids.every((id) => current.includes(id))
-    if (create ? ids.length > 0 : !same) input.labelIds = ids
-  }
-  if (create && patch.assignee !== undefined && patch.assignee !== null) {
-    const login = patch.assignee === 'me' ? context.raw.viewer?.login : patch.assignee
-    input.assigneeIds = [requireAssignable(context, login).id]
-  }
-  if (create && patch.parent !== undefined && patch.parent !== null) {
-    if (!parentNode) throw invalid(`parent ${patch.parent} is not an existing issue or epic`, 'pmkit issues list')
-    input.parentIssueId = parentNode.id
-  }
-
-  const fields = []
-  for (const role of Object.keys(ROLES)) {
-    if (patch[role] === undefined || (create && patch[role] === null)) continue
-    if (!create && (beforeIssue[role] ?? null) === patch[role]) continue
-    fields.push(fieldWrite(role, patch[role], context))
-  }
-
-  let branch
-  if (patch.branch !== undefined && patch.branch !== null) {
-    if (create) throw invalid('GitHub links a branch to an existing issue only', 'Create the issue, then run pmkit issues branch <id>')
-    if (!validBranch(patch.branch)) throw invalid(`branch ${patch.branch} is not a valid branch name`)
-    branch = patch.branch
-  } else if (patch.branch === null && !create) {
-    throw notSupported('the GitHub adapter does not unlink a branch from an issue', 'Unlink it in the Development section of the issue on GitHub')
-  }
+  Object.assign(input, planTitle(patch, node, create))
+  Object.assign(input, planBody(patch, node, create))
+  Object.assign(input, planType(patch, node, create, context))
+  Object.assign(input, planLabels(patch, node, create, context))
+  Object.assign(input, planCreateOnly(patch, create, context, parentNode))
+  const fields = planFields(patch, create, beforeIssue, context)
+  const branch = planBranch(patch, create)
 
   const plan = { input, fields, branch, move: [] }
-  let preview = applyPlan(node, plan, context, parentNode)
-  if (create && patch.status !== undefined && patch.status !== null) {
-    if (!context.project) throw notSupported('tracker.scope.project is none, so a new issue takes no status', 'Create the issue, then run pmkit issues move <id> done')
-    const option = context.project.options.find((item) => item.name === patch.status)
-    if (!option) throw invalid(`status ${patch.status} is not a Status option of ${projectName(context)}`, `Use one of: ${context.project.options.map((item) => item.name).join(', ')}`)
-    const move = planMove(preview, context.categoryOfOption(option.name), { status: option.name }, context)
-    plan.move = move.steps
-    preview = move.node
-  }
-  if (branch !== undefined) preview.linkedBranches = { nodes: [{ ref: { name: branch } }] }
+  const preview = previewOf(plan, { node, patch, create, context, parentNode })
   const after = toIssue(preview, context)
   plan.after = create ? { ...after, id: null } : after
   return plan
+}
+
+/** The node a dry run shows: the plan applied, then a create's status move and an update's branch. Sets plan.move. */
+function previewOf(plan, { node, patch, create, context, parentNode }) {
+  let preview = applyPlan(node, plan, context, parentNode)
+  if (create && given(patch.status)) {
+    const move = planCreateStatus(patch.status, preview, context)
+    plan.move = move.steps
+    preview = move.node
+  }
+  if (plan.branch !== undefined) preview.linkedBranches = { nodes: [{ ref: { name: plan.branch } }] }
+  return preview
+}
+
+/** The option a move to a named status sets, or null when the status is a state status of discover. */
+function namedOption(category, status, context) {
+  const inCategory = context.project.options.filter((item) => context.categoryOfOption(item.name) === category)
+  const option = inCategory.find((item) => item.name === status) ?? null
+  const named = context.project.options.some((item) => item.name === status)
+  // A state status of discover (Open, Closed, Closed as not planned) moves without an option, unless an option has that name.
+  // Open stands for todo only when no option does.
+  const stateMove = STATE_CATEGORY[status] === category && !named && (category !== 'todo' || inCategory.length === 0)
+  if (!option && !stateMove) throw invalid(`status ${status} is not in category ${category}`, inCategory.length > 0 ? `Use one of: ${inCategory.map((item) => item.name).join(', ')}` : SETUP)
+  return option
+}
+
+/** The Status option a move sets, or null when the move changes only the issue's state. */
+function pickOption(category, status, context) {
+  if (!context.project) {
+    const stateTarget = status === undefined || STATE_CATEGORY[status] === category
+    if (!stateTarget || !['todo', ...TERMINAL].includes(category)) throw notSupported(NO_PROJECT, SETUP)
+    return null
+  }
+  if (status !== undefined) return namedOption(category, status, context)
+  const option = context.optionOf(category)
+  // A closed issue reads done or canceled whatever its option, so those two still move without one.
+  if (!option && !TERMINAL.includes(category)) throw notSupported(`no Status option of ${projectName(context)} stands for ${category}`, SETUP)
+  return option
+}
+
+function optionSteps(node, option, context) {
+  if (!option) return []
+  const item = itemOf(node, context)
+  const steps = item ? [] : [{ op: 'addItem' }]
+  if (item?.status?.name !== option.name) steps.push({ op: 'setStatus', option })
+  return steps
+}
+
+/** The reopen and close steps that bring the issue's state to the category's. */
+function stateSteps(node, category, context) {
+  const reason = CLOSE_REASON[category]
+  const closed = node.state === 'CLOSED'
+  if (!reason) return closed ? [{ op: 'reopen' }] : []
+  if (!closed) return [{ op: 'close', reason }]
+  // A closed DUPLICATE issue already reads as canceled, so a move to canceled keeps it closed as a duplicate.
+  return statusOf(node, context).category !== category ? [{ op: 'reopen' }, { op: 'close', reason }] : []
+}
+
+const PREVIEW_STEP = {
+  addItem: (next, step, context) => previewItem(next, context),
+  setStatus: (next, step, context) => {
+    previewItem(next, context).status = { __typename: 'ProjectV2ItemFieldSingleSelectValue', name: step.option.name, optionId: step.option.id }
+  },
+  reopen: (next) => Object.assign(next, { state: 'OPEN', stateReason: 'REOPENED' }),
+  close: (next, step) => Object.assign(next, { state: 'CLOSED', stateReason: step.reason }),
 }
 
 /**
@@ -262,46 +378,9 @@ export function planWrite(patch, { mode, before = null, context, parentNode = nu
  */
 export function planMove(node, category, { status } = {}, context) {
   if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
-  let option = null
-  // A state status of discover (Open, Closed, Closed as not planned) moves without an option, unless an option has that name.
-  const stateTarget = status !== undefined && STATE_CATEGORY[status] === category
-  if (!context.project) {
-    if ((status !== undefined && !stateTarget) || !['todo', ...TERMINAL].includes(category)) throw notSupported(NO_PROJECT, SETUP)
-  } else if (status !== undefined) {
-    const inCategory = context.project.options.filter((item) => context.categoryOfOption(item.name) === category)
-    option = inCategory.find((item) => item.name === status) ?? null
-    const named = context.project.options.some((item) => item.name === status)
-    // Open stands for todo only when no option does.
-    const stateMove = stateTarget && !named && (category !== 'todo' || inCategory.length === 0)
-    if (!option && !stateMove) throw invalid(`status ${status} is not in category ${category}`, inCategory.length > 0 ? `Use one of: ${inCategory.map((item) => item.name).join(', ')}` : SETUP)
-  } else {
-    option = context.optionOf(category)
-    // A closed issue reads done or canceled whatever its option, so those two still move without one.
-    if (!option && !TERMINAL.includes(category)) throw notSupported(`no Status option of ${projectName(context)} stands for ${category}`, SETUP)
-  }
-
-  const steps = []
-  const item = itemOf(node, context)
-  if (option) {
-    if (!item) steps.push({ op: 'addItem' })
-    if (item?.status?.name !== option.name) steps.push({ op: 'setStatus', option })
-  }
-  const reason = CLOSE_REASON[category]
-  if (!reason) {
-    if (node.state === 'CLOSED') steps.push({ op: 'reopen' })
-  } else if (node.state !== 'CLOSED') {
-    steps.push({ op: 'close', reason })
-  } else if (statusOf(node, context).category !== category) {
-    // A closed DUPLICATE issue already reads as canceled, so a move to canceled keeps it closed as a duplicate.
-    steps.push({ op: 'reopen' }, { op: 'close', reason })
-  }
-
+  const option = pickOption(category, status, context)
+  const steps = [...optionSteps(node, option, context), ...stateSteps(node, category, context)]
   const next = structuredClone(node)
-  for (const step of steps) {
-    if (step.op === 'addItem') previewItem(next, context)
-    if (step.op === 'setStatus') previewItem(next, context).status = { __typename: 'ProjectV2ItemFieldSingleSelectValue', name: step.option.name, optionId: step.option.id }
-    if (step.op === 'reopen') Object.assign(next, { state: 'OPEN', stateReason: 'REOPENED' })
-    if (step.op === 'close') Object.assign(next, { state: 'CLOSED', stateReason: step.reason })
-  }
+  for (const step of steps) PREVIEW_STEP[step.op](next, step, context)
   return { steps, node: next, after: toIssue(next, context) }
 }

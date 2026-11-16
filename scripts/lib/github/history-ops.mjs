@@ -2,9 +2,10 @@
 // See docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md, "History and comments" and "Decisions from the user" 4.
 
 import { PmkitError } from '../errors.mjs'
-import { ITEM_TYPES, issueDocuments } from './documents.mjs'
+import { ITEM_TYPES } from './documents.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
 import { toComment, toEvents } from './history.mjs'
+import { docsOf } from './requests.mjs'
 
 const PAGE = 100
 const BATCH = 20
@@ -29,11 +30,6 @@ function withHidden(list, keys) {
 
 /** The history and comment operations over a GitHub client and the issue operations `ops` (readNode, requireActor). */
 export function historyOperations({ client, ops, getContext, now = () => new Date() }) {
-  const documents = new WeakMap()
-  const docsOf = (context) => {
-    if (!documents.has(context)) documents.set(context, issueDocuments(context.features, context.projectFields))
-    return documents.get(context)
-  }
 
   /** Every timeline item of the issue with node id `id` since `since`, with the cap flag. */
   async function readTimeline(context, id, since) {

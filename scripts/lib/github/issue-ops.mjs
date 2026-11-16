@@ -8,10 +8,10 @@ import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refu
 import { PmkitError } from '../errors.mjs'
 import { checkFilter, issueComparator } from '../issue-filter.mjs'
 import { CATEGORIES } from '../model.mjs'
-import { issueDocuments } from './documents.mjs'
 import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
 import { itemOf, toIssue } from './issues.mjs'
+import { docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
 const PAGE_SIZE = 100
@@ -24,13 +24,6 @@ const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
  * passes one over its discovery memo, and refresh rereads GitHub. The writes read config.pmkit for pmkit's default branch.
  */
 export function issueOperations({ client, config, getContext }) {
-  const documents = new WeakMap()
-  /** The documents of a context's host and Project fields, built once per context. */
-  function docsOf(context) {
-    if (!documents.has(context)) documents.set(context, issueDocuments(context.features, context.projectFields))
-    return documents.get(context)
-  }
-
   /** Reads every page of each nested connection GitHub cut, so the node lists are complete before mapping. */
   async function completeNested(node, context) {
     const docs = docsOf(context)
@@ -137,7 +130,7 @@ export function issueOperations({ client, config, getContext }) {
     }
   }
 
-  const send = (context, name, input, withFields = false) => client.request(docsOf(context)[name], withFields ? { input, ...context.fieldVariables } : { input })
+  const send = sender(client)
   const afterOf = async (id) => (await readNode(id)).issue
   const withNotes = (result, notes) => (notes.length > 0 ? { ...result, notes } : result)
 

@@ -158,25 +158,10 @@ export async function fetchDiscovery(client, { host, repo, project, exec, users 
   const data = await client.request(repoQuery({ issueFields }), { owner, name })
   const repository = data?.repository
   if (!repository) throw new PmkitError('NOT_FOUND', `GitHub found no repository ${repo}`, 'Check tracker.scope.repo, and that the gh account can see the repository')
-  const truncated = []
-  if (repository.issueTypes?.pageInfo?.hasNextPage) truncated.push('issue types')
-  if (repository.issueFields?.pageInfo?.hasNextPage) truncated.push('issue fields')
-  if (repository.labels?.pageInfo?.hasNextPage) truncated.push('labels')
+  const truncated = TRUNCATED_LISTS.filter(([key]) => repository[key]?.pageInfo?.hasNextPage).map(([, kind]) => kind)
   const features = hostFeatures({ host, ghesVersion })
-  let assignable = []
-  if (users) {
-    const read = await fetchAssignableUsers(client, features, { owner, name })
-    if (read.truncated) truncated.push('assignable users')
-    assignable = read.users
-  }
-
-  let projectData = null
-  if (parseProject(project)) {
-    const read = await fetchProject(client, project, { issueFields })
-    if (read.truncated) truncated.push('Project fields')
-    projectData = read.project
-  }
-
+  const assignable = users ? await readNested(fetchAssignableUsers(client, features, { owner, name }), 'assignable users', truncated) : { users: [] }
+  const projectRead = parseProject(project) ? await readNested(fetchProject(client, project, { issueFields }), 'Project fields', truncated) : { project: null }
   return {
     version: 1,
     host,
@@ -184,14 +169,31 @@ export async function fetchDiscovery(client, { host, repo, project, exec, users 
     repositoryId: repository.id,
     ghesVersion,
     features,
+    ...repositoryLists(data, repository),
+    users: assignable.users,
+    project: projectRead.project,
+    truncated,
+  }
+}
+
+// The repository lists discovery reads in the first request, and the name a truncation warning gives each.
+const TRUNCATED_LISTS = [['issueTypes', 'issue types'], ['issueFields', 'issue fields'], ['labels', 'labels']]
+
+/** Awaits a read that pages on its own, and adds its kind to truncated when GitHub had more than it read. */
+async function readNested(promise, kind, truncated) {
+  const read = await promise
+  if (read.truncated) truncated.push(kind)
+  return read
+}
+
+/** The viewer, owner, issue types, issue fields and labels of the repository query's answer. */
+function repositoryLists(data, repository) {
+  return {
     viewer: { id: data.viewer?.id ?? null, login: data.viewer?.login ?? null, name: data.viewer?.name ?? null },
     owner: { login: repository.owner?.login ?? null, type: repository.owner?.__typename ?? null },
     issueTypes: (repository.issueTypes?.nodes ?? []).filter((node) => node?.isEnabled !== false).map((node) => ({ id: node.id, name: node.name, description: node.description ?? null })),
     issueFields: (repository.issueFields?.nodes ?? []).filter((node) => node?.name).map(field),
     labels: (repository.labels?.nodes ?? []).filter((node) => node?.name).map((node) => ({ id: node.id, name: node.name })),
-    users: assignable,
-    project: projectData,
-    truncated,
   }
 }
 

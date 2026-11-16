@@ -4,7 +4,7 @@
 import { PmkitError } from '../errors.mjs'
 import { compareGithubIds } from './ids.mjs'
 import { LINK_KINDS } from '../model.mjs'
-import { issueDocuments } from './documents.mjs'
+import { sender } from './requests.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const DEPTH = 10
@@ -19,12 +19,7 @@ function withLink(issue, other, kind, add) {
 
 /** The relation operations over a GitHub client and the issue operations `ops` (readNode, requireActor). */
 export function relationOperations({ client, ops, getContext }) {
-  const documents = new WeakMap()
-  const docsOf = (context) => {
-    if (!documents.has(context)) documents.set(context, issueDocuments(context.features, context.projectFields))
-    return documents.get(context)
-  }
-  const send = (context, name, input, withFields = false) => client.request(docsOf(context)[name], withFields ? { input, ...context.fieldVariables } : { input })
+  const send = sender(client)
 
   /** The checks before any read, then both issues. */
   async function pair(from, to, kind, actor) {
@@ -108,24 +103,32 @@ export function relationOperations({ client, ops, getContext }) {
     return chain
   }
 
-  /** `parent` is an issue id or null. A new parent replaces the current one (replaceParent), and null removes it. */
-  async function setParent(id, parent, actor, { dryRun = false } = {}) {
-    await ops.requireActor(actor)
-    const context = await getContext()
-    const { node, issue: before } = await ops.readNode(id)
-    if (parent === null) {
-      if (before.parent === undefined) return { before, after: before }
-      if (dryRun) return { before, after: { ...before, parent: undefined } }
-      await send(context, 'REMOVE_SUB_ISSUE', { issueId: node.parent.id, subIssueId: node.id })
-      return { before, after: await afterOf(before.id) }
-    }
-    let target
+  /** Removes the parent of an issue: { node, issue } from readNode. */
+  async function removeParent({ node, issue: before }, context, dryRun) {
+    if (before.parent === undefined) return { before, after: before }
+    if (dryRun) return { before, after: { ...before, parent: undefined } }
+    await send(context, 'REMOVE_SUB_ISSUE', { issueId: node.parent.id, subIssueId: node.id })
+    return { before, after: await afterOf(before.id) }
+  }
+
+  /** The node and issue of a new parent. A parent GitHub does not find is INVALID_INPUT, as a create's parent is. */
+  async function readParent(parent) {
     try {
-      target = await ops.readNode(parent)
+      return await ops.readNode(parent)
     } catch (error) {
       if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`parent ${parent} is not an existing issue`, 'pmkit issues list')
       throw error
     }
+  }
+
+  /** `parent` is an issue id or null. A new parent replaces the current one (replaceParent), and null removes it. */
+  async function setParent(id, parent, actor, { dryRun = false } = {}) {
+    await ops.requireActor(actor)
+    const context = await getContext()
+    const read = await ops.readNode(id)
+    if (parent === null) return removeParent(read, context, dryRun)
+    const { node, issue: before } = read
+    const target = await readParent(parent)
     if (target.issue.id === before.id) throw invalid(`${before.id} cannot be its own parent`)
     const chain = await ancestry(target.issue.id)
     const at = chain.indexOf(before.id)
