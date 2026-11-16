@@ -10,7 +10,7 @@ parent: EPC-8
 milestone: github-issues
 branch: pmk-84-decide-github-issues-authentication-and
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-16T17:39:14Z
+updated: 2026-11-16T17:57:11Z
 ---
 
 ## Description
@@ -19,4 +19,4 @@ Source: GitHub tab, Open questions (`gh` token, fine-grained PAT or GitHub App; 
 
 ## Acceptance criteria
 
-- [ ] An ADR in `docs/adr/` records the choices
+- [x] An ADR in `docs/adr/` records the choices

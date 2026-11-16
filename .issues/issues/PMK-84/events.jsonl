@@ -3,3 +3,4 @@
 {"at":"2026-11-16T17:39:14Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-16T17:39:14Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-84-decide-github-issues-authentication-and"}
 {"at":"2026-11-16T17:47:40Z","by":"fred","op":"comment","to":"2026-11-16T17-47-40Z-fred.md"}
+{"at":"2026-11-16T17:57:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
