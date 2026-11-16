@@ -1,6 +1,6 @@
 # PMK-86 design: GitHub discovery and the setup questions
 
-Issue PMK-86, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: draft, waiting for the user's approval. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-86, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: approved by the user on 2026-11-16, with the five answers below applied. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
