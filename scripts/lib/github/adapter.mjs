@@ -32,6 +32,13 @@ export function githubDescriptor({ exec } = {}) {
     configProblems: githubConfigProblems,
     // PMK-87 decides how an issue id reads; until then no id is an epic id.
     settings: () => ({ defaults: builtInDefaults(), epicPrefix: null }),
+    // The client and the runner that setup reads GitHub with before a config exists.
+    connect: async ({ root, env, host }) => {
+      const { createGithubClient } = await import('./client.mjs')
+      const { defaultExec } = await import('./host.mjs')
+      const run = exec ?? defaultExec({ root, env })
+      return { client: createGithubClient({ root, env, host, exec: run }), exec: run }
+    },
     create: async (config, { now, env }) => {
       const { createGithubTracker } = await import('./tracker.mjs')
       return createGithubTracker(config, { env, now, exec })

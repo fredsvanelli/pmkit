@@ -102,13 +102,38 @@ export function parseRepo(value) {
 const option = (node) => ({ id: node.id, name: node.name })
 const field = (node) => ({ id: node.id, name: node.name, dataType: node.dataType, options: (node.options ?? []).map(option) })
 
+/** True when the schema of this host has issue fields: github.com, GHE.com and GHES 3.21 or later. */
+export const hasIssueFields = (ghesVersion) => ghesVersion === null || compareVersions(ghesVersion, ISSUE_FIELDS_GHES) >= 0
+
+/**
+ * Reads one Project with its fields, as { project, truncated }. project is owner/number. A Project GitHub does not return is
+ * NOT_FOUND; a missing scope is the client's AUTH.
+ */
+export async function fetchProject(client, project, { issueFields = true } = {}) {
+  const picked = parseProject(project)
+  const reply = await client.request(projectQuery({ issueFields }), picked)
+  const node = reply?.repositoryOwner?.projectV2
+  if (!node) throw new PmkitError('NOT_FOUND', `GitHub Project ${project} does not exist, or the gh account cannot see it`, 'Check tracker.scope.project, or run /pmkit:setup to pick another Project')
+  return {
+    truncated: node.fields?.pageInfo?.hasNextPage === true,
+    project: {
+      id: node.id,
+      owner: picked.owner,
+      number: node.number,
+      title: node.title,
+      url: node.url,
+      fields: (node.fields?.nodes ?? []).filter((item) => item?.name).map((item) => ({ ...field(item), issueField: item.isIssueField === true })),
+    },
+  }
+}
+
 /**
  * Reads the repository, then the Project when `project` is owner/number, and returns the raw data setup and discover read.
  * exec runs the GHES check; a host that needs none never calls it.
  */
 export async function fetchDiscovery(client, { host, repo, project, exec }) {
   const ghesVersion = await checkGhesVersion({ exec, host })
-  const issueFields = ghesVersion === null || compareVersions(ghesVersion, ISSUE_FIELDS_GHES) >= 0
+  const issueFields = hasIssueFields(ghesVersion)
   const { owner, name } = parseRepo(repo) ?? {}
   const data = await client.request(repoQuery({ issueFields }), { owner, name })
   const repository = data?.repository
@@ -119,20 +144,10 @@ export async function fetchDiscovery(client, { host, repo, project, exec }) {
   if (repository.labels?.pageInfo?.hasNextPage) truncated.push('labels')
 
   let projectData = null
-  const picked = parseProject(project)
-  if (picked) {
-    const reply = await client.request(projectQuery({ issueFields }), picked)
-    const node = reply?.repositoryOwner?.projectV2
-    if (!node) throw new PmkitError('NOT_FOUND', `GitHub Project ${project} does not exist, or the gh account cannot see it`, 'Check tracker.scope.project, or run /pmkit:setup to pick another Project')
-    if (node.fields?.pageInfo?.hasNextPage) truncated.push('Project fields')
-    projectData = {
-      id: node.id,
-      owner: picked.owner,
-      number: node.number,
-      title: node.title,
-      url: node.url,
-      fields: (node.fields?.nodes ?? []).filter((item) => item?.name).map((item) => ({ ...field(item), issueField: item.isIssueField === true })),
-    }
+  if (parseProject(project)) {
+    const read = await fetchProject(client, project, { issueFields })
+    if (read.truncated) truncated.push('Project fields')
+    projectData = read.project
   }
 
   return {

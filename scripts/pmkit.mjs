@@ -38,6 +38,9 @@ import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
+import { HOST_NAME } from './lib/github/client.mjs'
+import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
+import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
@@ -881,9 +884,9 @@ async function flowInputs(tracker, statuses) {
 // `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear(feature).
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear writes only .pmkit/config.yaml and returns what setup must ask',
-    usage: '[--tracker local|linear] [--git-host github|none] [--workspace key] [--team KEY] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'workspace', 'team', 'status', 'field', 'type-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear or github writes only .pmkit/config.yaml and returns what setup must ask',
+    usage: '[--tracker local|linear|github] [--git-host github|none] [--workspace key] [--team KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'workspace', 'team', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
@@ -898,7 +901,9 @@ export const COMMANDS = [
       // A hosted manifest names its workspace; the Local one has none, so its output stays as it was.
       const hosted = manifest.workspace
         ? [['workspace', `${manifest.workspace.urlKey} (${manifest.workspace.plan})`], ['team', manifest.team ?? '(none)'], ['discovered', manifest.discoveredAt]]
-        : []
+        : manifest.repo
+          ? [['repository', `${manifest.repo} on ${manifest.host}`], ['project', manifest.project ?? 'none']]
+          : []
       const head = fields([['tracker', manifest.tracker], ['git host', manifest.gitHost], ...hosted])
       return { data: manifest, text: [...head, '', table(['Capability', 'Path', 'Detail'], rows)].join('\n'), warnings: manifest.warnings ?? [] }
     },
@@ -914,7 +919,15 @@ export const COMMANDS = [
             `workspace: ${d.workspace.name} (${d.workspace.urlKey}), plan ${d.workspace.plan}${d.auth ? `, viewer ${d.auth.viewer.name}` : ''}`,
             'teams:', ...(d.teams.length > 0 ? d.teams.map((t) => `  ${t.key}  ${t.name}  cycles ${onOff(t.cycles)}, triage ${onOff(t.triage)}, estimate ${t.estimate.type}`) : ['  (none)']),
           ]
-        : []
+        : d.repo
+          ? [
+              `repository: ${d.repo} on ${d.host}${d.ghesVersion ? ` (GitHub Enterprise Server ${d.ghesVersion})` : ''}${d.viewer?.id ? `, viewer ${d.viewer.id}` : ''}`,
+              `project: ${d.project ? `${d.project.owner}/${d.project.number} ${d.project.title}` : 'none'}`,
+              `issue types: ${d.issueTypes.map((type) => type.name).join(', ') || '(none)'}`,
+              'issue fields:', ...(d.issueFields.length > 0 ? d.issueFields.map((f) => `  ${f.name} (${f.dataType})`) : ['  (none)']),
+              ...(d.project ? ['project fields:', ...d.projectFields.map((f) => `  ${f.name} (${f.dataType})${f.issueField ? ', issue field' : ''}${f.options.length > 0 ? `: ${f.options.join(', ')}` : ''}`)] : []),
+            ]
+          : []
       const text = [
         ...hosted,
         'statuses:', ...d.statuses.map((s) => `  ${s.name} (${s.category})`),
@@ -3739,6 +3752,15 @@ function initLabels(ctx) {
 
 const LINEAR_FLAGS = ['workspace', 'team', 'status', 'field', 'type-label']
 const LOCAL_ONLY_FLAGS = ['prefix', 'id-style', 'estimate-unit', 'label', 'member', 'name', 'email', 'members-file']
+const GITHUB_FLAGS = ['host', 'repo', 'project']
+const HOSTED_INIT = ['linear', 'github']
+
+/** Refuses each flag of `flags` that the call passed: it applies only with --tracker `system`. */
+function rejectFlags(ctx, flags, system) {
+  for (const flag of flags) {
+    if (ctx.opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker ${system}`, `Remove --${flag}`)
+  }
+}
 
 function runInit(ctx) {
   const { opt } = ctx
@@ -3753,12 +3775,17 @@ function runInit(ctx) {
     } catch {
       // A file that does not parse is reported by the update path below.
     }
-    if (filed === 'linear' || requested === 'linear') {
+    if (HOSTED_INIT.includes(filed) || HOSTED_INIT.includes(requested)) {
       if (requested !== undefined && requested !== filed) throw new PmkitError('NOT_SUPPORTED', 'setup cannot switch trackers', 'Keep tracker.system as it is')
       system = filed
     }
   }
-  if (system === 'linear') return runInitLinear(ctx)
+  if (system === 'linear') {
+    rejectFlags(ctx, GITHUB_FLAGS, 'github')
+    return runInitLinear(ctx)
+  }
+  if (system === 'github') return runInitGithub(ctx)
+  rejectFlags(ctx, GITHUB_FLAGS, 'github')
   for (const flag of LINEAR_FLAGS) {
     if (opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker linear`, `Remove --${flag}`)
   }
@@ -4196,6 +4223,197 @@ async function runLinkRepo(ctx) {
 // The hosted branch of init: infers what it can from the workspace, returns what it must ask, and writes only .pmkit/config.yaml.
 // See docs/superpowers/specs/2026-10-27-pmk-34-ask-for-mappings-design.md, "The init call for Linear".
 const sameEntries = (a, b) => JSON.stringify(Object.entries(a ?? {}).sort()) === JSON.stringify(Object.entries(b ?? {}).sort())
+
+// The host and repository a GitHub setup uses: the flags, else the file, else the origin remote. GitHub's own aliases become github.com.
+function githubScope(ctx, held) {
+  const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS })
+  const parsed = remote.status === 0 ? parseRemoteUrl(remote.stdout.trim()) : null
+  const fromRemote = parsed && !parsed.owner.includes('/')
+    ? { host: ['www.github.com', 'ssh.github.com'].includes(parsed.host) ? 'github.com' : parsed.host, repo: `${parsed.owner}/${parsed.name}` }
+    : { host: undefined, repo: undefined }
+  const pick = (flag, key) => {
+    if (ctx.opt(flag) !== undefined) return { value: String(ctx.opt(flag)), source: 'the flags' }
+    if (typeof held[key] === 'string' && held[key] !== '') return { value: held[key], source: '.pmkit/config.yaml' }
+    return { value: fromRemote[key], source: 'the origin remote' }
+  }
+  const host = pick('host', 'host')
+  const repo = pick('repo', 'repo')
+  if (host.value === undefined || repo.value === undefined) {
+    throw usageError('setup cannot tell which GitHub repository holds the issues: the origin remote names none', 'Pass --host <host> --repo <owner/name>, such as --host github.com --repo acme/widgets')
+  }
+  if (!HOST_NAME.test(host.value)) throw usageError(`--host ${host.value} is not a host name`, 'Pass --host <host>, such as github.com')
+  if (!parseGithubRepo(repo.value)) throw usageError(`--repo ${repo.value} is not owner/name`, 'Pass --repo <owner/name>, such as acme/widgets')
+  const note = host.source === repo.source
+    ? `tracker.scope.host ${host.value} and tracker.scope.repo ${repo.value} come from ${host.source}`
+    : `tracker.scope.host ${host.value} comes from ${host.source}, and tracker.scope.repo ${repo.value} from ${repo.source}`
+  return { host: host.value, repo: repo.value, note }
+}
+
+// init --tracker github. See docs/specs/2026-11-16-pmk-86-github-discovery-and-setup-design.md, "Setup".
+async function runInitGithub(ctx) {
+  const { opt } = ctx
+  const update = ctx.flag('update')
+  for (const flag of LOCAL_ONLY_FLAGS) {
+    if (opt(flag) !== undefined || ctx.list(flag).length > 0) throw usageError(`GitHub sets --${flag} itself`, `Remove --${flag}`)
+  }
+  for (const flag of ['workspace', 'team']) {
+    if (opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker linear`, `Remove --${flag}`)
+  }
+  const gitHost = opt('git-host')
+  if (gitHost !== undefined && !GIT_HOSTS.includes(gitHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  const adapter = adapterFor('github', ctx.adapters)
+
+  const root = ctx.root
+  const pmkitFile = path.join('.pmkit', 'config.yaml')
+  const file = path.join(root, pmkitFile)
+  let before = null
+  let text
+  if (update) {
+    if (!fs.existsSync(file)) throw usageError('.pmkit/config.yaml does not exist, so there is no setup to update', 'Run init without --update')
+    before = normalized(fs.readFileSync(file, 'utf8'))
+    text = before
+  } else {
+    if (fs.existsSync(file)) throw new PmkitError('CONFLICT', `${slash(pmkitFile)} already exists`, 'Edit it, or delete it to start over')
+    const repo = originRepo(root)
+    text = fs.readFileSync(path.join(TEMPLATES, 'pmkit.config.yaml'), 'utf8')
+      .replace(/tracker:\n {2}system: .*\n {2}path: .*\n/, 'tracker:\n  system: github\n')
+      .replace(/git_host:\n {2}system: .*\n {2}repo: .*\n {2}default_branch: .*\n/, `git_host:\n  system: ${gitHost ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`)
+  }
+  const edit = (key, change) => {
+    try {
+      return change()
+    } catch (error) {
+      if (isPmkitError(error)) throw error
+      throw new PmkitError('INVALID_INPUT', `cannot set ${key} in ${slash(pmkitFile)}: ${error.message}`, `Edit ${key} in ${slash(pmkitFile)} by hand, then run init --update again`)
+    }
+  }
+  if (update && gitHost !== undefined) text = edit('git_host.system', () => setScalar(text, ['git_host', 'system'], gitHost))
+  let draft
+  try {
+    draft = parseYaml(text)
+  } catch (error) {
+    throw new PmkitError('INVALID_INPUT', `.pmkit/config.yaml is not valid YAML: ${error.message}`, 'Fix the file, then run init --update again')
+  }
+  const current = {
+    scope: draft?.tracker?.scope ?? {},
+    status: draft?.mappings?.status ?? {},
+    fields: draft?.mappings?.fields ?? {},
+    types: draft?.mappings?.types,
+  }
+  const scope = githubScope(ctx, current.scope)
+  // git_host github needs a repo. A remote that is not github.com (GHES, GHE.com) names none, so the tracker's repository fills it.
+  if ((draft?.git_host?.system ?? gitHost) === 'github' && !draft?.git_host?.repo) {
+    text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], originRepo(root) ?? scope.repo))
+  }
+  const notes = [scope.note]
+
+  // The repository first, with the default scopes. The Project is read only once it is chosen (ADR 0007).
+  const { client, exec } = await adapter.connect({ root, env: ctx.env, host: scope.host })
+  const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec })
+  const answer = opt('project') === undefined ? undefined : String(opt('project'))
+  const held = current.scope.project
+  const wanted = answer ?? (typeof held === 'string' ? held : undefined)
+  let heldMissing = false
+  if (wanted !== undefined && parseGithubProject(wanted)) {
+    try {
+      const read = await fetchGithubProject(client, wanted, { issueFields: hasIssueFields(raw.ghesVersion) })
+      raw.project = read.project
+      if (read.truncated) raw.truncated.push('Project fields')
+    } catch (error) {
+      if (!(answer === undefined && isPmkitError(error) && error.code === 'NOT_FOUND')) throw error
+      heldMissing = true
+    }
+  }
+  let projectStep = proposeProject({ answer, held, heldMissing })
+  if (projectStep.question) {
+    let linked = []
+    let linkedError = null
+    try {
+      linked = await fetchLinkedProjects(client, scope.repo)
+    } catch (error) {
+      if (!(isPmkitError(error) && error.code === 'AUTH')) throw error
+      linkedError = error
+    }
+    projectStep = proposeProject({ answer, held, heldMissing, linked, linkedError })
+  }
+
+  const defaults = withLocalDefaults({}).types
+  const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]
+  const flags = parseMappingFlags(ctx)
+  const proposal = projectStep.question
+    ? { applied: [], questions: [projectStep.question], broken: projectStep.broken, notes: [], values: null }
+    : proposeGithubSetup(raw, current, flags, types)
+  notes.push(...proposal.notes)
+
+  const put = (keys, value, was) => {
+    if (value !== undefined && value !== was) text = edit(keys.join('.'), () => setScalar(text, keys, value))
+  }
+  put(['tracker', 'scope', 'host'], scope.host, current.scope.host)
+  put(['tracker', 'scope', 'repo'], scope.repo, current.scope.repo)
+  if (proposal.values) {
+    put(['tracker', 'scope', 'project'], projectStep.value, held)
+    for (const [key, value] of Object.entries(proposal.values.status)) put(['mappings', 'status', key], value, current.status[key])
+    for (const [key, value] of Object.entries(proposal.values.fields)) put(['mappings', 'fields', key], value, current.fields[key])
+    if (proposal.values.types !== undefined && (current.types === undefined || !sameEntries(proposal.values.types, current.types))) {
+      text = edit('mappings.types', () => setMap(text, ['mappings', 'types'], proposal.values.types))
+    }
+  }
+  text = setSchemaLine(text, schemaUrl(SCHEMA_FILES.pmkit))
+  const refusal = pmkitConfigRefusal(text, { update })
+  if (refusal) throw refusal
+  const problems = adapter.configProblems(parseYaml(text))
+  if (problems.length > 0) {
+    throw usageError(`the ${update ? '' : 'generated '}.pmkit/config.yaml is not valid: ${problems.join('; ')}`,
+      update ? 'Fix .pmkit/config.yaml by hand, then run init --update again' : 'Fix the init flags')
+  }
+  if (!ctx.dryRun && proposal.questions.length > 0) {
+    throw new PmkitError('INVALID_INPUT', `setup has unanswered questions: ${proposal.questions.map((q) => q.path).join(', ')}`, '/pmkit:setup')
+  }
+  const entry = before === null
+    ? { path: slash(pmkitFile), action: 'create' }
+    : before === text ? { path: slash(pmkitFile), action: 'keep' } : { path: slash(pmkitFile), action: 'change', diff: lineDiff(before, text) }
+  if (!ctx.dryRun && (entry.action === 'create' || entry.action === 'change')) {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, text)
+  }
+
+  // The statuses as the answers leave them.
+  const view = proposal.values ? githubDiscoveryView(raw, { mappings: { status: { ...current.status, ...proposal.values.status } } }) : null
+  const project = raw.project ? { id: `${raw.project.owner}/${raw.project.number}`, title: raw.project.title } : null
+  const viewer = raw.viewer.login ? { id: raw.viewer.login, name: raw.viewer.name } : null
+  const statuses = view?.statuses ?? []
+  const data = {
+    dryRun: ctx.dryRun,
+    tracker: 'github',
+    host: scope.host,
+    repo: scope.repo,
+    project,
+    viewer,
+    applied: proposal.applied,
+    questions: proposal.questions,
+    broken: proposal.broken,
+    statuses,
+    notes,
+    files: [entry],
+  }
+  const lines = [
+    `repository: ${scope.repo} on ${scope.host}${raw.ghesVersion ? ` (GitHub Enterprise Server ${raw.ghesVersion})` : ''}${viewer ? `, viewer ${viewer.id}` : ''}`,
+    `project: ${project ? `${project.id} ${project.title}` : proposal.values ? 'none' : '(not chosen yet)'}`,
+    ...(proposal.applied.length > 0 ? ['applied:', ...proposal.applied.map((item) => `  ${item.path} = ${item.value} (${item.reason})`)] : []),
+    ...(proposal.broken.length > 0 ? ['broken:', ...proposal.broken.map((item) => `  ${item.problem}`)] : []),
+    ...(proposal.questions.length > 0
+      ? ['questions:', ...proposal.questions.map((q) => `  ${q.path}  ${q.flag}  one of: ${[...q.candidates, ...(q.required ? [] : ['none'])].join(', ')}${q.recommended ? `  (recommended: ${q.recommended})` : ''}`)]
+      : []),
+    ...(statuses.length > 0 ? ['statuses:', ...statuses.map((item) => `  ${item.name}  ${item.category}`)] : []),
+    ...notes.map((note) => `note: ${note}`),
+    ...proposal.questions.filter((q) => q.note).map((q) => `note: ${q.note}`),
+    ctx.dryRun ? 'files:' : 'wrote:',
+    `  ${entry.path}: ${ctx.dryRun && entry.action !== 'keep' ? 'would ' : ''}${entry.action}`,
+    ...(entry.diff ? ['', `${entry.path}:`, entry.diff.trimEnd()] : []),
+    ...(ctx.dryRun ? ['dry run: nothing was written'] : []),
+  ]
+  return { data, text: lines.join('\n'), warnings: view?.warnings.filter((warning) => !warning.startsWith('Status option')) ?? [] }
+}
 
 async function runInitLinear(ctx) {
   const { opt } = ctx
