@@ -4391,6 +4391,16 @@ async function resolveGithubProject(ctx, client, raw, held, repo) {
   return proposeProject({ answer, held, heldMissing, linked, linkedError })
 }
 
+/** The first lines of the GitHub init text: the repository and the Project. */
+function githubInitHeader(scope, raw, viewer, project, answered) {
+  const server = raw.ghesVersion ? ` (GitHub Enterprise Server ${raw.ghesVersion})` : ''
+  const chosen = answered ? 'none' : '(not chosen yet)'
+  return [
+    `repository: ${scope.repo} on ${scope.host}${server}${viewer ? `, viewer ${viewer.id}` : ''}`,
+    `project: ${project ? `${project.id} ${project.title}` : chosen}`,
+  ]
+}
+
 // init --tracker github. See docs/specs/2026-11-16-pmk-86-github-discovery-and-setup-design.md, "Setup".
 async function runInitGithub(ctx) {
   for (const flag of ['workspace', 'team']) {
@@ -4434,8 +4444,7 @@ async function runInitGithub(ctx) {
     applied: proposal.applied, questions: proposal.questions, broken: proposal.broken, statuses, notes, files: [entry],
   }
   const lines = [
-    `repository: ${scope.repo} on ${scope.host}${raw.ghesVersion ? ` (GitHub Enterprise Server ${raw.ghesVersion})` : ''}${viewer ? `, viewer ${viewer.id}` : ''}`,
-    `project: ${project ? `${project.id} ${project.title}` : proposal.values ? 'none' : '(not chosen yet)'}`,
+    ...githubInitHeader(scope, raw, viewer, project, proposal.values !== null),
     ...hostedInitLines(ctx, { proposal, statuses, notes: [...notes, ...proposal.questions.filter((q) => q.note).map((q) => q.note)], entry }),
   ]
   return { data, text: lines.join('\n'), warnings: view?.warnings.filter((warning) => !warning.startsWith('Status option')) ?? [] }

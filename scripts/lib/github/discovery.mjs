@@ -52,12 +52,8 @@ export function compareVersions(a, b) {
   return 0
 }
 
-/**
- * On GHES, reads installed_version from `gh api meta` and refuses a version below 3.19 (ADR 0007).
- * Returns the version, or null on github.com and GHE.com, where nothing runs.
- */
-export async function checkGhesVersion({ exec, host }) {
-  if (!needsVersionCheck(host)) return null
+/** Runs `gh api --hostname <host> meta` and returns its stdout, or throws the pmkit error of the failure. */
+function readMeta(exec, host) {
   let result
   try {
     result = exec('gh', ['api', '--hostname', host, 'meta'], { timeout: 30000 })
@@ -66,19 +62,31 @@ export async function checkGhesVersion({ exec, host }) {
     if (error.code === 'ETIMEDOUT') throw new PmkitError('UPSTREAM', `gh api meta did not answer for ${host} within 30 s`, `Check that ${host} is reachable, then retry`)
     throw error
   }
-  if (result.status !== 0) {
-    const stderr = result.stderr ?? ''
-    if (stderr.includes('gh auth login')) throw new PmkitError('AUTH', 'GitHub CLI is not logged in', `gh auth login -h ${host}`)
-    const line = hideAbsolutePaths(stderr.split(/\r?\n/).find((item) => item.trim()) ?? `exit ${result.status}`)
-    throw new PmkitError('UPSTREAM', `gh api meta failed for ${host}: ${line}`, `Check that ${host} is a GitHub Enterprise Server host`)
-  }
-  let version
+  if (result.status === 0) return result.stdout
+  const stderr = result.stderr ?? ''
+  if (stderr.includes('gh auth login')) throw new PmkitError('AUTH', 'GitHub CLI is not logged in', `gh auth login -h ${host}`)
+  const line = hideAbsolutePaths(stderr.split(/\r?\n/).find((item) => item.trim()) ?? `exit ${result.status}`)
+  throw new PmkitError('UPSTREAM', `gh api meta failed for ${host}: ${line}`, `Check that ${host} is a GitHub Enterprise Server host`)
+}
+
+/** installed_version of a meta document, or null when it has none that reads as a version. */
+function installedVersion(stdout) {
   try {
-    version = JSON.parse(result.stdout)?.installed_version
+    const version = JSON.parse(stdout)?.installed_version
+    return typeof version === 'string' && /^\d+(\.\d+)*$/.test(version) ? version : null
   } catch {
-    version = undefined
+    return null
   }
-  if (typeof version !== 'string' || !/^\d+(\.\d+)*$/.test(version)) {
+}
+
+/**
+ * On GHES, reads installed_version from `gh api meta` and refuses a version below 3.19 (ADR 0007).
+ * Returns the version, or null on github.com and GHE.com, where nothing runs.
+ */
+export async function checkGhesVersion({ exec, host }) {
+  if (!needsVersionCheck(host)) return null
+  const version = installedVersion(readMeta(exec, host))
+  if (version === null) {
     throw new PmkitError('UPSTREAM', `gh api meta did not return installed_version for ${host}`, `Check that ${host} is a GitHub Enterprise Server host`)
   }
   if (compareVersions(version, MINIMUM_GHES) < 0) {
