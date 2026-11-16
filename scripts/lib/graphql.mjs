@@ -81,8 +81,9 @@ export function operationName(document) {
 const positiveInteger = (value) => Number.isInteger(value) && value >= 1
 
 /** Throws a TypeError, before any request, for options that are a bug in the caller. Returns the page cap. */
-function checkPageOptions({ select, pageSize, limit, maxPages }, maxPageSize) {
+function checkPageOptions({ select, pageSize, limit, maxPages, stop }, maxPageSize) {
   if (typeof select !== 'function') throw new TypeError('paginate needs a select function')
+  if (stop !== undefined && typeof stop !== 'function') throw new TypeError('stop must be a function')
   if (!positiveInteger(pageSize) || pageSize > maxPageSize) throw new TypeError(`pageSize must be an integer from 1 to ${maxPageSize}`)
   if (maxPages !== undefined && !positiveInteger(maxPages)) throw new TypeError('maxPages must be an integer of at least 1')
   if (limit !== undefined && !positiveInteger(limit)) throw new TypeError('limit must be an integer of at least 1')
@@ -109,11 +110,13 @@ const validCursor = (cursor, after) => typeof cursor === 'string' && cursor !== 
  * Pages through a Relay connection: the document takes $first: Int! and $after: String, and select(data) returns the
  * connection. Returns { nodes, hasMore }, where hasMore says the loop stopped while the server still had a next page.
  * broken(name) builds the error for a page that is not a connection, has no cursor or repeats the last one.
+ * options.stop, when given, is awaited as stop(pageNodes, connection) after each page is added. When it returns true the
+ * loop ends after that page, and hasMore says whether the server still had a next page, as for a limit or the page cap.
  * The Linear and GitHub clients share it (PMK-30, PMK-85).
  */
 export async function paginateConnection(request, document, variables, options, { maxPageSize, broken }) {
   const pageSize = options.pageSize ?? 100
-  const { select, limit } = options
+  const { select, limit, stop } = options
   const cap = checkPageOptions({ ...options, pageSize }, maxPageSize)
   const fail = () => broken(operationName(document) ?? 'an anonymous query')
   const nodes = []
@@ -123,10 +126,11 @@ export async function paginateConnection(request, document, variables, options, 
     const connection = connectionOf(select, await request(document, { ...variables, first, after }))
     if (connection === null) throw fail()
     nodes.push(...connection.nodes)
+    const stopped = stop !== undefined && (await stop(connection.nodes, connection)) === true
     if (connection.pageInfo.hasNextPage !== true) return { nodes: nodes.slice(0, limit), hasMore: false }
     const cursor = connection.pageInfo.endCursor
     if (!validCursor(cursor, after)) throw fail()
-    if ((limit !== undefined && nodes.length >= limit) || pages >= cap) return { nodes: nodes.slice(0, limit), hasMore: true }
+    if (stopped || (limit !== undefined && nodes.length >= limit) || pages >= cap) return { nodes: nodes.slice(0, limit), hasMore: true }
     after = cursor
   }
 }

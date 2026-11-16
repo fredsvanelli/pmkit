@@ -56,3 +56,33 @@ test('paginateConnection names the operation of a broken page', async () => {
   await assert.rejects(paginateConnection(request, 'query Issues { c }', {}, { select: (d) => d.c }, { maxPageSize: 100, broken }), /broken Issues/)
   await assert.rejects(paginateConnection(request, '{ c }', {}, { select: (d) => d.c }, { maxPageSize: 100, broken }), /broken an anonymous query/)
 })
+
+test('paginateConnection runs stop after each page and ends the loop when it returns true', async () => {
+  const { request, calls } = pages(conn([1, 2], 'a'), conn([3, 4], 'b'), conn([5], null))
+  const seen = []
+  const stop = async (nodes, connection) => {
+    seen.push([nodes, connection.pageInfo.endCursor])
+    return nodes.includes(3)
+  }
+  const result = await paginateConnection(request, 'query P { c }', {}, { select: (d) => d.c, pageSize: 2, stop }, { maxPageSize: 100, broken })
+  assert.deepEqual(result, { nodes: [1, 2, 3, 4], hasMore: true })
+  assert.deepEqual(seen, [[[1, 2], 'a'], [[3, 4], 'b']])
+  assert.equal(calls.length, 2)
+})
+
+test('paginateConnection with stop says hasMore false when the stopping page was the last', async () => {
+  const { request } = pages(conn([1], null))
+  const result = await paginateConnection(request, 'query P { c }', {}, { select: (d) => d.c, stop: async () => true }, { maxPageSize: 100, broken })
+  assert.deepEqual(result, { nodes: [1], hasMore: false })
+})
+
+test('paginateConnection checks the cursor of a page before stop ends the loop', async () => {
+  const { request } = pages(conn([1], ''))
+  await assert.rejects(paginateConnection(request, 'query P { c }', {}, { select: (d) => d.c, stop: async () => true }, { maxPageSize: 100, broken }), /broken P/)
+})
+
+test('paginateConnection rejects a stop that is not a function before any request', async () => {
+  const { request, calls } = pages(conn([1], null))
+  await assert.rejects(paginateConnection(request, 'query P { c }', {}, { select: (d) => d.c, stop: true }, { maxPageSize: 100, broken }), TypeError)
+  assert.equal(calls.length, 0)
+})

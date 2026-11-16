@@ -9,18 +9,14 @@ import { notFound, parseIssueId } from './ids.mjs'
 import { toIssue } from './issues.mjs'
 
 const PAGE_SIZE = 100
-// A search reads at most this many pages of issues, 1000 issues.
-const MAX_PAGES = 10
 // The nested connections of the issue fragment that may have more pages than the fragment reads.
 const NESTED = ['labels', 'subIssues', 'blockedBy', 'blocking', 'relatesTo']
-const brokenPage = () => new PmkitError('UPSTREAM', 'GitHub returned a broken page for PmkitIssues', 'Retry, and check githubstatus.com if it keeps failing')
 const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 
 /**
  * The issue operations over a GitHub client. getContext({ refresh }) returns the context of makeContext; the tracker
- * passes one over its discovery memo, and refresh rereads GitHub.
+ * passes one over its discovery memo, and refresh rereads GitHub. The reads do not use config; the writes of later tasks do.
  */
-// config is unused by the reads; the writes of later tasks need it.
 export function issueOperations({ client, config, getContext }) {
   const documents = new WeakMap()
   /** The documents of a context's host and Project fields, built once per context. */
@@ -80,30 +76,25 @@ export function issueOperations({ client, config, getContext }) {
     // GitHub's order (created, oldest first) is pmkit's order for the created sort, so that read stops once limit issues passed.
     const enough = translated.sort === 'created' && translated.limit !== undefined ? translated.limit : Infinity
     const kept = []
-    let hasMore = false
-    let after = null
-    for (let page = 1; ; page += 1) {
-      const first = translated.serverLimit === undefined ? PAGE_SIZE : Math.min(PAGE_SIZE, translated.serverLimit - kept.length)
-      const connection = (await client.request(docsOf(context).ISSUES, { ...variables, first, after }))?.repository?.issues
-      if (!Array.isArray(connection?.nodes) || typeof connection.pageInfo !== 'object' || connection.pageInfo === null) throw brokenPage()
-      for (const node of connection.nodes) {
-        await completeNested(node, context)
-        const issue = toIssue(node, context)
-        if (translated.clientSteps.every((step) => step(issue, node))) kept.push(issue)
-      }
-      if (kept.length >= enough || connection.pageInfo.hasNextPage !== true) break
-      // The cap cut a read that still needed issues.
-      if (page >= MAX_PAGES) {
-        hasMore = true
-        break
-      }
-      const cursor = connection.pageInfo.endCursor
-      if (typeof cursor !== 'string' || cursor === '' || cursor === after) throw brokenPage()
-      after = cursor
-    }
+    let stopped = false
+    const { hasMore } = await client.paginate(docsOf(context).ISSUES, variables, {
+      select: (data) => data.repository.issues,
+      pageSize: PAGE_SIZE,
+      limit: translated.serverLimit,
+      stop: async (nodes) => {
+        for (const node of nodes) {
+          await completeNested(node, context)
+          const issue = toIssue(node, context)
+          if (translated.clientSteps.every((step) => step(issue, node))) kept.push(issue)
+        }
+        stopped = kept.length >= enough
+        return stopped
+      },
+    })
     const issues = kept.sort(issueComparator(translated.sort, context.priorities))
     const cut = translated.limit === undefined ? issues : issues.slice(0, translated.limit)
-    return { issues: cut, problems: [], hasMore }
+    // hasMore means the page cap cut a read that still needed issues, never that the limit was reached.
+    return { issues: cut, problems: [], hasMore: hasMore && !stopped }
   }
 
   return { getIssue, searchIssues, readNode }
