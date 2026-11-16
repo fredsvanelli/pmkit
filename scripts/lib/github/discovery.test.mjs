@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from '../../fake-gh.mjs'
+import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
 import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, needsVersionCheck, parseProject } from './discovery.mjs'
 

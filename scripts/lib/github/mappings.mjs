@@ -125,7 +125,7 @@ export function proposeProject({ answer, held, heldMissing = false, linked = [],
   }
   if (linkedError) {
     question.recommended = NONE
-    question.note = `pmkit could not list the Projects of this repository: ${linkedError.message}. To use a Project, run ${linkedError.nextStep} and run setup again`
+    question.note = `Setup could not list the Projects of this repository: ${linkedError.message}. To use a Project, run ${linkedError.nextStep} and run setup again`
   }
   const broken = []
   if (isSet(held) && heldMissing) {
