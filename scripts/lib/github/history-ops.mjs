@@ -9,7 +9,7 @@ import { toComment, toEvents } from './history.mjs'
 const PAGE = 100
 const BATCH = 20
 const STATUS_WARNING = 'on GitHub Enterprise Server before 3.21, Status option changes have no events, so moves show only as opens and closes'
-const CAP_WARNING = 'GitHub has more issues than the 1000 pmkit read; the events cover the 1000 oldest issues updated in the range'
+const CAP_WARNING = 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 oldest issues updated in the range'
 const noThreads = () => new PmkitError('NOT_SUPPORTED', 'GitHub issue comments have no threads', 'Post a new comment with pmkit issues comment')
 
 /** Compares an event time with a range bound by instant, so `2026-10-05T10:00:00Z` equals `2026-10-05T10:00:00.000Z`. */

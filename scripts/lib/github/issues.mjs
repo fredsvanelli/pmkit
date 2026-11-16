@@ -3,7 +3,7 @@
 
 import { parseDescription } from '../body-criteria.mjs'
 import { TERMINAL } from '../model.mjs'
-import { statusFieldOf } from './discovery.mjs'
+import { CLOSED, OPEN, statusFieldOf } from './discovery.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
 import { fieldOf, NONE, parseFieldSource } from './mappings.mjs'
 
@@ -110,9 +110,9 @@ export function statusOf(node, context) {
   const option = itemOf(node, context)?.status?.name
   if (node.state === 'CLOSED') {
     const canceled = node.stateReason === 'NOT_PLANNED' || node.stateReason === 'DUPLICATE'
-    return { name: option ?? 'Closed', category: canceled ? 'canceled' : 'done' }
+    return { name: option ?? CLOSED, category: canceled ? 'canceled' : 'done' }
   }
-  if (!option) return { name: 'Open', category: 'todo' }
+  if (!option) return { name: OPEN, category: 'todo' }
   return { name: option, category: context.categoryOfOption(option) }
 }
 

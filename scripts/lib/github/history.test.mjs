@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fakeGithubIssues } from '../../fake-github-issues.mjs'
 import { createGithubClient } from './client.mjs'
-import { fetchDiscovery } from './discovery.mjs'
+import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { toComment, toEvents } from './history.mjs'
 import { makeContext } from './issues.mjs'
+import { categoryLookup, lastEntry } from '../metrics.mjs'
 
 const PMKIT = {
   tracker: { system: 'github', scope: { host: 'github.com', repo: 'acme/widgets', project: 'acme/7' } },
@@ -61,25 +62,41 @@ test('an assign and an unassign are assign events on assignee', () => {
   assert.deepEqual(one(item('UnassignedEvent', 5, { assignee: { login: 'hubot' } })), [{ at: at(5), by: 'octocat', op: 'assign', field: 'assignee', from: 'hubot', to: null }])
 })
 
-test('a close is a move to done or canceled by its reason', () => {
+test('a close is a move to Closed, or to Closed as not planned by its reason', () => {
   const close = (stateReason) => one(item('ClosedEvent', 5, { stateReason }))[0]
-  assert.deepEqual(close('NOT_PLANNED'), { at: at(5), by: 'octocat', op: 'move', field: 'status', from: null, to: 'canceled' })
-  assert.equal(close('DUPLICATE').to, 'canceled')
-  assert.equal(close('COMPLETED').to, 'done')
-  assert.equal(close(null).to, 'done')
+  assert.deepEqual(close('NOT_PLANNED'), { at: at(5), by: 'octocat', op: 'move', field: 'status', from: null, to: 'Closed as not planned' })
+  assert.equal(close('DUPLICATE').to, 'Closed as not planned')
+  assert.equal(close('COMPLETED').to, 'Closed')
+  assert.equal(close(null).to, 'Closed')
 })
 
-test('a reopen is a move to the category the open issue reads now', () => {
+test('a reopen is a move to the status the open issue reads now, else Open', () => {
   const inProgress = { projectItems: { nodes: [{ project: { id: 'PVT_1' }, status: { name: 'In Progress' } }] } }
-  assert.deepEqual(one(item('ReopenedEvent', 5), inProgress), [{ at: at(5), by: 'octocat', op: 'move', field: 'status', from: null, to: 'in_progress' }])
-  assert.equal(one(item('ReopenedEvent', 5), { state: 'CLOSED', stateReason: 'COMPLETED' })[0].to, 'todo')
+  assert.deepEqual(one(item('ReopenedEvent', 5), inProgress), [{ at: at(5), by: 'octocat', op: 'move', field: 'status', from: null, to: 'In Progress' }])
+  assert.equal(one(item('ReopenedEvent', 5))[0].to, 'Open')
+  assert.equal(one(item('ReopenedEvent', 5), { ...inProgress, state: 'CLOSED', stateReason: 'COMPLETED' })[0].to, 'Open')
 })
 
-test('a Status change of the configured Project is a move between the two categories', () => {
+test('a Status change of the configured Project is a move between the two option names', () => {
   const change = item('ProjectV2ItemStatusChangedEvent', 5, { previousStatus: 'Todo', status: 'In Review', project: { id: 'PVT_1' } })
-  assert.deepEqual(one(change), [{ at: at(5), by: 'octocat', op: 'move', field: 'status', from: 'todo', to: 'in_review' }])
+  assert.deepEqual(one(change), [{ at: at(5), by: 'octocat', op: 'move', field: 'status', from: 'Todo', to: 'In Review' }])
   assert.equal(one({ ...change, previousStatus: '' })[0].from, null)
   assert.deepEqual(one({ ...change, project: { id: 'PVT_OTHER' } }), [])
+})
+
+test('the metrics category lookup over discover statuses maps every move the history emits', () => {
+  const categoryOf = categoryLookup(discoveryView(context.raw, PMKIT).statuses)
+  const moves = toEvents(node({ projectItems: { nodes: [{ project: { id: 'PVT_1' }, status: { name: 'In Review' } }] } }), [
+    item('ProjectV2ItemStatusChangedEvent', 1, { previousStatus: 'Backlog', status: 'In Progress', project: { id: 'PVT_1' } }),
+    item('ClosedEvent', 2, { stateReason: 'NOT_PLANNED' }),
+    item('ReopenedEvent', 3),
+    item('ClosedEvent', 4, { stateReason: 'COMPLETED' }),
+  ], context).filter((event) => event.op === 'move')
+  assert.deepEqual(moves.map((event) => [event.from && categoryOf(event.from), categoryOf(event.to)]), [
+    ['backlog', 'in_progress'], [null, 'canceled'], [null, 'in_review'], [null, 'done'],
+  ])
+  assert.equal(categoryOf('Open'), 'todo')
+  assert.equal(lastEntry(moves, 'done', categoryOf), at(4))
 })
 
 test('relation events are link and unlink events on the pmkit relation field', () => {

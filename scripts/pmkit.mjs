@@ -831,13 +831,18 @@ async function requireMember(ctx) {
   throw new PmkitError('NOT_CONFIGURED', 'cannot tell which member you are', nextStep)
 }
 
-/** The warning for a Linear read that a page cap cut: `history` and `comments` of one issue, or `issues` for the metric events. */
-function capWarning(kind, id) {
-  if (kind === 'history') return `Linear has more history for ${id} than the 1000 entries pmkit read; the oldest are missing`
-  if (kind === 'comments') return `Linear has more comments for ${id} than the 1000 pmkit read`
+/**
+ * The warning for a hosted read that a page cap cut: `history` and `comments` of one issue, or `issues` for the metric events.
+ * `system` is tracker.system. GitHub reads timelines and issues oldest first, so a cut drops the newest ones.
+ */
+export function capWarning(kind, id, system) {
+  const name = system === 'github' ? 'GitHub' : 'Linear'
+  if (kind === 'history') return `${name} has more history for ${id} than the 1000 entries pmkit read; the ${system === 'github' ? 'newest' : 'oldest'} are missing`
+  if (kind === 'comments') return `${name} has more comments for ${id} than the 1000 pmkit read`
+  if (system === 'github') return 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 oldest issues updated in the range'
   return 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
 }
-const capWarnings = (list, kind, id) => (list.truncated === true ? [capWarning(kind, id)] : [])
+const capWarnings = (list, kind, id, system) => (list.truncated === true ? [capWarning(kind, id, system)] : [])
 
 /** The one note for a metric command: the path native_metrics took, and for velocity the sprint count and the estimates. */
 async function metricNotes(tracker, metric, extra = {}) {
@@ -875,10 +880,10 @@ async function capabilityNotesOrNone(ctx, id = 'linked_code') {
 }
 
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
-async function flowInputs(tracker, statuses) {
+async function flowInputs(ctx, tracker, statuses) {
   const categoryOf = categoryLookup(statuses ?? (await tracker.discover()).statuses)
   const list = await tracker.metricEvents()
-  return { categoryOf, events: groupEventsByIssue(list), warnings: capWarnings(list, 'issues') }
+  return { categoryOf, events: groupEventsByIssue(list), warnings: capWarnings(list, 'issues', undefined, ctx.config().system) }
 }
 
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
@@ -1014,12 +1019,12 @@ export const COMMANDS = [
       const warnings = []
       if (ctx.flag('comments')) {
         data.comments = await tracker.listComments(issue.id)
-        warnings.push(...capWarnings(data.comments, 'comments', issue.id))
+        warnings.push(...capWarnings(data.comments, 'comments', issue.id, ctx.config().system))
         parts.push('', 'comments:', ...(data.comments.length > 0 ? data.comments.map(commentText) : ['(none)']))
       }
       if (ctx.flag('history')) {
         data.history = await tracker.getHistory(issue.id)
-        warnings.push(...capWarnings(data.history, 'history', issue.id))
+        warnings.push(...capWarnings(data.history, 'history', issue.id, ctx.config().system))
         parts.push('', 'history:', eventTable(data.history))
       }
       return { data, text: parts.join('\n'), warnings }
@@ -1894,7 +1899,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const window = ctx.opt('window') === undefined ? ctx.settings().defaults.velocity_window : whole('window', ctx.opt('window'))
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const sprints = await tracker.listCycles({ state: 'closed' })
       const bySprint = sprintIssues((await tracker.searchIssues({ archived: true })).issues, events, categoryOf)
       const result = velocity(sprints, bySprint, { window, categoryOf })
@@ -1908,7 +1913,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const issues = cycleTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
@@ -1921,7 +1926,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const issues = leadTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
@@ -1934,7 +1939,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const result = throughput(inRange, { categoryOf })
       const lines = [`count: ${result.count}`]
@@ -1949,7 +1954,7 @@ export const COMMANDS = [
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
       const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
       const asOf = new Date(Math.floor(asOfMs / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z')
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const issues = aging(events, { categoryOf, asOf })
       const stats = summary(issues.map((item) => item.days))
       const lines = issues.length > 0
@@ -1969,7 +1974,7 @@ export const COMMANDS = [
       for (const key of ['since', 'until']) if (ctx.opt(key) !== undefined) range[key] = dateText(key, ctx.opt(key))
       const tracker = await ctx.tracker()
       const events = await tracker.metricEvents(range)
-      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues'), notes: await metricNotes(tracker, 'events') }
+      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues', undefined, ctx.config().system), notes: await metricNotes(tracker, 'events') }
     },
   },
   {
@@ -3393,7 +3398,7 @@ async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = 
   // With no active sprint named nothing was read, so there is no age to compute.
   const aged = withAging && !noSprintNamed
   if (aged) {
-    const { categoryOf, events, warnings: capped } = await flowInputs(tracker, discovered.statuses)
+    const { categoryOf, events, warnings: capped } = await flowInputs(ctx, tracker, discovered.statuses)
     warnings.push(...capped)
     ages = aging(events, { categoryOf, asOf: ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z') })
   }

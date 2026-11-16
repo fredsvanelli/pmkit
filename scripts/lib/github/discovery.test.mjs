@@ -177,6 +177,9 @@ test('discoveryView gives each Status option its mapped category and warns about
     { name: 'In Progress', category: 'in_progress' },
     { name: 'In Review', category: 'in_progress' },
     { name: 'Done', category: 'done' },
+    { name: 'Open', category: 'todo' },
+    { name: 'Closed', category: 'done' },
+    { name: 'Closed as not planned', category: 'canceled' },
   ])
   assert.ok(view.warnings.includes('Status option In Review has no category in mappings.status; issues in it count as in_progress'))
 })
@@ -186,7 +189,7 @@ test('discoveryView reports open and closed when the repository has no Project',
   assert.equal(view.project, null)
   assert.deepEqual(view.projectFields, [])
   assert.deepEqual(view.statusOptions, [])
-  assert.deepEqual(view.statuses, [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }])
+  assert.deepEqual(view.statuses, [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }, { name: 'Closed as not planned', category: 'canceled' }])
   assert.ok(view.warnings.some((warning) => /tracker\.scope\.project is none/.test(warning)))
 })
 
@@ -222,8 +225,19 @@ test('checkGhesVersion maps a timeout to UPSTREAM', async () => {
 test('discoveryView warns about a Project without a Status field', async () => {
   const fixture = standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ extra: [{ __typename: 'ProjectV2Field', id: 'P', name: 'Notes', dataType: 'TEXT', isIssueField: false }] }) } })
   const view = discoveryView(await rawOf(fixture), pmkitWith({}))
-  assert.deepEqual(view.statuses, [])
+  assert.deepEqual(view.statuses.map((status) => status.name), ['Open', 'Closed', 'Closed as not planned'])
   assert.ok(view.warnings.includes('GitHub Project acme/7 has no single-select Status field'))
+})
+
+test('discoveryView leaves out a state status that a Status option already names', async () => {
+  const fixture = standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ status: ['Open', 'Doing', 'Closed'] }) } })
+  const view = discoveryView(await rawOf(fixture), pmkitWith({ status: { todo: 'Open', in_progress: 'Doing', done: 'Closed' } }))
+  assert.deepEqual(view.statuses, [
+    { name: 'Open', category: 'todo' },
+    { name: 'Doing', category: 'in_progress' },
+    { name: 'Closed', category: 'done' },
+    { name: 'Closed as not planned', category: 'canceled' },
+  ])
 })
 
 /** An exec that answers PmkitAssignableUsers by page from users, two per page, and everything else from the fixture. */

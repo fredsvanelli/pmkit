@@ -2,6 +2,7 @@
 // See docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md, "History and comments".
 
 import { issueIdOf } from './ids.mjs'
+import { CLOSED, CLOSED_NOT_PLANNED, OPEN } from './discovery.mjs'
 import { statusOf } from './issues.mjs'
 
 const loginOf = (user) => user?.login ?? null
@@ -30,7 +31,6 @@ function eventOf(item, node, context) {
   const meta = { at: item.createdAt, by: loginOf(item.__typename === 'IssueComment' ? item.author : item.actor) }
   const change = (op, field, from, to) => ({ ...meta, op, field, from: from ?? null, to: to ?? null })
   const typeOf = (issueType) => (issueType ? (context.typeOf(issueType.name) ?? issueType.name) : null)
-  const categoryOf = (option) => (option ? context.categoryOfOption(option) : null)
   switch (item.__typename) {
     case 'IssueComment': return { ...meta, op: 'comment', to: item.id }
     case 'RenamedTitleEvent': return change('update', 'title', item.previousTitle, item.currentTitle)
@@ -43,13 +43,13 @@ function eventOf(item, node, context) {
     case 'UnassignedEvent': return change('assign', 'assignee', loginOf(item.assignee), null)
     case 'ClosedEvent': {
       const canceled = item.stateReason === 'NOT_PLANNED' || item.stateReason === 'DUPLICATE'
-      return change('move', 'status', null, canceled ? 'canceled' : 'done')
+      return change('move', 'status', null, canceled ? CLOSED_NOT_PLANNED : CLOSED)
     }
-    // GitHub does not say which option the reopened issue went back to, so the move names the category the open issue reads now.
-    case 'ReopenedEvent': return change('move', 'status', null, statusOf({ ...node, state: 'OPEN', stateReason: null }, context).category)
+    // GitHub does not say which option the reopened issue went back to: the move names the status the issue reads now when it is open.
+    case 'ReopenedEvent': return change('move', 'status', null, node.state === 'OPEN' ? statusOf(node, context).name : OPEN)
     case 'ProjectV2ItemStatusChangedEvent':
       if (!context.project || item.project?.id !== context.project.id) return null
-      return change('move', 'status', categoryOf(item.previousStatus), categoryOf(item.status))
+      return change('move', 'status', item.previousStatus || null, item.status || null)
     default: {
       const link = LINKS[item.__typename]
       const other = link && item[link[2]]

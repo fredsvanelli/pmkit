@@ -215,20 +215,31 @@ export function estimateOf(raw, pmkit) {
   return { unit: 'points', scale: [] }
 }
 
-/** The statuses of the discover result: each Status option with its mapped category, or open and closed without a Project. */
+// The names pmkit gives an issue's state when no Status option names it: history moves use them, so discover lists them.
+export const OPEN = 'Open'
+export const CLOSED = 'Closed'
+export const CLOSED_NOT_PLANNED = 'Closed as not planned'
+const STATE_STATUSES = [{ name: OPEN, category: 'todo' }, { name: CLOSED, category: 'done' }, { name: CLOSED_NOT_PLANNED, category: 'canceled' }]
+
+/**
+ * The statuses of the discover result: each Status option with its mapped category, then Open, Closed and Closed as not planned,
+ * each unless an option has that name. Without a Project, only those three.
+ */
 function statusesOf(raw, status, warnings) {
   if (raw.project === null) {
     warnings.push('tracker.scope.project is none; statuses are open and closed only until PMK-89 adds the rest')
-    return [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }]
+    return STATE_STATUSES.map((entry) => ({ ...entry }))
   }
   const statusField = statusFieldOf(raw.project)
   if (!statusField) warnings.push(`GitHub Project ${raw.project.owner}/${raw.project.number} has no single-select Status field`)
   const categoryOf = new Map(Object.entries(status).filter(([category, value]) => category !== 'blocked' && typeof value === 'string' && value !== NONE).map(([category, value]) => [value, category]))
-  return (statusField?.options ?? []).map(({ name }) => {
+  const options = (statusField?.options ?? []).map(({ name }) => {
     const category = categoryOf.get(name)
     if (!category) warnings.push(`Status option ${name} has no category in mappings.status; issues in it count as in_progress`)
     return { name, category: category ?? 'in_progress' }
   })
+  const taken = new Set(options.map((option) => option.name))
+  return [...options, ...STATE_STATUSES.filter((entry) => !taken.has(entry.name)).map((entry) => ({ ...entry }))]
 }
 
 /** The assignable users as members, ids by login, with the viewer first when GitHub leaves the viewer out. */

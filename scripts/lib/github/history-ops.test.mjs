@@ -61,8 +61,8 @@ test('getHistory maps a Status change and a close to moves', async () => {
   await ops.moveToCategory(id, 'in_progress', ME)
   await ops.moveToCategory(id, 'done', ME)
   const moves = (await history.getHistory(id)).filter((event) => event.op === 'move')
-  assert.ok(moves.some((event) => event.to === 'in_progress'))
-  assert.equal(moves.at(-1).to, 'done')
+  assert.ok(moves.some((event) => event.to === 'In Progress'))
+  assert.equal(moves.at(-1).to, 'Closed')
 })
 
 test('getHistory on GHES 3.20 leaves the Status event type out and warns, without a JSON key', async () => {
@@ -187,6 +187,6 @@ test('metricEvents warns, without a JSON key, when the issue read stops at 1000 
   const events = await history.metricEvents()
   assert.equal(events.length, 1000)
   assert.equal(events.truncated, true)
-  assert.deepEqual(events.warnings, ['GitHub has more issues than the 1000 pmkit read; the events cover the 1000 oldest issues updated in the range'])
+  assert.deepEqual(events.warnings, ['GitHub has more issues than the 1000 pmkit read; the result covers the 1000 oldest issues updated in the range'])
   assert.equal(JSON.stringify(events).includes('warnings'), false)
 })
