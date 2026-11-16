@@ -18,6 +18,9 @@
 // `cycle('active')` or `cycle('planned')`. Without a provider the helper opens the cycle with openCycle, as the Local tracker
 // does. A provider that returns null skips the test, and the reason says which cycle is missing. A hosted adapter that cannot
 // open a cycle leaves out the `cycle-lifecycle` family and supplies a provider.
+//
+// The `threads` family covers reply chains and resolving a thread. An adapter whose comments have no threads leaves it out,
+// as GitHub issue comments do. The `history` family still covers listing and posting comments.
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -27,7 +30,7 @@ import { teamMembers } from './lib/team-capacity.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
+export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
 
 /** The members of the scope team: on Linear `discover().members` lists the whole workspace, and a capacity write refuses another team's user. */
 const scopeMembers = async (tracker) => {
@@ -233,7 +236,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.comment(id, '   ', actor), 'INVALID_INPUT')
     })
 
-    it('lists, replies to and resolves comment threads', ['history'], async ({ tracker, actor }) => {
+    it('lists, replies to and resolves comment threads', ['history', 'threads'], async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Threaded' }, actor)).after
       const root = await tracker.comment(id, 'Question', actor)
       const reply = await tracker.comment(id, 'Answer', actor, { replyTo: root.id })

@@ -28,7 +28,7 @@ import { PROBES } from './live-probes.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
 /** The families the Linear run covers. cycle-lifecycle, time, releases, milestone-writes and document-writes stay out. */
-export const LINEAR_FAMILIES = ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'documents']
+export const LINEAR_FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'milestones', 'documents']
 
 /** The reason the live run cannot start, or false when the gate is open. */
 export function skipReason(env) {
