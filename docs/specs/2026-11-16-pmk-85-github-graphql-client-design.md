@@ -77,8 +77,8 @@ The user also accepted three related mappings:
 
 | File | What changes |
 |---|---|
-| `scripts/lib/graphql.mjs` | New. `isMutation(document)` and `operationName(document)` move here from `scripts/lib/linear/client.mjs`, unchanged. Both clients need them, and the GitHub client must not import the Linear one **(builder's call)**. |
-| `scripts/lib/linear/client.mjs` | Imports both from `../graphql.mjs` and re-exports them, so its callers and tests do not change. |
+| `scripts/lib/graphql.mjs` | New. `isMutation(document)` and `operationName(document)` move here from `scripts/lib/linear/client.mjs`, unchanged, and `paginateConnection` holds the paging loop of both clients. Both clients need them, and the GitHub client must not import the Linear one **(builder's call)**. |
+| `scripts/lib/linear/client.mjs` | Imports the helpers from `../graphql.mjs` and re-exports `isMutation` and `operationName`, so its callers and tests do not change. Its `paginate` calls `paginateConnection` with a page size of at most 250, with the same messages. |
 | `scripts/lib/github/host.mjs` | Exports `INSTALL_STEP`, so the client's `NOT_CONFIGURED` step is the git host's. |
 | `scripts/lib/github/client.mjs` | New. `createGithubClient`. |
 | `scripts/lib/github/client.test.mjs` | New. Unit tests on an injected runner. |
@@ -126,7 +126,7 @@ The client checks the rows in order and stops at the first match. `<host step>` 
 | HTTP 401 | `AUTH` | `GitHub rejected the token of the gh login` | `Run gh auth login<host step>, or fix the token in GH_TOKEN or GH_ENTERPRISE_TOKEN` | no |
 | `INSUFFICIENT_SCOPES` | `AUTH` | `The gh login lacks a scope this query needs: <GitHub message>` | `gh auth refresh -s <scope><host step>`, `<scope>` as in question 2 | no |
 | `FORBIDDEN` with "not accessible by personal access token" | `AUTH` | `GitHub refused the personal access token: <GitHub message>` | the PAT step of question 2 | no |
-| A message with "SAML" | `AUTH` | `The organization's single sign-on blocks the gh token: <GitHub message>` | `Authorize the gh token for the organization's single sign-on on GitHub, then retry` | no |
+| GitHub's "protected by organization SAML enforcement" message (not any text with "SAML", which an echoed name can hold) | `AUTH` | `The organization's single sign-on blocks the gh token: <GitHub message>` | `Authorize the gh token for the organization's single sign-on on GitHub, then retry` | no |
 | `RATE_LIMITED`, HTTP 429, or HTTP 403 with "rate limit" in the body or stderr | `RATE_LIMITED` | `GitHub's rate limit for this login is used up` | `Wait <n> s and retry` from `Retry-After`, `Wait until <resetAt> and retry` when the limit is at 0, else `Wait a few minutes and retry` | no |
 | `FORBIDDEN`, or HTTP 403 | `AUTH` | `GitHub refused the request for the gh login: <GitHub message>` | `Check that the gh account can read and write the repository and its Project` | no |
 | `NOT_FOUND` | `NOT_FOUND` | `GitHub found nothing: <GitHub message>` | `Check the owner, repository and Project number, and that the gh account can see them` | no |
@@ -163,7 +163,7 @@ The client reads the `X-Ratelimit-*` headers of each answer it gets. `rateLimit(
 
 ### Paging
 
-`paginate(document, variables, { select, pageSize, limit, maxPages })` works as the Linear client's does: the document takes `$first: Int!` and `$after: String`, `select(data)` returns the connection, and the result is `{ nodes, hasMore }`. `pageSize` is an integer from 1 to 100, GitHub's maximum for `first`. Without a `limit`, `maxPages` defaults to 10. A connection without `nodes` or `pageInfo`, a next page with no cursor, or a cursor equal to the one before throws `UPSTREAM`, `GitHub returned a broken page for <operation name>`.
+`paginate(document, variables, { select, pageSize, limit, maxPages })` is the Linear client's loop, shared through `paginateConnection` in `scripts/lib/graphql.mjs` so it lives in one place: the document takes `$first: Int!` and `$after: String`, `select(data)` returns the connection, and the result is `{ nodes, hasMore }`. `pageSize` is an integer from 1 to 100, GitHub's maximum for `first`. Without a `limit`, `maxPages` defaults to 10. A connection without `nodes` or `pageInfo`, a next page with no cursor, or a cursor equal to the one before throws `UPSTREAM`, `GitHub returned a broken page for <operation name>`.
 
 ### Keeping the token out
 

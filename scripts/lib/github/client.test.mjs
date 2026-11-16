@@ -488,3 +488,17 @@ test('a repeated cursor is a broken page, so the loop ends', async () => {
   assert.equal(error.message, 'GitHub returned a broken page for Issues')
   assert.equal(calls.length, 2)
 })
+
+test('SAML in a name GitHub echoes is not a single sign-on refusal', async () => {
+  const body = { data: { repository: null }, errors: [{ type: 'NOT_FOUND', path: ['repository'], message: "Could not resolve to a Repository with the name 'acme/SAML-tools'." }] }
+  const { client } = setup([answer({ body })])
+  const error = await failure(client.request(QUERY))
+  assert.equal(error.code, 'NOT_FOUND')
+})
+
+test('a failure with no answer and no stderr names the exit status', async () => {
+  const { client } = setup([{ status: 3, stdout: '', stderr: '' }])
+  const error = await failure(client.request(QUERY))
+  assert.equal(error.message, 'gh api graphql failed: exit status 3')
+  assert.deepEqual(error.details, { github: { status: null, errors: [] } })
+})

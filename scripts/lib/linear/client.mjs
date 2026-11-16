@@ -3,7 +3,7 @@
 import { PmkitError } from '../errors.mjs'
 import { isCredentialKey, isCredentialString } from '../user-store.mjs'
 import { linearCredential } from './credential.mjs'
-import { isMutation, operationName } from '../graphql.mjs'
+import { isMutation, operationName, paginateConnection } from '../graphql.mjs'
 
 export { isMutation, operationName }
 
@@ -280,37 +280,12 @@ export function createLinearClient({
     return send(document, variables)
   }
 
-  const positiveInteger = (value) => Number.isInteger(value) && value >= 1
+  const paginate = (document, variables = {}, options = {}) =>
+    paginateConnection(request, document, variables, options, {
+      maxPageSize: 250,
+      broken: (name) => new PmkitError('UPSTREAM', `Linear returned a broken page for ${name}`, RETRY_STEP),
+    })
 
-  async function paginate(document, variables = {}, options = {}) {
-    const { select, pageSize = 100, limit, maxPages } = options
-    if (typeof select !== 'function') throw new TypeError('paginate needs a select function')
-    if (!positiveInteger(pageSize) || pageSize > 250) throw new TypeError('pageSize must be an integer from 1 to 250')
-    if (maxPages !== undefined && !positiveInteger(maxPages)) throw new TypeError('maxPages must be an integer of at least 1')
-    if (limit !== undefined && !positiveInteger(limit)) throw new TypeError('limit must be an integer of at least 1')
-    const cap = maxPages ?? (limit === undefined ? 10 : Infinity)
-    const broken = () =>
-      new PmkitError('UPSTREAM', `Linear returned a broken page for ${operationName(document) ?? 'an anonymous query'}`, RETRY_STEP)
-    const nodes = []
-    let after = null
-    for (let pages = 1; ; pages += 1) {
-      const first = limit === undefined ? pageSize : Math.min(pageSize, limit - nodes.length)
-      const data = await request(document, { ...variables, first, after })
-      let connection
-      try {
-        connection = select(data)
-      } catch {
-        throw broken()
-      }
-      if (!Array.isArray(connection?.nodes) || connection.pageInfo === null || typeof connection.pageInfo !== 'object') throw broken()
-      nodes.push(...connection.nodes)
-      if (connection.pageInfo.hasNextPage !== true) return { nodes: nodes.slice(0, limit), hasMore: false }
-      const cursor = connection.pageInfo.endCursor
-      if (typeof cursor !== 'string' || cursor === '' || cursor === after) throw broken()
-      if ((limit !== undefined && nodes.length >= limit) || pages >= cap) return { nodes: nodes.slice(0, limit), hasMore: true }
-      after = cursor
-    }
-  }
   function rateLimit() {
     if (!rate) return null
     const bucket = (state) => ({

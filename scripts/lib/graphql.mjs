@@ -77,3 +77,53 @@ export function operationName(document) {
   const operation = definitions(document)?.find((definition) => definition.keyword !== 'fragment')
   return operation?.name ?? null
 }
+
+const positiveInteger = (value) => Number.isInteger(value) && value >= 1
+
+/** Throws a TypeError, before any request, for options that are a bug in the caller. Returns the page cap. */
+function checkPageOptions({ select, pageSize, limit, maxPages }, maxPageSize) {
+  if (typeof select !== 'function') throw new TypeError('paginate needs a select function')
+  if (!positiveInteger(pageSize) || pageSize > maxPageSize) throw new TypeError(`pageSize must be an integer from 1 to ${maxPageSize}`)
+  if (maxPages !== undefined && !positiveInteger(maxPages)) throw new TypeError('maxPages must be an integer of at least 1')
+  if (limit !== undefined && !positiveInteger(limit)) throw new TypeError('limit must be an integer of at least 1')
+  // Without a limit, ten pages bound an unbounded call. With one, the limit bounds the loop.
+  return maxPages ?? (limit === undefined ? 10 : Infinity)
+}
+
+/** The connection select() picks from a page, or null when it is not one: no nodes list or no pageInfo object. */
+function connectionOf(select, data) {
+  let connection
+  try {
+    connection = select(data)
+  } catch {
+    return null
+  }
+  const valid = Array.isArray(connection?.nodes) && connection.pageInfo !== null && typeof connection.pageInfo === 'object'
+  return valid ? connection : null
+}
+
+/**
+ * Pages through a Relay connection: the document takes $first: Int! and $after: String, and select(data) returns the
+ * connection. Returns { nodes, hasMore }, where hasMore says the loop stopped while the server still had a next page.
+ * broken(name) builds the error for a page that is not a connection, has no cursor or repeats the last one.
+ * The Linear and GitHub clients share it (PMK-30, PMK-85).
+ */
+export async function paginateConnection(request, document, variables, options, { maxPageSize, broken }) {
+  const pageSize = options.pageSize ?? 100
+  const { select, limit } = options
+  const cap = checkPageOptions({ ...options, pageSize }, maxPageSize)
+  const fail = () => broken(operationName(document) ?? 'an anonymous query')
+  const nodes = []
+  let after = null
+  for (let pages = 1; ; pages += 1) {
+    const first = limit === undefined ? pageSize : Math.min(pageSize, limit - nodes.length)
+    const connection = connectionOf(select, await request(document, { ...variables, first, after }))
+    if (connection === null) throw fail()
+    nodes.push(...connection.nodes)
+    if (connection.pageInfo.hasNextPage !== true) return { nodes: nodes.slice(0, limit), hasMore: false }
+    const cursor = connection.pageInfo.endCursor
+    if (typeof cursor !== 'string' || cursor === '' || cursor === after) throw fail()
+    if ((limit !== undefined && nodes.length >= limit) || pages >= cap) return { nodes: nodes.slice(0, limit), hasMore: true }
+    after = cursor
+  }
+}

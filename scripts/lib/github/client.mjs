@@ -2,7 +2,7 @@
 // Every call runs `gh api graphql`, so the gh login is the credential. The client reads no variable from env and never sees a token.
 
 import { PmkitError } from '../errors.mjs'
-import { isMutation, operationName } from '../graphql.mjs'
+import { isMutation, paginateConnection } from '../graphql.mjs'
 import { hideAbsolutePaths } from '../paths.mjs'
 import { defaultExec, INSTALL_STEP } from './host.mjs'
 
@@ -100,12 +100,8 @@ function noAnswer(result, { mutation, host }) {
   return { error: new PmkitError('UPSTREAM', `gh api graphql failed: ${detail}`, 'Check the output of the same command in a terminal', details), retry: false }
 }
 
-/**
- * Reads one answer. Returns { data } on success, or { error, retry } where retry says whether a query may be sent again.
- * The rows follow the order of the spec's error table.
- */
-function classify(answer, stderr, { mutation, host }) {
-  const { status, headers } = answer
+/** The parts of an answer the error rows read: the reply, its errors, details, the first message and every text to search. */
+function readReply(answer, stderr) {
   let reply
   try {
     reply = JSON.parse(answer.body)
@@ -114,43 +110,71 @@ function classify(answer, stderr, { mutation, host }) {
   }
   const isObject = reply !== null && typeof reply === 'object' && !Array.isArray(reply)
   const errors = isObject && Array.isArray(reply.errors) ? reply.errors : []
-  const details = {
-    github: { status, errors: errors.map((error) => ({ type: error?.type ?? null, code: error?.extensions?.code ?? null, path: error?.path ?? null })) },
-  }
   // A REST-style refusal (401, 403) carries { message } instead of errors.
   const restMessage = isObject && typeof reply.message === 'string' ? reply.message : ''
-  const message = oneLine(errors[0]?.message ?? restMessage) || `HTTP ${status}`
-  const texts = [...errors.map((error) => String(error?.message ?? '')), restMessage, stderr].join('\n')
-  const types = errors.map((error) => error?.type)
-  const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, details), retry: false })
+  return {
+    reply: isObject ? reply : null,
+    errors,
+    types: errors.map((error) => error?.type),
+    details: { github: { status: answer.status, errors: errors.map((error) => ({ type: error?.type ?? null, code: error?.extensions?.code ?? null, path: error?.path ?? null })) } },
+    message: oneLine(errors[0]?.message ?? restMessage) || `HTTP ${answer.status}`,
+    texts: [...errors.map((error) => String(error?.message ?? '')), restMessage, stderr].join('\n'),
+  }
+}
 
+const isRateLimited = ({ types, texts }, status) => types.includes('RATE_LIMITED') || status === 429 || (status === 403 && /rate limit/i.test(texts))
+
+/** The rows where GitHub refused the login, its token or its pace: AUTH or RATE_LIMITED, never retried. Null when none matches. */
+function refusal(read, { status, headers }, host) {
+  const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, read.details), retry: false })
   if (status === 401) return fail('AUTH', 'GitHub rejected the token of the gh login', `Run gh auth login${hostStep(host)}, or fix the token in GH_TOKEN or GH_ENTERPRISE_TOKEN`)
-  const scopes = errors.find((error) => error?.type === 'INSUFFICIENT_SCOPES')
+  const scopes = read.errors.find((error) => error?.type === 'INSUFFICIENT_SCOPES')
   if (scopes) return fail('AUTH', `The gh login lacks a scope this query needs: ${oneLine(scopes.message)}`, `gh auth refresh -s ${scopeOf(scopes.message)}${hostStep(host)}`)
-  if (/not accessible by personal access token/i.test(texts)) {
-    return fail('AUTH', `GitHub refused the personal access token: ${message}`, `Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project${hostStep(host)}`)
+  if (/not accessible by personal access token/i.test(read.texts)) {
+    return fail('AUTH', `GitHub refused the personal access token: ${read.message}`, `Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project${hostStep(host)}`)
   }
-  if (/\bSAML\b/.test(texts)) return fail('AUTH', `The organization's single sign-on blocks the gh token: ${message}`, "Authorize the gh token for the organization's single sign-on on GitHub, then retry")
-  if (types.includes('RATE_LIMITED') || status === 429 || (status === 403 && /rate limit/i.test(texts))) return { error: rateLimited(headers, details), retry: false }
-  if (types.includes('FORBIDDEN') || status === 403) return fail('AUTH', `GitHub refused the request for the gh login: ${message}`, ACCESS_STEP)
-  if (status >= 500) return unconfirmed(`HTTP ${status}`, mutation, details)
-  const hasEnvelope = isObject && (reply.data !== undefined || reply.errors !== undefined)
-  const hasData = isObject && reply.data !== null && typeof reply.data === 'object'
-  if (!hasEnvelope || (errors.length === 0 && !hasData)) {
-    // An unreadable answer to a mutation does not say whether GitHub applied the change.
-    if (mutation) return unconfirmed(`unreadable answer (HTTP ${status})`, true, details)
-    return fail('UPSTREAM', `GitHub returned an unreadable answer (HTTP ${status})`, 'Update the GitHub CLI and retry')
+  // GitHub's own wording, so a name that holds "SAML" in an echoed message does not match.
+  if (/protected by organization SAML enforcement/i.test(read.texts)) {
+    return fail('AUTH', `The organization's single sign-on blocks the gh token: ${read.message}`, "Authorize the gh token for the organization's single sign-on on GitHub, then retry")
   }
-  const notFound = errors.find((error) => error?.type === 'NOT_FOUND')
+  if (isRateLimited(read, status)) return { error: rateLimited(headers, read.details), retry: false }
+  if (read.types.includes('FORBIDDEN') || status === 403) return fail('AUTH', `GitHub refused the request for the gh login: ${read.message}`, ACCESS_STEP)
+  return null
+}
+
+/** A body that is not a GraphQL envelope, or one with no errors and no data. Null when the body is readable. */
+function unreadable(read, status, mutation) {
+  const hasEnvelope = read.reply !== null && (read.reply.data !== undefined || read.reply.errors !== undefined)
+  const hasData = read.reply?.data !== null && typeof read.reply?.data === 'object'
+  if (hasEnvelope && (read.errors.length > 0 || hasData)) return null
+  // An unreadable answer to a mutation does not say whether GitHub applied the change.
+  if (mutation) return unconfirmed(`unreadable answer (HTTP ${status})`, true, read.details)
+  return { error: new PmkitError('UPSTREAM', `GitHub returned an unreadable answer (HTTP ${status})`, 'Update the GitHub CLI and retry', read.details), retry: false }
+}
+
+/** The GraphQL errors of a readable answer, and a status that is not 2xx. Null for a success. */
+function answerError(read, status, mutation) {
+  const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, read.details), retry: false })
+  const notFound = read.errors.find((error) => error?.type === 'NOT_FOUND')
   if (notFound) return fail('NOT_FOUND', `GitHub found nothing: ${oneLine(notFound.message)}`, 'Check the owner, repository and Project number, and that the gh account can see them')
   // A parse or validation error has no type: GitHub refused the document itself.
-  if (errors.length > 0 && !errors[0]?.type) return fail('UPSTREAM', `GitHub rejected pmkit's query: ${message}`, 'Update pmkit; if it still fails, report the query error')
-  if (errors.length > 0) return fail('UPSTREAM', `GitHub answered with an error: ${message}`, "Check the request against GitHub's message")
-  if (status < 200 || status >= 300) {
-    if (mutation) return unconfirmed(`HTTP ${status}`, true, details)
-    return fail('UPSTREAM', `GitHub answered HTTP ${status}`, RETRY_STEP)
-  }
-  return { data: reply.data }
+  if (read.errors.length > 0 && !read.types[0]) return fail('UPSTREAM', `GitHub rejected pmkit's query: ${read.message}`, 'Update pmkit; if it still fails, report the query error')
+  if (read.errors.length > 0) return fail('UPSTREAM', `GitHub answered with an error: ${read.message}`, "Check the request against GitHub's message")
+  if (status >= 200 && status < 300) return null
+  if (mutation) return unconfirmed(`HTTP ${status}`, true, read.details)
+  return fail('UPSTREAM', `GitHub answered HTTP ${status}`, RETRY_STEP)
+}
+
+/**
+ * Reads one answer. Returns { data } on success, or { error, retry } where retry says whether a query may be sent again.
+ * The rows follow the order of the spec's error table.
+ */
+function classify(answer, stderr, { mutation, host }) {
+  const read = readReply(answer, stderr)
+  const refused = refusal(read, answer, host)
+  if (refused) return refused
+  if (answer.status >= 500) return unconfirmed(`HTTP ${answer.status}`, mutation, read.details)
+  return unreadable(read, answer.status, mutation) ?? answerError(read, answer.status, mutation) ?? { data: read.reply.data }
 }
 
 export function createGithubClient({
@@ -211,36 +235,11 @@ export function createGithubClient({
     return send(document, variables)
   }
 
-  const positiveInteger = (value) => Number.isInteger(value) && value >= 1
-
-  async function paginate(document, variables = {}, options = {}) {
-    const { select, pageSize = MAX_PAGE, limit, maxPages } = options
-    if (typeof select !== 'function') throw new TypeError('paginate needs a select function')
-    if (!positiveInteger(pageSize) || pageSize > MAX_PAGE) throw new TypeError(`pageSize must be an integer from 1 to ${MAX_PAGE}`)
-    if (maxPages !== undefined && !positiveInteger(maxPages)) throw new TypeError('maxPages must be an integer of at least 1')
-    if (limit !== undefined && !positiveInteger(limit)) throw new TypeError('limit must be an integer of at least 1')
-    const cap = maxPages ?? (limit === undefined ? 10 : Infinity)
-    const broken = () => new PmkitError('UPSTREAM', `GitHub returned a broken page for ${operationName(document) ?? 'an anonymous query'}`, RETRY_STEP)
-    const nodes = []
-    let after = null
-    for (let pages = 1; ; pages += 1) {
-      const first = limit === undefined ? pageSize : Math.min(pageSize, limit - nodes.length)
-      const data = await request(document, { ...variables, first, after })
-      let connection
-      try {
-        connection = select(data)
-      } catch {
-        throw broken()
-      }
-      if (!Array.isArray(connection?.nodes) || connection.pageInfo === null || typeof connection.pageInfo !== 'object') throw broken()
-      nodes.push(...connection.nodes)
-      if (connection.pageInfo.hasNextPage !== true) return { nodes: nodes.slice(0, limit), hasMore: false }
-      const cursor = connection.pageInfo.endCursor
-      if (typeof cursor !== 'string' || cursor === '' || cursor === after) throw broken()
-      if ((limit !== undefined && nodes.length >= limit) || pages >= cap) return { nodes: nodes.slice(0, limit), hasMore: true }
-      after = cursor
-    }
-  }
+  const paginate = (document, variables = {}, options = {}) =>
+    paginateConnection(request, document, variables, options, {
+      maxPageSize: MAX_PAGE,
+      broken: (name) => new PmkitError('UPSTREAM', `GitHub returned a broken page for ${name}`, RETRY_STEP),
+    })
 
   function rateLimit() {
     if (!rate) return null
