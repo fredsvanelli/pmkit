@@ -84,6 +84,10 @@ _Avoid_: status type, stage, phase
 A line under `mappings` in `.pmkit/config.yaml` that ties a pmkit category, `blocked`, a field role or an issue type to a hosted tracker's own name, such as `in_review: In Review` or `bug: Bug`. Setup writes the mappings it infers and the ones the user answers. `none` means the team has no such status or field. When a mapping names something the tracker no longer has, every command stops and offers `/pmkit:setup`.
 _Avoid_: binding, alias
 
+**Issue field**:
+A field that a GitHub organization defines on its issues, such as Priority or Effort, with a value on the issue itself. A Project field, by contrast, exists only on a Projects v2 board and only for the issues added to it. On GitHub Issues, the mapping of each field role reads an issue field first, then a Project field, then `none` (ADR 0007).
+_Avoid_: custom field
+
 **Blocked**:
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.
 _Avoid_: on hold, stuck, waiting
