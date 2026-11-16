@@ -10,7 +10,7 @@ import { fieldOf, NONE, parseFieldSource } from './mappings.mjs'
 export const PRIORITIES = ['urgent', 'high', 'medium', 'low']
 
 // Each role reads one key of mappings.fields, and one alias and variable on the Project item.
-const ROLES = {
+export const ROLES = {
   priority: { key: 'priority', flag: 'priority', alias: 'fPriority', variable: 'fPriority' },
   estimate: { key: 'estimate', flag: 'estimate', alias: 'fEstimate', variable: 'fEstimate' },
   due: { key: 'target_date', flag: 'due', alias: 'fDue', variable: 'fDue' },

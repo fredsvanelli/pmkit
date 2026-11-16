@@ -1,12 +1,18 @@
-// The issue operations of the GitHub adapter. This part reads: getIssue, searchIssues and readNode.
-// See docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md, "Ids", "The issue fragment" and "Search".
+// The issue operations of the GitHub adapter: the reads (getIssue, searchIssues, readNode) and the writes (createIssue,
+// updateIssue with its linked branch, moveToCategory, assign, archive, delete).
+// See docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md, "Ids", "The issue fragment", "Search", "Writes",
+// "moveToCategory (criterion 2)", "assign, archive and delete" and "The issue's branch (decision 6)".
 
+import { resolveDefaultBranch } from '../config.mjs'
+import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { PmkitError } from '../errors.mjs'
 import { checkFilter, issueComparator } from '../issue-filter.mjs'
+import { CATEGORIES } from '../model.mjs'
 import { issueDocuments } from './documents.mjs'
 import { translateFilter } from './filter.mjs'
-import { notFound, parseIssueId } from './ids.mjs'
-import { toIssue } from './issues.mjs'
+import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
+import { itemOf, toIssue } from './issues.mjs'
+import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
 const PAGE_SIZE = 100
 // The nested connections of the issue fragment that may have more pages than the fragment reads.
@@ -15,7 +21,7 @@ const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 
 /**
  * The issue operations over a GitHub client. getContext({ refresh }) returns the context of makeContext; the tracker
- * passes one over its discovery memo, and refresh rereads GitHub. The reads do not use config; the writes of later tasks do.
+ * passes one over its discovery memo, and refresh rereads GitHub. The writes read config.pmkit for pmkit's default branch.
  */
 export function issueOperations({ client, config, getContext }) {
   const documents = new WeakMap()
@@ -97,5 +103,241 @@ export function issueOperations({ client, config, getContext }) {
     return { issues: cut, problems: [], hasMore: hasMore && !stopped }
   }
 
-  return { getIssue, searchIssues, readNode }
+  // Writes.
+
+  const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
+  const CLOSE_WORDS = { COMPLETED: 'completed', NOT_PLANNED: 'not planned' }
+
+  /** The viewer check: GitHub records every write as the gh login, so any other actor would make pmkit's output disagree with GitHub. */
+  async function requireActor(actor) {
+    const login = (await getContext()).raw.viewer?.login ?? null
+    if (typeof actor !== 'string' || login === null || actor.toLowerCase() !== login.toLowerCase()) {
+      throw invalid(`GitHub records every write as the gh login (${login})`, 'Drop --as, or log gh in as that user')
+    }
+  }
+
+  /** The actor check and the scope repository check of a write on an existing issue, both before any read. Returns the context. */
+  async function writable(id, actor) {
+    await requireActor(actor)
+    const context = await getContext()
+    const parsed = parseIssueId(id, context.repo)
+    if (parsed && parsed.repo !== context.repo) throw invalid(`pmkit writes issues of ${context.repo} only`)
+    return context
+  }
+
+  /** Builds with the current context; when the build names something the discovery may not know yet, refreshes once and builds again. */
+  async function withRefresh(build) {
+    const context = await getContext()
+    try {
+      return { value: await build(context), context }
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.details?.stale !== true) throw error
+      const fresh = await getContext({ refresh: true })
+      return { value: await build(fresh), context: fresh }
+    }
+  }
+
+  const send = (context, name, input, withFields = false) => client.request(docsOf(context)[name], withFields ? { input, ...context.fieldVariables } : { input })
+  const afterOf = async (id) => (await readNode(id)).issue
+  const withNotes = (result, notes) => (notes.length > 0 ? { ...result, notes } : result)
+
+  /**
+   * Runs steps of { done, doing, run } in order. A failure after a change exists throws UPSTREAM naming what changed and what did not;
+   * `created` is the id of an issue this write just created, and the message then follows the spec's create wording.
+   */
+  async function runSteps(id, steps, { created = false } = {}) {
+    const done = []
+    for (const [index, step] of steps.entries()) {
+      try {
+        await step.run()
+      } catch (error) {
+        if (!(error instanceof PmkitError) || (!created && done.length === 0)) throw error
+        const rest = steps.slice(index + 1).map((item) => item.doing)
+        const head = created ? `created issue ${id}` : done.join(', then ')
+        const tail = rest.length > 0 ? `. pmkit did not try ${rest.join(', ')}` : ''
+        throw new PmkitError('UPSTREAM', `GitHub ${head}, but ${step.doing} failed: ${error.message}${tail}`, `pmkit issues get ${id}, then repeat the step that failed`, {
+          done, failed: step.doing, notDone: rest, cause: error.code,
+        })
+      }
+      done.push(step.done)
+    }
+  }
+
+  /** The step of one move op. item holds the Project item id, which addItem sets. */
+  function moveStep(op, id, nodeId, item, context) {
+    const project = context.project && projectName(context)
+    if (op.op === 'addItem') {
+      return { done: `added ${id} to ${project}`, doing: `adding it to ${project}`, run: async () => { item.id = await addItem(nodeId, context) } }
+    }
+    if (op.op === 'setStatus') {
+      const input = () => ({ projectId: context.project.id, itemId: item.id, fieldId: context.project.statusField.id, value: { singleSelectOptionId: op.option.id } })
+      return { done: `set the Status of ${id} to ${op.option.name}`, doing: `setting its Status to ${op.option.name}`, run: () => send(context, 'SET_PROJECT_FIELD', input()) }
+    }
+    if (op.op === 'reopen') return { done: `reopened ${id}`, doing: 'reopening it', run: () => send(context, 'REOPEN_ISSUE', { issueId: nodeId }, true) }
+    const words = CLOSE_WORDS[op.reason]
+    return { done: `closed ${id} as ${words}`, doing: `closing it as ${words}`, run: () => send(context, 'CLOSE_ISSUE', { issueId: nodeId, stateReason: op.reason }, true) }
+  }
+
+  /** The step of one field write. A Project field needs the item, which an earlier step adds when the issue has none. */
+  function fieldStep(write, id, nodeId, item, context) {
+    const run = () => {
+      if (write.source === 'issue') return send(context, 'SET_ISSUE_FIELD', { issueId: nodeId, issueFields: [write.write] })
+      const target = { projectId: context.project.id, itemId: item.id, fieldId: write.fieldId }
+      return write.write === null ? send(context, 'CLEAR_PROJECT_FIELD', target) : send(context, 'SET_PROJECT_FIELD', { ...target, value: write.write })
+    }
+    return { done: `wrote the ${write.role} of ${id}`, doing: `writing its ${write.role}`, run }
+  }
+
+  async function addItem(nodeId, context) {
+    return (await send(context, 'ADD_PROJECT_ITEM', { projectId: context.project.id, contentId: nodeId })).addProjectV2ItemById.item.id
+  }
+
+  /** The fragment node of a parent id on create. An id that is not an existing issue is INVALID_INPUT. */
+  async function parentNodeOf(parent) {
+    if (parent === undefined || parent === null) return null
+    try {
+      return (await readNode(parent)).node
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`parent ${parent} is not an existing issue or epic`, 'pmkit issues list')
+      throw error
+    }
+  }
+
+  async function createIssue(input, actor, { dryRun = false } = {}) {
+    await requireActor(actor)
+    const parentNode = await parentNodeOf(input?.parent)
+    const { value: plan, context } = await withRefresh((current) => planWrite(input ?? {}, { mode: 'create', context: current, parentNode }))
+    if (dryRun) return { before: null, after: plan.after }
+    const node = (await send(context, 'CREATE_ISSUE', plan.input, true)).createIssue.issue
+    const id = issueIdOf(node, context.repo)
+    const item = { id: null }
+    const steps = [
+      ...(context.project ? [{ done: `added ${id} to ${projectName(context)}`, doing: `adding it to ${projectName(context)}`, run: async () => { item.id = await addItem(node.id, context) } }] : []),
+      ...plan.fields.map((write) => fieldStep(write, id, node.id, item, context)),
+      ...plan.move.map((op) => moveStep(op, id, node.id, item, context)),
+    ]
+    await runSteps(id, steps, { created: true })
+    return { before: null, after: await afterOf(id) }
+  }
+
+  async function branchHead(branch, context) {
+    const [owner, name] = context.repo.split('/')
+    const data = await client.request(docsOf(context).BRANCH_HEAD, { owner, name, qualifiedName: `refs/heads/${branch}` })
+    return { oid: data?.repository?.ref?.target?.oid ?? null, repositoryId: data?.repository?.id ?? context.raw.repositoryId }
+  }
+
+  /**
+   * The linked branch an update creates: { name, oid, repositoryId, note }, or null when the issue has that branch already. It starts at
+   * the GitHub head of base (pmkit's default branch when base is missing), never at GitHub's own default branch. A base GitHub lacks
+   * falls back to pmkit's default branch with a note.
+   */
+  async function planBranch(name, before, base, context) {
+    if (name === undefined || before.branch === name) return null
+    if (before.branch !== undefined) throw invalid(`GitHub links ${before.id} to branch ${before.branch} already`, `Use the branch name ${before.branch}`)
+    const fallback = resolveDefaultBranch(config?.pmkit).branch
+    const start = (base ?? fallback).replace(/^origin\//, '')
+    let head = await branchHead(start, context)
+    let note = null
+    if (head.oid === null && start !== fallback) {
+      head = await branchHead(fallback, context)
+      note = `GitHub has no branch ${start}, so pmkit linked ${name} at the head of ${fallback} there`
+    }
+    if (head.oid === null) throw invalid(`GitHub has no branch ${fallback} to start ${name} from`, `Push ${fallback} to origin, or pass --from <a branch on GitHub>`)
+    return { name, oid: head.oid, repositoryId: head.repositoryId, note }
+  }
+
+  /** `base` is the branch the linked branch starts from, without origin/. */
+  async function updateIssue(id, patch, actor, { dryRun = false, base } = {}) {
+    await writable(id, actor)
+    const { node, issue: before } = await readNode(id)
+    const { value: plan, context } = await withRefresh((current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current }))
+    const branch = await planBranch(plan.branch, before, base, context)
+    const notes = branch?.note ? [branch.note] : []
+    const item = { id: itemOf(node, context)?.id ?? null }
+    const steps = []
+    if (Object.keys(plan.input).length > 0) steps.push({ done: `updated ${before.id}`, doing: 'updating it', run: () => send(context, 'UPDATE_ISSUE', { id: node.id, ...plan.input }, true) })
+    if (item.id === null && plan.fields.some((write) => write.source === 'project')) {
+      steps.push({ done: `added ${before.id} to ${projectName(context)}`, doing: `adding it to ${projectName(context)}`, run: async () => { item.id = await addItem(node.id, context) } })
+    }
+    steps.push(...plan.fields.map((write) => fieldStep(write, before.id, node.id, item, context)))
+    if (branch) {
+      const input = { issueId: node.id, repositoryId: branch.repositoryId, name: branch.name, oid: branch.oid }
+      steps.push({ done: `linked branch ${branch.name} to ${before.id}`, doing: `linking branch ${branch.name}`, run: () => send(context, 'CREATE_LINKED_BRANCH', input) })
+    }
+    if (steps.length === 0) return { before, after: before }
+    if (dryRun) return withNotes({ before, after: plan.after }, notes)
+    await runSteps(before.id, steps)
+    return withNotes({ before, after: await afterOf(before.id) }, notes)
+  }
+
+  async function moveToCategory(id, category, actor, { status, dryRun = false } = {}) {
+    if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
+    const context = await writable(id, actor)
+    const { node, issue: before } = await readNode(id)
+    const move = planMove(node, category, { status }, context)
+    if (move.steps.length === 0) return { before, after: before }
+    if (dryRun) return { before, after: move.after }
+    const item = { id: itemOf(node, context)?.id ?? null }
+    await runSteps(before.id, move.steps.map((op) => moveStep(op, before.id, node.id, item, context)))
+    return { before, after: await afterOf(before.id) }
+  }
+
+  /** `who` is a login, 'me' for the viewer, or null to unassign. GitHub's assignees are replaced by the one given. */
+  async function assign(id, who, actor, { dryRun = false } = {}) {
+    const context = await writable(id, actor)
+    const login = who === 'me' ? context.raw.viewer.login : who
+    const user = login === null ? null : (await withRefresh((current) => requireAssignable(current, login))).value
+    const { node, issue: before } = await readNode(id)
+    const current = node.assignees?.nodes ?? []
+    const unchanged = user === null ? current.length === 0 : current.length === 1 && current[0].login.toLowerCase() === user.login.toLowerCase()
+    if (unchanged) return { before, after: before }
+    if (dryRun) return { before, after: toIssue({ ...node, assignees: { nodes: user ? [user] : [] } }, context) }
+    await send(context, 'UPDATE_ISSUE', { id: node.id, assigneeIds: user ? [user.id] : [] }, true)
+    return { before, after: await afterOf(before.id) }
+  }
+
+  async function archive(id, actor, { dryRun = false } = {}) {
+    const context = await writable(id, actor)
+    if (!context.project) throw new PmkitError('NOT_SUPPORTED', `tracker.scope.project is none, so pmkit has no Project to archive ${id} in`, 'Set tracker.scope.project with /pmkit:setup')
+    const { node, issue: before } = await readNode(id)
+    const item = itemOf(node, context)
+    if (!item) throw invalid(`${before.id} is not in ${projectName(context)}`, `pmkit issues move ${before.id} <category> adds it`)
+    if (item.isArchived) return { before, after: before }
+    if (dryRun) return { before, after: { ...before, archived: true } }
+    await send(context, 'ARCHIVE_ITEM', { projectId: context.project.id, itemId: item.id })
+    return { before, after: await afterOf(before.id) }
+  }
+
+  /**
+   * The issues that point at the issue: those it blocks, those related to it and its sub-issues. GitHub shows no list of the issues
+   * marked as duplicates of it, so delete names that as unchecked.
+   */
+  function referencesTo(node, context) {
+    const ids = (field) => (node[field]?.nodes ?? []).map((other) => issueIdOf(other, context.repo))
+    const found = [
+      ...ids('blocking').map((id) => ({ id, kind: 'blockedBy' })),
+      ...ids('relatesTo').map((id) => ({ id, kind: 'related' })),
+      ...ids('subIssues').map((id) => ({ id, kind: 'parent' })),
+    ]
+    const unique = [...new Map(found.map((ref) => [`${ref.id} ${ref.kind}`, ref])).values()]
+    return unique.sort((a, b) => compareGithubIds(a.id, b.id) || REFERENCE_KINDS.indexOf(a.kind) - REFERENCE_KINDS.indexOf(b.kind))
+  }
+
+  /** Deletes an issue with deleteIssue. GitHub has no trash. It refuses, sending nothing, while another issue references it. */
+  async function deleteIssue(id, actor, { dryRun = false } = {}) {
+    const context = await writable(id, actor)
+    const { node, issue: before } = await readNode(id)
+    const references = referencesTo(node, context)
+    if (references.length > 0) throw referencedError(before.id, references)
+    const warnings = before.branch === undefined ? [] : [`branch ${before.branch} and its pull request stay as they are`]
+    const result = {
+      before, after: null, removes: { issue: true }, references: [], mentions: [], warnings,
+      unchecked: ['issues marked as duplicates of it', 'the bodies and comments of other issues', REPO_UNCHECKED],
+    }
+    if (dryRun) return result
+    await send(context, 'DELETE_ISSUE', { issueId: node.id })
+    return result
+  }
+
+  return { getIssue, searchIssues, readNode, requireActor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue }
 }
