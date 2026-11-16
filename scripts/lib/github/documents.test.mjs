@@ -16,8 +16,19 @@ const MUTATIONS = {
 }
 const QUERIES = {
   ISSUE: 'PmkitIssue', ISSUES: 'PmkitIssues', TIMELINE: 'PmkitTimeline', TIMELINES: 'PmkitTimelines', COMMENTS: 'PmkitComments',
-  BRANCH_HEAD: 'PmkitBranchHead', ASSIGNABLE_USERS: 'PmkitAssignableUsers',
+  BRANCH_HEAD: 'PmkitBranchHead', ASSIGNABLE_USERS: 'PmkitAssignableUsers', METRIC_ISSUES: 'PmkitMetricIssues',
 }
+
+test('the metric issue read selects only what toEvents reads, and the Status variable alone', () => {
+  const docs = issueDocuments(GITHUB, ALL_FIELDS)
+  for (const field of ['id', 'number', 'title', 'state', 'stateReason', 'createdAt', 'repository { nameWithOwner }', 'author { login }', 'status: fieldValueByName(name: $fStatus)']) {
+    assert.ok(docs.METRIC_ISSUES.includes(field), field)
+  }
+  for (const field of ['PmkitIssueFields', 'labels', 'subIssues', 'blockedBy', 'relatesTo', 'issueFieldValues', '$fPriority', 'body']) {
+    assert.ok(!docs.METRIC_ISSUES.includes(field), field)
+  }
+  assert.ok(!issueDocuments(GITHUB, {}).METRIC_ISSUES.includes('$fStatus'))
+})
 
 test('hostFeatures per host', () => {
   assert.deepEqual(GITHUB, { issueFields: true, relatesTo: true, statusEvents: true })

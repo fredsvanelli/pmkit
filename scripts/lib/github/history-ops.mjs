@@ -76,8 +76,9 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
   /** The issue nodes updated since `since`, most recently updated first, so a cut at 1000 issues keeps the ones the metrics need most. */
   async function readIssues(context, since) {
     const [owner, name] = context.repo.split('/')
-    const variables = { owner, name, filterBy: since === undefined ? {} : { since }, orderBy: { field: 'UPDATED_AT', direction: 'DESC' }, ...context.fieldVariables }
-    return client.paginate(docsOf(context).ISSUES, variables, { pageSize: PAGE, select: (data) => data.repository.issues })
+    const status = context.projectFields.status ? { fStatus: context.fieldVariables.fStatus } : {}
+    const variables = { owner, name, filterBy: since === undefined ? {} : { since }, orderBy: { field: 'UPDATED_AT', direction: 'DESC' }, ...status }
+    return client.paginate(docsOf(context).METRIC_ISSUES, variables, { pageSize: PAGE, select: (data) => data.repository.issues })
   }
 
   /** Every timeline of the nodes since `since`, by node id: 20 issues per read, and the rest of a long timeline one issue at a time. */

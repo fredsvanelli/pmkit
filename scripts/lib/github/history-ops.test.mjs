@@ -152,7 +152,7 @@ test('metricEvents over 25 issues sends one issue read and two timeline reads an
   for (let index = 0; index < 25; index += 1) fake.seed({ title: `Seeded ${index}`, createdAt: `2026-11-0${1 + (index % 9)}T10:00:00.000Z` })
   clear()
   const events = await history.metricEvents()
-  assert.deepEqual(names(fake.reads), ['PmkitIssues', 'PmkitTimelines', 'PmkitTimelines'])
+  assert.deepEqual(names(fake.reads), ['PmkitMetricIssues', 'PmkitTimelines', 'PmkitTimelines'])
   assert.deepEqual(fake.reads.filter((call) => call.name === 'PmkitTimelines').map((call) => call.variables.ids.length), [20, 5])
   assert.equal(events.length, 25)
   assert.deepEqual(new Set(events.map((event) => event.issue)).size, 25)
@@ -185,7 +185,7 @@ test('metricEvents reads the rest of a timeline longer than 100 items', async ()
   clear()
   const events = await history.metricEvents()
   assert.equal(events.length, 121)
-  assert.deepEqual(names(fake.reads), ['PmkitIssues', 'PmkitTimelines', 'PmkitTimeline', 'PmkitTimeline'])
+  assert.deepEqual(names(fake.reads), ['PmkitMetricIssues', 'PmkitTimelines', 'PmkitTimeline', 'PmkitTimeline'])
 })
 
 test('metricEvents marks the cut, without a JSON key and without a warning of its own, when the issue read stops at 1000 issues', async () => {

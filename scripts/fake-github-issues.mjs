@@ -390,6 +390,10 @@ function build(state) {
           : (a, b) => a.createdAt.localeCompare(b.createdAt) || a.number - b.number)
       return { repository: { issues: connection(listed.map((record) => issueNode(record, vars)), vars.first, vars.after) } }
     },
+    // The slim issue read of metricEvents: the full nodes are a superset of what it selects.
+    PmkitMetricIssues(vars) {
+      return queries.PmkitIssues(vars)
+    },
     PmkitIssueMore(vars, name) {
       const field = name.slice('PmkitIssueMore_'.length)
       const lists = listsOf(issueById(vars.id), vars)

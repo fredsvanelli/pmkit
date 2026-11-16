@@ -68,6 +68,8 @@ function timelineNodes(features) {
 /** The documents of the issue operations for one host. projectFields says which Project field aliases the issue fragment carries. */
 export function issueDocuments(features, projectFields = {}) {
   const vars = fieldVariables(projectFields)
+  // The Status of each item, archived ones included as in the issue fragment, for the open issues a ReopenedEvent names.
+  const metricStatus = projectFields?.status ? `projectItems(first: 20, includeArchived: true) { nodes { project { id } status: fieldValueByName(name: $fStatus) ${PROJECT_VALUE} } }` : ''
   const ITEM_SELECTION = `id isArchived project { id } ${fieldSelections(projectFields)}`
   const fragment = `fragment PmkitIssueFields on Issue {
   id number title body state stateReason createdAt updatedAt url
@@ -128,6 +130,12 @@ ${fragment}`,
   }
 }
 ${fragment}`,
+    // The issue read of metricEvents: only what toEvents reads, so a read of up to 1000 issues stays small.
+    METRIC_ISSUES: `query PmkitMetricIssues(${declare('$owner: String!', '$name: String!', '$first: Int!', '$after: String', '$filterBy: IssueFilters', '$orderBy: IssueOrder!', projectFields?.status ? '$fStatus: String!' : [])}) {
+  repository(owner: $owner, name: $name) {
+    issues(first: $first, after: $after, filterBy: $filterBy, orderBy: $orderBy) { nodes { id number title state stateReason createdAt ${REPO} author { login } ${metricStatus} } ${PAGE} }
+  }
+}`,
     MORE,
     TIMELINE: `query PmkitTimeline($id: ID!, $first: Int!, $after: String, $since: DateTime, ${itemTypesVariable}) {
   node(id: $id) { ... on Issue { ${timelineConnection('$first', 'after: $after, ')} } }
