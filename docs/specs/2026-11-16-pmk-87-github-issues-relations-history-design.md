@@ -266,15 +266,15 @@ The client pages up to 10 pages, 1000 issues. The result is `{ issues, problems:
 | `LabeledEvent`, `UnlabeledEvent` | `update`, field `labels`, `to` or `from` the label |
 | `IssueTypeAddedEvent`, `IssueTypeChangedEvent`, `IssueTypeRemovedEvent` | `update`, field `type`, the pmkit type when mapped, else the issue type name |
 | `AssignedEvent`, `UnassignedEvent` | `assign`, field `assignee` |
-| `ClosedEvent`, `ReopenedEvent` | `move`, field `status`, to `done`, `canceled` or the category the open issue reads now |
-| `ProjectV2ItemStatusChangedEvent` (github.com, GHE.com, GHES 3.21+) | `move`, field `status`, the categories of the two options |
+| `ClosedEvent`, `ReopenedEvent` | `move`, field `status`, to `Closed` (completed or no reason) or `Closed as not planned` (not planned or duplicate); a reopen goes to the status name the open issue reads now, else `Open` |
+| `ProjectV2ItemStatusChangedEvent` (github.com, GHE.com, GHES 3.21+) | `move`, field `status`, the names of the two options |
 | `BlockedBy*`, `Blocking*`, `ParentIssue*`, `SubIssue*`, `MarkedAsDuplicate`, `UnmarkedAsDuplicate` events | `link` or `unlink`, field `blockedBy`, `blocks`, `parent`, `children` or `duplicateOf` |
 
-`by` is the actor's login, `null` for a deleted account. Events sort by `at`. On GHES 3.19 and 3.20 the Status option changes have no events, and the result's `warnings` on `getHistory` says that status moves show only as opens and closes there **(builder's call)**.
+`by` is the actor's login, `null` for a deleted account. Events sort by `at`. Move events carry status names, as Linear's do, because the metrics map names to categories through `discover().statuses`. `discover().statuses` therefore lists `Open` (`todo`), `Closed` (`done`) and `Closed as not planned` (`canceled`) after the Status options, each only when no option has that name, and `moveToCategory` accepts these names in `status` as targets with no option: they open or close the issue and keep its option. `Open` counts only when no option maps to `todo` **(rulings during Task 10)**. On GHES 3.19 and 3.20 the Status option changes have no events, and the result's `warnings` on `getHistory` says that status moves show only as opens and closes there **(builder's call)**.
 
 `listComments(id)` reads `comments(first: 100)`, paged, as `{ id, issue, author, body, created }`. `comment(id, body, actor)` sends `addComment` and refuses an empty body with `INVALID_INPUT`. `replyTo` and `resolveThread` answer `NOT_SUPPORTED` (decision 4).
 
-`metricEvents({ since, until })` reads the issues updated since `since` through `repository.issues`, then their timelines through `nodes(ids)` in batches of 20, so one call reads 20 timelines **(builder's call: one `gh` process per issue would take minutes on a busy repository)**. It tags each event with `issue`, filters by `until`, and sorts by `at`. It keeps the 1000-issue cap and returns `hasMore` through a warning.
+`metricEvents({ since, until })` reads the issues updated since `since` through `repository.issues`, most recently updated first, so the cap keeps the issues the metrics need, then their timelines through `nodes(ids)` in batches of 20, so one call reads 20 timelines **(builder's call: one `gh` process per issue would take minutes on a busy repository)**. It tags each event with `issue`, filters by `until`, and sorts by `at`. It keeps the 1000-issue cap and returns `hasMore` through a warning.
 
 ### The issue's branch (decision 6)
 
