@@ -173,6 +173,12 @@ test('host and repo come from the flags, and a GHES remote host is used as is', 
   assert.ok(flagged.notes.includes('tracker.scope.host acme.ghe.com and tracker.scope.repo acme/widgets come from the flags'))
 })
 
+test('a repo from a flag and a host from the remote get a note that names both sources', async () => {
+  const data = dataOf(await cli(fresh(), [...INIT, '--repo', 'acme/other', '--dry-run', '--json']))
+  assert.equal(data.repo, 'acme/other')
+  assert.ok(data.notes.includes('tracker.scope.host github.com comes from the origin remote, and tracker.scope.repo acme/other from the flags'))
+})
+
 test('ssh.github.com and www.github.com remotes give the host github.com', async () => {
   for (const remote of ['ssh://git@ssh.github.com:443/acme/widgets.git', 'https://www.github.com/acme/widgets']) {
     const data = dataOf(await cli(fresh({ remote }), [...INIT, '--dry-run', '--json']))
