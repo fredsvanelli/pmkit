@@ -119,7 +119,7 @@ A write that would create an issue in, or change the fields of, another reposito
 
 The repository query adds `id`, `labels { nodes { id name } }`, `viewer { id login name }` and `assignableUsers(first: 100) { nodes { id login name } pageInfo }`, paged to 10 pages. `discover().members` lists them as `{ id: login, name, email: null }`, with the viewer first when GitHub leaves the viewer out **(builder's call)**.
 
-The tracker keeps the raw discovery as the Linear tracker does: a memo per run, then the user store (`cacheGet` and `cachePut`, key `github-<host>-<owner>/<name>`, one hour), then GitHub. `discover()` always reads GitHub and refreshes the cache, so `pmkit discover` shows the live state.
+The tracker keeps the raw discovery as the Linear tracker does: a memo per run, then the user store (`cacheGet` and `cachePut`, key `github-<host>-<owner>/<name>`, one hour), then GitHub. `discover({ refresh: true })` reads GitHub and refreshes the cache; `pmkit discover` and setup pass it, so they show the live state. `discover()` without it reads through the memo and the cache.
 
 Every operation but `discover` and `capabilities` runs through `guarded`: it checks `tracker.scope.host` and `repo`, then `brokenGithubMappings` on the raw discovery. A broken list from the cache triggers one refresh and a second check. A mapping still broken fails with `NOT_CONFIGURED`, `a mapping in .pmkit/config.yaml names something GitHub no longer has: ...`, next step `/pmkit:setup`, and `details.mappings`, the shape the conventions read.
 

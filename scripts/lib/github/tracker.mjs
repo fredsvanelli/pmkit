@@ -78,10 +78,11 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
     return current
   }
 
-  // discover always reads GitHub and refreshes the cache, so pmkit discover shows the live state.
-  async function discover() {
+  // discover reads through the memo and the cache, as Linear's does. pmkit discover and setup pass refresh: true, which reads
+  // GitHub and rewrites the cache, so they show the live state.
+  async function discover({ refresh = false } = {}) {
     requireScope()
-    const { raw, warnings } = await discovery({ refresh: true })
+    const { raw, warnings } = await discovery({ refresh })
     const view = discoveryView(raw, config.pmkit)
     view.warnings.push(...warnings)
     return view

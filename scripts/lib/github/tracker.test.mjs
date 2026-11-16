@@ -98,17 +98,30 @@ test('discover lists the assignable users as members', async () => {
   assert.equal(found.raw.repositoryId, 'R_1')
 })
 
-test('a second tracker reads the discovery from the cache, while discover always reads GitHub', async () => {
+test('a second tracker reads the discovery from the cache, while discover with refresh reads GitHub', async () => {
   const context = issuesContext()
   const fake = fakeGithubIssues()
-  await githubTracker(context, fake).discover()
+  await githubTracker(context, fake).discover({ refresh: true })
   assert.equal(readsOf(fake, 'PmkitRepo'), 1)
   const second = githubTracker(context, fake)
   await assert.rejects(second.getIssue('1'), { code: 'NOT_SUPPORTED' })
   await second.capabilities()
   assert.equal(readsOf(fake, 'PmkitRepo'), 1, 'the guarded stub and capabilities read the cache')
-  await second.discover()
-  assert.equal(readsOf(fake, 'PmkitRepo'), 2, 'discover reads GitHub')
+  await second.discover({ refresh: true })
+  assert.equal(readsOf(fake, 'PmkitRepo'), 2, 'discover with refresh reads GitHub')
+})
+
+test('discover reads a primed cache without a GitHub read, and discover with refresh sends one', async () => {
+  const context = issuesContext()
+  const fake = fakeGithubIssues()
+  await githubTracker(context, fake).discover({ refresh: true })
+  assert.equal(readsOf(fake, 'PmkitRepo'), 1)
+  const fresh = githubTracker(context, fake)
+  await fresh.discover()
+  await fresh.discover()
+  assert.equal(readsOf(fake, 'PmkitRepo'), 1, 'two discover calls over a primed cache send no PmkitRepo')
+  await fresh.discover({ refresh: true })
+  assert.equal(readsOf(fake, 'PmkitRepo'), 2, 'discover with refresh sends one')
 })
 
 test('one tracker reads GitHub once per run', async () => {
@@ -123,7 +136,7 @@ test('one tracker reads GitHub once per run', async () => {
 test('a broken mapping from a cached discovery refreshes once, then fails with NOT_CONFIGURED', async () => {
   const context = issuesContext()
   const fake = fakeGithubIssues()
-  await githubTracker(context, fake).discover()
+  await githubTracker(context, fake).discover({ refresh: true })
   const broken = githubTracker(context, fake, { status: { ...STATUS, done: 'Gone' } })
   await assert.rejects(broken.searchIssues({}), (error) => {
     assert.equal(error.code, 'NOT_CONFIGURED')
@@ -153,7 +166,7 @@ test('a guarded stub without a repo fails with NOT_CONFIGURED before any call', 
 test('a cached discovery of another format or another Project counts as a miss', async () => {
   const context = issuesContext()
   const fake = fakeGithubIssues()
-  await githubTracker(context, fake).discover()
+  await githubTracker(context, fake).discover({ refresh: true })
   const other = createGithubTracker({ root: context.root, pmkit: pmkit({ ...SCOPE, project: 'none' }, {}) }, { env: context.env, exec: fake.exec })
   await assert.rejects(other.getIssue('1'), { code: 'NOT_SUPPORTED' })
   assert.equal(readsOf(fake, 'PmkitRepo'), 2)
