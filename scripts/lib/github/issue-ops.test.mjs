@@ -295,7 +295,7 @@ test('updateIssue refuses sprint, a field mapped none and an issue of another re
   fake.seed({ repo: 'acme/other', number: 5 })
   await assert.rejects(ops.updateIssue('1', { sprint: 'x' }, ME), { code: 'NOT_SUPPORTED' })
   await assert.rejects(ops.updateIssue('1', { due: '2026-12-01' }, ME), { code: 'NOT_SUPPORTED' })
-  await assert.rejects(ops.updateIssue('acme/other#5', { title: 'X' }, ME), { code: 'INVALID_INPUT', message: 'pmkit writes issues of acme/widgets only' })
+  await assert.rejects(ops.updateIssue('acme/other#5', { title: 'X' }, ME), { code: 'INVALID_INPUT', message: 'the GitHub adapter writes issues of acme/widgets only' })
   assert.deepEqual(fake.mutations, [])
 })
 
@@ -315,6 +315,8 @@ test('a branch equal to the linked branch sends nothing', async () => {
   assert.deepEqual(fake.mutations, [])
   assert.deepEqual(names(fake), ['PmkitIssue'])
   assert.deepEqual(result.after, result.before)
+  // Nothing was linked, so the result names no linked branch.
+  assert.equal(result.linked, undefined)
 })
 
 test('a new branch starts at the GitHub head of the base, never at the GitHub default branch', async () => {
@@ -325,7 +327,9 @@ test('a new branch starts at the GitHub head of the base, never at the GitHub de
   const dry = await ops.updateIssue('1', { branch: '1-a' }, ME, { dryRun: true, base: 'develop' })
   assert.deepEqual(fake.mutations, [])
   assert.equal(dry.after.branch, '1-a')
+  assert.deepEqual(dry.linked, { branch: '1-a', base: 'develop' })
   const result = await ops.updateIssue('1', { branch: '1-a' }, ME, { base: 'develop' })
+  assert.deepEqual(result.linked, { branch: '1-a', base: 'develop' })
   const head = fake.reads.filter((call) => call.name === 'PmkitBranchHead')
   assert.equal(head.at(-1).variables.qualifiedName, 'refs/heads/develop')
   assert.deepEqual(sent(fake), ['PmkitCreateLinkedBranch'])
@@ -342,8 +346,12 @@ test('a base GitHub lacks falls back to the default branch with a note', async (
   const main = 'b'.repeat(40)
   const { fake, ops } = await writeSetup({ branches: { main } })
   fake.seed({})
+  const dry = await ops.updateIssue('1', { branch: '1-a' }, ME, { dryRun: true, base: 'feature' })
+  assert.deepEqual(dry.linked, { branch: '1-a', base: 'main' })
   const result = await ops.updateIssue('1', { branch: '1-a' }, ME, { base: 'feature' })
   assert.equal(fake.mutations[0].input.oid, main)
+  // base is the branch the linked branch started at: the fallback, not the requested one.
+  assert.deepEqual(result.linked, { branch: '1-a', base: 'main' })
   assert.deepEqual(result.notes, ['GitHub has no branch feature, so pmkit linked 1-a at the head of main there'])
 })
 

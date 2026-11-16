@@ -237,7 +237,7 @@ export function planWrite(patch, { mode, before = null, context, parentNode = nu
     if (!validBranch(patch.branch)) throw invalid(`branch ${patch.branch} is not a valid branch name`)
     branch = patch.branch
   } else if (patch.branch === null && !create) {
-    throw notSupported('pmkit does not unlink a branch from a GitHub issue', 'Unlink it in the Development section of the issue on GitHub')
+    throw notSupported('the GitHub adapter does not unlink a branch from an issue', 'Unlink it in the Development section of the issue on GitHub')
   }
 
   const plan = { input, fields, branch, move: [] }

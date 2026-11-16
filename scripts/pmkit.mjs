@@ -2128,13 +2128,11 @@ export const COMMANDS = [
       const base = from.replace(/^origin\//, '')
       const remote = ctx.settings().remoteBranch === true
       // The adapter's notes, such as GitHub's fallback to the default branch, then the note for a push pr open would have refused.
+      // `linked.base` is the branch GitHub started the linked branch at, the fallback when it lacks base; no `linked` when nothing is linked.
       const linked = (result, created) => {
         const notes = result.notes ?? []
-        if (!remote) return notes
-        // When GitHub lacks base, the adapter's note names the branch it started from instead, its default branch there.
-        const prefix = `GitHub has no branch ${base}, so pmkit linked ${branch} at the head of `
-        const fallback = notes.find((note) => note.startsWith(prefix) && note.endsWith(' there'))
-        return [...notes, ...linkedBranchNotes(ctx, from, fallback ? fallback.slice(prefix.length, -' there'.length) : base, branch, created)]
+        if (!remote || !result.linked) return notes
+        return [...notes, ...linkedBranchNotes(ctx, from, result.linked.base, branch, created)]
       }
       const dry = await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true, base })
       if (ctx.dryRun) {

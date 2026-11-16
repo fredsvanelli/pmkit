@@ -121,7 +121,7 @@ export function issueOperations({ client, config, getContext }) {
     await requireActor(actor)
     const context = await getContext()
     const parsed = parseIssueId(id, context.repo)
-    if (parsed && parsed.repo !== context.repo) throw invalid(`pmkit writes issues of ${context.repo} only`)
+    if (parsed && parsed.repo !== context.repo) throw invalid(`the GitHub adapter writes issues of ${context.repo} only`)
     return context
   }
 
@@ -231,7 +231,7 @@ export function issueOperations({ client, config, getContext }) {
   }
 
   /**
-   * The linked branch an update creates: { name, oid, repositoryId, note }, or null when the issue has that branch already. It starts at
+   * The linked branch an update creates: { name, start, oid, repositoryId, note }, start being the branch it starts at, or null when the issue has that branch already. It starts at
    * the GitHub head of base (pmkit's default branch when base is missing), never at GitHub's own default branch. A base GitHub lacks
    * falls back to pmkit's default branch with a note.
    */
@@ -242,21 +242,27 @@ export function issueOperations({ client, config, getContext }) {
     const start = (base ?? fallback).replace(/^origin\//, '')
     let head = await branchHead(start, context)
     let note = null
+    let from = start
     if (head.oid === null && start !== fallback) {
       head = await branchHead(fallback, context)
       note = `GitHub has no branch ${start}, so pmkit linked ${name} at the head of ${fallback} there`
+      from = fallback
     }
     if (head.oid === null) throw invalid(`GitHub has no branch ${fallback} to start ${name} from`, `Push ${fallback} to origin, or pass --from <a branch on GitHub>`)
-    return { name, oid: head.oid, repositoryId: head.repositoryId, note }
+    return { name, start: from, oid: head.oid, repositoryId: head.repositoryId, note }
   }
 
-  /** `base` is the branch the linked branch starts from, without origin/. */
+  /**
+   * `base` is the branch the linked branch starts from, without origin/. A result that links a branch carries linked { branch, base },
+   * base being the branch GitHub started it at: the fallback when GitHub lacks the one asked for.
+   */
   async function updateIssue(id, patch, actor, { dryRun = false, base } = {}) {
     await writable(id, actor)
     const { node, issue: before } = await readNode(id)
     const { value: plan, context } = await withRefresh((current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current }))
     const branch = await planBranch(plan.branch, before, base, context)
     const notes = branch?.note ? [branch.note] : []
+    const linked = branch ? { linked: { branch: branch.name, base: branch.start } } : {}
     const item = { id: itemOf(node, context)?.id ?? null }
     const steps = []
     if (Object.keys(plan.input).length > 0) steps.push({ done: `updated ${before.id}`, doing: 'updating it', run: () => send(context, 'UPDATE_ISSUE', { id: node.id, ...plan.input }, true) })
@@ -269,9 +275,9 @@ export function issueOperations({ client, config, getContext }) {
       steps.push({ done: `linked branch ${branch.name} to ${before.id}`, doing: `linking branch ${branch.name}`, run: () => send(context, 'CREATE_LINKED_BRANCH', input) })
     }
     if (steps.length === 0) return { before, after: before }
-    if (dryRun) return withNotes({ before, after: plan.after }, notes)
+    if (dryRun) return withNotes({ before, after: plan.after, ...linked }, notes)
     await runSteps(before.id, steps)
-    return withNotes({ before, after: await afterOf(before.id) }, notes)
+    return withNotes({ before, after: await afterOf(before.id), ...linked }, notes)
   }
 
   async function moveToCategory(id, category, actor, { status, dryRun = false } = {}) {
