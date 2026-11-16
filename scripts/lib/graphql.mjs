@@ -102,6 +102,9 @@ function connectionOf(select, data) {
   return valid ? connection : null
 }
 
+/** A next cursor is a new, non-empty string: a missing or repeated one would loop forever. */
+const validCursor = (cursor, after) => typeof cursor === 'string' && cursor !== '' && cursor !== after
+
 /**
  * Pages through a Relay connection: the document takes $first: Int! and $after: String, and select(data) returns the
  * connection. Returns { nodes, hasMore }, where hasMore says the loop stopped while the server still had a next page.
@@ -122,7 +125,7 @@ export async function paginateConnection(request, document, variables, options, 
     nodes.push(...connection.nodes)
     if (connection.pageInfo.hasNextPage !== true) return { nodes: nodes.slice(0, limit), hasMore: false }
     const cursor = connection.pageInfo.endCursor
-    if (typeof cursor !== 'string' || cursor === '' || cursor === after) throw fail()
+    if (!validCursor(cursor, after)) throw fail()
     if ((limit !== undefined && nodes.length >= limit) || pages >= cap) return { nodes: nodes.slice(0, limit), hasMore: true }
     after = cursor
   }

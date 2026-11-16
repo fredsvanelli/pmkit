@@ -502,3 +502,11 @@ test('a failure with no answer and no stderr names the exit status', async () =>
   assert.equal(error.message, 'gh api graphql failed: exit status 3')
   assert.deepEqual(error.details, { github: { status: null, errors: [] } })
 })
+
+test('unreadable rate headers read as null, and a limit at 0 with no reset time does not block the next call', async () => {
+  const { client, calls } = setup([answer({ headers: { 'X-Ratelimit-Limit': 'many', 'X-Ratelimit-Remaining': '0', 'X-Ratelimit-Reset': '' } }), answer()])
+  await client.request(QUERY)
+  assert.deepEqual(client.rateLimit(), { limit: null, remaining: 0, used: null, resource: null, resetAt: null })
+  await client.request(QUERY)
+  assert.equal(calls.length, 2)
+})
