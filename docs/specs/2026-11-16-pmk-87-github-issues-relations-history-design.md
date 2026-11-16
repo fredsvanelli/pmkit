@@ -113,7 +113,7 @@ Checked on 2026-11-16 with gh 2.93.0: schema introspection on github.com, and th
 
 `parseIssueId(value, repo)` accepts `12`, `#12` and `owner/name#12`, and returns `{ repo, number }`. `issueIdOf({ repository, number }, repo)` writes the number alone for the scope repository, compared without case, and `owner/name#number` otherwise. Any other string fails with `NOT_FOUND`, `issue <id> does not exist`, before a request. `isIssueId` is true for the forms above. `settings().isEpicId(id)` is `!isIssueId(id)`, so `issues dependencies` sends any other id to `getDeliverable`, which answers `NOT_SUPPORTED` until PMK-88.
 
-A write that would create an issue in, or change the fields of, another repository's issue fails with `INVALID_INPUT`, `pmkit writes issues of acme/widgets only`. Links and parents may point to another repository's issue, because GitHub allows them.
+A write that would create an issue in, or change the fields of, another repository's issue fails with `INVALID_INPUT`, `the GitHub adapter writes issues of acme/widgets only`. Links and parents may point to another repository's issue, because GitHub allows them.
 
 ### Discovery, cache and mapping check
 
