@@ -5,6 +5,7 @@ import { PmkitError } from '../errors.mjs'
 import { hideAbsolutePaths } from '../paths.mjs'
 import { hostFeatures, issueDocuments } from './documents.mjs'
 import { INSTALL_STEP } from './host.mjs'
+import { priorityRule } from './issues.mjs'
 import { brokenGithubMappings, fieldOf, NONE } from './mappings.mjs'
 
 export const MINIMUM_GHES = '3.19'
@@ -253,6 +254,16 @@ function membersOf(raw) {
   return users
 }
 
+/** The warning for the options of the mapped priority field that the priority rule maps to no priority, or null. */
+function unsetPriorityWarning(raw, pmkit) {
+  const found = fieldOf(raw, pmkit?.mappings?.fields?.priority)
+  if (found?.dataType !== 'SINGLE_SELECT') return null
+  const rule = priorityRule(found.options)
+  const unset = found.options.map((item) => item.name).filter((name) => !rule.has(name))
+  if (unset.length === 0) return null
+  return `the priority field ${found.name} has options that map to no priority (${unset.join(', ')}); issues in them read with no priority`
+}
+
 /** The discover result. pmkit is config.pmkit; the raw discovery stays on it as a hidden property. */
 export function discoveryView(raw, pmkit = {}) {
   const keptOf = { labels: LABELS_FIRST, 'assignable users': USERS_MAX }
@@ -260,6 +271,8 @@ export function discoveryView(raw, pmkit = {}) {
   const statusOptions = (statusFieldOf(raw.project)?.options ?? []).map((item) => item.name)
   const statuses = statusesOf(raw, pmkit?.mappings?.status ?? {}, warnings)
   warnings.push(...brokenGithubMappings(raw, pmkit).map((item) => item.problem))
+  const priorityWarning = unsetPriorityWarning(raw, pmkit)
+  if (priorityWarning) warnings.push(priorityWarning)
 
   const types = Object.entries(pmkit?.mappings?.types ?? {}).filter(([, value]) => typeof value === 'string' && value !== NONE).map(([type]) => type)
   const view = {

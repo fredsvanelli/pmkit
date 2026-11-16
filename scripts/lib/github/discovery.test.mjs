@@ -208,6 +208,16 @@ test('discoveryView warns about a mapping that names something GitHub no longer 
   assert.ok(view.warnings.includes('mappings.types.chore names issue type Chore, which acme/widgets does not have enabled'))
 })
 
+test('discoveryView warns about the priority options past the fourth, which read as no priority', async () => {
+  const raw = await rawOf()
+  const priority = raw.issueFields.find((item) => item.name === 'Priority')
+  priority.options = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5'].map((name, index) => ({ id: `opt-p${index}`, name }))
+  const view = discoveryView(raw, pmkitWith({ fields: { priority: 'issue:Priority' } }))
+  assert.ok(view.warnings.includes('the priority field Priority has options that map to no priority (P4, P5); issues in them read with no priority'))
+  priority.options = priority.options.slice(0, 4)
+  assert.ok(!discoveryView(raw, pmkitWith({ fields: { priority: 'issue:Priority' } })).warnings.some((warning) => /map to no priority/.test(warning)))
+})
+
 test('discoveryView warns about cut lists', async () => {
   const view = discoveryView(await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ typesMore: true }), PmkitProject: projectReply() } })), pmkitWith({}))
   assert.ok(view.warnings.includes('GitHub has more issue types than discovery reads; it kept the first 50'))
