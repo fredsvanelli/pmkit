@@ -3,3 +3,7 @@
 {"at":"2026-11-16T18:40:48Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-16T18:40:48Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-16T18:40:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-86-discover-issue-types-and-project-fields"}
+{"at":"2026-11-16T19:27:25Z","by":"fred","op":"comment","to":"2026-11-16T19-27-25Z-fred.md"}
+{"at":"2026-11-16T19:27:44Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-16T19:27:44Z","by":"fred","op":"comment","to":"2026-11-16T19-27-44Z-fred.md"}
+{"at":"2026-11-16T19:27:44Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

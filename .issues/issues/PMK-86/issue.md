@@ -2,7 +2,7 @@
 id: PMK-86
 title: "Discover issue types and Project fields, and ask the Status mapping"
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-85]
 milestone: github-issues
 branch: pmk-86-discover-issue-types-and-project-fields
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-16T18:40:48Z
+updated: 2026-11-16T19:27:44Z
 ---
 
 ## Description
@@ -20,5 +20,5 @@ Source: GitHub tab, Open questions ("single-select options are free-form; discov
 
 ## Acceptance criteria
 
-- [ ] `discover` returns issue types and Project fields
-- [ ] Setup asks which Status option maps to each category
+- [x] `discover` returns issue types and Project fields
+- [x] Setup asks which Status option maps to each category
