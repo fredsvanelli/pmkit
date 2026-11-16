@@ -188,7 +188,7 @@ test('metricEvents reads the rest of a timeline longer than 100 items', async ()
   assert.deepEqual(names(fake.reads), ['PmkitIssues', 'PmkitTimelines', 'PmkitTimeline', 'PmkitTimeline'])
 })
 
-test('metricEvents warns, without a JSON key, when the issue read stops at 1000 issues', async () => {
+test('metricEvents marks the cut, without a JSON key and without a warning of its own, when the issue read stops at 1000 issues', async () => {
   const { fake, history, clear } = await setup()
   for (let index = 0; index < 1001; index += 1) fake.seed({ title: `S${index}` })
   clear()
@@ -199,6 +199,7 @@ test('metricEvents warns, without a JSON key, when the issue read stops at 1000 
   assert.equal(events.length, 1000)
   assert.ok(!events.some((event) => event.at === '2026-01-01T00:00:00.000Z'), 'the least recently updated issue is the one left out')
   assert.equal(events.truncated, true)
-  assert.deepEqual(events.warnings, ['GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'])
-  assert.equal(JSON.stringify(events).includes('warnings'), false)
+  // The CLI writes the cut warning from truncated, so warnings does not repeat it.
+  assert.equal(events.warnings, undefined)
+  assert.equal(JSON.stringify(events).includes('truncated'), false)
 })

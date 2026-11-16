@@ -9,7 +9,6 @@ import { toComment, toEvents } from './history.mjs'
 const PAGE = 100
 const BATCH = 20
 const STATUS_WARNING = 'on GitHub Enterprise Server before 3.21, Status option changes have no events, so moves show only as opens and closes'
-const CAP_WARNING = 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
 const noThreads = () => new PmkitError('NOT_SUPPORTED', 'GitHub issue comments have no threads', 'Post a new comment with pmkit issues comment')
 
 /** Compares an event time with a range bound by instant, so `2026-10-05T10:00:00Z` equals `2026-10-05T10:00:00.000Z`. */
@@ -104,7 +103,8 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
   /**
    * The events of every issue of the scope repository updated since `since`, each tagged with its issue, cut at `until`
    * (a date alone covers that whole day) and sorted by `at`. The issue read stops at the 1000 most recently updated issues; the
-   * result then carries a non-enumerable `truncated`. Its non-enumerable `warnings` names the cut and, on GHES before 3.21, the missing Status events.
+   * result then carries a non-enumerable `truncated`, from which the CLI writes the cut warning. On GHES before 3.21 its
+   * non-enumerable `warnings` names the missing Status events.
    */
   async function metricEvents({ since, until } = {}) {
     const context = await getContext()
@@ -119,8 +119,7 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
       .filter(({ event }) => fromSince(since)(event) && (last === undefined || compareAt(event.at, last) <= 0))
       .sort((a, b) => compareAt(a.event.at, b.event.at) || compareGithubIds(a.event.issue, b.event.issue) || a.index - b.index)
       .map(({ event }) => event)
-    const warnings = [...(hasMore ? [CAP_WARNING] : []), ...(context.features.statusEvents ? [] : [STATUS_WARNING])]
-    return withHidden(events, { ...(hasMore ? { truncated: true } : {}), ...(warnings.length > 0 ? { warnings } : {}) })
+    return withHidden(events, { ...(hasMore ? { truncated: true } : {}), ...(context.features.statusEvents ? {} : { warnings: [STATUS_WARNING] }) })
   }
 
   return { getHistory, listComments, comment, resolveThread, metricEvents }

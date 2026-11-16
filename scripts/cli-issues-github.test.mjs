@@ -113,3 +113,16 @@ test('issues unarchive and issues bulk unarchive refuse on GitHub and point at t
   }
   assert.equal(fake.mutations.length, 0)
 })
+
+test('a cut metric events read on GHES 3.20 prints the cut warning and the Status warning once each', async () => {
+  const { cli, fake } = githubRepo({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+  for (let index = 0; index < 1001; index += 1) fake.seed({ title: `S${index}` })
+  const cut = 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
+  const count = (text, line) => text.split('\n').filter((entry) => entry === `warning: ${line}`).length
+  for (const args of [['events', '--json'], ['events'], ['metrics', 'throughput']]) {
+    const result = await cli(args)
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(count(result.stderr, cut), 1, `${args.join(' ')}: ${result.stderr}`)
+    assert.equal(count(result.stderr, STATUS_WARNING), 1, `${args.join(' ')}: ${result.stderr}`)
+  }
+})
