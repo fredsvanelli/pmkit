@@ -5,7 +5,7 @@ import { parseDescription } from '../body-criteria.mjs'
 import { TERMINAL } from '../model.mjs'
 import { CLOSED, CLOSED_NOT_PLANNED, OPEN, statusFieldOf } from './discovery.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
-import { fieldOf, labelOf, NONE, parseFieldSource, parseLabelValue } from './mappings.mjs'
+import { fieldOf, iterationFieldOf, labelOf, NONE, parseFieldSource, parseLabelValue } from './mappings.mjs'
 
 export const PRIORITIES = ['urgent', 'high', 'medium', 'low']
 
@@ -28,9 +28,11 @@ const optionName = (option) => (typeof option === 'string' ? option : option.nam
  * @returns {{ raw: object, pmkit: object, repo: string, project: { id: string, statusField: object | null, options: object[] } | null,
  *   features: object, categoryOfOption: (name: string) => string, optionOf: (category: string) => { id: string, name: string } | null,
  *   typeOf: (name: string) => string | undefined, issueTypeOf: (type: string) => { id: string, name: string } | undefined,
- *   field: (role: string) => { source: string, field: object } | null, projectFields: object, fieldVariables: object, priorities: string[] }}
+ *   field: (role: string) => { source: string, field: object } | null, projectFields: object, fieldVariables: object, priorities: string[],
+ *   epics: Map<string, string> }}
+ * epics maps the node id of each linked epic Project to its epic id, owner/number, with the owner as GitHub writes it.
  */
-export function makeContext(raw, pmkit) {
+export function makeContext(raw, pmkit, { epics = new Map() } = {}) {
   const mappings = pmkit?.mappings ?? {}
   const statusMap = mappings.status ?? {}
   const typeMap = mappings.types ?? {}
@@ -43,6 +45,11 @@ export function makeContext(raw, pmkit) {
   const field = (role) => {
     const spec = ROLES[role]
     if (!spec) return null
+    // The sprint role reads a Project iteration field only, whatever else the mapping names.
+    if (role === 'sprint') {
+      const iteration = iterationFieldOf(raw, pmkit)
+      return iteration ? { source: 'project', field: iteration } : null
+    }
     const value = mappings.fields?.[spec.key]
     const parsed = parseFieldSource(value)
     if (!parsed || parsed.source === NONE) return null
@@ -101,7 +108,7 @@ export function makeContext(raw, pmkit) {
       const found = raw.issueTypes.find((item) => item.name === typeMap[type])
       return found ? { id: found.id, name: found.name } : undefined
     },
-    field, projectFields, fieldVariables, priorities: PRIORITIES,
+    field, projectFields, fieldVariables, priorities: PRIORITIES, epics,
   }
 }
 
@@ -175,6 +182,21 @@ function estimateOf(node, context) {
   return found ?? undefined
 }
 
+// The start date of the iteration an item holds in the scope Project.
+function sprintOf(node, context) {
+  const value = rawValue('sprint', node, context)
+  return value?.startDate ?? undefined
+}
+
+// The parent issue, else the epic of the lowest-numbered linked epic Project the issue is an item of.
+function parentOf(node, context) {
+  if (node.parent) return issueIdOf(node.parent, context.repo)
+  const found = nodesOf(node.projectItems)
+    .filter((item) => context.epics.has(item.project?.id))
+    .sort((a, b) => (a.project.number ?? Infinity) - (b.project.number ?? Infinity))[0]
+  return found ? context.epics.get(found.project.id) : undefined
+}
+
 function dueOf(node, context) {
   const value = rawValue('due', node, context)
   return value?.date ?? value?.value ?? undefined
@@ -200,7 +222,8 @@ export function toIssueWithWarnings(node, context) {
   const assignee = nodesOf(node.assignees)[0]?.login
   if (assignee) issue.assignee = assignee
   issue.labels = nodesOf(node.labels).map((label) => label.name).sort()
-  if (node.parent) issue.parent = issueIdOf(node.parent, context.repo)
+  const parent = parentOf(node, context)
+  if (parent !== undefined) issue.parent = parent
   issue.blockedBy = sortedIds(nodesOf(node.blockedBy), context)
   issue.blocks = sortedIds(nodesOf(node.blocking), context)
   issue.related = sortedIds(nodesOf(node.relatesTo), context)
@@ -209,6 +232,9 @@ export function toIssueWithWarnings(node, context) {
   issue.archived = itemOf(node, context)?.isArchived === true
   const due = dueOf(node, context)
   if (due !== undefined) issue.due = due
+  const sprint = sprintOf(node, context)
+  if (sprint !== undefined) issue.sprint = sprint
+  if (node.milestone?.title) issue.milestone = node.milestone.title
   const branch = nodesOf(node.linkedBranches)[0]?.ref?.name
   if (branch) issue.branch = branch
   issue.description = description

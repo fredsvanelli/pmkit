@@ -638,3 +638,12 @@ test('archive without a Project names the repository and the move', async () => 
     nextStep: 'Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup',
   })
 })
+
+test('updateIssue refuses to clear the sprint of an issue, and sends nothing', async () => {
+  const pmkit = { ...WRITE_PMKIT, mappings: { ...WRITE_PMKIT.mappings, fields: { ...WRITE_PMKIT.mappings.fields, sprint: 'project:Sprint' } } }
+  const { fake, ops } = await writeSetup({ pmkit, project: { fields: WRITE_FIELDS, iterations: { iterations: [{ id: 'IT_a', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 }] } } })
+  fake.seed({ number: 1, item: { values: { Sprint: '2026-11-16' } } })
+  assert.equal((await ops.getIssue('1')).sprint, '2026-11-16')
+  await assert.rejects(ops.updateIssue('1', { sprint: null }, ME), { code: 'NOT_SUPPORTED', message: 'the GitHub adapter does not set sprint yet' })
+  assert.deepEqual(fake.mutations, [])
+})

@@ -238,3 +238,35 @@ test('capabilities without a Project warns about the capabilities a Project give
   const withProject = await (await trackerOf()).tracker.capabilities()
   assert.ok(!withProject.warnings.some((warning) => warning.includes('tracker.scope.project is none')))
 })
+
+const withEpics = (fakeOptions = {}) => fakeGithubIssues({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12, title: 'Epic twelve', linked: true }, { id: 'PVT_E9', owner: 'acme', number: 9, title: 'Epic nine', linked: true }], ...fakeOptions })
+
+test('getIssue reads the epic Project of an issue as its parent, and the linked Projects once per run', async () => {
+  const fake = withEpics()
+  fake.seed({ number: 1, epics: ['acme/12', 'acme/9'] })
+  fake.seed({ number: 2 })
+  const tracker = githubTracker(issuesContext(), fake)
+  assert.equal((await tracker.getIssue('1')).parent, 'acme/9')
+  assert.equal('parent' in (await tracker.getIssue('2')), false)
+  assert.equal(readsOf(fake, 'PmkitLinkedProjects'), 1)
+})
+
+test('getIssue does not read the linked Projects without a scope Project', async () => {
+  const fake = withEpics()
+  fake.seed({ number: 1 })
+  const tracker = createGithubTracker({ root: issuesContext().root, pmkit: pmkit({ ...SCOPE, project: 'none' }, {}) }, { env: issuesContext().env, exec: fake.exec })
+  assert.equal('parent' in (await tracker.getIssue('1')), false)
+  assert.equal(readsOf(fake, 'PmkitLinkedProjects'), 0)
+})
+
+test('a failed read of the linked Projects fails getIssue and the next call retries it', async () => {
+  const fake = withEpics()
+  fake.seed({ number: 1, epics: ['acme/12'] })
+  const tracker = githubTracker(issuesContext(), fake)
+  await tracker.discover()
+  const before = readsOf(fake, 'PmkitLinkedProjects')
+  fake.failNext('PmkitLinkedProjects')
+  await assert.rejects(tracker.getIssue('1'), { code: 'UPSTREAM' })
+  assert.equal((await tracker.getIssue('1')).parent, 'acme/12')
+  assert.equal(readsOf(fake, 'PmkitLinkedProjects'), before + 2)
+})

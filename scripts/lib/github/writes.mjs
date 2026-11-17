@@ -294,7 +294,9 @@ function planFields(patch, create, beforeIssue, context) {
     if (patch[role] === undefined) return false
     return create ? patch[role] !== null : (beforeIssue[role] ?? null) !== patch[role]
   }
-  return Object.keys(ROLES).filter(changes).map((role) => fieldWrite(role, patch[role], context))
+  // The sprint is an iteration, not a plain field value. Task 7 owns its write, so until then a change is refused.
+  if (changes('sprint')) throw notSupported('the GitHub adapter does not set sprint yet')
+  return Object.keys(ROLES).filter((role) => role !== 'sprint' && changes(role)).map((role) => fieldWrite(role, patch[role], context))
 }
 
 /** The branch name an update links, or undefined. */

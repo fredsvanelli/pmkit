@@ -18,6 +18,8 @@ import { buildGithubCapabilities, PROJECT_ONLY } from './manifest.mjs'
 import { brokenGithubMappings } from './mappings.mjs'
 import { relationOperations } from './relation-ops.mjs'
 
+const LINKED_EPICS_QUERY =
+  'query PmkitLinkedProjects($owner: String!, $name: String!, $first: Int!, $after: String) { repository(owner: $owner, name: $name) { projectsV2(first: $first, after: $after) { nodes { id number title closed url shortDescription readme owner { ... on Organization { login } ... on User { login } } } pageInfo { hasNextPage endCursor } } } }'
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 
@@ -153,11 +155,45 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
       throw new PmkitError('NOT_SUPPORTED', entry.enableHint, entry.enableHint)
     })
 
+  // The epic Projects: every Project linked to the repository but the scope one, as Map<project node id, owner/number>. Task 9 moves
+  // this read into project-ops.mjs. Epics need the Project scope, so with project: none there is no read and no epic.
+  async function epicProjects() {
+    const wanted = parseProject(scope.project)
+    if (!wanted) return new Map()
+    const [owner, name] = scope.repo.split('/')
+    let nodes
+    try {
+      ;({ nodes } = await client.paginate(LINKED_EPICS_QUERY, { owner, name }, { select: (data) => data.repository.projectsV2, pageSize: 50 }))
+    } catch (error) {
+      // A repository GitHub cannot resolve has no linked Projects. Every other failure propagates, because an empty map would drop parents.
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') return new Map()
+      throw error
+    }
+    const epicsById = new Map()
+    for (const project of nodes) {
+      if (project.number === wanted.number && String(project.owner?.login).toLowerCase() === wanted.owner.toLowerCase()) continue
+      epicsById.set(project.id, `${project.owner.login}/${project.number}`)
+    }
+    return epicsById
+  }
+
+  // Read once per run, kept out of the discovery cache. A failed read leaves no memo, so the next call retries.
+  let epicsMemo
+  function epics({ refresh = false } = {}) {
+    if (epicsMemo && !refresh) return epicsMemo
+    const current = epicProjects()
+    epicsMemo = current
+    current.catch(() => {
+      if (epicsMemo === current) epicsMemo = undefined
+    })
+    return current
+  }
+
   // The context of the operations: makeContext over the discovery, built once per raw discovery.
   const contexts = new WeakMap()
   async function getContext({ refresh = false } = {}) {
     const { raw } = await discovery({ refresh })
-    if (!contexts.has(raw)) contexts.set(raw, makeContext(raw, config.pmkit))
+    if (!contexts.has(raw)) contexts.set(raw, makeContext(raw, config.pmkit, { epics: await epics({ refresh }) }))
     return contexts.get(raw)
   }
 
