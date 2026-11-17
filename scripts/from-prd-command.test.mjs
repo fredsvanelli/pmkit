@@ -28,6 +28,9 @@ const steps = (() => {
 // The step whose text holds `<name>:`, such as `Stage 0:`. `stage('Stage 3')` never returns the step of `Stage 3b:`.
 const stage = (name) => steps.find((step) => step.includes(`${name}:`)) ?? ''
 
+// The text of a `## ` section, up to the next `## ` heading.
+const section = (name) => text.split(/\n(?=## )/).find((block) => block.startsWith(`## ${name}\n`)) ?? ''
+
 test('stage 0 reads with a subagent that writes nothing, and runs in sequence without one', () => {
   const step = stage('Stage 0')
   assert.match(step, /subagent/)
@@ -127,8 +130,106 @@ test('a tracker that cannot create documents gets a repository file', () => {
   assert.match(step, /docs\/specs\/<slug>-prd\.md/)
 })
 
-test('a missing epic-id is a main agent question, not a recon subagent action', () => {
+test('an unknown epic-id is a main agent question, not a recon subagent action', () => {
   const step = stage('Stage 0')
   assert.match(step, /the main agent asks for a corrected ID before the first question/)
   assert.doesNotMatch(step, /stops the flow before the first question/)
+})
+
+test('the epic and milestones are approved before any issue', () => {
+  const step = stage('Stage 4')
+  assert.match(step, /commands\/spec\/import\.md/)
+  assert.match(step, /AskUserQuestion/)
+})
+
+test('drafting subagents copy the criteria from the refined PRD and never invent them', () => {
+  const step = stage('Stage 5')
+  assert.match(step, /subagent/)
+  assert.match(step, /never new ones|never invent/)
+  assert.match(step, /without subagents/i)
+})
+
+test('draft estimates use done issues, not issues similar', () => {
+  const step = stage('Stage 5')
+  assert.match(step, /issues list --category done --text/)
+  assert.match(step, /code alone/)
+  assert.doesNotMatch(step, /issues similar <id>/)
+})
+
+test('the tree is shown in full and the links follow spec:import', () => {
+  const step = stage('Stage 5')
+  assert.match(step, /full tree/)
+  assert.match(step, /issues link/)
+})
+
+test('the final check reads and reports, and fixes only with approval', () => {
+  const step = stage('Stage 6')
+  assert.match(step, /issues dependencies <epic-id> --json/)
+  assert.match(step, /requirements? .*with no issue/)
+  assert.match(step, /one bulk preview/)
+  assert.match(step, /never as an issue created without approval/)
+})
+
+test('no subagent writes', () => {
+  assert.match(text, /No subagent writes to the tracker/)
+})
+
+test('a resume skips existing ADRs in the tracker and in the repository', () => {
+  const step = stage('Resume')
+  assert.match(step, /docs list/)
+  assert.match(step, /docs\/adr\//)
+  assert.match(step, /skips? the decisions that already have one/)
+})
+
+test('the resume step comes before the interview', () => {
+  assert.ok(stage('Resume'), 'a step holds `Resume:`')
+  assert.ok(steps.indexOf(stage('Resume')) < steps.indexOf(stage('Stage 1')), 'the resume step comes before stage 1')
+})
+
+test('a declined stage lists what was written and names the next command', () => {
+  assert.match(text, /\/pmkit:spec:from-prd specs\/<slug>-prd\.md/)
+  assert.match(text, /lists what it already wrote/)
+})
+
+test('the confirmation points list every approval', () => {
+  const points = section('Confirmation points')
+  assert.match(points, /refined PRD/)
+  assert.match(points, /each ADR/)
+  assert.match(points, /epic/)
+  assert.match(points, /issue tree|tree/)
+  assert.match(points, /extra links/)
+})
+
+test('the output ends with the critical path and cycle:plan', () => {
+  const output = section('Output')
+  assert.match(output, /critical path/)
+  assert.match(output, /\/pmkit:cycle:plan/)
+})
+
+test('the output lists the changed marks, says a repository PRD has no commit, and removes the temporary files', () => {
+  const output = section('Output')
+  assert.match(output, /changed mark/)
+  assert.match(output, /no commit yet/)
+  assert.match(output, /[Rr]emove the temporary files/)
+})
+
+test('a docs-relative path such as the resume input goes to docs read, with the repository file as fallback', () => {
+  const step = stage('Stage 0')
+  assert.match(section('Parameters'), /specs\/<slug>-prd\.md/)
+  assert.match(step, /path relative to the `docs\/` folder, such as `specs\/<slug>-prd\.md`/)
+  assert.match(step, /`NOT_FOUND`[^.]*repository file `docs\/<path>`/)
+})
+
+test('stage 3 keeps the refined PRD temporary file that record-decision would remove', () => {
+  assert.match(stage('Stage 3'), /[Kk]eep the temporary file of the refined PRD/)
+})
+
+test('stage 3b checks a new name with a dry run before writing', () => {
+  assert.match(stage('Stage 3b'), /`CONFLICT`[^\n]*dry run again with the new name/)
+})
+
+test('a CLI error during an ADR write stops the flow, unlike a declined ADR', () => {
+  const step = stage('Stage 3')
+  assert.match(step, /error from the CLI[^.]*stops the flow/)
+  assert.match(step, /lists what it already wrote/)
 })
