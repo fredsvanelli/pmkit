@@ -90,7 +90,7 @@ ${fragment}`
 
 /** The issues of a list of node ids with the issue fragment, in one read. The same field variables as epicItemsQuery. */
 export const issueNodesQuery = (fragment, variables) => `query PmkitIssueNodes(${['$ids: [ID!]!', ...variables.map((name) => `$${name}: String!`)].join(', ')}) {
-  nodes(ids: $ids) { ... on Issue { ...PmkitIssueFields } }
+  nodes(ids: $ids) { __typename ... on Issue { ...PmkitIssueFields } }
 }
 ${fragment}`
 

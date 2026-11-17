@@ -440,6 +440,13 @@ function build(state) {
     return item
   }
 
+  /** GitHub answers __typename only when the document selects it at that level, so a node drops it otherwise. */
+  const withTypename = (node, selected) => {
+    if (selected) return node
+    const { __typename: _dropped, ...rest } = node
+    return rest
+  }
+
   /** What a Project item that is no issue answers as content: a pull request matches no Issue fragment, a draft is a DraftIssue. */
   const contentOfOtherItem = (item) => (item.kind === 'DRAFT_ISSUE' ? { __typename: 'DraftIssue', title: item.title } : { __typename: 'PullRequest' })
 
@@ -488,14 +495,15 @@ function build(state) {
       if (!project) refuseWithData({ repositoryOwner: { projectV2: null } }, ['repositoryOwner', 'projectV2'], `Could not resolve to a ProjectV2 with the number ${vars.number}.`)
       return { repositoryOwner: { projectV2: { ...projectNode(project), statusUpdates: statusUpdatesOf(project, vars.statusFirst, vars.statusAfter) } } }
     },
-    PmkitEpicItems(vars) {
+    PmkitEpicItems(vars, _name, query) {
       const project = projectById(vars.project)
-      const items = state.items.filter((item) => item.projectId === project.id).map((item) => ({ ...itemNode(item, vars), status: projectValue(item, 'Status'), content: item.kind ? contentOfOtherItem(item) : issueNode(issueById(item.issueId), vars) }))
+      const items = state.items.filter((item) => item.projectId === project.id).map((item) => ({ ...itemNode(item, vars), status: projectValue(item, 'Status'), content: withTypename(item.kind ? contentOfOtherItem(item) : issueNode(issueById(item.issueId), vars), /\bcontent\s*\{\s*__typename\b/.test(query ?? '')) }))
       return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
     },
     // Issues by node id, in the order asked, null for an id that is no issue: the batched read of the epic progress.
-    PmkitIssueNodes(vars) {
-      return { nodes: (vars.ids ?? []).map((id) => { const record = state.issues.find((candidate) => candidate.id === id); return record ? issueNode(record, vars) : null }) }
+    PmkitIssueNodes(vars, _name, query) {
+      const typed = /\bnodes\(ids: \$ids\)\s*\{\s*__typename\b/.test(query ?? '')
+      return { nodes: (vars.ids ?? []).map((id) => { const record = state.issues.find((candidate) => candidate.id === id); return record ? withTypename(issueNode(record, vars), typed) : null }) }
     },
     PmkitStatusUpdates(vars) {
       return { node: { __typename: 'ProjectV2', statusUpdates: statusUpdatesOf(projectById(vars.project), vars.first, vars.after) } }
@@ -869,7 +877,7 @@ function build(state) {
     if (state.failures[name]?.length === 0) delete state.failures[name]
     if (failure) return structuredClone(failure)
     try {
-      const data = mutationRoute ? mutationRoute(vars.input ?? {}, stamp(), vars) : queryRoute(vars, name)
+      const data = mutationRoute ? mutationRoute(vars.input ?? {}, stamp(), vars) : queryRoute(vars, name, query)
       return structuredClone({ data })
     } catch (error) {
       if (error instanceof Refusal) return structuredClone(error.reply)

@@ -117,6 +117,7 @@ test('a dry run of createMilestone sends nothing and shows the milestone', async
 
 // The epic part: linked Projects as epics, over the fake.
 import { epicProjects } from './project-ops.mjs'
+import { epicItemsQuery, issueNodesQuery } from './projects.mjs'
 
 const EPIC_PMKIT = { ...PMKIT, mappings: { ...PMKIT.mappings, fields: { estimate: 'project:Story points' } } }
 const EPICS = [
@@ -394,4 +395,35 @@ test('an issue in two epic Projects counts only for the epic its parent reads as
   fake.seed({ number: 2, epics: ['acme/12'], item: { status: 'Done' } })
   assert.equal((await projects.deliverableProgress('acme/9')).total, 1)
   assert.equal((await projects.deliverableProgress('acme/12')).total, 1)
+})
+
+test('deliverableProgress splits a level of more than 100 sub-issues into two batched reads', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/12'], item: { status: 'Todo' } })
+  for (let number = 2; number <= 121; number += 1) fake.seed({ number, parent: 1, item: { status: 'Done' } })
+  fake.reads.splice(0)
+  const progress = await projects.deliverableProgress('acme/12')
+  assert.equal(progress.total, 121)
+  assert.equal(progress.done, 120)
+  const names = fake.reads.map((call) => call.name)
+  assert.equal(names.filter((name) => name === 'PmkitIssueNodes').length, 2)
+  assert.deepEqual(fake.reads.filter((call) => call.name === 'PmkitIssueNodes').map((call) => call.variables.ids.length), [100, 20])
+})
+
+test('deliverableProgress reads the rest of a sub-issue list the fragment cut', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/12'], item: { status: 'Todo' } })
+  for (let number = 2; number <= 61; number += 1) fake.seed({ number, parent: 1, item: { status: 'Done' } })
+  fake.reads.splice(0)
+  const progress = await projects.deliverableProgress('acme/12')
+  assert.equal(progress.total, 61)
+  const names = fake.reads.map((call) => call.name)
+  assert.equal(names.filter((name) => name === 'PmkitIssueMore_subIssues').length, 1)
+  assert.equal(names.filter((name) => name === 'PmkitIssueNodes').length, 1)
+})
+
+test('the documents whose code filters on __typename select it at that level', () => {
+  const fragment = 'fragment PmkitIssueFields on Issue { id }'
+  assert.match(issueNodesQuery(fragment, ['fStatus']), /nodes\(ids: \$ids\) \{ __typename \.\.\. on Issue/)
+  assert.match(epicItemsQuery(fragment, ['fStatus']), /content \{ __typename \.\.\. on Issue/)
 })
