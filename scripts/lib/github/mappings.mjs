@@ -11,12 +11,16 @@ export { NONE }
 export const PROJECT_PATH = 'tracker.scope.project'
 export const STATUS_KEYS = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled', 'blocked']
 export const REQUIRED_STATUS = ['todo', 'in_progress', 'done']
+// Without a Project, setup asks a label for these categories. todo, done and canceled come from open and closed.
+export const LABEL_STATUS_KEYS = ['triage', 'backlog', 'in_progress', 'in_review']
+const STATE_KEYS = ['todo', 'done', 'canceled', 'blocked']
 export const FIELD_ROLES = ['priority', 'estimate', 'start_date', 'target_date']
 
 const FIELD_TYPES = { priority: ['SINGLE_SELECT'], estimate: ['NUMBER', 'SINGLE_SELECT'], start_date: ['DATE'], target_date: ['DATE'] }
 
 // Names that setup recommends, compared without case. The first match wins.
 const MATCHES = {
+  triage: ['triage', 'needs triage'],
   backlog: ['backlog'],
   todo: ['todo', 'to do', 'ready'],
   in_progress: ['in progress', 'doing'],
@@ -175,13 +179,18 @@ const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((ke
 export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) {
   const held = { status: current.status ?? {}, fields: current.fields ?? {}, types: current.types }
   const given = { status: answers.status ?? {}, fields: answers.fields ?? {}, types: answers.types ?? {} }
-  const statusKeys = raw.project !== null ? keysOf(STATUS_KEYS, held.status) : []
+  const labels = raw.project === null
+  const statusKeys = labels ? keysOf(LABEL_STATUS_KEYS, held.status) : keysOf(STATUS_KEYS, held.status)
   const fieldKeys = keysOf(FIELD_ROLES, held.fields)
-  const typeKeys = raw.issueTypes.length > 0 ? keysOf(types, held.types) : []
-  checkKeys(given.status, statusKeys.length > 0 ? statusKeys : STATUS_KEYS, '--status')
-  if (raw.project === null && Object.keys(given.status).length > 0) throw invalid('--status needs a Project, and tracker.scope.project is none', 'Remove --status, or pass --project <owner>/<number>')
+  const typeKeys = keysOf(types, held.types)
+  if (labels) {
+    for (const key of Object.keys(given.status)) {
+      if (STATE_KEYS.includes(key)) throw invalid(`--status ${key} needs no label without a Project`, `Remove --status ${key}; open and closed give ${words(key)}`)
+    }
+  }
+  checkKeys(given.status, labels ? LABEL_STATUS_KEYS : statusKeys, '--status')
   checkKeys(given.fields, fieldKeys, '--field')
-  if (raw.issueTypes.length > 0) checkKeys(given.types, typeKeys, '--type-label')
+  checkKeys(given.types, typeKeys, '--type-label')
 
   const pmkit = { mappings: { status: held.status, fields: held.fields, ...(held.types === undefined ? {} : { types: held.types }) } }
   const state = {
@@ -191,27 +200,33 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
   }
   const values = { status: {}, fields: {} }
 
-  // Status: every category is asked on the first run (the issue's "Always asked: GitHub Status options").
+  // Status: every category is asked on the first run (the issue's "Always asked: GitHub Status options"). Without a Project,
+  // a label for each of LABEL_STATUS_KEYS, and a held value of the state categories becomes none.
   for (const key of statusKeys) {
-    const value = statusValue(state, key)
+    if (labels && STATE_KEYS.includes(key)) {
+      if (isSet(held.status[key]) && held.status[key] !== NONE && !parseLabelValue(held.status[key])) {
+        values.status[key] = NONE
+        state.applied.push({ path: `mappings.status.${key}`, value: NONE, reason: `without a Project, ${key} needs no label` })
+      }
+      continue
+    }
+    const value = labels ? statusLabelValue(state, key) : statusValue(state, key)
     if (value !== undefined) values.status[key] = value
   }
   const usedBy = new Map()
   for (const [key, value] of Object.entries(values.status)) {
     if (value === NONE) continue
-    if (usedBy.has(value)) throw invalid(`option ${value} cannot answer both ${usedBy.get(value)} and ${key}`, `Pick another option for ${key}`)
-    usedBy.set(value, key)
+    const label = parseLabelValue(value)
+    const seen = label ? label.toLowerCase() : value
+    if (usedBy.has(seen)) throw invalid(label ? `label ${label} cannot answer both ${usedBy.get(seen)} and ${key}` : `option ${value} cannot answer both ${usedBy.get(seen)} and ${key}`, `Pick another ${label ? 'label' : 'option'} for ${key}`)
+    usedBy.set(seen, key)
   }
   for (const key of fieldKeys) {
     const value = fieldValue(state, key)
     if (value !== undefined) values.fields[key] = value
   }
   const result = () => ({ applied: state.applied, questions: state.questions, broken: state.broken, notes: state.notes, values })
-  if (raw.issueTypes.length === 0) {
-    state.notes.push(`${raw.repo} has no enabled issue type, so setup maps no pmkit type; PMK-89 adds labels as a fallback`)
-    return result()
-  }
-  const typeValues = typesOf(state, typeKeys)
+  const typeValues = typesOf(state, typeKeys, values.status)
   if (typeValues !== undefined) values.types = typeValues
   return result()
 }
@@ -250,6 +265,30 @@ function statusValue(state, key) {
   return heldOr(state, question.path, state.held.status[key], question)
 }
 
+/** The label of an answer, bare or label:<name>, or undefined when the repository has no such label. */
+const answeredLabel = (raw, answer) => labelOf(raw, parseLabelValue(answer) ?? answer) ?? undefined
+
+/** Without a Project: the label of one status category, as label:<name>, none, or undefined with a question recorded. */
+function statusLabelValue(state, key) {
+  const names = (state.raw.labels ?? []).map((label) => label.name)
+  const answer = state.given.status[key]
+  if (answer !== undefined) {
+    if (answer === NONE) return NONE
+    const label = answeredLabel(state.raw, answer)
+    if (!label) throw invalid(`--status ${key}=${answer} is not a label of ${state.raw.repo}`, `Pass one of: ${[...names, NONE].join(', ')}`)
+    return `${LABEL_PREFIX}${label.name}`
+  }
+  const match = matchOf(key, names)
+  const question = {
+    path: `mappings.status.${key}`,
+    flag: `--status ${key}=<label>`,
+    candidates: recommendedFirst(names, match),
+    recommended: match ?? NONE,
+    none: `No label means ${words(key)}`,
+  }
+  return heldOr(state, question.path, state.held.status[key], question)
+}
+
 /** The fields that can hold a role: issue fields first, then the Project's own fields of the matching type, and the name match. */
 function fieldCandidates(raw, key) {
   const kinds = FIELD_TYPES[key]
@@ -284,25 +323,44 @@ function fieldValue(state, key) {
   return heldOr(state, path, state.held.fields[key], question)
 }
 
-/** The value of one pmkit type, from the issue types still free: the answer, the held value, none, or undefined when asked. */
+/**
+ * The value of one pmkit type, from the issue types still free (or, without issue types, the labels still free): the answer,
+ * the held value, none, or undefined when asked. A label value is label:<name>.
+ */
 function typeValue(state, type, free) {
   const path = `mappings.types.${type}`
+  const labels = state.raw.issueTypes.length === 0
   const answer = state.given.types[type]
   if (answer !== undefined) {
-    if (answer !== NONE && !free.includes(answer)) throw invalid(`--type-label ${type}=${answer} is not a free issue type of ${state.raw.repo}`, `Pass one of: ${[...free, NONE].join(', ')}`)
+    if (answer === NONE) return NONE
+    if (labels) {
+      const label = answeredLabel(state.raw, answer)
+      if (!label || !free.includes(label.name)) throw invalid(`--type-label ${type}=${answer} is not a free label of ${state.raw.repo}`, `Pass one of: ${[...free, NONE].join(', ')}`)
+      return `${LABEL_PREFIX}${label.name}`
+    }
+    if (!free.includes(answer)) throw invalid(`--type-label ${type}=${answer} is not a free issue type of ${state.raw.repo}`, `Pass one of: ${[...free, NONE].join(', ')}`)
     return answer
   }
   const heldValue = state.held.types?.[type]
   // A types object without this type means it was answered none.
   if (state.held.types !== undefined && !isSet(heldValue) && !state.brokenAt.has(path)) return NONE
   const same = free.find((name) => name.toLowerCase() === type.toLowerCase())
-  const question = { path, flag: `--type-label ${type}=<issue type>`, candidates: recommendedFirst(free, same), recommended: same ?? NONE, none: 'No issue type stands for this type' }
+  const question = labels
+    ? { path, flag: `--type-label ${type}=<label>`, candidates: recommendedFirst(free, same), recommended: same ?? NONE, none: 'No label stands for this type' }
+    : { path, flag: `--type-label ${type}=<issue type>`, candidates: recommendedFirst(free, same), recommended: same ?? NONE, none: 'No issue type stands for this type' }
   return heldOr(state, path, heldValue, question)
 }
 
-/** The types object, or undefined while a type is still a question. One issue type answers at most one pmkit type. */
-function typesOf(state, typeKeys) {
-  const names = state.raw.issueTypes.map((type) => type.name)
+/**
+ * The types object, or undefined while a type is still a question. One issue type, or one label, answers at most one pmkit
+ * type. Without issue types the candidates are the labels no status took.
+ */
+function typesOf(state, typeKeys, status) {
+  const labels = state.raw.issueTypes.length === 0
+  const statusLabels = new Set(Object.values(status).map(parseLabelValue).filter(Boolean).map((name) => name.toLowerCase()))
+  const names = labels
+    ? (state.raw.labels ?? []).map((label) => label.name).filter((name) => !statusLabels.has(name.toLowerCase()))
+    : state.raw.issueTypes.map((type) => type.name)
   const values = {}
   const taken = new Set()
   let pending = false
@@ -311,7 +369,7 @@ function typesOf(state, typeKeys) {
     if (value === undefined) pending = true
     else if (value !== NONE) {
       values[type] = value
-      taken.add(value)
+      taken.add(parseLabelValue(value) ?? value)
     }
   }
   return pending ? undefined : values

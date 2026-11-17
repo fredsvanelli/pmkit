@@ -4458,13 +4458,17 @@ async function runInitGithub(ctx) {
 
   // The repository first, with the default scopes. The Project is read only once it is chosen (ADR 0007).
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
-  const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec, labels: mappedLabelNames({ mappings: current }) })
+  // Every label the file or the flags name is read by name too, so one past the first page of labels is still found.
+  const flags = parseMappingFlags(ctx)
+  const flagged = [...Object.values(flags.status ?? {}), ...Object.values(flags.types ?? {})].filter((value) => value !== NONE).map((value) => (value.startsWith('label:') ? value : `label:${value}`))
+  const labelNames = mappedLabelNames({ mappings: { status: { ...current.status, ...Object.fromEntries(flagged.map((value, index) => [`flag${index}`, value])) }, types: current.types } })
+  const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec, labels: labelNames })
   const projectStep = await resolveGithubProject(ctx, client, raw, current.scope.project, scope.repo)
   const defaults = withLocalDefaults({}).types
   const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]
   const proposal = projectStep.question
     ? { applied: [], questions: [projectStep.question], broken: projectStep.broken, notes: [], values: null }
-    : proposeGithubSetup(raw, current, parseMappingFlags(ctx), types)
+    : proposeGithubSetup(raw, current, flags, types)
 
   for (const [key, value] of [['host', scope.host], ['repo', scope.repo], ['project', proposal.values ? projectStep.value : undefined]]) {
     if (value !== undefined && value !== current.scope[key]) text = edit(`tracker.scope.${key}`, () => setScalar(text, ['tracker', 'scope', key], value))
