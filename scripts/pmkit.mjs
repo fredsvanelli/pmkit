@@ -251,7 +251,7 @@ const storedViewText = (view) => (view.unreadable === undefined ? `filter: ${fil
 
 /** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
 async function issueSearchResult(tracker, found, { sort, sprint }) {
-  const warnings = found.problems.map(problemLine)
+  const warnings = [...found.problems.map(problemLine), ...(found.warnings ?? [])]
   if (found.hasMore === true) {
     const order = (sort ?? 'created') === 'created' ? '' : '; the order covers the issues read'
     warnings.push(`Linear has more matching issues than the 1000 pmkit read; narrow the filter${order}`)

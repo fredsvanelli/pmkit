@@ -587,3 +587,31 @@ test('moveToCategory canceled keeps an issue closed as a duplicate', async () =>
   assert.deepEqual(fake.mutations, [])
   assert.deepEqual(result.after, result.before)
 })
+
+const LABELS_CONFIG = {
+  tracker: { system: 'github', scope: { host: 'github.com', repo: 'acme/widgets', project: 'none' } },
+  mappings: { status: { backlog: 'label:Backlog', in_progress: 'label:Doing', in_review: 'label:Review' }, types: { bug: 'label:bug', feature: 'label:enhancement' } },
+}
+
+// A repository without a Project and without issue types, whose statuses and types are labels.
+async function setupLabels(options = {}) {
+  const fake = fakeGithubIssues({ project: null, issueTypes: [], labels: ['Backlog', 'Doing', 'Review', 'bug', 'enhancement', 'x'], ...options })
+  const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', exec: fake.exec, users: true })
+  let context = makeContext(raw, LABELS_CONFIG)
+  fake.reads.splice(0)
+  fake.mutations.splice(0)
+  const ops = issueOperations({ client, config: { pmkit: LABELS_CONFIG }, getContext: async () => context })
+  return { fake, ops, refresh: () => { context = makeContext(raw, LABELS_CONFIG) } }
+}
+
+test('searchIssues carries the warnings of issues with several status labels', async () => {
+  const { fake, ops } = await setupLabels()
+  fake.seed({ title: 'Two', labels: ['Doing', 'Review'] })
+  fake.seed({ title: 'One', labels: ['Doing', 'bug'] })
+  const result = await ops.searchIssues({})
+  assert.deepEqual(result.issues.map((issue) => [issue.status.category, issue.type ?? null]), [['in_review', null], ['in_progress', 'bug']])
+  assert.deepEqual(result.warnings, ['1 has several status labels (Doing, Review); pmkit reads Review'])
+  fake.seed({ title: 'Clean', labels: ['x'] })
+  assert.equal('warnings' in (await ops.searchIssues({ text: 'clean' })), false)
+})

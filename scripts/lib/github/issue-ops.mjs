@@ -10,7 +10,7 @@ import { checkFilter, issueComparator } from '../issue-filter.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
-import { itemOf, toIssue } from './issues.mjs'
+import { itemOf, toIssue, toIssueWithWarnings } from './issues.mjs'
 import { docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
@@ -79,6 +79,7 @@ export function issueOperations({ client, config, getContext }) {
     // GitHub's order (created, oldest first) is pmkit's order for the created sort, so that read stops once limit issues passed.
     const enough = translated.sort === 'created' && translated.limit !== undefined ? translated.limit : Infinity
     const kept = []
+    const warnings = []
     let stopped = false
     const { hasMore } = await client.paginate(docsOf(context).ISSUES, variables, {
       select: (data) => data.repository.issues,
@@ -87,8 +88,11 @@ export function issueOperations({ client, config, getContext }) {
       stop: async (nodes) => {
         for (const node of nodes) {
           await completeNested(node, context)
-          const issue = toIssue(node, context)
-          if (translated.clientSteps.every((step) => step(issue, node))) kept.push(issue)
+          const { issue, warnings: read } = toIssueWithWarnings(node, context)
+          if (translated.clientSteps.every((step) => step(issue, node))) {
+            kept.push(issue)
+            warnings.push(...read)
+          }
         }
         stopped = kept.length >= enough
         return stopped
@@ -97,7 +101,9 @@ export function issueOperations({ client, config, getContext }) {
     const issues = kept.sort(issueComparator(translated.sort, context.priorities))
     const cut = translated.limit === undefined ? issues : issues.slice(0, translated.limit)
     // hasMore means the page cap cut a read that still needed issues, never that the limit was reached.
-    return { issues: cut, problems: [], hasMore: hasMore && !stopped }
+    const shown = new Set(cut.map((issue) => `${issue.id} `))
+    const shownWarnings = warnings.filter((warning) => shown.has(warning.slice(0, warning.indexOf(' ') + 1)))
+    return { issues: cut, problems: [], hasMore: hasMore && !stopped, ...(shownWarnings.length > 0 ? { warnings: shownWarnings } : {}) }
   }
 
   // Writes.
