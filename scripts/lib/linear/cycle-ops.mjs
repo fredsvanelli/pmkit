@@ -1,6 +1,7 @@
 // The Cycles and Capacity families of the Linear tracker. A cycle is a pmkit sprint and its id is the cycle number as a string.
 // See docs/superpowers/specs/2026-10-28-pmk-37-linear-cycles-to-sprints-design.md.
 
+import { stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
 import { entryFor, readCapacity, writeEntry } from './capacity-store.mjs'
 import { cycleKey, cycleState, cyclesOff, toSprint } from './cycles.mjs'
@@ -77,14 +78,6 @@ export function cycleOperations({ client, issues, config }) {
   }
 
   const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
-  const listOf = (items) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : items[0])
-
-  /** The error of a move that failed after others succeeded: the same code, the ids already moved in details and the next step. */
-  function stoppedHalfway(error, moved) {
-    if (moved.length === 0 || !(error instanceof PmkitError)) return error
-    const nextStep = `${listOf(moved)} ${moved.length === 1 ? 'was' : 'were'} moved; check Linear before you retry`
-    return new PmkitError(error.code, error.message, nextStep, { ...error.details, moved })
-  }
 
   /**
    * `to` is a cycle id, 'current' for the active cycle, or null to take the issues out of their cycle. The Local order of checks
@@ -113,7 +106,7 @@ export function cycleOperations({ client, issues, config }) {
       try {
         results.push(await issues.updateIssue(id, { sprint }, actor, { dryRun }))
       } catch (error) {
-        throw stoppedHalfway(error, moved)
+        throw stoppedHalfway(error, moved, 'Linear')
       }
       const { before, after } = results.at(-1)
       if (before.sprint !== after.sprint) moved.push(after.id)

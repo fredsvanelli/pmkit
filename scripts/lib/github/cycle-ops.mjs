@@ -2,6 +2,7 @@
 // is the start date. Capacity lives in .pmkit/capacity.yaml, as on Linear, under the key github:<owner>/<number> of the Project.
 // See docs/specs/2026-11-17-pmk-88-github-iterations-milestones-epics-design.md, "Sprints".
 
+import { stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
 import { addDays, baseField, overlaps, SPRINT_STATES, validDate } from '../local/sprints.mjs'
 import { entryFor, readCapacity, writeEntry } from '../linear/capacity-store.mjs'
@@ -13,7 +14,6 @@ const OPEN_KEYS = ['start', 'end', 'goal', 'name']
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const notFound = (id) => new PmkitError('NOT_FOUND', `sprint ${id} does not exist`, 'pmkit cycle list')
-const listOf = (items) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : items[0])
 
 /** The sprint with its capacity entry, in the shape Local and Linear return. */
 const withEntry = (sprint, entry) => ({ ...sprint, capacity: entry.capacity ?? {}, daysOff: entry.daysOff ?? {}, ...baseField(entry.capacityBase ?? {}) })
@@ -123,13 +123,6 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     throw new PmkitError('NOT_SUPPORTED', 'GitHub ends an iteration on its end date', 'pmkit cycle add <ids> --to <next sprint>')
   }
 
-  /** The error of a move that failed after others succeeded: the same code, the ids already moved in details and the next step. */
-  function stoppedHalfway(error, moved) {
-    if (moved.length === 0 || !(error instanceof PmkitError)) return error
-    const nextStep = `${listOf(moved)} ${moved.length === 1 ? 'was' : 'were'} moved; check GitHub before you retry`
-    return new PmkitError(error.code, error.message, nextStep, { ...error.details, moved })
-  }
-
   /**
    * `to` is a start date, 'current' for the active sprint, or null to take the issues out of their sprint. Every issue and the target
    * are checked first, so a bad id writes nothing, and a closed sprint is a target as on Local. Each issue then gets one item write, after an item add when it has no item.
@@ -157,7 +150,7 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
       try {
         results.push(await ops.updateIssue(id, { sprint: target?.id ?? null }, actor, { dryRun }))
       } catch (error) {
-        throw stoppedHalfway(error, moved)
+        throw stoppedHalfway(error, moved, 'GitHub')
       }
       const { before, after } = results.at(-1)
       if (before.sprint !== after.sprint) moved.push(after.id)
