@@ -71,7 +71,7 @@ export function discussionRoutes(state, { stamp, register, requireRepository, re
     },
     PmkitDiscussion(vars) {
       const record = findDiscussion(vars)
-      return { repository: { hasDiscussionsEnabled: true, discussion: fullView(record, { comments: vars.comments, replies: vars.replies }) } }
+      return { viewer: { login: state.viewer }, repository: { hasDiscussionsEnabled: true, discussion: fullView(record, { comments: vars.comments, replies: vars.replies }) } }
     },
   }
 
