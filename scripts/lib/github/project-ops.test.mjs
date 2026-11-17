@@ -58,7 +58,7 @@ test('createMilestone sends title and due_on to the REST path and returns the mi
   const calls = fake.mutations.filter((call) => call.name === 'RestCreateMilestone')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].path, 'repos/acme/widgets/milestones')
-  assert.deepEqual(calls[0].input, { title: 'v3', due_on: '2026-12-31T00:00:00Z' })
+  assert.deepEqual(calls[0].input, { title: 'v3', due_on: '2026-12-31T12:00:00Z' })
   assert.equal((await projects.getMilestone('v3')).due, '2026-12-31')
 })
 

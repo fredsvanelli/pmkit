@@ -71,7 +71,7 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     return found
   }
 
-  /** The REST body of a create input, checked before any request. */
+  /** The REST body of a create input, checked before any request. GitHub keeps a due date as a calendar date in US Pacific time, so noon UTC is the same date in every US zone. */
   function bodyOf(input) {
     for (const key of Object.keys(input)) {
       if (!CREATE_KEYS.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${CREATE_KEYS.join(', ')}`)
@@ -80,7 +80,7 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     if (typeof id !== 'string' || id.trim() === '' || /[\r\n]/.test(id)) throw invalid('a milestone id is its title, a non-empty line of text', 'Use an id like v1.0')
     if (!blank(input.name) && input.name !== id) throw invalid('a GitHub milestone has one name, its title', 'Pass only the id, which becomes the title')
     if (!blank(input.due) && !validDate(input.due)) throw invalid('due must be a date as YYYY-MM-DD')
-    return { title: id, ...(blank(input.due) ? {} : { due_on: `${input.due}T00:00:00Z` }) }
+    return { title: id, ...(blank(input.due) ? {} : { due_on: `${input.due}T12:00:00Z` }) }
   }
 
   async function createMilestone(input, actor, { dryRun = false } = {}) {
