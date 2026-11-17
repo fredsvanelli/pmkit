@@ -1,6 +1,6 @@
 # PMK-91 design: the github-draft-issues command
 
-Issue PMK-91, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: draft, waiting for the user's approval. The user answered three questions on 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-91, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: approved by the user on 2026-11-17, with the builder's calls. The user answered three questions on 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
