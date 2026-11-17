@@ -43,7 +43,7 @@ export function parseArgs(argv, { booleans = BOOLEANS, groups = GROUPS } = {}) {
     }
   }
   const grouped = words.length > 0 && groups.has(words[0]) && words.length > 1
-  // `linear triage show` and `github discussions list` have three words.
+  // `linear triage show`, `github discussions list` and `github draft-issues list` have three words.
   const depth = grouped ? (['linear', 'github'].includes(words[0]) && words.length > 2 ? 3 : 2) : 1
   return { command: words.slice(0, depth).join(' ') || undefined, options, positionals: words.slice(depth) }
 }

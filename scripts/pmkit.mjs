@@ -52,6 +52,7 @@ import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
+import { convertText as draftConvertText, listText as draftListText } from './lib/github/draft-issues.mjs'
 import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
@@ -908,7 +909,7 @@ async function flowInputs(ctx, tracker, statuses) {
 // A command reaches the tracker through ctx.tracker(), which holds only the contract operations. `local: true` marks the commands
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
 // `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear(feature).
-// `github: true` does the same for GitHub-only features (discussions): they use ctx.github(feature).
+// `github: true` does the same for GitHub-only features (discussions, draft issues): they use ctx.github(feature).
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear or github writes only .pmkit/config.yaml and returns what setup must ask',
@@ -2581,6 +2582,23 @@ export const COMMANDS = [
       if (ctx.opt('body-file') === undefined) throw usageError('github discussions comment needs --body-file', 'Pass a file, or - for stdin')
       const result = await (await ctx.github('discussions')).comment(ctx.args[0], readInput(ctx.opt('body-file')), { dryRun: ctx.dryRun })
       return { data: result, text: discussionCommentText(result, ctx.dryRun) }
+    },
+  },
+  // GitHub draft issues (PMK-91): list the drafts of a Project and convert the chosen ones, for /pmkit:github:draft-issues.
+  {
+    name: 'github draft-issues list', summary: 'the unarchived draft issues of the Project, in board order, with their field values; says so when no Project is set',
+    usage: '[--project owner/number] [--limit n]', github: true, flags: ['project', 'limit'],
+    run: async (ctx) => {
+      const result = await (await ctx.github('draftIssues')).list({ project: ctx.opt('project'), limit: ctx.opt('limit') })
+      return { data: result, text: draftListText(result), warnings: result.warnings }
+    },
+  },
+  {
+    name: 'github draft-issues convert', summary: 'converts draft issues into issues of the repository, keeping their Project item; --dry-run previews every draft',
+    usage: '<item...> [--project owner/number] [--repo owner/name]', write: true, dryRun: true, github: true, rest: 'item', flags: ['project', 'repo'],
+    run: async (ctx) => {
+      const result = await (await ctx.github('draftIssues')).convert(ctx.args, { project: ctx.opt('project'), repo: ctx.opt('repo'), dryRun: ctx.dryRun })
+      return { data: result, text: draftConvertText(result, ctx.dryRun), warnings: result.warnings }
     },
   },
   {

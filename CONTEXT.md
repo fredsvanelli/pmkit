@@ -108,6 +108,10 @@ _Avoid_: issue branch (alone)
 A GitHub Discussions thread of the repository of a GitHub Issues tracker: an RFC, an idea or a question, with comments and one level of replies, and a marked answer in a Q&A category. `/pmkit:github:discussions` summarizes one and can turn it into an issue, whose description names the discussion. A discussion is not an issue and has no status.
 _Avoid_: forum post, thread (a thread is a root comment and its replies on an issue)
 
+**Draft issue**:
+An item of a GitHub Project that has a title, a body and field values but no repository and no number. `/pmkit:github:draft-issues` lists the drafts of a Project and converts the chosen ones into issues of a repository; the Project item and its field values stay. pmkit does not track a draft until it is converted.
+_Avoid_: draft (alone, it also means a draft pull request), card, note
+
 **Blocked**:
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.
 _Avoid_: on hold, stuck, waiting

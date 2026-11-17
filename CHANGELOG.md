@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `/pmkit:github:draft-issues` reviews the draft issues of a GitHub Project and converts the ready ones into issues after a full preview (PMK-91). It reads `tracker.scope.project`, or any Project linked to the repository through `--project`, and lists the unarchived drafts with their field values and a maturity note. The chosen drafts become issues of `tracker.scope.repo`, or of `--repo` with a warning that pmkit does not track them, through GitHub's own conversion, so the Project item keeps its Status and other fields. A dry run checks every item and the target first, and one wrong item converts nothing. Then the command offers one batched `issues update` preview for the type, priority and labels of the new issues. Two CLI calls serve it, for the GitHub Issues tracker only: `github draft-issues list` and `github draft-issues convert <item...>`. GitHub Enterprise Server 3.19 has everything they use, and the capability manifest does not change. The flow has a runbook, `docs/runbooks/draft-issues-github.md`, checked by `scripts/runbook-draft-issues-github.test.mjs`.
+
 ## 0.6.0 - 2026-11-17
 
 - `/pmkit:spec:from-prd` turns a one-page PRD into a refined PRD, ADRs for the product decisions that are hard to reverse, an epic with estimated issues and blocker links, with an approval at each stage and subagents that read, draft and check (PMK-338).

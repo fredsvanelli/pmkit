@@ -1619,6 +1619,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'linear customers link': ['--customer', 'acme', '--issue', 'ACME-1'],
     'linear triage set': ['--off'],
     'github discussions comment': ['1', '--body-file', input('comment.md')],
+    'github draft-issues convert': ['PVTI_1'],
     migrate: [],
     'local-migrate export': ['--workspace', 'acme', '--team', 'ACME'],
     'local-migrate import': ['--workspace', 'acme', '--team', 'ACME'],
@@ -1749,6 +1750,7 @@ test('every read goes on with one warning', () => {
     'linear triage suggestions': [],
     'github discussions list': [],
     'github discussions get': ['1'],
+    'github draft-issues list': [],
     'local-migrate status': [],
     render: ['board'],
   }
