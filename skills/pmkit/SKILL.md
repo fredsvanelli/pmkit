@@ -61,6 +61,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | review the roadmap: epics and milestones with dates, health and delays, and the epics with no recent status update | `/pmkit:report:roadmap-review` | `${CLAUDE_PLUGIN_ROOT}/commands/report/roadmap-review.md` |
 | what is left for a release, is it ready to ship, open work and deploys of a release | `/pmkit:report:release-readiness` | `${CLAUDE_PLUGIN_ROOT}/commands/report/release-readiness.md` |
 | draft a status update for an epic and publish it after approval | `/pmkit:report:status` | `${CLAUDE_PLUGIN_ROOT}/commands/report/status.md` |
+| turn a vague or one-page PRD into a refined PRD, ADRs and an estimated, linked backlog | `/pmkit:spec:from-prd` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/from-prd.md` |
 | turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers | `/pmkit:spec:import` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/import.md` |
 | record a decision as an ADR and link it to the issues it affects | `/pmkit:spec:record-decision` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/record-decision.md` |
 | mark an ADR accepted, deprecated or superseded | `/pmkit:spec:adr-status` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/adr-status.md` |
