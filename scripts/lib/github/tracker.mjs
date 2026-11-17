@@ -11,12 +11,13 @@ import { discoveryView, fetchDiscovery, mappedLabelNames, parseProject } from '.
 import { discussionOperations } from './discussions.mjs'
 import { draftIssueOperations } from './draft-issues.mjs'
 import { historyOperations } from './history-ops.mjs'
+import { cycleOperations } from './cycle-ops.mjs'
 import { defaultExec } from './host.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
 import { buildGithubCapabilities, PROJECT_ONLY } from './manifest.mjs'
 import { brokenGithubMappings } from './mappings.mjs'
-import { epicProjects } from './project-ops.mjs'
+import { epicProjects, projectOperations } from './project-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
 
 const CACHE_TTL_SECONDS = 3600
@@ -99,6 +100,8 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
   async function capabilities() {
     requireScope()
     const { raw, warnings } = await discovery()
+    // The epic read is not started here; when an operation already read it, its paging warning shows too.
+    const epicWarnings = epicsMemo ? ((await epicsMemo).warnings ?? []) : []
     return {
       tracker: 'github',
       gitHost: config.pmkit?.git_host?.system ?? 'none',
@@ -107,7 +110,7 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
       repo: scope.repo,
       project: scope.project ?? null,
       capabilities: buildGithubCapabilities(raw, config.pmkit),
-      warnings: [...warnings, ...(raw.project === null ? [`tracker.scope.project is none, so ${PROJECT_ONLY.slice(0, -1).join(', ')} and ${PROJECT_ONLY.at(-1)} are absent`] : [])],
+      warnings: [...warnings, ...epicWarnings, ...(raw.project === null ? [`tracker.scope.project is none, so ${PROJECT_ONLY.slice(0, -1).join(', ')} and ${PROJECT_ONLY.at(-1)} are absent`] : [])],
     }
   }
 
@@ -175,9 +178,11 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
     return contexts.get(raw)
   }
 
-  const issues = issueOperations({ client, config, getContext })
+  const issues = issueOperations({ client, config, getContext, now })
   const relations = relationOperations({ client, ops: issues, getContext })
   const history = historyOperations({ client, ops: issues, getContext, now })
+  const cycles = cycleOperations({ client, ops: issues, config, getContext, now })
+  const projects = projectOperations({ client, ops: issues, config, getContext, now })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -195,6 +200,25 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
     comment: history.comment,
     resolveThread: history.resolveThread,
     metricEvents: history.metricEvents,
+    listCycles: cycles.listCycles,
+    currentCycle: cycles.currentCycle,
+    cycleIssues: cycles.cycleIssues,
+    openCycle: cycles.openCycle,
+    closeCycle: cycles.closeCycle,
+    moveToCycle: cycles.moveToCycle,
+    getCapacity: cycles.getCapacity,
+    setCapacity: cycles.setCapacity,
+    getDaysOff: cycles.getDaysOff,
+    updateCycleCapacity: cycles.updateCycleCapacity,
+    listDeliverables: projects.listDeliverables,
+    getDeliverable: projects.getDeliverable,
+    deliverableProgress: projects.deliverableProgress,
+    createDeliverable: projects.createDeliverable,
+    publishStatusUpdate: projects.publishStatusUpdate,
+    listStatusUpdates: projects.listStatusUpdates,
+    listMilestones: projects.listMilestones,
+    getMilestone: projects.getMilestone,
+    createMilestone: projects.createMilestone,
   }
   const refused = {
     // Archive works on the Project item; unarchive is Local only, as on Linear (PMK-250).

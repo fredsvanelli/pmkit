@@ -9,7 +9,7 @@ const STATUS = { triage: 'Triage', backlog: 'Backlog', todo: 'Todo', in_progress
 
 // A Project with a Status option per category, every category mapped, three types and the issue fields of the fake repository.
 function githubContract() {
-  const fake = fakeGithubIssues({ project: { statusOptions: STATUS_OPTIONS } })
+  const fake = fakeGithubIssues({ project: { statusOptions: STATUS_OPTIONS, iterations: { fieldName: 'Sprint' } } })
   const root = tempDir()
   const { env } = userStoreEnv()
   const config = {
@@ -21,7 +21,7 @@ function githubContract() {
       mappings: {
         status: STATUS,
         types: { feature: 'Feature', bug: 'Bug', task: 'Task' },
-        fields: { priority: 'issue:Priority', estimate: 'issue:Effort', target_date: 'issue:Target date', start_date: 'none' },
+        fields: { priority: 'issue:Priority', estimate: 'issue:Effort', target_date: 'issue:Target date', start_date: 'none', sprint: 'project:Sprint' },
       },
     },
   }
@@ -29,9 +29,9 @@ function githubContract() {
   return { tracker, env, fake, root, today: '2026-11-16', actor: 'octocat', teardown: () => {} }
 }
 
-// GitHub comments have no threads, and iterations, milestones, documents, time and agents wait for later issues (PMK-88).
+// GitHub comments have no threads, and documents, time, agents and releases wait for later issues.
 runTrackerContract({
   name: 'GitHub tracker contract over the fake',
-  families: ['discovery', 'issues', 'relations', 'history'],
+  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'milestone-writes'],
   setup: githubContract,
 })

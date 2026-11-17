@@ -115,7 +115,7 @@ test('runbook: first run, check, and an update with nothing changed', () => {
   assert.equal(discovered.statuses.find((item) => item.name === 'In Review').category, 'in_review')
   const capabilities = json(pmkit(root, fake, ['capabilities', '--json']))
   assert.equal(capabilities.tracker, 'github')
-  assert.deepEqual(capabilities.capabilities.filter((entry) => entry.path !== 'absent').map((entry) => [entry.id, entry.path]), [['estimation', 'native'], ['multilevel_hierarchy', 'native'], ['dependencies', 'native'], ['native_metrics', 'derived'], ['linked_code', 'derived']])
+  assert.deepEqual(capabilities.capabilities.filter((entry) => entry.path !== 'absent').map((entry) => [entry.id, entry.path]), [['cycles', 'native'], ['estimation', 'native'], ['multilevel_hierarchy', 'native'], ['dependencies', 'native'], ['deliverables', 'native'], ['status_update', 'native'], ['capacity', 'derived'], ['native_metrics', 'derived'], ['linked_code', 'derived']])
 
   // Step 6: nothing changed.
   const again = json(pmkit(root, fake, ['init', '--update', '--dry-run', '--json']))
