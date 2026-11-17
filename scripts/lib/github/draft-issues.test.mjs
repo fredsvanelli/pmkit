@@ -186,3 +186,22 @@ test('convert stops on a failure partway and names what converted', async () => 
   first.fake.failNext('PmkitConvertDraftItem')
   await assert.rejects(first.ops.convert([first.a]), (error) => error.code === 'UPSTREAM' && !/^GitHub converted/.test(error.message))
 })
+
+test('convert without a Project is refused, and the list text covers the empty and unavailable cases', async () => {
+  const none = setup({ scope: { ...SCOPE, project: 'none' } })
+  await rejectsWith(none.ops.convert(['PVTI_1'], { dryRun: true }), 'NOT_SUPPORTED', 'no Project to read drafts from for acme/widgets')
+  assert.equal(listText(await none.ops.list()), 'no Project to read for acme/widgets; Pass --project owner/number, or set tracker.scope.project with /pmkit:setup')
+  const empty = setup()
+  assert.equal(listText(await empty.ops.list()), 'no draft issues in Roadmap')
+})
+
+test('convert names a pull request or a redacted item as not a draft', async () => {
+  const { fake, ops } = setup()
+  fake.seedDraft({ title: 'Offline mode' })
+  const pull = fake.seedDraft({ title: 'A pull request' }).item
+  const hidden = fake.seedDraft({ title: 'Hidden' }).item
+  fake.state.items.find((item) => item.id === pull).type = 'PULL_REQUEST'
+  fake.state.items.find((item) => item.id === hidden).type = 'REDACTED'
+  await rejectsWith(ops.convert([pull], { dryRun: true }), 'INVALID_INPUT', `item ${pull} is a pull request, not a draft`)
+  await rejectsWith(ops.convert([hidden], { dryRun: true }), 'INVALID_INPUT', `item ${hidden} is an item the gh account cannot see, not a draft`)
+})

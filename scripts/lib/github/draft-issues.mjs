@@ -14,6 +14,8 @@ const MAX_CONVERT = 50
 const GHOST = 'ghost'
 const TITLE_FIELD = 'Title'
 const ITEM_ID = /^[A-Za-z0-9_=+/-]{1,200}$/
+// What an item that is not a draft is, by its ProjectV2ItemType. REDACTED, and any type GitHub adds later, read as unseen.
+const OTHER_ITEMS = { ISSUE: 'an issue', PULL_REQUEST: 'a pull request' }
 const NO_PROJECT_HINT = 'Pass --project owner/number, or set tracker.scope.project with /pmkit:setup'
 
 const FIELD = 'field { ... on ProjectV2FieldCommon { name } }'
@@ -189,7 +191,7 @@ export function draftIssueOperations({ client, scope }) {
     }
     if (!node?.id) throw refuse('does not exist')
     if (node.project?.id !== project.id) throw refuse(`is not in ${project.name}`)
-    if (node.type !== 'DRAFT_ISSUE') throw refuse(`is ${node.type === 'ISSUE' ? 'an issue' : node.type === 'PULL_REQUEST' ? 'a pull request' : 'not readable'}, not a draft`)
+    if (node.type !== 'DRAFT_ISSUE') throw refuse(`is ${OTHER_ITEMS[node.type] ?? 'an item the gh account cannot see'}, not a draft`)
     if (node.isArchived) throw refuse('is archived')
     return node
   }

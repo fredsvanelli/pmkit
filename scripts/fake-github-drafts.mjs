@@ -1,6 +1,7 @@
 // The draft issues of the stateful fake GitHub (scripts/fake-github-issues.mjs): the Project, item and target reads and the
 // conversion of scripts/lib/github/draft-issues.mjs, the extra Projects of --project, and seedDraft. A draft is an item with
-// issueId null and a draft record; converting it creates the issue and points the same item at it, as GitHub does.
+// issueId null and a draft record; converting it creates the issue and points the same item at it, as GitHub does. A test may
+// set item.type (PULL_REQUEST, REDACTED) to stand for an item the fake does not model.
 // See docs/specs/2026-11-17-pmk-91-github-draft-issues-design.md.
 
 /** Adds the draft keys to a state, new or loaded from an older toJSON(). extraProjects: [{ id, owner, number, title, linked }]. */
@@ -41,10 +42,10 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
         __typename: 'DraftIssue', title: draft.title, body: draft.body, createdAt: draft.createdAt, updatedAt: draft.updatedAt,
         creator: login(draft.creator), assignees: { nodes: draft.assignees.map((name) => ({ login: name })) },
       }
-      return { id: item.id, type: 'DRAFT_ISSUE', isArchived: item.isArchived, content, fieldValues: fieldValues(item, draft.title), project: { id: item.projectId } }
+      return { id: item.id, type: item.type ?? 'DRAFT_ISSUE', isArchived: item.isArchived, content, fieldValues: fieldValues(item, draft.title), project: { id: item.projectId } }
     }
     const issue = state.issues.find((record) => record.id === item.issueId)
-    return { id: item.id, type: 'ISSUE', isArchived: item.isArchived, content: { __typename: 'Issue' }, fieldValues: fieldValues(item, issue?.title ?? ''), project: { id: item.projectId } }
+    return { id: item.id, type: item.type ?? 'ISSUE', isArchived: item.isArchived, content: { __typename: 'Issue' }, fieldValues: fieldValues(item, issue?.title ?? ''), project: { id: item.projectId } }
   }
 
   const queries = {
