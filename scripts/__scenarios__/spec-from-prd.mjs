@@ -1,7 +1,8 @@
 // /pmkit:spec:from-prd on the no-sprints fixture. The scenario records only the calls written in from-prd.md. The flow
 // reaches other calls by following other command files, and their own scenarios cover those calls: an ADR follows
 // spec/record-decision.md (Stage 3, and the ADR links of Stage 6), and the creates of the epic, the milestones and the
-// issues follow spec/import.md (Stages 4 and 5). Neither entry reaches a write of those files.
+// issues follow spec/import.md (Stages 4 and 5). Entries .0 and .1 reach no write of those files. Entry .2 reaches the
+// ADR write of record-decision step 5, which this scenario does not record.
 //  .0 a new PRD, .issues/docs/specs/overview.md, for the existing epic EPC-4H7V. Stage 0 finds the dead-letter issue
 //     ISS-9B2X, which is outside the epic, and the PM goes on. The PM approves the refined PRD in Stage 2, then declines
 //     the ADR of its one `ADR` decision at the question of record-decision step 5, so nothing is written for it. Stage 3b
@@ -13,6 +14,10 @@
 //     The resume finds the ADR, the PM confirms the epic, and Stage 5 has no new row, because the epic holds an issue for
 //     each requirement. Stage 6 finds that the list blocks the replay, and the PM approves that link. The PM declines the
 //     ADR links at the question of record-decision step 6, so nothing else is written.
+//  .2 a stop during Stage 3. The same PRD and epic as .0, and the PM goes on at Stage 0 and approves a refined PRD with two
+//     `ADR` decisions. In Stage 3 the PM approves the first ADR at the question of record-decision step 5, and stops at
+//     the same question for the second. Before the stop, Stage 3b stores the refined PRD with the second decision still
+//     `ADR`, so a resume records it. The flow names /pmkit:spec:from-prd specs/webhook-platform-overview-prd.md EPC-4H7V.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -26,7 +31,21 @@ const REPLAY_ADR = 'adr/0001-replays-stay-manual-in-v1.md'
 
 const NOT_A_RESUME = 'the PRD is new, not a refined PRD that an earlier run stored'
 const STOPPED = 'the PM stops at the Stage 5 tree, so the flow ends before Stage 6'
+const STOPPED_IN_3 = 'the PM stops at the second ADR of Stage 3, so the flow ends after Stage 3b stores the refined PRD'
 const RESUMED = 'a resume skips Stages 1, 2 and 3b, because the refined PRD is already approved and stored'
+
+// Stage 0 of a new PRD, .issues/docs/specs/overview.md, with the given epic EPC-4H7V.
+const overviewRecon = [
+  { step: '1', read: ['docs', 'read', 'specs/overview.md'], save: 'prd' },
+  { step: '1', read: ['discover'] },
+  { step: '1', read: ['epic', 'list'] },
+  { step: '1', read: ['milestone', 'list'] },
+  { step: '1', read: ['docs', 'list'] },
+  { step: '1', read: ['issues', 'list', '--text', 'dead-letter'], save: 'deadLetter' },
+  { step: '1', read: ['issues', 'list', '--text', 'backoff'] },
+  { step: '1', read: ['issues', 'list', '--text', 'signed'] },
+  { step: '1', read: ['epic', 'get', 'EPC-4H7V'], save: 'epic' },
+]
 
 const fresh = {
   command: 'spec/from-prd',
@@ -35,15 +54,7 @@ const fresh = {
   answers: ['Go on', 'Approve', 'No', 'Stop'],
   steps: [
     // Stage 0: the PRD, what exists, and the given epic.
-    { step: '1', read: ['docs', 'read', 'specs/overview.md'], save: 'prd' },
-    { step: '1', read: ['discover'] },
-    { step: '1', read: ['epic', 'list'] },
-    { step: '1', read: ['milestone', 'list'] },
-    { step: '1', read: ['docs', 'list'] },
-    { step: '1', read: ['issues', 'list', '--text', 'dead-letter'], save: 'deadLetter' },
-    { step: '1', read: ['issues', 'list', '--text', 'backoff'] },
-    { step: '1', read: ['issues', 'list', '--text', 'signed'] },
-    { step: '1', read: ['epic', 'get', 'EPC-4H7V'], save: 'epic' },
+    ...overviewRecon,
     // The brief lists ISS-9B2X as a likely duplicate, and the PM goes on with EPC-4H7V.
     { confirm: 'Stage 0' },
     // Stage 2: the path is free, and the PM approves the draft and the path.
@@ -159,4 +170,48 @@ const resume = {
   },
 }
 
-export default [fresh, resume]
+const stopInStage3 = {
+  command: 'spec/from-prd',
+  fixture: 'no-sprints',
+  prompt: '/pmkit:spec:from-prd .issues/docs/specs/overview.md EPC-4H7V',
+  answers: ['Go on', 'Approve', 'Yes', 'Stop'],
+  steps: [
+    // Stage 0: the same recon as entry .0, and the PM goes on with EPC-4H7V.
+    ...overviewRecon,
+    { confirm: 'Stage 0' },
+    // Stage 2: the PM approves a refined PRD with two ADR decisions.
+    { step: '4', dryRun: ['docs', 'create', OVERVIEW_PRD, '--body-file', input('from-prd-overview-prd-two-adrs.md')] },
+    { confirm: 'Stage 2' },
+    // Stage 3: the PM approves the ADR of the retry limit, then stops at the ADR of the queue retention.
+    { confirm: 'Stage 3' },
+    { confirm: 'Stage 3' },
+    // Before the stop, Stage 3b stores the refined PRD with no changed mark.
+    { step: '6', write: ['docs', 'create', OVERVIEW_PRD, '--body-file', input('from-prd-overview-prd-two-adrs.md')] },
+  ],
+  skip: {
+    '2 docs list': NOT_A_RESUME,
+    '2 docs read': NOT_A_RESUME,
+    '8 issues list': STOPPED_IN_3,
+    '9 issues get': STOPPED_IN_3,
+    '9 issues dependencies': STOPPED_IN_3,
+    '9 issues link': STOPPED_IN_3,
+    '9 docs adr-get': STOPPED_IN_3,
+  },
+  notHit: {
+    Resume: NOT_A_RESUME,
+    'Stage 4': STOPPED_IN_3,
+    'Stage 5': STOPPED_IN_3,
+    'Stage 6': STOPPED_IN_3,
+  },
+  expect(repo, saved) {
+    assert.equal(saved.epic.title, 'Reliable webhooks')
+    const stored = repo.file(`.issues/docs/${OVERVIEW_PRD}`)
+    assert.ok(stored, 'Stage 3b stores the refined PRD before the stop')
+    assert.match(stored, /^- Deliveries are retried at most six times: ADR\.$/m, 'the approved ADR keeps its mark')
+    assert.match(stored, /^- Parked deliveries stay in the queue for 30 days: ADR\.$/m, 'the decision at which the PM stopped is still ADR, so a resume records it')
+    assert.match(stored, /^- The signature uses HMAC with SHA-256: PRD only\.$/m)
+    assert.equal(repo.issue('ISS-9B2X').parent, undefined, 'nothing moves ISS-9B2X')
+  },
+}
+
+export default [fresh, resume, stopInStage3]
