@@ -149,7 +149,8 @@ The E2E test does not run this check, because it needs a real Project on github.
 1. Create a throwaway Project on github.com with an iteration field named `Sprint`, and add three consecutive iterations of 14 days. Add one issue to the Project in each of the first two iterations.
 2. Run `/pmkit:setup` on a scratch repository that links the Project, with `sprint=project:Sprint`, then run `node scripts/pmkit.mjs cycle open --start <date after the last iteration> --json`.
 3. Read the iteration of each item, for example `node scripts/pmkit.mjs issues get <id> --json` for the two issues. The `sprint` of each issue must be the same as before the call. If an item lost its iteration, `openCycle` sent the iterations without their ids, and that is a bug.
-4. Delete the Project and the scratch repository.
+4. Create a milestone with a due date on the throwaway repository, for example `node scripts/pmkit.mjs milestone create v-live --due 2026-12-31 --json`, then read it back with `node scripts/pmkit.mjs milestone get v-live --json`. The `due` must be `2026-12-31`. GitHub stores a due date as a calendar date in US Pacific time, and pmkit sends noon UTC so the date does not move to the previous day.
+5. Delete the Project, the milestone and the scratch repository.
 
 ## What the fake `gh` checks
 
