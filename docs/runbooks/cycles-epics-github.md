@@ -142,6 +142,16 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
     Expect `cycles` with path `native` and the detail `field: "Sprint"`, `open: true` and `close: false`. `capacity`, `deliverables` and `status_update` are not `absent`.
 
+## Capacity
+
+14. Set the capacity of a member in the current sprint:
+
+    ```
+    node scripts/pmkit.mjs cycle capacity current --set octocat=5 --json
+    ```
+
+    Expect `after.id` `2026-11-16` and `after.capacity` `{ "octocat": 5 }`. GitHub has no capacity of its own, so pmkit makes no call that changes GitHub and writes `.pmkit/capacity.yaml` instead. That file holds the entry under `cycles`, then the key `github:acme/7` of the Project, then the sprint `2026-11-16`: `capacity: { octocat: 5 }`.
+
 ## Manual live check
 
 The E2E test does not run this check, because it needs a real Project on github.com. It stays open as a follow-up for the `PMKIT_LIVE` checks of PMK-335.

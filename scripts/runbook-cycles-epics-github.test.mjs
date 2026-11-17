@@ -10,6 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { statefulGhOnPath } from './fake-gh-path.mjs'
 import { fakeGithubIssues } from './fake-github-issues.mjs'
+import { parseYaml } from './lib/yaml.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -97,6 +98,8 @@ test('the runbook names the commands this test runs', () => {
     'issues update 3 --milestone v2 --json',
     'milestone get v2 --json',
     'capabilities --json',
+    'cycle capacity current --set octocat=5 --json',
+    '.pmkit/capacity.yaml',
     'a GitHub iteration has no goal',
     'GitHub ends an iteration on its end date',
     'a GitHub milestone has one name, its title',
@@ -106,8 +109,8 @@ test('the runbook names the commands this test runs', () => {
   }
 })
 
-test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 13', () => {
-  const { fake, pmkit } = runbookRepo()
+test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 14', () => {
+  const { root, fake, pmkit } = runbookRepo()
 
   // Step 1: the sprint field is mapped, and the Project holds one sprint, which is active on 2026-11-17.
   const listed = json(pmkit('cycle', 'list', '--json'))
@@ -190,6 +193,14 @@ test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 13', (
   assert.equal(byId.cycles.path, 'native')
   assert.deepEqual([byId.cycles.detail.field, byId.cycles.detail.open, byId.cycles.detail.close], ['Sprint', true, false])
   for (const id of ['capacity', 'deliverables', 'status_update']) assert.notEqual(byId[id].path, 'absent', id)
+
+  // Step 14: set a capacity in the current sprint. GitHub has no capacity, so pmkit writes .pmkit/capacity.yaml under the Project key.
+  const callsBefore = calls(fake).length
+  const capacity = json(pmkit('cycle', 'capacity', 'current', '--set', 'octocat=5', '--json'))
+  assert.deepEqual([capacity.before.capacity, capacity.after.id, capacity.after.capacity], [{}, '2026-11-16', { octocat: 5 }])
+  const stored = parseYaml(fs.readFileSync(path.join(root, '.pmkit', 'capacity.yaml'), 'utf8'))
+  assert.deepEqual(stored.cycles['github:acme/7']['2026-11-16'], { capacity: { octocat: 5 } })
+  assert.equal(calls(fake).slice(callsBefore).filter((call) => /\bmutation\b/.test(call.input)).length, 0)
 
   assertNoToken(fake)
 })
