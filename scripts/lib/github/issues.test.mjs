@@ -266,6 +266,12 @@ test('toIssue reads the epic of the lowest Project number among the items in lin
   assert.equal(toIssue(node({ projectItems: { nodes: [epicItem('E9', 9), epicItem('E12', 12)] } }), epicContext()).parent, 'acme/9')
 })
 
+test('toIssue skips an archived epic item, as the epic progress does', () => {
+  const archived = { ...epicItem('E9', 9), isArchived: true }
+  assert.equal(toIssue(node({ projectItems: { nodes: [archived, epicItem('E12', 12)] } }), epicContext()).parent, 'acme/12')
+  assert.equal('parent' in toIssue(node({ projectItems: { nodes: [archived] } }), epicContext()), false)
+})
+
 test('toIssue prefers the parent issue to an epic', () => {
   const parent = { id: 'I9', number: 9, repository }
   assert.equal(toIssue(node({ parent, projectItems: { nodes: [epicItem('E12', 12)] } }), epicContext()).parent, '9')

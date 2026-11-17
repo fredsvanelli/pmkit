@@ -275,6 +275,16 @@ test('setParent null removes the parent issue when there is one, else the epic i
   assert.deepEqual(none.after, none.before)
 })
 
+test('setParent null on an issue whose only epic item is archived has no parent to remove and writes nothing', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: [{ project: 'acme/12', archived: true }] })
+  clear()
+  const result = await relations.setParent('1', null, ME)
+  assert.deepEqual(fake.mutations, [])
+  assert.equal(result.before.parent, undefined)
+  assert.deepEqual(result.after, result.before)
+})
+
 test('setParent null previews the epic that remains after the parent issue goes, as the real run reads it', async () => {
   const { fake, relations, clear } = await epicSetup()
   fake.seed({ number: 1 })

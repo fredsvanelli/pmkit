@@ -188,11 +188,12 @@ function sprintOf(node, context) {
   return value?.startDate ?? undefined
 }
 
-// The parent issue, else the epic of the lowest-numbered linked epic Project the issue is an item of.
+// The parent issue, else the epic of the lowest-numbered linked epic Project the issue is an item of. An archived item is no
+// longer in the epic, as the epic progress counts it, so it gives no parent.
 export function parentOf(node, context) {
   if (node.parent) return issueIdOf(node.parent, context.repo)
   const found = nodesOf(node.projectItems)
-    .filter((item) => context.epics.has(item.project?.id))
+    .filter((item) => !item.isArchived && context.epics.has(item.project?.id))
     .sort((a, b) => (a.project.number ?? Infinity) - (b.project.number ?? Infinity))[0]
   return found ? context.epics.get(found.project.id) : undefined
 }

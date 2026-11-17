@@ -105,8 +105,11 @@ export function relationOperations({ client, ops, getContext }) {
     return chain
   }
 
-  /** The items of a node in linked epic Projects: [{ id, project: { id } }]. The scope Project is no epic, so its item is never in the list. */
-  const epicItems = (node, context) => (node.projectItems?.nodes ?? []).filter((item) => context.epics.has(item.project?.id))
+  /**
+   * The items of a node in linked epic Projects: [{ id, project: { id } }]. The scope Project is no epic, so its item is never in the list.
+   * An archived item gives no parent (parentOf), so it is left out too.
+   */
+  const epicItems = (node, context) => (node.projectItems?.nodes ?? []).filter((item) => !item.isArchived && context.epics.has(item.project?.id))
 
   /** Runs the steps in order. A failure after the first write names what was done. */
   async function run(id, steps, before) {
