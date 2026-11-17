@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
-import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, mappedLabelNames, needsVersionCheck, parseProject } from './discovery.mjs'
+import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, mappedLabelNames, needsVersionCheck, parseProject, projectQuery, repoQuery } from './discovery.mjs'
 
 const rejectsWith = (promise, code, pattern) =>
   assert.rejects(promise, (error) => {
@@ -348,4 +348,30 @@ test('mappedLabelNames lists each label the config and the answers name, once wi
   const pmkit = { mappings: { status: { in_progress: 'label:Doing', done: 'Done', backlog: 'none' }, types: { bug: 'label:bug' } } }
   assert.deepEqual(mappedLabelNames(pmkit), ['Doing', 'bug'])
   assert.deepEqual(mappedLabelNames(pmkit, ['doing', 'Label 115', 'label:Review']), ['Doing', 'bug', 'Label 115', 'Review'])
+})
+
+test('the repository query selects the owner id and the Project query selects the iteration configuration', () => {
+  assert.match(repoQuery({ issueFields: true }), /owner \{ id login __typename \}/)
+  const query = projectQuery({ issueFields: true })
+  assert.ok(query.includes('... on ProjectV2IterationField { id name dataType isIssueField configuration { duration startDay iterations { id title startDate duration } completedIterations { id title startDate duration } } }'))
+  assert.ok(projectQuery({ issueFields: false }).includes('... on ProjectV2IterationField { id name dataType configuration {'))
+})
+
+test('fetchDiscovery carries ownerId and the configuration of each iteration field', async () => {
+  const configuration = { duration: 14, startDay: 1, iterations: [{ id: 'IT_a', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 }], completedIterations: [{ id: 'IT_0', title: 'Sprint 0', startDate: '2026-11-02', duration: 14 }] }
+  const nodes = projectReply().data.repositoryOwner.projectV2.fields.nodes.map((node) => (node.dataType === 'ITERATION' ? { ...node, configuration } : node))
+  const repo = repoReply()
+  repo.data.repository.owner.id = 'O_1'
+  const { client } = setup(standardFixture({ graphql: { PmkitRepo: repo, PmkitProject: projectReply({ extra: nodes }) } }), 'github.com')
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'acme/7' })
+  assert.equal(raw.ownerId, 'O_1')
+  assert.deepEqual(raw.project.fields.find((item) => item.dataType === 'ITERATION').configuration, configuration)
+  assert.equal(raw.project.fields.find((item) => item.name === 'Due').configuration, undefined)
+})
+
+test('an iteration field without configuration reads as no iterations, and a repository without owner id as null', async () => {
+  const { client } = setup(standardFixture(), 'github.com')
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'acme/7' })
+  assert.equal(raw.ownerId, null)
+  assert.deepEqual(raw.project.fields.find((item) => item.dataType === 'ITERATION').configuration, { duration: null, startDay: null, iterations: [], completedIterations: [] })
 })

@@ -14,9 +14,9 @@ export const REQUIRED_STATUS = ['todo', 'in_progress', 'done']
 // Without a Project, setup asks a label for these categories. todo, done and canceled come from open and closed.
 export const LABEL_STATUS_KEYS = ['triage', 'backlog', 'in_progress', 'in_review']
 const STATE_KEYS = ['todo', 'done', 'canceled', 'blocked']
-export const FIELD_ROLES = ['priority', 'estimate', 'start_date', 'target_date']
+export const FIELD_ROLES = ['priority', 'estimate', 'start_date', 'target_date', 'sprint']
 
-const FIELD_TYPES = { priority: ['SINGLE_SELECT'], estimate: ['NUMBER', 'SINGLE_SELECT'], start_date: ['DATE'], target_date: ['DATE'] }
+const FIELD_TYPES = { priority: ['SINGLE_SELECT'], estimate: ['NUMBER', 'SINGLE_SELECT'], start_date: ['DATE'], target_date: ['DATE'], sprint: ['ITERATION'] }
 
 // Names that setup recommends, compared without case. The first match wins.
 const MATCHES = {
@@ -32,6 +32,7 @@ const MATCHES = {
   estimate: ['effort', 'estimate', 'story points', 'points', 'size'],
   start_date: ['start date', 'start'],
   target_date: ['target date', 'due date', 'end date'],
+  sprint: ['iteration', 'sprint'],
 }
 
 const words = (key) => key.replace(/_/g, ' ')
@@ -77,6 +78,13 @@ export function fieldOf(raw, value) {
   return list.find((item) => item.name === parsed.name) ?? null
 }
 
+/** The scope Project's iteration field that mappings.fields.sprint names as project:<name>, with its configuration, or null. */
+export function iterationFieldOf(raw, pmkit) {
+  const parsed = parseFieldSource(pmkit?.mappings?.fields?.sprint)
+  if (parsed?.source !== 'project') return null
+  return raw.project?.fields.find((item) => item.name === parsed.name && item.dataType === 'ITERATION') ?? null
+}
+
 /** Why a held value is broken, or null when GitHub still has what it names. */
 function problemOf(raw, path, value) {
   const group = path.split('.')[1]
@@ -91,6 +99,9 @@ function problemOf(raw, path, value) {
   if (group === 'fields') {
     const parsed = parseFieldSource(value)
     if (!parsed) return `${path} is ${value}, which is not issue:<name>, project:<name> or none`
+    if (path === 'mappings.fields.sprint' && parsed.source !== NONE) {
+      if (parsed.source === 'issue' || (raw.project !== null && !iterationFieldOf(raw, { mappings: { fields: { sprint: value } } }) && fieldOf(raw, value))) return `${path} must name a Project iteration field`
+    }
     if (parsed.source === NONE || fieldOf(raw, value)) return null
     if (parsed.source === 'issue') return `${path} names issue field ${parsed.name}, which ${raw.repo} no longer has`
     if (raw.project === null) return `${path} names Project field ${parsed.name}, but tracker.scope.project is none`
@@ -222,7 +233,8 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
     usedBy.set(seen, key)
   }
   for (const key of fieldKeys) {
-    const value = fieldValue(state, key)
+    // The sprint is a Project field: with no Project it is none, and setup asks nothing.
+    const value = key === 'sprint' && raw.project === null ? NONE : fieldValue(state, key)
     if (value !== undefined) values.fields[key] = value
   }
   const result = () => ({ applied: state.applied, questions: state.questions, broken: state.broken, notes: state.notes, values })
