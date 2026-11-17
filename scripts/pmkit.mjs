@@ -39,7 +39,7 @@ import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
 import { HOST_NAME } from './lib/github/client.mjs'
-import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
+import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, mappedLabelNames, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
 import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
@@ -4458,7 +4458,7 @@ async function runInitGithub(ctx) {
 
   // The repository first, with the default scopes. The Project is read only once it is chosen (ADR 0007).
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
-  const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec })
+  const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec, labels: mappedLabelNames({ mappings: current }) })
   const projectStep = await resolveGithubProject(ctx, client, raw, current.scope.project, scope.repo)
   const defaults = withLocalDefaults({}).types
   const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]

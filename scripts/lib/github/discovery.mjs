@@ -6,7 +6,7 @@ import { hideAbsolutePaths } from '../paths.mjs'
 import { hostFeatures, issueDocuments } from './documents.mjs'
 import { INSTALL_STEP } from './host.mjs'
 import { priorityRule } from './issues.mjs'
-import { brokenGithubMappings, fieldOf, NONE } from './mappings.mjs'
+import { brokenGithubMappings, fieldOf, labelOf, NONE, parseLabelValue } from './mappings.mjs'
 
 export const MINIMUM_GHES = '3.19'
 // Issue fields reach GHES in 3.21 (ADR 0007): older schemas have no issueFields and no isIssueField.
@@ -21,12 +21,31 @@ const PRIORITIES = ['urgent', 'high', 'medium', 'low']
 const PAGE = 'pageInfo { hasNextPage }'
 const ISSUE_FIELD_NODES = 'nodes { __typename ... on IssueFieldDate { id name dataType } ... on IssueFieldNumber { id name dataType } ... on IssueFieldText { id name dataType } ... on IssueFieldSingleSelect { id name dataType options { id name } } ... on IssueFieldMultiSelect { id name dataType options { id name } } }'
 
-/** The repository query. Issue fields are asked only where the schema has them. */
-export const repoQuery = ({ issueFields }) =>
-  'query PmkitRepo($owner: String!, $name: String!) { viewer { id login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { login __typename } ' +
-  `issueTypes(first: ${FIRST}) { nodes { id name description isEnabled } ${PAGE} } ` +
-  (issueFields ? `issueFields(first: ${FIRST}) { ${ISSUE_FIELD_NODES} ${PAGE} } ` : '') +
-  `labels(first: ${LABELS_FIRST}) { nodes { id name } ${PAGE} } } }`
+/**
+ * The repository query. Issue fields are asked only where the schema has them. `named` is the number of labels read by name,
+ * as aliases l0, l1, ... over the variables $l0, $l1, ..., so a mapped label past the first page is still found.
+ */
+export const repoQuery = ({ issueFields, named = 0 }) => {
+  const aliases = Array.from({ length: named }, (_, index) => `l${index}`)
+  return `query PmkitRepo($owner: String!, $name: String!${aliases.map((alias) => `, $${alias}: String!`).join('')}) { viewer { id login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { login __typename } ` +
+    `issueTypes(first: ${FIRST}) { nodes { id name description isEnabled } ${PAGE} } ` +
+    (issueFields ? `issueFields(first: ${FIRST}) { ${ISSUE_FIELD_NODES} ${PAGE} } ` : '') +
+    `labels(first: ${LABELS_FIRST}) { nodes { id name } ${PAGE} } ` +
+    aliases.map((alias) => `${alias}: label(name: $${alias}) { id name } `).join('') +
+    '} }'
+}
+
+/** The label names that mappings.status and mappings.types name as label:<name>, once each without case. */
+export function mappedLabelNames(pmkit) {
+  const names = []
+  for (const group of ['status', 'types']) {
+    for (const value of Object.values(pmkit?.mappings?.[group] ?? {})) {
+      const name = parseLabelValue(value)
+      if (name && !names.some((held) => held.toLowerCase() === name.toLowerCase())) names.push(name)
+    }
+  }
+  return names
+}
 
 /** The Project query: the Project of an owner, user or organization, with its fields. */
 export const projectQuery = ({ issueFields }) => {
@@ -152,11 +171,12 @@ async function fetchAssignableUsers(client, features, { owner, name }) {
  * With users, it also pages the assignable users; setup leaves them out and gets users: [].
  * exec runs the GHES check; a host that needs none never calls it.
  */
-export async function fetchDiscovery(client, { host, repo, project, exec, users = false }) {
+export async function fetchDiscovery(client, { host, repo, project, exec, users = false, labels = [] }) {
   const ghesVersion = await checkGhesVersion({ exec, host })
   const issueFields = hasIssueFields(ghesVersion)
   const { owner, name } = parseRepo(repo) ?? {}
-  const data = await client.request(repoQuery({ issueFields }), { owner, name })
+  const named = Object.fromEntries(labels.map((label, index) => [`l${index}`, label]))
+  const data = await client.request(repoQuery({ issueFields, named: labels.length }), { owner, name, ...named })
   const repository = data?.repository
   if (!repository) throw new PmkitError('NOT_FOUND', `GitHub found no repository ${repo}`, 'Check tracker.scope.repo, and that the gh account can see the repository')
   const truncated = TRUNCATED_LISTS.filter(([key]) => repository[key]?.pageInfo?.hasNextPage).map(([, kind]) => kind)
@@ -170,7 +190,7 @@ export async function fetchDiscovery(client, { host, repo, project, exec, users 
     repositoryId: repository.id,
     ghesVersion,
     features,
-    ...repositoryLists(data, repository),
+    ...repositoryLists(data, repository, labels.length),
     users: assignable.users,
     project: projectRead.project,
     truncated,
@@ -188,13 +208,18 @@ async function readNested(promise, kind, truncated) {
 }
 
 /** The viewer, owner, issue types, issue fields and labels of the repository query's answer. */
-function repositoryLists(data, repository) {
+function repositoryLists(data, repository, named = 0) {
+  const labels = (repository.labels?.nodes ?? []).filter((node) => node?.name).map((node) => ({ id: node.id, name: node.name }))
+  for (let index = 0; index < named; index += 1) {
+    const node = repository[`l${index}`]
+    if (node?.name && !labels.some((label) => label.id === node.id)) labels.push({ id: node.id, name: node.name })
+  }
   return {
     viewer: { id: data.viewer?.id ?? null, login: data.viewer?.login ?? null, name: data.viewer?.name ?? null },
     owner: { login: repository.owner?.login ?? null, type: repository.owner?.__typename ?? null },
     issueTypes: (repository.issueTypes?.nodes ?? []).filter((node) => node?.isEnabled !== false).map((node) => ({ id: node.id, name: node.name, description: node.description ?? null })),
     issueFields: (repository.issueFields?.nodes ?? []).filter((node) => node?.name).map(field),
-    labels: (repository.labels?.nodes ?? []).filter((node) => node?.name).map((node) => ({ id: node.id, name: node.name })),
+    labels,
   }
 }
 
@@ -229,10 +254,7 @@ const STATE_STATUSES = [{ name: OPEN, category: 'todo' }, { name: CLOSED, catego
  * each unless an option has that name. Without a Project, only those three.
  */
 function statusesOf(raw, status, warnings) {
-  if (raw.project === null) {
-    warnings.push('tracker.scope.project is none; statuses are open and closed only until PMK-89 adds the rest')
-    return STATE_STATUSES.map((entry) => ({ ...entry }))
-  }
+  if (raw.project === null) return labelStatusesOf(raw, status, warnings)
   const statusField = statusFieldOf(raw.project)
   if (!statusField) warnings.push(`GitHub Project ${raw.project.owner}/${raw.project.number} has no single-select Status field`)
   const categoryOf = new Map(Object.entries(status).filter(([category, value]) => category !== 'blocked' && typeof value === 'string' && value !== NONE).map(([category, value]) => [value, category]))
@@ -243,6 +265,19 @@ function statusesOf(raw, status, warnings) {
   })
   const taken = new Set(options.map((option) => option.name))
   return [...options, ...STATE_STATUSES.filter((entry) => !taken.has(entry.name)).map((entry) => ({ ...entry }))]
+}
+
+// The open categories a status label can stand for, in the order discover lists them.
+const LABEL_CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review']
+
+/** Without a Project: each mapped status label with its category, then the state statuses. */
+function labelStatusesOf(raw, status, warnings) {
+  const rows = LABEL_CATEGORIES.flatMap((category) => {
+    const name = parseLabelValue(status[category])
+    return name ? [{ name: labelOf(raw, name)?.name ?? name, category }] : []
+  })
+  if (rows.length === 0) warnings.push('tracker.scope.project is none and no status label is mapped; issues read open as todo and closed as done')
+  return [...rows, ...STATE_STATUSES.map((entry) => ({ ...entry }))]
 }
 
 /** The assignable users as members, ids by login, with the viewer first when GitHub leaves the viewer out. */

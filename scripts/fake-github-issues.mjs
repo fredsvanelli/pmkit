@@ -3,7 +3,7 @@
 // document by its operation name. Unit tests inject `exec`; the E2E fake gh reaches it through answerGh and fixture.issues.
 // Its behavior follows the schema facts of docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md.
 
-import { answerGhWith, linkedReply, projectReply, repoReply } from './fake-github-api.mjs'
+import { answerGhWith, linkedReply, projectReply, repoReply, withNamedLabels } from './fake-github-api.mjs'
 import { hostFeatures } from './lib/github/documents.mjs'
 
 const STATE_VERSION = 1
@@ -348,7 +348,8 @@ function build(state) {
 
   // Queries. Each takes the variables and returns the data, or throws a Refusal.
   const queries = {
-    PmkitRepo({ owner, name }) {
+    PmkitRepo(vars) {
+      const { owner, name } = vars
       const viewer = viewerUser()
       const entry = repositoryOf(owner, name)
       if (!entry) refuseWithData({ viewer: { id: viewer.id, login: viewer.login, name: viewer.name }, repository: null }, ['repository'], `Could not resolve to a Repository with the name '${owner}/${name}'.`)
@@ -356,7 +357,7 @@ function build(state) {
       const reply = repoReply({ owner: login, name: repoName, types: state.issueTypes, fields: features.issueFields ? state.issueFields : null, labels: [] }).data
       reply.viewer = { id: viewer.id, login: viewer.login, name: viewer.name }
       Object.assign(reply.repository, { id: entry.id, labels: page(state.labels), assignableUsers: page(state.users) })
-      return reply
+      return withNamedLabels({ data: reply }, vars).data
     },
     PmkitProject({ owner, number }) {
       const project = state.project

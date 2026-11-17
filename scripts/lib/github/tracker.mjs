@@ -7,7 +7,7 @@ import { TRACKER_OPERATIONS } from '../contract.mjs'
 import { PmkitError, unarchiveNotSupported } from '../errors.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createGithubClient } from './client.mjs'
-import { discoveryView, fetchDiscovery, parseProject } from './discovery.mjs'
+import { discoveryView, fetchDiscovery, mappedLabelNames, parseProject } from './discovery.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { defaultExec } from './host.mjs'
 import { issueOperations } from './issue-ops.mjs'
@@ -55,7 +55,7 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
   }
 
   async function fetchFresh() {
-    const raw = await fetchDiscovery(client, { host: scope.host, repo: scope.repo, project: scope.project, exec: run, users: true })
+    const raw = await fetchDiscovery(client, { host: scope.host, repo: scope.repo, project: scope.project, exec: run, users: true, labels: mappedLabelNames(config.pmkit) })
     const warnings = []
     try {
       cachePut(repoHash(config.root), cacheKeyOf(scope), raw, { ttlSeconds: CACHE_TTL_SECONDS }, store)
