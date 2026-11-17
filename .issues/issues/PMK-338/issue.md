@@ -2,13 +2,13 @@
 id: PMK-338
 title: "Adicionar o comando /pmkit:spec:from-prd, do PRD de uma página ao backlog ligado"
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 8
 parent: EPC-6
 branch: pmk-338-spec-from-prd
 created: 2026-11-17T20:29:33.736Z
-updated: 2026-11-17T22:21:55Z
+updated: 2026-11-17T22:32:32Z
 ---
 
 ## Description
