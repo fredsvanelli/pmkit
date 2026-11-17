@@ -131,7 +131,7 @@ test('the runbook names the commands this test runs', () => {
   }
 })
 
-test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 14', () => {
+test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 13', () => {
   const { fake, pmkit } = runbookRepo()
 
   // Step 1: the sprint field is mapped, and the Project holds one sprint, which is active on 2026-11-17.
