@@ -43,16 +43,20 @@ export function withNamedLabels(reply, variables) {
   return { ...reply, data: { ...reply.data, repository: { ...rest, ...found } } }
 }
 
-/** What gh prints for args and stdin, with each GraphQL reply from answer(operationName, body): { status, stdout, stderr }. */
-export function answerGhWith(args, input, fixture, answer) {
+const REASONS = { 200: 'OK', 201: 'Created', 204: 'No Content', 404: 'Not Found', 422: 'Unprocessable Entity' }
+
+/** What gh prints for args and stdin, with each GraphQL reply from answer(operationName, body): { status, stdout, stderr }.
+ * An optional rest(method, path, body) answers the other api calls with { status, body } (an HTTP status and a JSON body), or
+ * null for a call it does not know; it prints as gh does with --include, and gh exits 1 on a 4xx or 5xx. */
+export function answerGhWith(args, input, fixture, answer, rest) {
   if (args[0] !== 'api') return { status: 1, stdout: '', stderr: `fake gh: unknown command ${args[0]}` }
   if (fixture.login === false) return { status: 4, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' }
-  const rest = args.slice(1).filter((arg, index, list) => arg !== '--hostname' && list[index - 1] !== '--hostname')
-  if (rest[0] === 'meta') {
+  const words = args.slice(1).filter((arg, index, list) => arg !== '--hostname' && list[index - 1] !== '--hostname')
+  if (words[0] === 'meta') {
     if (!fixture.meta) return { status: 1, stdout: '{"message":"Not Found"}', stderr: 'gh: Not Found (HTTP 404)' }
     return { status: 0, stdout: JSON.stringify(fixture.meta), stderr: '' }
   }
-  if (rest[0] === 'graphql') {
+  if (words[0] === 'graphql') {
     let body
     try {
       body = JSON.parse(input ?? '')
@@ -65,7 +69,30 @@ export function answerGhWith(args, input, fixture, answer) {
     const head = 'HTTP/2.0 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 4999\r\n\r\n'
     return { status: failed ? 1 : 0, stdout: `${head}${JSON.stringify(reply)}`, stderr: failed ? `gh: ${reply.errors[0].message}` : '' }
   }
-  return { status: 1, stdout: '', stderr: `fake gh: unknown api call ${rest.join(' ')}` }
+  const reply = rest ? restReply(rest, args.slice(1), input) : null
+  if (reply) return reply
+  return { status: 1, stdout: '', stderr: `fake gh: unknown api call ${words.join(' ')}` }
+}
+
+/** The gh output of a REST call answered by rest, or null when rest does not know the call. */
+function restReply(rest, args, input) {
+  const valueFlags = ['--hostname', '--method', '-X', '--input', '-H', '--header', '-f', '-F', '--field', '--raw-field', '--jq', '-q', '--template', '-t']
+  const path = args.find((arg, index) => !arg.startsWith('-') && !valueFlags.includes(args[index - 1]))
+  const flagAt = args.findIndex((arg) => arg === '--method' || arg === '-X')
+  const method = flagAt >= 0 ? args[flagAt + 1] : 'GET'
+  let body = null
+  if (args.includes('--input') && input) {
+    try {
+      body = JSON.parse(input)
+    } catch {
+      return { status: 1, stdout: '', stderr: 'fake gh: stdin is not JSON' }
+    }
+  }
+  const answered = rest(method, path, body)
+  if (!answered) return null
+  const head = `HTTP/2.0 ${answered.status} ${REASONS[answered.status] ?? 'Status'}\r\nContent-Type: application/json; charset=utf-8\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 4999\r\n\r\n`
+  const failed = answered.status >= 400
+  return { status: failed ? 1 : 0, stdout: `${head}${JSON.stringify(answered.body)}`, stderr: failed ? `gh: ${answered.body?.message ?? 'error'} (HTTP ${answered.status})` : '' }
 }
 
 /** An exec for createGithubClient and the discovery that answers from the fixture and records each call. */
