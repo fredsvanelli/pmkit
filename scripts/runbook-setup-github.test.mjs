@@ -70,7 +70,7 @@ const ANSWERS = [
 
 test('the runbook names the commands this test runs', () => {
   const text = fs.readFileSync(RUNBOOK, 'utf8')
-  for (const command of ['init --tracker github --git-host github --dry-run --json', '--project acme/7', 'validate --json', 'discover --json', 'capabilities --json', 'init --update --dry-run --json']) {
+  for (const command of ['init --tracker github --git-host github --dry-run --json', '--project acme/7', 'validate --json', 'discover --json', 'capabilities --json', 'init --update --dry-run --json', 'init --tracker github --git-host github --project none --dry-run --json', '--type-label bug=bug']) {
     assert.ok(text.includes(command), command)
   }
 })
@@ -162,4 +162,38 @@ test('runbook: GHES below 3.19 stops setup with NOT_SUPPORTED (step 1)', () => {
   assert.equal(error.message, 'GitHub Enterprise Server 3.17.9 is older than 3.19, the oldest version pmkit supports')
   assert.deepEqual(calls(fake).map((call) => call.args), [['api', '--hostname', 'ghes.example.com', 'meta']])
   assert.equal(fs.existsSync(path.join(root, '.pmkit', 'config.yaml')), false)
+})
+
+test('runbook: setup without a Project maps status and type labels (steps 8 to 10)', () => {
+  const root = repository()
+  const fixture = standardFixture()
+  fixture.graphql.PmkitRepo = repoReply({ labels: ['bug', 'documentation', 'Backlog', 'In progress', 'In review'], types: [] })
+  const fake = fakeGhOnPath(fixture)
+  const asked = json(pmkit(root, fake, [...INIT, '--project', 'none', '--dry-run', '--json']))
+  assert.equal(asked.project, null)
+  const status = asked.questions.filter((q) => q.path.startsWith('mappings.status.'))
+  assert.deepEqual(status.map((q) => [q.path, q.recommended]), [
+    ['mappings.status.triage', 'none'], ['mappings.status.backlog', 'Backlog'], ['mappings.status.in_progress', 'In progress'], ['mappings.status.in_review', 'In review'],
+  ])
+  assert.equal(asked.questions.filter((q) => q.path.startsWith('mappings.types.')).length, 4)
+  assert.ok(!calls(fake).some((call) => /PmkitProject/.test(call.input)))
+
+  const answers = [
+    '--project', 'none',
+    ...['triage=none', 'backlog=Backlog', 'in_progress=In progress', 'in_review=In review'].flatMap((item) => ['--status', item]),
+    ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date'].flatMap((item) => ['--field', item]),
+    ...['feature=none', 'bug=bug', 'task=none', 'chore=none'].flatMap((item) => ['--type-label', item]),
+  ]
+  const written = json(pmkit(root, fake, [...INIT, ...answers, '--json']))
+  const config = fs.readFileSync(path.join(root, '.pmkit', 'config.yaml'), 'utf8')
+  assert.match(config, /project: none/)
+  assert.match(config, /in_progress: "?label:In progress"?/)
+  assert.match(config, /bug: "?label:bug"?/)
+  assert.deepEqual(written.statuses.map((row) => [row.name, row.category]), [
+    ['Backlog', 'backlog'], ['In progress', 'in_progress'], ['In review', 'in_review'], ['Open', 'todo'], ['Closed', 'done'], ['Closed as not planned', 'canceled'],
+  ])
+
+  const manifest = json(pmkit(root, fake, ['capabilities', '--json']))
+  assert.equal(manifest.capabilities.find((item) => item.id === 'deliverables').enableHint, 'Needs a GitHub Project: set tracker.scope.project with /pmkit:setup')
+  assert.ok(manifest.warnings.includes('tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent'))
 })

@@ -197,7 +197,8 @@ test('planMove without a Project moves through status labels', async () => {
   assert.deepEqual(moveOps(review), [['addLabels', ['Review']], ['removeLabels', ['Doing']]])
   assert.equal(review.after.status.category, 'in_review')
   assert.deepEqual(review.after.labels, ['Review', 'x'])
-  assert.deepEqual(moveOps(planMove(node, 'done', {}, context)), [['removeLabels', ['Doing']], ['close', 'COMPLETED']])
+  // A terminal move closes first, so the label removal while closed changes no status.
+  assert.deepEqual(moveOps(planMove(node, 'done', {}, context)), [['close', 'COMPLETED'], ['removeLabels', ['Doing']]])
   assert.deepEqual(moveOps(planMove(node, 'todo', {}, context)), [['removeLabels', ['Doing']]])
   assert.deepEqual(planMove(node, 'in_progress', {}, context).steps, [])
   fake.seed({ state: 'CLOSED', stateReason: 'COMPLETED' })

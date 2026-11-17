@@ -57,6 +57,37 @@ The flow of `/pmkit:setup` when the user picks GitHub Issues: "GitHub first run"
 
 7. When a Status option was renamed on GitHub, the same command lists the old mapping in `broken` and asks that category again, with the renamed option recommended when its name matches. Answer it with `init --update --status <category>=<option>`, which changes only that line.
 
+## Without a Project
+
+A repository with no Project reads its statuses from labels, and a repository with no enabled issue type reads its types from labels. ADR 0009 records the rules.
+
+8. Pick no Project and read the questions:
+
+   ```
+   node scripts/pmkit.mjs init --tracker github --git-host github --project none --dry-run --json
+   ```
+
+   Expect `project: null`, no `PmkitProject` read, and one label question for each of `triage`, `backlog`, `in_progress` and `in_review`. Each offers the repository labels and recommends the label whose name matches, such as `In progress` for `in_progress`, or `none`. `todo`, `done` and `canceled` get no question: an open issue with no status label is `todo`, and a closed one is `done` or `canceled`. A repository with no enabled issue type also gets one label question per pmkit type.
+
+9. Answer with label names and write the file:
+
+   ```
+   node scripts/pmkit.mjs init --tracker github --git-host github --project none \
+     --status triage=none --status backlog=Backlog --status "in_progress=In progress" --status "in_review=In review" \
+     --field priority=issue:Priority --field estimate=issue:Effort --field "start_date=issue:Start date" --field "target_date=issue:Target date" \
+     --type-label feature=none --type-label bug=bug --type-label task=none --type-label chore=none --json
+   ```
+
+   `.pmkit/config.yaml` holds `tracker.scope.project: none`, `mappings.status.in_progress: label:In progress` and the other labels in the same form, and `mappings.types.bug: label:bug`. `statuses` lists each status label with its category, then `Open`, `Closed` and `Closed as not planned`.
+
+10. Check the capabilities:
+
+    ```
+    node scripts/pmkit.mjs capabilities --json
+    ```
+
+    Expect `cycles`, `capacity`, `deliverables` and `status_update` absent with the hint `Needs a GitHub Project: set tracker.scope.project with /pmkit:setup`, and the warning `tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent`.
+
 ## What the fake `gh` checks
 
 The test records every `gh` call and fails when an argument or the standard input holds the token in `GH_TOKEN`. Every call carries `--hostname <host>`.

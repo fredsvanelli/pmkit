@@ -1,6 +1,6 @@
 # Runbook: issue flows on GitHub Issues
 
-The issue commands on a repository whose tracker is GitHub Issues: create, list, move, update, assign, link and unlink, parent, duplicate, comment, history, branch and archive. `scripts/runbook-issues-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
+The issue commands on a repository whose tracker is GitHub Issues: create, list, move, update, assign, link and unlink, parent, duplicate, comment, history, branch and archive, then the same flows on a repository without a Project. `scripts/runbook-issues-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
 
 ## Before you start
 
@@ -161,7 +161,7 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
     node scripts/pmkit.mjs issues list --archived --json
     ```
 
-    `archive` archives the item of the issue in the Project, and the issue stays open or closed as it was. Expect `after.archived: true`. `issues list` leaves issue 1 out. `issues list --archived` also lists archived issues, so it holds issues 1, 2 and 3, with `archived: true` on issue 1 alone. A repository with `tracker.scope.project: none` has no item to archive, so `archive` answers `NOT_SUPPORTED`.
+    `archive` archives the item of the issue in the Project, and the issue stays open or closed as it was. Expect `after.archived: true`. `issues list` leaves issue 1 out. `issues list --archived` also lists archived issues, so it holds issues 1, 2 and 3, with `archived: true` on issue 1 alone. A repository with `tracker.scope.project: none` has no item to archive, so `archive` answers `NOT_SUPPORTED` (step 23).
 
 16. Try to unarchive it:
 
@@ -170,6 +170,71 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
     ```
 
     The command exits with code 2 and `NOT_SUPPORTED`, with the next step `Restore the item from the archived items of the Project on GitHub`. ADR 0008 records why.
+
+## Without a Project
+
+These steps run on another repository: one with no Project and no enabled issue type. ADR 0009 records how pmkit reads statuses and types from labels there.
+
+- `/pmkit:setup` ran with `--project none`, as the "Without a Project" section of `docs/runbooks/setup-github.md` describes. `.pmkit/config.yaml` maps `backlog` to `label:Backlog`, `in_progress` to `label:In progress`, `in_review` to `label:In review`, `triage` to `none`, and the type `bug` to `label:bug`.
+- `gh` needs no `project` scope.
+- `tmp/title-1.txt` holds `Login fails on Safari`.
+
+17. Create the bug:
+
+    ```
+    node scripts/pmkit.mjs issues create --title-file tmp/title-1.txt --type bug --json
+    ```
+
+    Expect issue `1` with `type: bug`, `labels: ["bug"]` and status `Open`, category `todo`. GitHub has the label `bug` on the issue.
+
+18. Move issue 1 to in progress, then to in review:
+
+    ```
+    node scripts/pmkit.mjs issues move 1 in_progress --json
+    node scripts/pmkit.mjs issues move 1 in_review --json
+    ```
+
+    The first move adds the label `In progress`, so the status reads `In progress`, category `in_progress`. The second adds `In review` and then removes `In progress`. Expect status `In review` and `labels: ["In review", "bug"]`.
+
+19. Replace the other labels of issue 1:
+
+    ```
+    node scripts/pmkit.mjs issues update 1 --label documentation --json
+    ```
+
+    A labels patch changes only the labels that hold no status and no type. Expect `labels: ["In review", "bug", "documentation"]` and the status still `In review`. `--label "In review"` would fail with `INVALID_INPUT`, `label In review holds a status; use pmkit issues move`.
+
+20. Move issue 1 to done:
+
+    ```
+    node scripts/pmkit.mjs issues move 1 done --json
+    ```
+
+    GitHub closes the issue as completed, and pmkit removes the status label. Expect status `Closed`, category `done`, and `labels: ["bug", "documentation"]`.
+
+21. Read the history of issue 1:
+
+    ```
+    node scripts/pmkit.mjs issues get 1 --history --json
+    ```
+
+    Expect the type set to `bug`, then the moves from `Open` to `In progress`, from `In progress` to `In review`, and to `Closed`. A status label never shows as a label update.
+
+22. Read the capabilities:
+
+    ```
+    node scripts/pmkit.mjs capabilities --json
+    ```
+
+    Expect `cycles`, `capacity`, `deliverables` and `status_update` with path `absent` and the hint `Needs a GitHub Project: set tracker.scope.project with /pmkit:setup`, `native_triage` absent with `Map a triage label with /pmkit:setup`, and the warning `tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent`.
+
+23. Try to archive issue 1:
+
+    ```
+    node scripts/pmkit.mjs issues archive 1 --json
+    ```
+
+    The command exits with code 2 and `NOT_SUPPORTED`, `acme/widgets has no Project, and GitHub has no archive for an issue outside one`, with the next step `Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup`.
 
 ## What the fake `gh` checks
 

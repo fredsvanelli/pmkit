@@ -439,8 +439,13 @@ const PREVIEW_STEP = {
  */
 export function planMove(node, category, { status } = {}, context) {
   if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
-  const first = context.project ? optionSteps(node, pickOption(category, status, context), context) : labelSteps(node, category, status, context)
-  const steps = [...first, ...stateSteps(node, category, context)]
+  // Without a Project, a move to done or canceled closes first: label changes on a closed issue change no status, so history
+  // records one move.
+  const labels = context.project ? null : labelSteps(node, category, status, context)
+  const state = stateSteps(node, category, context)
+  const steps = labels === null
+    ? [...optionSteps(node, pickOption(category, status, context), context), ...state]
+    : TERMINAL.includes(category) ? [...state, ...labels] : [...labels, ...state]
   const next = structuredClone(node)
   for (const step of steps) PREVIEW_STEP[step.op](next, step, context)
   return { steps, node: next, after: toIssue(next, context) }
