@@ -77,53 +77,74 @@ const LABEL_ITEMS = ['LabeledEvent', 'UnlabeledEvent']
 const sameName = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
 const byTime = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0)
 
+/** The items in timeline order, grouped by instant: items with the same createdAt form one group. */
+function instantsOf(items) {
+  const ordered = items.map((item, index) => ({ item, index })).sort((a, b) => byTime(a.item, b.item) || a.index - b.index).map(({ item }) => item)
+  const groups = []
+  for (const item of ordered) {
+    const last = groups.at(-1)
+    if (last && last[0].createdAt === item.createdAt) last.push(item)
+    else groups.push([item])
+  }
+  return groups
+}
+
+const holdsLabel = (labels, name) => [...labels.values()].some((label) => sameName(label.name, name))
+const metaOf = (item) => ({ at: item.createdAt, by: loginOf(item.actor) })
+
+/** Applies one instant to the replay: the open or closed state, and the labels the issue holds. */
+function applyInstant(replay, instant, labelItems) {
+  for (const item of instant) {
+    if (item.__typename === 'ClosedEvent') replay.closed = true
+    if (item.__typename === 'ReopenedEvent') replay.closed = false
+    if (!labelItems.includes(item)) continue
+    const where = replay.held.findIndex((name) => sameName(name, item.label.name))
+    if (item.__typename === 'LabeledEvent' && where < 0) replay.held.push(item.label.name)
+    if (item.__typename === 'UnlabeledEvent' && where >= 0) replay.held.splice(where, 1)
+  }
+}
+
+/** An instant with no mapped label item: a close sets the status, and a reopen moves to the status the labels give. */
+function stateInstant(replay, instant, context, result) {
+  const closedItem = instant.find((item) => item.__typename === 'ClosedEvent')
+  if (closedItem) replay.status = closedTo(closedItem)
+  const reopened = instant.find((item) => item.__typename === 'ReopenedEvent')
+  if (!reopened || context.statusLabels.size === 0) return
+  replay.status = context.readLabels(replay.held, '').status?.name ?? OPEN
+  result.set(reopened, { ...metaOf(reopened), op: 'move', field: 'status', from: null, to: replay.status })
+}
+
+/** An instant with mapped label items: one move when the status read changes, one update when the type does. */
+function labelInstant(replay, labelItems, context, result) {
+  const read = context.readLabels(replay.held, '')
+  const status = replay.closed ? replay.status : (read.status?.name ?? OPEN)
+  const type = read.type ?? null
+  for (const item of labelItems) result.set(item, null)
+  const statusItem = labelItems.find((item) => holdsLabel(context.statusLabels, item.label.name))
+  const typeItem = labelItems.find((item) => holdsLabel(context.typeLabels, item.label.name))
+  if (statusItem && status !== replay.status) result.set(statusItem, { ...metaOf(statusItem), op: 'move', field: 'status', from: replay.status, to: status })
+  if (typeItem && type !== replay.type) result.set(typeItem, { ...metaOf(typeItem), op: 'update', field: 'type', from: replay.type, to: type })
+  replay.status = status
+  replay.type = type
+}
+
 /**
  * The events of the label items that hold a status or a type, from a replay of the issue's labels in timeline order. Items
  * at the same instant count as one change. A status move is emitted when the status the issue reads changes, and never while
  * it is closed; a type update when its type changes. Returns a Map from each such item to its event, or to null.
  */
 function labelEvents(items, context) {
-  const mapped = (name) => [...(context.statusLabels?.values() ?? []), ...(context.typeLabels?.values() ?? [])].some((label) => sameName(label.name, name))
   const result = new Map()
-  if ((context.statusLabels?.size ?? 0) + (context.typeLabels?.size ?? 0) === 0) return result
-  const held = []
-  let closed = false
-  let status = OPEN
-  let type = null
-  const ordered = items.map((item, index) => ({ item, index })).sort((a, b) => byTime(a.item, b.item) || a.index - b.index)
-  for (let at = 0; at < ordered.length; ) {
-    const instant = ordered.filter(({ item }) => item.createdAt === ordered[at].item.createdAt).map(({ item }) => item)
-    at += instant.length
-    const labelItems = instant.filter((item) => LABEL_ITEMS.includes(item.__typename) && mapped(item.label?.name))
-    for (const item of instant) {
-      if (item.__typename === 'ClosedEvent') closed = true
-      if (item.__typename === 'ReopenedEvent') closed = false
-      if (!labelItems.includes(item)) continue
-      const name = item.label.name
-      const where = held.findIndex((label) => sameName(label, name))
-      if (item.__typename === 'LabeledEvent' && where < 0) held.push(name)
-      if (item.__typename === 'UnlabeledEvent' && where >= 0) held.splice(where, 1)
-    }
-    if (labelItems.length === 0) {
-      if (instant.some((item) => item.__typename === 'ClosedEvent')) status = closedTo(instant.find((item) => item.__typename === 'ClosedEvent'))
-      const reopened = instant.find((item) => item.__typename === 'ReopenedEvent')
-      if (reopened && context.statusLabels.size > 0) {
-        status = context.readLabels(held, '').status?.name ?? OPEN
-        result.set(reopened, { at: reopened.createdAt, by: loginOf(reopened.actor), op: 'move', field: 'status', from: null, to: status })
-      }
-      continue
-    }
-    const read = context.readLabels(held, '')
-    const nextStatus = closed ? status : (read.status?.name ?? OPEN)
-    const nextType = read.type ?? null
-    const meta = (item) => ({ at: item.createdAt, by: loginOf(item.actor) })
-    const statusItem = labelItems.find((item) => [...(context.statusLabels?.values() ?? [])].some((label) => sameName(label.name, item.label.name)))
-    const typeItem = labelItems.find((item) => [...(context.typeLabels?.values() ?? [])].some((label) => sameName(label.name, item.label.name)))
-    for (const item of labelItems) result.set(item, null)
-    if (statusItem && nextStatus !== status) result.set(statusItem, { ...meta(statusItem), op: 'move', field: 'status', from: status, to: nextStatus })
-    if (typeItem && nextType !== type) result.set(typeItem, { ...meta(typeItem), op: 'update', field: 'type', from: type, to: nextType })
-    status = nextStatus
-    type = nextType
+  const statusLabels = context.statusLabels ?? new Map()
+  const typeLabels = context.typeLabels ?? new Map()
+  if (statusLabels.size + typeLabels.size === 0) return result
+  const mapped = (item) => LABEL_ITEMS.includes(item.__typename) && (holdsLabel(statusLabels, item.label?.name) || holdsLabel(typeLabels, item.label?.name))
+  const replay = { held: [], closed: false, status: OPEN, type: null }
+  for (const instant of instantsOf(items)) {
+    const labelItems = instant.filter(mapped)
+    applyInstant(replay, instant, labelItems)
+    if (labelItems.length === 0) stateInstant(replay, instant, context, result)
+    else labelInstant(replay, labelItems, context, result)
   }
   return result
 }

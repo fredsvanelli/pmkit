@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
-import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, needsVersionCheck, parseProject } from './discovery.mjs'
+import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, mappedLabelNames, needsVersionCheck, parseProject } from './discovery.mjs'
 
 const rejectsWith = (promise, code, pattern) =>
   assert.rejects(promise, (error) => {
@@ -342,4 +342,10 @@ test('discoveryView warns once when no status label is mapped without a Project'
   assert.deepEqual(view.warnings.filter((warning) => /tracker\.scope\.project is none/.test(warning)), [
     'tracker.scope.project is none and no status label is mapped; issues read open as todo and closed as done',
   ])
+})
+
+test('mappedLabelNames lists each label the config and the answers name, once without case', () => {
+  const pmkit = { mappings: { status: { in_progress: 'label:Doing', done: 'Done', backlog: 'none' }, types: { bug: 'label:bug' } } }
+  assert.deepEqual(mappedLabelNames(pmkit), ['Doing', 'bug'])
+  assert.deepEqual(mappedLabelNames(pmkit, ['doing', 'Label 115', 'label:Review']), ['Doing', 'bug', 'Label 115', 'Review'])
 })

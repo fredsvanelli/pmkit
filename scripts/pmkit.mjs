@@ -4460,8 +4460,8 @@ async function runInitGithub(ctx) {
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
   // Every label the file or the flags name is read by name too, so one past the first page of labels is still found.
   const flags = parseMappingFlags(ctx)
-  const flagged = [...Object.values(flags.status ?? {}), ...Object.values(flags.types ?? {})].filter((value) => value !== NONE).map((value) => (value.startsWith('label:') ? value : `label:${value}`))
-  const labelNames = mappedLabelNames({ mappings: { status: { ...current.status, ...Object.fromEntries(flagged.map((value, index) => [`flag${index}`, value])) }, types: current.types } })
+  const answered = [...Object.values(flags.status ?? {}), ...Object.values(flags.types ?? {})].filter((value) => value !== NONE)
+  const labelNames = mappedLabelNames({ mappings: current }, answered)
   const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec, labels: labelNames })
   const projectStep = await resolveGithubProject(ctx, client, raw, current.scope.project, scope.repo)
   const defaults = withLocalDefaults({}).types

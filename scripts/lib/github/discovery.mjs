@@ -35,14 +35,16 @@ export const repoQuery = ({ issueFields, named = 0 }) => {
     '} }'
 }
 
-/** The label names that mappings.status and mappings.types name as label:<name>, once each without case. */
-export function mappedLabelNames(pmkit) {
+/**
+ * The label names that mappings.status and mappings.types name as label:<name>, then the extra names (setup's answers, bare
+ * or label:<name>), once each without case.
+ */
+export function mappedLabelNames(pmkit, extra = []) {
+  const values = [...['status', 'types'].flatMap((group) => Object.values(pmkit?.mappings?.[group] ?? {})), ...extra.map((name) => parseLabelValue(name) ? name : `label:${name}`)]
   const names = []
-  for (const group of ['status', 'types']) {
-    for (const value of Object.values(pmkit?.mappings?.[group] ?? {})) {
-      const name = parseLabelValue(value)
-      if (name && !names.some((held) => held.toLowerCase() === name.toLowerCase())) names.push(name)
-    }
+  for (const value of values) {
+    const name = parseLabelValue(value)
+    if (name && !names.some((held) => held.toLowerCase() === name.toLowerCase())) names.push(name)
   }
   return names
 }
