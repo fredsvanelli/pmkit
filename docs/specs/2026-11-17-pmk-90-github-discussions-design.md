@@ -1,6 +1,6 @@
 # PMK-90 design: the github-discussions command
 
-Issue PMK-90, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: waiting for the user's approval. The user answered two questions on 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-90, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: approved by the user on 2026-11-17, with the builder's calls. The user answered two questions on 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
