@@ -3,7 +3,7 @@ import test from 'node:test'
 import { fakeGhExec, projectReply, repoReply, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
-import { brokenGithubMappings, parseFieldSource, proposeGithubSetup, proposeProject } from './mappings.mjs'
+import { brokenGithubMappings, labelOf, parseFieldSource, parseLabelValue, proposeGithubSetup, proposeProject } from './mappings.mjs'
 
 const TYPES = ['feature', 'bug', 'task', 'chore']
 
@@ -135,16 +135,15 @@ test('types: one question per pmkit type, same name recommended, one issue type 
   assert.deepEqual(answered.values.types, { feature: 'Feature', bug: 'Bug', task: 'Task' })
 })
 
-test('a repository with no enabled issue type gets no type question and a note', async () => {
+test('a repository with no enabled issue type asks a label for each type', async () => {
   const raw = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ types: [] }), PmkitProject: projectReply() } }))
   const result = proposeGithubSetup(raw, {}, {}, TYPES)
-  assert.equal(result.questions.filter((q) => q.path.startsWith('mappings.types.')).length, 0)
-  assert.ok(result.notes.includes('acme/widgets has no enabled issue type, so setup maps no pmkit type; PMK-89 adds labels as a fallback'))
+  assert.deepEqual(result.questions.filter((q) => q.path.startsWith('mappings.types.')).map((q) => q.flag), TYPES.map((type) => `--type-label ${type}=<label>`))
 })
 
-test('without a Project setup asks no Status question and offers only issue fields', async () => {
+test('without a Project setup asks status labels and offers only issue fields', async () => {
   const result = proposeGithubSetup(await rawOf(standardFixture(), 'none'), {}, {}, TYPES)
-  assert.equal(result.questions.filter((q) => q.path.startsWith('mappings.status.')).length, 0)
+  assert.equal(result.questions.filter((q) => q.path.startsWith('mappings.status.')).length, 4)
   assert.deepEqual(questionAt(result, 'mappings.fields.estimate').candidates, ['issue:Effort', 'issue:Priority'])
 })
 
@@ -167,4 +166,85 @@ test('brokenGithubMappings names a Project field while the repository has no Pro
   const raw = await rawOf(standardFixture(), 'none')
   const broken = brokenGithubMappings(raw, { mappings: { fields: { estimate: 'project:Story points' } } })
   assert.deepEqual(broken, [{ path: 'mappings.fields.estimate', value: 'project:Story points', problem: 'mappings.fields.estimate names Project field Story points, but tracker.scope.project is none' }])
+})
+
+test('parseLabelValue reads label:<name>', () => {
+  assert.equal(parseLabelValue('label:Doing'), 'Doing')
+  assert.equal(parseLabelValue('label: In review '), 'In review')
+  for (const value of ['label:', 'label:  ', 'Label:x', 'Doing', 3, undefined]) assert.equal(parseLabelValue(value), null)
+})
+
+test('labelOf finds a label without case', async () => {
+  const raw = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: ['Doing'] }) } }), 'none')
+  assert.deepEqual(labelOf(raw, 'doing'), { id: 'LA_1', name: 'Doing' })
+  assert.equal(labelOf(raw, 'Review'), null)
+})
+
+test('brokenGithubMappings reports label values a Project or issue types rule out', async () => {
+  const labels = ['Doing', 'bug']
+  const withProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitProject: projectReply() } }))
+  assert.deepEqual(brokenGithubMappings(withProject, { mappings: { status: { in_progress: 'label:Doing' } } }).map((item) => item.problem), [
+    'mappings.status.in_progress names label Doing, but statuses come from the Status field of acme/7',
+  ])
+  const noProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }) } }), 'none')
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { status: { in_progress: 'label:doing', in_review: 'label:Review', backlog: 'In Progress' } } }).map((item) => item.problem), [
+    'mappings.status.in_review names label Review, which acme/widgets no longer has',
+    'mappings.status.backlog names Status option In Progress, but tracker.scope.project is none',
+  ])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { types: { bug: 'label:bug' } } }).map((item) => item.problem), [
+    'mappings.types.bug names label bug, but acme/widgets has issue types',
+  ])
+  const noTypes = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels, types: [] }) } }), 'none')
+  assert.deepEqual(brokenGithubMappings(noTypes, { mappings: { types: { bug: 'label:Bug', task: 'label:task' } } }).map((item) => item.problem), [
+    'mappings.types.task names label task, which acme/widgets no longer has',
+  ])
+})
+
+const LABELS = ['bug', 'Doing', 'In review', 'needs triage', 'enhancement', 'Backlog']
+const labelRaw = (types) => rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: LABELS, ...(types ? { types } : {}) }) } }), 'none')
+
+test('setup without a Project asks the four status label questions', async () => {
+  const result = proposeGithubSetup(await labelRaw(), {}, {}, TYPES)
+  const status = result.questions.filter((q) => q.path.startsWith('mappings.status.'))
+  assert.deepEqual(status.map((q) => q.path), ['mappings.status.triage', 'mappings.status.backlog', 'mappings.status.in_progress', 'mappings.status.in_review'])
+  assert.deepEqual(questionAt(result, 'mappings.status.triage'), {
+    path: 'mappings.status.triage', flag: '--status triage=<label>', candidates: ['needs triage', 'bug', 'Doing', 'In review', 'enhancement', 'Backlog'],
+    recommended: 'needs triage', none: 'No label means triage',
+  })
+  assert.equal(questionAt(result, 'mappings.status.in_progress').recommended, 'Doing')
+  assert.equal(questionAt(result, 'mappings.status.in_review').recommended, 'In review')
+  assert.ok(!result.notes.some((note) => note.includes('PMK-89')))
+})
+
+test('setup without a Project writes status answers as label:<name>', async () => {
+  const raw = await labelRaw()
+  const result = proposeGithubSetup(raw, {}, { status: { triage: 'none', backlog: 'backlog', in_progress: 'label:Doing', in_review: 'In review' } }, TYPES)
+  assert.deepEqual(result.values.status, { triage: 'none', backlog: 'label:Backlog', in_progress: 'label:Doing', in_review: 'label:In review' })
+  assert.equal(result.questions.filter((q) => q.path.startsWith('mappings.status.')).length, 0)
+  invalid(() => proposeGithubSetup(raw, {}, { status: { in_progress: 'Gone' } }, TYPES), /in_progress=Gone is not a label of acme\/widgets.*none/)
+  invalid(() => proposeGithubSetup(raw, {}, { status: { todo: 'Doing' } }, TYPES), /todo needs no label without a Project/)
+  invalid(() => proposeGithubSetup(raw, {}, { status: { in_progress: 'Doing', in_review: 'Doing' } }, TYPES), /label Doing cannot answer both in_progress and in_review/)
+})
+
+test('setup without a Project keeps held labels and sets held Status options of todo, done and canceled to none', async () => {
+  const raw = await labelRaw()
+  const current = { status: { in_progress: 'label:Doing', todo: 'Todo', done: 'Done', in_review: 'In Review' } }
+  const result = proposeGithubSetup(raw, current, {}, TYPES)
+  assert.equal(result.values.status.in_progress, 'label:Doing')
+  assert.equal(result.values.status.todo, 'none')
+  assert.equal(result.values.status.done, 'none')
+  assert.deepEqual(result.applied.find((item) => item.path === 'mappings.status.todo'), { path: 'mappings.status.todo', value: 'none', reason: 'without a Project, todo needs no label' })
+  assert.deepEqual(questionAt(result, 'mappings.status.in_review').broken, { was: 'In Review', problem: 'mappings.status.in_review names Status option In Review, but tracker.scope.project is none' })
+})
+
+test('without issue types, type questions offer the labels no status took', async () => {
+  const raw = await labelRaw([])
+  const result = proposeGithubSetup(raw, {}, { status: { triage: 'none', backlog: 'Backlog', in_progress: 'Doing', in_review: 'none' } }, TYPES)
+  assert.deepEqual(questionAt(result, 'mappings.types.bug'), {
+    path: 'mappings.types.bug', flag: '--type-label bug=<label>', candidates: ['bug', 'In review', 'needs triage', 'enhancement'], recommended: 'bug', none: 'No label stands for this type',
+  })
+  assert.ok(!result.notes.some((note) => note.includes('no enabled issue type')))
+  const answered = proposeGithubSetup(raw, {}, { status: { triage: 'none', backlog: 'none', in_progress: 'Doing', in_review: 'none' }, types: { feature: 'enhancement', bug: 'label:bug', task: 'none', chore: 'none' } }, TYPES)
+  assert.deepEqual(answered.values.types, { feature: 'label:enhancement', bug: 'label:bug' })
+  invalid(() => proposeGithubSetup(raw, {}, { status: { in_progress: 'Doing' }, types: { bug: 'Doing' } }, TYPES), /bug=Doing is not a free label of acme\/widgets/)
 })

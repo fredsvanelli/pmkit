@@ -24,6 +24,10 @@ test('the config check needs host and repo, and reads project and field values',
   assert.deepEqual(githubConfigProblems(pmkit({ ...SCOPE, project: '7' })), ['tracker.scope.project must be owner/number or none'])
   assert.deepEqual(githubConfigProblems(pmkit(SCOPE, { fields: { priority: 'issue:Priority', estimate: 'none', start_date: 'Start' } })), ['mappings.fields.start_date must be issue:<name>, project:<name> or none for github'])
   assert.deepEqual(githubConfigProblems(pmkit(SCOPE, { types: { bug: 'none' } })), ['mappings.types.bug cannot be none; leave the type out instead'])
+  assert.deepEqual(githubConfigProblems(pmkit(SCOPE, { status: { backlog: 'label: ' }, types: { bug: 'label:' } })), [
+    'mappings.status.backlog must be label:<name> with a name',
+    'mappings.types.bug must be label:<name> with a name',
+  ])
 })
 
 async function trackerOf(scope = SCOPE, fixture = standardFixture(), mappings = {}) {
@@ -212,4 +216,25 @@ test('unarchive, restore, delegate, logTime and listTimeEntries answer NOT_SUPPO
   assert.equal(fake.mutations.length, 0)
   const broken = githubTracker(issuesContext(), fake, { status: { ...STATUS, done: 'Gone' } })
   await assert.rejects(broken.restore('1', 'octocat'), { code: 'NOT_CONFIGURED' })
+})
+
+test('a mapped label created after the cached discovery is found by the one refresh', async () => {
+  const context = issuesContext()
+  const fake = fakeGithubIssues({ project: null })
+  const noProject = (mappings) => createGithubTracker({ root: context.root, pmkit: pmkit({ ...SCOPE, project: 'none' }, mappings) }, { env: context.env, exec: fake.exec, now: () => new Date('2026-11-16T12:00:00Z') })
+  await noProject({}).discover({ refresh: true })
+  fake.state.labels.push({ id: 'LA_9', name: 'Doing' })
+  const tracker = noProject({ status: { in_progress: 'label:Doing' } })
+  assert.deepEqual((await tracker.searchIssues({})).issues, [])
+  assert.equal(readsOf(fake, 'PmkitRepo'), 2)
+  const sent = fake.reads.filter((call) => call.name === 'PmkitRepo').at(-1)
+  assert.equal(sent.variables.l0, 'Doing')
+})
+
+test('capabilities without a Project warns about the capabilities a Project gives', async () => {
+  const { tracker } = await trackerOf({ ...SCOPE, project: 'none' })
+  const manifest = await tracker.capabilities()
+  assert.ok(manifest.warnings.includes('tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent'))
+  const withProject = await (await trackerOf()).tracker.capabilities()
+  assert.ok(!withProject.warnings.some((warning) => warning.includes('tracker.scope.project is none')))
 })

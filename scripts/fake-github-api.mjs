@@ -20,13 +20,27 @@ export const hostnameOf = (args) => {
 export function answerGh(args, input, fixture) {
   return answerGhWith(args, input, fixture, (name, body) => {
     const canned = fixture.graphql?.[name]
-    if (canned !== undefined && canned !== null) return canned
+    if (canned !== undefined && canned !== null) return name === 'PmkitRepo' ? withNamedLabels(canned, body.variables ?? {}) : canned
     if (!fixture.issues) return { errors: [{ message: `fake gh has no answer for ${name}` }] }
     const fake = fakeGithubIssuesFrom(fixture.issues)
     const reply = fake.handle(name, body.variables ?? {}, body.query)
     fixture.issues = fake.toJSON()
     return reply
   })
+}
+
+/**
+ * A repository reply with the labels read by name: each variable l0, l1, ... answers from every label of the reply, the ones
+ * past the first page included (repoReply keeps them in allLabels). GitHub matches a label name without case.
+ */
+export function withNamedLabels(reply, variables) {
+  const repository = reply?.data?.repository
+  if (!repository) return reply
+  const all = repository.allLabels ?? repository.labels?.nodes ?? []
+  const named = Object.entries(variables).filter(([key]) => /^l\d+$/.test(key))
+  const { allLabels, ...rest } = repository
+  const found = Object.fromEntries(named.map(([key, wanted]) => [key, all.find((label) => label.name.toLowerCase() === String(wanted).toLowerCase()) ?? null]))
+  return { ...reply, data: { ...reply.data, repository: { ...rest, ...found } } }
 }
 
 /** What gh prints for args and stdin, with each GraphQL reply from answer(operationName, body): { status, stdout, stderr }. */
@@ -89,11 +103,14 @@ export function repoReply({ owner = 'acme', name = 'widgets', ownerType = 'Organ
             { __typename: 'IssueFieldDate', id: 'IF_4', name: 'Target date', dataType: 'DATE' },
           ], fieldsMore),
         }),
-        labels: page((labels ?? ['bug', 'documentation']).map((label, index) => ({ id: `LA_${index + 1}`, name: label }))),
+        ...labelLists((labels ?? ['bug', 'documentation']).map((label, index) => ({ id: `LA_${index + 1}`, name: label }))),
       },
     },
   }
 }
+
+/** The first 100 labels as GitHub pages them, and every label for the reads by name. */
+const labelLists = (all) => ({ labels: page(all.slice(0, 100), all.length > 100), ...(all.length > 100 ? { allLabels: all } : {}) })
 
 /** A Project reply with its fields. status lists the Status options. */
 export function projectReply({ number = 7, title = 'Roadmap', status = ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done'], extra } = {}) {

@@ -1,2 +1,9 @@
 {"at":"2026-10-25T19:13:23Z","by":"fred","op":"create","to":{"id":"PMK-89","title":"Degrade to labels and milestones for repositories without a project","type":"feature","status":"backlog","priority":"low","estimate":3,"labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-10-25T19:13:23Z","updated":"2026-10-25T19:13:23Z"}}
 {"at":"2026-10-25T19:13:27Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-87"}
+{"at":"2026-11-17T01:23:09Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-17T01:23:09Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-17T01:23:09Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-89-degrade-to-labels-and-milestones-for"}
+{"at":"2026-11-17T21:18:14Z","by":"fred","op":"comment","to":"2026-11-17T21-18-14Z-fred.md"}
+{"at":"2026-11-17T21:18:34Z","by":"fred","op":"comment","to":"2026-11-17T21-18-34Z-fred.md"}
+{"at":"2026-11-17T21:18:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-17T21:18:34Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

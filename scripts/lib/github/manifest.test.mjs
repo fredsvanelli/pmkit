@@ -55,3 +55,25 @@ test('triage, delegation, time tracking and the rest are absent with their hints
 test('every capability the manifest claims has a command that serves it', () => {
   for (const raw of [RAW, GHES]) assert.deepEqual(unservedCapabilities(buildGithubCapabilities(raw, pmkit({ estimate: 'issue:Effort' })), SERVED_BY), [])
 })
+
+const NO_PROJECT = { ...RAW, project: null, labels: [{ id: 'L1', name: 'Triage' }] }
+const PROJECT_ONLY = ['cycles', 'capacity', 'deliverables', 'status_update']
+
+test('without a Project, the capabilities a Project gives are absent with the Project hint', () => {
+  const entries = buildGithubCapabilities(NO_PROJECT, pmkit({}))
+  for (const id of PROJECT_ONLY) {
+    assert.deepEqual(entryOf(entries, id), { id, path: 'absent', enableHint: 'Needs a GitHub Project: set tracker.scope.project with /pmkit:setup' })
+  }
+  assert.deepEqual(entryOf(entries, 'native_triage'), { id: 'native_triage', path: 'absent', enableHint: 'Map a triage label with /pmkit:setup' })
+})
+
+test('without a Project, a triage label makes native_triage derived', () => {
+  const triage = { ...pmkit({}), mappings: { status: { triage: 'label:triage' } } }
+  assert.deepEqual(entryOf(buildGithubCapabilities(NO_PROJECT, triage), 'native_triage'), { id: 'native_triage', path: 'derived', detail: { source: 'label' } })
+  const gone = { ...pmkit({}), mappings: { status: { triage: 'label:Gone' } } }
+  assert.equal(entryOf(buildGithubCapabilities(NO_PROJECT, gone), 'native_triage').path, 'absent')
+})
+
+test('with a Project, the Project-only entries keep their hint', () => {
+  for (const id of PROJECT_ONLY) assert.doesNotMatch(entryOf(buildGithubCapabilities(RAW, pmkit({})), id).enableHint, /Needs a GitHub Project/)
+})

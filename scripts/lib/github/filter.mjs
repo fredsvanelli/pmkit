@@ -40,6 +40,13 @@ const KEY_HANDLERS = [
   },
   function types(filter, out, context) {
     if (filter.types === undefined) return
+    if (context.typeLabels?.size > 0) {
+      // Types are labels. GitHub's labels filter takes the one type label, unless the labels filter needs it.
+      const label = filter.types.length === 1 ? context.typeLabels.get(filter.types[0]) : undefined
+      if (label && !(filter.labels?.length > 0)) out.filterBy.labels = [label.name]
+      else out.clientSteps.push((issue) => filter.types.includes(issue.type))
+      return
+    }
     if (filter.types.length === 1) out.filterBy.type = context.pmkit.mappings.types[filter.types[0]]
     else out.clientSteps.push((issue) => filter.types.includes(issue.type))
   },

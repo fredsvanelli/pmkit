@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isBlockedNode, itemOf, makeContext, optionForPriority, priorityRule, statusOf, toIssue } from './issues.mjs'
+import { isBlockedNode, itemOf, makeContext, optionForPriority, priorityRule, statusOf, toIssue, toIssueWithWarnings } from './issues.mjs'
 
 const STATUS_OPTIONS = ['Backlog', 'Todo', 'In Progress', 'Done', 'Weird'].map((name) => ({ id: `o-${name}`, name }))
 const raw = (over = {}) => ({
@@ -173,4 +173,48 @@ test('isBlockedNode is false for a blocker in a terminal category', () => {
   assert.equal(isBlockedNode(blocker({ state: 'CLOSED', stateReason: 'COMPLETED' }), c), false)
   assert.equal(isBlockedNode(blocker({ projectItems: { nodes: [item({ status: sel('Done') })] } }), c), false)
   assert.equal(isBlockedNode(blocker({ projectItems: { nodes: [item({ status: sel('Todo') })] } }), c), true)
+})
+
+const LABELS = ['Doing', 'Review', 'Backlog', 'bug', 'enhancement', 'x'].map((name, index) => ({ id: `L${index + 1}`, name }))
+const labelled = (names, over = {}) => node({ labels: { nodes: names.map((name) => LABELS.find((label) => label.name.toLowerCase() === name.toLowerCase())) }, ...over })
+const noProject = (map = {}, over = {}) => ctx({ project: null, labels: LABELS, ...over }, { status: { in_progress: 'label:Doing', in_review: 'label:review', backlog: 'label:Backlog' }, ...map })
+
+test('makeContext without a Project maps status labels, and type labels without issue types', () => {
+  const c = noProject({ types: { feature: 'label:enhancement', bug: 'label:bug' } }, { issueTypes: [] })
+  assert.deepEqual([...c.statusLabels], [['backlog', { id: 'L3', name: 'Backlog' }], ['in_progress', { id: 'L1', name: 'Doing' }], ['in_review', { id: 'L2', name: 'Review' }]])
+  assert.deepEqual([...c.typeLabels], [['feature', { id: 'L5', name: 'enhancement' }], ['bug', { id: 'L4', name: 'bug' }]])
+  assert.deepEqual([...c.mappedLabelIds].sort(), ['L1', 'L2', 'L3', 'L4', 'L5'])
+  const withProject = ctx({ labels: LABELS }, { status: { in_progress: 'label:Doing' } })
+  assert.equal(withProject.statusLabels.size, 0)
+  assert.equal(noProject({ types: { bug: 'label:bug' } }).typeLabels.size, 0, 'issue types win')
+})
+
+test('status rule with status labels', () => {
+  const c = noProject()
+  assert.deepEqual(statusOf(labelled([]), c), { name: 'Open', category: 'todo' })
+  assert.deepEqual(statusOf(labelled(['x']), c), { name: 'Open', category: 'todo' })
+  assert.deepEqual(statusOf(labelled(['Doing']), c), { name: 'Doing', category: 'in_progress' })
+  assert.deepEqual(statusOf(labelled(['Review', 'Doing']), c), { name: 'Review', category: 'in_review' })
+  assert.deepEqual(statusOf(labelled(['Review'], { state: 'CLOSED', stateReason: 'COMPLETED' }), c), { name: 'Closed', category: 'done' })
+  const { issue, warnings } = toIssueWithWarnings(labelled(['Doing', 'Backlog', 'Review']), c)
+  assert.equal(issue.status.category, 'in_review')
+  assert.deepEqual(warnings, ['12 has several status labels (Backlog, Doing, Review); pmkit reads Review'])
+  assert.deepEqual(issue.labels, ['Backlog', 'Doing', 'Review'], 'status labels stay in labels')
+})
+
+test('a Project ignores status labels', () => {
+  const c = ctx({ labels: LABELS })
+  assert.deepEqual(statusOf(labelled(['Doing']), c), { name: 'Open', category: 'todo' })
+})
+
+test('type from a type label without issue types', () => {
+  const c = noProject({ types: { feature: 'label:enhancement', bug: 'label:bug' } }, { issueTypes: [] })
+  assert.equal(toIssue(labelled(['bug']), c).type, 'bug')
+  assert.equal(toIssue(labelled(['x']), c).type, undefined)
+  const { issue, warnings } = toIssueWithWarnings(labelled(['bug', 'enhancement']), c)
+  assert.equal(issue.type, 'feature')
+  assert.deepEqual(warnings, ['12 has several type labels (bug, enhancement); pmkit reads feature'])
+  const typed = noProject({ types: { bug: 'Bug' } })
+  assert.equal(toIssue(labelled(['bug'], { issueType: { name: 'Bug' } }), typed).type, 'bug')
+  assert.equal(toIssue(labelled(['bug']), typed).type, undefined, 'with issue types a label is no type')
 })

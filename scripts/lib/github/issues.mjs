@@ -5,9 +5,12 @@ import { parseDescription } from '../body-criteria.mjs'
 import { TERMINAL } from '../model.mjs'
 import { CLOSED, CLOSED_NOT_PLANNED, OPEN, statusFieldOf } from './discovery.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
-import { fieldOf, NONE, parseFieldSource } from './mappings.mjs'
+import { fieldOf, labelOf, NONE, parseFieldSource, parseLabelValue } from './mappings.mjs'
 
 export const PRIORITIES = ['urgent', 'high', 'medium', 'low']
+
+// The open categories a status label stands for, earliest first. With several status labels, the last one here wins.
+export const READ_ORDER = ['triage', 'backlog', 'todo', 'in_progress', 'in_review']
 
 // Each role reads one key of mappings.fields, and one alias and variable on the Project item.
 export const ROLES = {
@@ -60,8 +63,31 @@ export function makeContext(raw, pmkit) {
     }
   }
 
+  // Labels stand in for statuses without a Project, and for types without issue types. Each map holds the labels GitHub has.
+  const labelMap = (map, keys, on) => new Map(on ? keys.flatMap((key) => {
+    const name = parseLabelValue(map[key])
+    const label = name ? labelOf(raw, name) : null
+    return label ? [[key, label]] : []
+  }) : [])
+  const statusLabels = labelMap(statusMap, READ_ORDER, !project)
+  const typeLabels = labelMap(typeMap, Object.keys(typeMap), raw.issueTypes.length === 0)
+  const mappedLabelIds = new Set([...statusLabels.values(), ...typeLabels.values()].map((label) => label.id))
+
+  /** The status and the type that an issue's label names give, with a warning for each one several labels claim. */
+  function readLabels(names, id) {
+    const has = (label) => names.some((name) => name.toLowerCase() === label.name.toLowerCase())
+    const warnings = []
+    const statuses = [...statusLabels].filter(([, label]) => has(label))
+    const types = [...typeLabels].filter(([, label]) => has(label))
+    const status = statuses.at(-1)
+    const type = types[0]
+    if (statuses.length > 1) warnings.push(`${id} has several status labels (${statuses.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${status[1].name}`)
+    if (types.length > 1) warnings.push(`${id} has several type labels (${types.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${type[0]}`)
+    return { status: status ? { name: status[1].name, category: status[0] } : null, type: type?.[0], warnings }
+  }
+
   return {
-    raw, pmkit, repo: raw.repo, project, features: raw.features,
+    raw, pmkit, repo: raw.repo, project, features: raw.features, statusLabels, typeLabels, mappedLabelIds, readLabels,
     categoryOfOption: (name) => categoryOf.get(name) ?? 'in_progress',
     optionOf: (category) => {
       const name = statusMap[category]
@@ -107,14 +133,18 @@ export function itemOf(node, context) {
 
 /** The settled status rule: a closed issue is done or canceled whatever its option, an open one takes its option's category. */
 export function statusOf(node, context) {
-  const option = itemOf(node, context)?.status?.name
+  // Without a Project, a closed issue reads its state's name whatever its labels.
+  const option = context.project ? itemOf(node, context)?.status?.name : undefined
   if (node.state === 'CLOSED') {
     const canceled = node.stateReason === 'NOT_PLANNED' || node.stateReason === 'DUPLICATE'
     return { name: option ?? (canceled ? CLOSED_NOT_PLANNED : CLOSED), category: canceled ? 'canceled' : 'done' }
   }
+  if (!context.project) return context.readLabels?.(labelNames(node), '').status ?? { name: OPEN, category: 'todo' }
   if (!option) return { name: OPEN, category: 'todo' }
   return { name: option, category: context.categoryOfOption(option) }
 }
+
+const labelNames = (node) => (node.labels?.nodes ?? []).filter(Boolean).map((label) => label.name)
 
 /** True when a blockedBy node is not in a terminal category by the same rule. */
 export const isBlockedNode = (node, context) => !TERMINAL.includes(statusOf(node, context).category)
@@ -151,9 +181,15 @@ function dueOf(node, context) {
 
 /** The pmkit issue of a fragment-shaped node. Unset fields are absent keys. */
 export function toIssue(node, context) {
+  return toIssueWithWarnings(node, context).issue
+}
+
+/** The pmkit issue of a node, and the warnings of its labels: several status labels or several type labels. */
+export function toIssueWithWarnings(node, context) {
   const { description, acceptanceCriteria } = parseDescription(node.body)
   const issue = { id: issueIdOf(node, context.repo), title: node.title }
-  const type = node.issueType ? context.typeOf(node.issueType.name) : undefined
+  const read = context.readLabels ? context.readLabels(labelNames(node), issue.id) : { type: undefined, warnings: [] }
+  const type = context.typeLabels?.size > 0 ? read.type : node.issueType ? context.typeOf(node.issueType.name) : undefined
   if (type !== undefined) issue.type = type
   issue.status = statusOf(node, context)
   const priority = priorityOf(node, context)
@@ -178,5 +214,7 @@ export function toIssue(node, context) {
   issue.acceptanceCriteria = acceptanceCriteria
   issue.created = node.createdAt
   issue.updated = node.updatedAt
-  return issue
+  // A closed issue reads no status label, so only an open one warns about several.
+  const warnings = node.state === 'CLOSED' ? read.warnings.filter((warning) => !warning.includes('status labels')) : read.warnings
+  return { issue, warnings }
 }

@@ -3,7 +3,7 @@
 
 import { CAPABILITIES } from '../capabilities.mjs'
 import { estimateOf } from './discovery.mjs'
-import { fieldOf } from './mappings.mjs'
+import { fieldOf, labelOf, parseLabelValue } from './mappings.mjs'
 
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const unservedHint = (id) => `The GitHub adapter does not serve ${id} yet (EPC-8)`
@@ -31,5 +31,19 @@ export function buildGithubCapabilities(raw, pmkit = {}) {
     agent_delegation: { path: 'absent', enableHint: 'The GitHub adapter does not delegate to agents yet' },
     time_tracking: { path: 'absent', enableHint: 'GitHub has no time tracking' },
   }
+  if (raw.project === null) Object.assign(answers, withoutProject(raw, pmkit))
   return CAPABILITIES.map((id) => ({ id, ...(answers[id] ?? { path: 'absent', enableHint: unservedHint(id) }) }))
+}
+
+// The capabilities only a Project gives on GitHub: iterations for sprints and capacity, linked Projects for epics and updates.
+export const PROJECT_ONLY = ['cycles', 'capacity', 'deliverables', 'status_update']
+const NEEDS_PROJECT = 'Needs a GitHub Project: set tracker.scope.project with /pmkit:setup'
+
+/** The entries a repository without a Project answers differently: the Project-only ones, and triage through a label. */
+function withoutProject(raw, pmkit) {
+  const triage = parseLabelValue(pmkit?.mappings?.status?.triage)
+  return {
+    ...Object.fromEntries(PROJECT_ONLY.map((id) => [id, { path: 'absent', enableHint: NEEDS_PROJECT }])),
+    native_triage: triage && labelOf(raw, triage) ? { path: 'derived', detail: { source: 'label' } } : { path: 'absent', enableHint: 'Map a triage label with /pmkit:setup' },
+  }
 }
