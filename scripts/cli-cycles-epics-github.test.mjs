@@ -169,6 +169,19 @@ test('issues parent puts an issue in an epic, and epic progress counts it', asyn
   assert.equal(dataOf(await cli(['epic', 'progress', 'acme/12', '--json'])).total, 0)
 })
 
+test('issues parent none on an issue with a parent issue and an epic item removes the parent issue and notes the epic left', async () => {
+  const { fake, cli } = githubRepo()
+  fake.seed({ number: 3, title: 'Three', parent: 1, epics: ['acme/12'] })
+  const result = await cli(['issues', 'parent', '3', 'none', '--json'])
+  const data = dataOf(result)
+  assert.equal(data.before.parent, '1')
+  assert.equal(data.after.parent, 'acme/12')
+  assert.match(result.stderr, /^note: 3 still belongs to epic acme\/12; run pmkit issues parent 3 none again to remove it$/m)
+  const again = await cli(['issues', 'parent', '3', 'none', '--json'])
+  assert.equal(dataOf(again).after.parent, undefined)
+  assert.doesNotMatch(again.stderr, /still belongs to epic/)
+})
+
 test('issues update --milestone puts an issue in a milestone', async () => {
   const { cli } = githubRepo()
   dataOf(await cli(['milestone', 'create', 'v2', '--json']))
