@@ -13,7 +13,7 @@ function derivedNote(entry, facts) {
       const off = facts.estimation?.path === 'absent'
       return off ? `${base}; counted issues: estimates are off (${facts.estimation.enableHint})` : base
     }
-    if (source === 'history') return `${facts.metric} computed from Linear issue history`
+    if (source === 'history') return `${facts.metric} computed from ${facts.tracker === 'github' ? 'GitHub' : 'Linear'} issue history`
     if (source === 'events') return `${facts.metric} computed from .issues/events.jsonl`
   }
   if (entry.id === 'capacity' && source === 'local') return 'capacity read from .pmkit/capacity.yaml; Linear has no capacity field'
@@ -30,7 +30,7 @@ function genericDerivedNote(entry) {
 
 /**
  * The note for a manifest entry, or null when the entry is native.
- * facts: metric, sprints and estimation (velocity), issue and team (conditional), releaseNotesFrom (release-notes).
+ * facts: metric, tracker (the manifest's tracker, which names the history source), sprints and estimation (velocity), issue and team (conditional), releaseNotesFrom (release-notes).
  */
 export function pathNote(entry, facts = {}) {
   // deliverables is native on Linear, but its progress counts are derived from the project's issues.

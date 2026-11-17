@@ -52,6 +52,10 @@ _Avoid_: milestone (a milestone is a target, not a version), version (outside th
 The done issues of a release, a sprint or a period, grouped by type and written for a user of the product. The command says which basis it used and whether the notes are a draft. `/pmkit:report:release-notes` writes them and saves them as a document after the user confirms.
 _Avoid_: changelog (that is the plugin's own `CHANGELOG.md`), release (the object, not its notes)
 
+**Refined PRD**:
+The PRD after the `/pmkit:spec:from-prd` interview, with scope, use cases, requirements with acceptance criteria, and each decision marked `ADR` or `PRD only`. It is stored at `specs/<slug>-prd.md` in the tracker's docs folder, or `docs/specs/<slug>-prd.md` in the repository when the tracker cannot create documents.
+_Avoid_: PRD (the one-page input before the interview), final PRD
+
 **Customer**:
 A company or person the team builds for, kept as `customers/<ID>.md` with a name and an optional status, tier, revenue, size and owner. Its ID is `CUS-` and a code that follows the ID style. Linear has customers of its own, which `/pmkit:linear:customers` reads.
 _Avoid_: client, account
@@ -83,6 +87,26 @@ _Avoid_: status type, stage, phase
 **Mapping**:
 A line under `mappings` in `.pmkit/config.yaml` that ties a pmkit category, `blocked`, a field role or an issue type to a hosted tracker's own name, such as `in_review: In Review` or `bug: Bug`. Setup writes the mappings it infers and the ones the user answers. `none` means the team has no such status or field. When a mapping names something the tracker no longer has, every command stops and offers `/pmkit:setup`.
 _Avoid_: binding, alias
+
+**Issue field**:
+A field that a GitHub organization defines on its issues, such as Priority or Effort, with a value on the issue itself. A Project field, by contrast, exists only on a Projects v2 board and only for the issues added to it. On GitHub Issues, the mapping of each field role reads an issue field first, then a Project field, then `none` (ADR 0007).
+_Avoid_: custom field
+
+**GitHub Project**:
+A Projects v2 board that a GitHub user or organization owns, named in `tracker.scope.project` as `owner/number`, or `none` when the repository uses no board. The GitHub Issues adapter reads each issue's status from the board's single-select Status field plus the issue's open or closed state, and setup asks which Status option stands for each category.
+_Avoid_: project (alone, which reads as an Epic or a Linear project), board
+
+**Status label**:
+A repository label that `mappings.status` names as `label:<name>` on a GitHub Issues tracker without a Project, such as `in_progress: label:Doing`. An open issue takes the category of its status label, and one with none is `todo`; a closed issue is `done` or `canceled` whatever its labels (ADR 0009).
+_Avoid_: status tag, workflow label
+
+**Linked branch**:
+A branch that GitHub links to an issue in the issue's Development section. On GitHub Issues, `issues branch` creates it on GitHub at the head there of the branch it starts from, pmkit's default branch or `--from`, and the issue's `branch` reads it (ADR 0008).
+_Avoid_: issue branch (alone)
+
+**Discussion**:
+A GitHub Discussions thread of the repository of a GitHub Issues tracker: an RFC, an idea or a question, with comments and one level of replies, and a marked answer in a Q&A category. `/pmkit:github:discussions` summarizes one and can turn it into an issue, whose description names the discussion. A discussion is not an issue and has no status.
+_Avoid_: forum post, thread (a thread is a root comment and its replies on an issue)
 
 **Blocked**:
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.

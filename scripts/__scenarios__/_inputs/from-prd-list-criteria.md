@@ -1,0 +1,1 @@
+- The list shows each parked delivery of a webhook with its last error

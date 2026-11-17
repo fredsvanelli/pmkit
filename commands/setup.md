@@ -10,7 +10,7 @@ Arguments: `$ARGUMENTS`
 
 ## Parameters
 
-None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect. With the Local tracker, that is the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label. With Linear, it is the team when you belong to several, the status that means in review, the status that means blocked, the label for each issue type, and a field only when the workspace offers more than one.
+None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect. With the Local tracker, that is the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label. With Linear, it is the team when you belong to several, the status that means in review, the status that means blocked, the label for each issue type, and a field only when the workspace offers more than one. With GitHub Issues, it is the Project, the Status option of each category, the field of each field role and the issue type of each pmkit type.
 
 It is safe to run again. When `.pmkit/config.yaml` exists, it only updates and never starts over.
 
@@ -20,7 +20,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 Its first rule (stop when there is no config) does not apply here, because this command creates the config.
 
-1. Check whether `.pmkit/config.yaml` exists. When it does, read its `tracker.system`. `local` goes to "Existing config" and `linear` goes to "Existing Linear config". When it does not exist, ask with `AskUserQuestion` which tracker holds the issues. Offer "Local (Recommended)", for files in this repository, and "Linear", for a Linear workspace reached with a personal API key. Local continues with "First run". Linear goes to "Linear first run".
+1. Check whether `.pmkit/config.yaml` exists. When it does, read its `tracker.system`. `local` goes to "Existing config", `linear` goes to "Existing Linear config" and `github` goes to "Existing GitHub config". When it does not exist, ask with `AskUserQuestion` which tracker holds the issues. Offer "Local (Recommended)", for files in this repository, "Linear", for a Linear workspace reached with a personal API key, and "GitHub Issues", for the issues of a GitHub repository reached through the `gh` login. Local continues with "First run". Linear goes to "Linear first run". GitHub Issues goes to "GitHub first run".
 
 ### First run
 
@@ -92,6 +92,33 @@ Never run `init` without `--update` when a config exists.
 6. After the user approves, run the command of step 5 without `--dry-run`.
 7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
 
+### GitHub first run
+
+pmkit reaches GitHub through `gh api` with the `gh` login and holds no token (ADR 0007). Never ask for a token.
+
+2. Detect the git host as in step 2 of "First run".
+3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker github --git-host <github|none> --dry-run --json`. It reads the origin remote for the host and the repository, then reads the repository with the default `gh` scopes, and writes nothing. Show its `notes`, which say where the host and the repository came from. When the host is not the GitHub host the user expects, for example an SSH alias, ask for the right one and add `--host <host> --repo <owner/name>` to every later call.
+   - On `AUTH`, show `error.nextStep` (`gh auth login`, plus `-h <host>` off github.com), ask the user to run it, then stop and ask them to run setup again.
+   - On `NOT_SUPPORTED`, the server is GitHub Enterprise Server older than 3.19. Show `error.message`, which names the version found and 3.19, and stop.
+   - Without an origin remote, `INVALID_INPUT` asks for `--host <host> --repo <owner/name>`. Ask the user for both.
+4. `questions` holds `tracker.scope.project`. Ask it alone with `AskUserQuestion`: offer up to three of its `candidates`, each with its title from `titles`, the `recommended` one first with "(Recommended)", and "No Project" last. The user can type another `owner/number`. When the question has a `note`, `gh` lacks the `project` scope: show the note and offer "No Project" and "Stop setup". On "Stop setup", write nothing and tell the user to run `gh auth refresh -s project` (the note names the host) and setup again. "No Project" passes `none`: the repository then reads its statuses from labels (ADR 0009), and has no sprints, epics or status updates.
+5. Run the command of step 3 again with `--project <owner/number|none>`. It reads the Project once, so a missing `project` scope fails here with `AUTH`: show `error.nextStep` and stop as in step 3. Ask every item of its `questions` with `AskUserQuestion`, in the order given, in batches of four. Name what each one decides: which Status option means each category, or without a Project which label does, which field holds each field role, which issue type stands for each pmkit type, or with no enabled issue type which label does. Each question has two to four options:
+   - A question with `required: true` (`todo`, `in_progress`, `done`) takes no `none`. Offer the `recommended` option first with "(Recommended)" when there is one, then the next `candidates`, up to four options. The user can type another option.
+   - Any other question follows step 5 of "Linear first run": the `recommended` value first with "(Recommended)", then the next `candidates`, at most two of them, then `none` with the item's `none` label.
+6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker github --git-host <github|none> --project <value> --status <key>=<option> --field <role>=<value> --type-label <type>=<issue type> --dry-run --json`, with one `--status`, `--field` or `--type-label` per answer. A field value keeps its prefix: `issue:<name>`, `project:<name>` or `none`. A label answer is the label name; setup writes it as `label:<name>`. On `INVALID_INPUT` naming a value, ask that question again with the values its next step lists.
+7. Show one summary: the repository and host, the viewer, the Project, each Status option or status label with its category, the `applied` items, each field role and its source, the issue type or label of each pmkit type, the `notes`, the `warnings` (an option no category names counts as `in_progress`), and `.pmkit/config.yaml` as the dry run would create it. Say that GitHub numbers its own issues, so setup asks for no prefix and no ID style, and that setup creates nothing on GitHub. When the user declines the summary, setup stops and writes nothing.
+8. After the user approves, run the command of step 6 without `--dry-run`.
+9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Without a Project, name the capabilities that `capabilities` reports absent for lack of one. Go to "Output".
+
+### Existing GitHub config
+
+2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. A problem in `.pmkit/config.yaml` makes `init --update` refuse, so ask the user to fix the file by hand first and run the check again.
+3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. On `AUTH` or `NOT_SUPPORTED`, follow step 3 of "GitHub first run". `broken` lists each mapping that names a Project, Status option, field or issue type GitHub no longer has, and `questions` holds each of them plus any mapping never answered. Add `--git-host`, `--host`, `--repo`, `--project`, `--status`, `--field` or `--type-label` only when the user asks to change them.
+4. When `questions` is empty and the file is `keep`, say "already up to date" and go to step 7. When `questions` holds `tracker.scope.project`, ask it alone as step 4 of "GitHub first run" does, then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --project <value> --dry-run --json` with the flags of step 3, and take its `questions`. Ask the other questions as step 5 of "GitHub first run" does. For a broken mapping, name its old value and its `problem` in the question.
+5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --project <value> --status <key>=<option> --field <role>=<value> --type-label <type>=<issue type> --dry-run --json` with the answers of step 4 and the flags of step 3. Show the diff of `.pmkit/config.yaml` and the summary of step 7 of "GitHub first run", and ask once with `AskUserQuestion` whether to apply it. When the user declines, stop and change nothing.
+6. After the user approves, run the command of step 5 without `--dry-run`.
+7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
+
 ## Confirmation points
 
 - First run: the one summary of step 7 of the first run, before any file is written.
@@ -99,7 +126,9 @@ Never run `init` without `--update` when a config exists.
 - Existing config step 3: the label renames, shown with their dry runs and asked once before any issue changes. Declining leaves the labels as they are.
 - Linear first run: the one summary of step 7, before `.pmkit/config.yaml` is written.
 - Existing Linear config: one question in step 5 before `init --update` writes. With nothing to write, there is no question.
-- The tracker question of step 1, the questions of step 4 of the first run, the label question of step 3 of the existing config, the questions of steps 4 and 5 of the Linear first run and the questions of step 4 of the existing Linear config are inputs, not confirmations.
+- GitHub first run: the one summary of step 7, before `.pmkit/config.yaml` is written.
+- Existing GitHub config: one question in step 5 before `init --update` writes. With nothing to write, there is no question.
+- The tracker question of step 1, the questions of step 4 of the first run, the label question of step 3 of the existing config, the questions of steps 4 and 5 of the Linear first run, the questions of step 4 of the existing Linear config, the questions of steps 4 and 5 of the GitHub first run and the questions of step 4 of the existing GitHub config are inputs, not confirmations.
 
 ## Output
 
@@ -115,4 +144,5 @@ Lead with what was created or updated. Then:
 - No GitHub remote: run with `--git-host none` and name the commands that lose features, as in step 7 of the first run.
 - Not a git repository: say that `/pmkit:upgrade` and the commit step need git, and continue only if the user wants a tracker without it.
 - `LINEAR_API_KEY` is not set, or belongs to another workspace: follow step 3 of "Linear first run". Never ask for the key.
+- GitHub Issues and `gh` is not installed, not logged in or lacks the `project` scope: follow step 3 of "GitHub first run". Never ask for a token.
 - An error from the CLI: apply the rules for reading errors in the conventions.

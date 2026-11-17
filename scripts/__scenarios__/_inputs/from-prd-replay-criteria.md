@@ -1,0 +1,1 @@
+- A replayed delivery leaves the list and is sent again

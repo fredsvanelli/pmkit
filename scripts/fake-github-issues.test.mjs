@@ -1,0 +1,345 @@
+// Tests of the stateful fake GitHub: it answers the documents of scripts/lib/github/documents.mjs through the real client.
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { answerGh, fakeGhExec, repoReply, standardFixture } from './fake-github-api.mjs'
+import { fakeGithubIssues, fakeGithubIssuesFrom, TIMELINE_TYPENAMES } from './fake-github-issues.mjs'
+import { createGithubClient } from './lib/github/client.mjs'
+import { hostFeatures, issueDocuments, ITEM_TYPES } from './lib/github/documents.mjs'
+
+const VARS = { fStatus: 'Status', fEstimate: 'Story points', fDue: 'Due' }
+const REPO = { owner: 'acme', name: 'widgets' }
+
+function setup(options = {}) {
+  const fake = fakeGithubIssues(options)
+  const features = hostFeatures({ host: options.host ?? 'github.com', ghesVersion: options.ghesVersion ?? null })
+  const docs = issueDocuments(features, { status: true, estimate: true, due: true })
+  const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  const create = async (input) => (await client.request(docs.CREATE_ISSUE, { input: { repositoryId: 'R_1', ...input }, ...VARS })).createIssue.issue
+  const read = async (number, repo = REPO) => (await client.request(docs.ISSUE, { ...repo, number, ...VARS })).repository.issue
+  return { fake, docs, client, create, read, features }
+}
+
+test('two created issues get numbers 1 and 2 and read back by PmkitIssue and PmkitIssues', async () => {
+  const { fake, docs, client, create, read } = setup()
+  const first = await create({ title: 'First', body: 'one', labelIds: ['LA_1'], assigneeIds: ['U_1'], issueTypeId: 'IT_2' })
+  await create({ title: 'Second' })
+  assert.deepEqual([first.id, first.number, first.state], ['I_1', 1, 'OPEN'])
+  const one = await read(1)
+  assert.equal(one.title, 'First')
+  assert.equal(one.body, 'one')
+  assert.deepEqual(one.labels.nodes.map((label) => label.name), ['bug'])
+  assert.deepEqual(one.assignees.nodes.map((user) => user.login), ['octocat'])
+  assert.equal(one.issueType.name, 'Bug')
+  assert.equal(one.repository.nameWithOwner, 'acme/widgets')
+  assert.equal(one.author.login, 'octocat')
+  assert.ok(one.createdAt < (await read(2)).createdAt)
+  const list = await client.request(docs.ISSUES, { ...REPO, first: 10, ...VARS })
+  assert.deepEqual(list.repository.issues.nodes.map((node) => node.number), [1, 2])
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitCreateIssue', 'PmkitCreateIssue'])
+  assert.ok(fake.reads.some((call) => call.name === 'PmkitIssues'))
+})
+
+test('a missing issue answers NOT_FOUND through the client', async () => {
+  const { read } = setup()
+  await assert.rejects(read(9), (error) => error.code === 'NOT_FOUND')
+})
+
+test('closing as NOT_PLANNED sets the state, the reason and a ClosedEvent; filterBy.states narrows', async () => {
+  const { docs, client, create, read } = setup()
+  await create({ title: 'A' })
+  await create({ title: 'B' })
+  const closed = (await client.request(docs.CLOSE_ISSUE, { input: { issueId: 'I_1', stateReason: 'NOT_PLANNED' }, ...VARS })).closeIssue.issue
+  assert.deepEqual([closed.state, closed.stateReason], ['CLOSED', 'NOT_PLANNED'])
+  assert.equal((await read(1)).state, 'CLOSED')
+  const open = await client.request(docs.ISSUES, { ...REPO, first: 10, filterBy: { states: ['OPEN'] }, ...VARS })
+  assert.deepEqual(open.repository.issues.nodes.map((node) => node.number), [2])
+  const timeline = await client.request(docs.TIMELINE, { id: 'I_1', first: 10 })
+  assert.deepEqual(timeline.node.timelineItems.nodes.map((item) => [item.__typename, item.stateReason]), [['ClosedEvent', 'NOT_PLANNED']])
+})
+
+test('PmkitIssues pages by first and after, and filters by assignee, labels, type and since', async () => {
+  const { docs, client, create } = setup()
+  await create({ title: 'A', labelIds: ['LA_1'], issueTypeId: 'IT_2' })
+  const b = await create({ title: 'B', assigneeIds: ['U_2'] })
+  await create({ title: 'C', labelIds: ['LA_2'] })
+  const page1 = (await client.request(docs.ISSUES, { ...REPO, first: 1, ...VARS })).repository.issues
+  assert.deepEqual(page1.nodes.map((node) => node.number), [1])
+  assert.equal(page1.pageInfo.hasNextPage, true)
+  const page2 = (await client.request(docs.ISSUES, { ...REPO, first: 1, after: page1.pageInfo.endCursor, ...VARS })).repository.issues
+  assert.deepEqual(page2.nodes.map((node) => node.number), [2])
+  const all = await client.paginate(docs.ISSUES, { ...REPO, ...VARS }, { pageSize: 1, select: (data) => data.repository.issues })
+  assert.deepEqual(all.nodes.map((node) => node.number), [1, 2, 3])
+  const numbers = async (filterBy) => (await client.request(docs.ISSUES, { ...REPO, first: 10, filterBy, ...VARS })).repository.issues.nodes.map((node) => node.number)
+  assert.deepEqual(await numbers({ assignee: 'hubot' }), [2])
+  assert.deepEqual(await numbers({ labels: ['bug', 'documentation'] }), [1, 3])
+  assert.deepEqual(await numbers({ type: 'Bug' }), [1])
+  assert.deepEqual(await numbers({ since: b.updatedAt }), [2, 3])
+})
+
+test('a blocker reads on both issues, with the Status of the blocker, and records events on both', async () => {
+  const { docs, client, create, read } = setup()
+  await create({ title: 'Blocked' })
+  await create({ title: 'Blocker' })
+  const item = (await client.request(docs.ADD_PROJECT_ITEM, { input: { projectId: 'PVT_1', contentId: 'I_2' } })).addProjectV2ItemById.item
+  await client.request(docs.SET_PROJECT_FIELD, { input: { projectId: 'PVT_1', itemId: item.id, fieldId: 'PF_1', value: { singleSelectOptionId: 'S2' } } })
+  const added = await client.request(docs.ADD_BLOCKED_BY, { input: { issueId: 'I_1', blockingIssueId: 'I_2' } })
+  assert.deepEqual(added.addBlockedBy.blockingIssue, { id: 'I_2', number: 2 })
+  const blocked = await read(1)
+  assert.deepEqual(blocked.blockedBy.nodes.map((node) => node.number), [2])
+  assert.deepEqual(blocked.blockedBy.nodes[0].projectItems.nodes[0].status, { __typename: 'ProjectV2ItemFieldSingleSelectValue', name: 'In Progress', optionId: 'S2' })
+  assert.deepEqual((await read(2)).blocking.nodes.map((node) => node.number), [1])
+  const events = async (id) => (await client.request(docs.TIMELINE, { id, first: 10 })).node.timelineItems.nodes.map((node) => node.__typename)
+  assert.deepEqual(await events('I_1'), ['BlockedByAddedEvent'])
+  assert.deepEqual(await events('I_2'), ['ProjectV2ItemStatusChangedEvent', 'BlockingAddedEvent'])
+})
+
+test('Project field aliases resolve by field name; adding an item twice returns the same item', async () => {
+  const { docs, client, create, read } = setup()
+  await create({ title: 'A' })
+  const add = async () => (await client.request(docs.ADD_PROJECT_ITEM, { input: { projectId: 'PVT_1', contentId: 'I_1' } })).addProjectV2ItemById.item.id
+  const id = await add()
+  assert.equal(await add(), id)
+  const set = (fieldId, value) => client.request(docs.SET_PROJECT_FIELD, { input: { projectId: 'PVT_1', itemId: id, fieldId, value } })
+  await set('PF_2', { number: 3 })
+  await set('PF_5', { date: '2026-12-01' })
+  const node = (await read(1)).projectItems.nodes[0]
+  assert.equal(node.isArchived, false)
+  assert.deepEqual(node.fEstimate, { __typename: 'ProjectV2ItemFieldNumberValue', number: 3 })
+  assert.deepEqual(node.fDue, { __typename: 'ProjectV2ItemFieldDateValue', date: '2026-12-01' })
+  assert.equal(node.status, null)
+  await client.request(docs.CLEAR_PROJECT_FIELD, { input: { projectId: 'PVT_1', itemId: id, fieldId: 'PF_2' } })
+  await client.request(docs.ARCHIVE_ITEM, { input: { projectId: 'PVT_1', itemId: id } })
+  const after = (await read(1)).projectItems.nodes[0]
+  assert.deepEqual([after.fEstimate, after.isArchived], [null, true])
+})
+
+test('the timeline of a renamed issue holds the rename, labels, type and comment in order', async () => {
+  const { docs, client, create } = setup()
+  await create({ title: 'Old', labelIds: ['LA_1'] })
+  await client.request(docs.UPDATE_ISSUE, { input: { id: 'I_1', title: 'New', labelIds: ['LA_2'], issueTypeId: 'IT_1' }, ...VARS })
+  const comment = await client.request(docs.ADD_COMMENT, { input: { subjectId: 'I_1', body: 'Hello' } })
+  assert.equal(comment.addComment.commentEdge.node.id, 'IC_1')
+  const items = (await client.request(docs.TIMELINE, { id: 'I_1', first: 20 })).node.timelineItems.nodes
+  assert.deepEqual(items.map((item) => item.__typename), ['LabeledEvent', 'RenamedTitleEvent', 'LabeledEvent', 'UnlabeledEvent', 'IssueTypeAddedEvent', 'IssueComment'])
+  const rename = items[1]
+  assert.deepEqual([rename.previousTitle, rename.currentTitle, rename.actor.login], ['Old', 'New', 'octocat'])
+  const sorted = [...items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  assert.deepEqual(sorted, items)
+  const since = (await client.request(docs.TIMELINE, { id: 'I_1', first: 20, since: items[5].createdAt, itemTypes: ['ISSUE_COMMENT'] })).node.timelineItems.nodes
+  assert.deepEqual(since.map((item) => item.body), ['Hello'])
+  const many = await client.request(docs.TIMELINES, { ids: ['I_1'], itemTypes: ['RENAMED_TITLE_EVENT'] })
+  assert.deepEqual(many.nodes[0].timelineItems.nodes.map((item) => item.currentTitle), ['New'])
+  const comments = (await client.request(docs.COMMENTS, { id: 'I_1', first: 10 })).node.comments.nodes
+  assert.deepEqual(comments.map((item) => [item.body, item.author.login, item.isMinimized]), [['Hello', 'octocat', false]])
+})
+
+test('sub-issues, duplicates and deletion keep both sides of each link', async () => {
+  const { docs, client, create, read } = setup()
+  await create({ title: 'Parent' })
+  await create({ title: 'Child', parentIssueId: 'I_1' })
+  await create({ title: 'Other' })
+  assert.equal((await read(2)).parent.number, 1)
+  assert.deepEqual((await read(1)).subIssues.nodes.map((node) => node.number), [2])
+  await assert.rejects(client.request(docs.ADD_SUB_ISSUE, { input: { issueId: 'I_3', subIssueId: 'I_2' } }))
+  await client.request(docs.ADD_SUB_ISSUE, { input: { issueId: 'I_3', subIssueId: 'I_2', replaceParent: true } })
+  assert.equal((await read(2)).parent.number, 3)
+  assert.deepEqual((await read(1)).subIssues.nodes, [])
+  await client.request(docs.CLOSE_ISSUE, { input: { issueId: 'I_1', stateReason: 'DUPLICATE', duplicateIssueId: 'I_3' }, ...VARS })
+  const duplicate = await read(1)
+  assert.deepEqual([duplicate.stateReason, duplicate.duplicateOf.number], ['DUPLICATE', 3])
+  await client.request(docs.UNMARK_DUPLICATE, { input: { duplicateId: 'I_1', canonicalId: 'I_3' } })
+  assert.equal((await read(1)).duplicateOf, null)
+  await client.request(docs.ADD_BLOCKED_BY, { input: { issueId: 'I_1', blockingIssueId: 'I_3' } })
+  await client.request(docs.DELETE_ISSUE, { input: { issueId: 'I_3' } })
+  assert.deepEqual([(await read(1)).blockedBy.nodes, (await read(2)).parent], [[], null])
+  await assert.rejects(read(3), (error) => error.code === 'NOT_FOUND')
+})
+
+test('an unknown node id answers NOT_FOUND with GitHub wording', () => {
+  const { fake, docs } = setup()
+  const reply = fake.handle('PmkitAddComment', { input: { subjectId: 'I_99', body: 'x' } }, docs.ADD_COMMENT)
+  assert.deepEqual(reply.errors, [{ type: 'NOT_FOUND', message: "Could not resolve to a node with the global id of 'I_99'" }])
+})
+
+test('a GHES 3.19 fake rejects relatesTo, issueFieldValues and an unknown operation with an untyped error', async () => {
+  const github = setup()
+  const ghes = setup({ host: 'github.example.com', ghesVersion: '3.19.0' })
+  assert.equal(ghes.features.relatesTo, false)
+  const reply = ghes.fake.handle('PmkitIssue', { ...REPO, number: 1 }, github.docs.ISSUE)
+  assert.deepEqual(reply, { errors: [{ message: "Field 'relatesTo' doesn't exist on type 'Issue'" }] })
+  const fields = ghes.fake.handle('PmkitIssue', { ...REPO, number: 1 }, github.docs.ISSUE.replace(/relatesTo\(first: 50\)[^\n]*\n/, ''))
+  assert.deepEqual(fields, { errors: [{ message: "Field 'issueFieldValues' doesn't exist on type 'Issue'" }] })
+  await assert.rejects(github.client.request('query PmkitNope { viewer { login } }'), (error) => error.code === 'UPSTREAM' && /rejected pmkit's query/.test(error.message))
+  await ghes.create({ title: 'A' })
+  assert.equal((await ghes.read(1)).title, 'A')
+  const item = (await ghes.client.request(ghes.docs.ADD_PROJECT_ITEM, { input: { projectId: 'PVT_1', contentId: 'I_1' } })).addProjectV2ItemById.item
+  await ghes.client.request(ghes.docs.SET_PROJECT_FIELD, { input: { projectId: 'PVT_1', itemId: item.id, fieldId: 'PF_1', value: { singleSelectOptionId: 'S1' } } })
+  assert.equal((await ghes.read(1)).projectItems.nodes[0].status.name, 'Todo')
+  assert.deepEqual((await ghes.client.request(ghes.docs.TIMELINE, { id: 'I_1', first: 10 })).node.timelineItems.nodes, [])
+  assert.deepEqual(ghes.fake.handle('PmkitTimeline', { id: 'I_1', first: 10 }, github.docs.TIMELINE).errors[0].message, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition")
+})
+
+test('issue fields and relatesTo read and write on github.com', async () => {
+  const { docs, client, create, read } = setup()
+  await create({ title: 'A' })
+  await create({ title: 'B' })
+  await client.request(docs.SET_ISSUE_FIELD, { input: { issueId: 'I_1', issueFields: [{ fieldId: 'IF_1', singleSelectOptionId: 'O2' }, { fieldId: 'IF_2', numberValue: 5 }, { fieldId: 'IF_4', dateValue: '2026-12-24' }] } })
+  await client.request(docs.ADD_RELATES_TO, { input: { issueId: 'I_1', relatedIssueId: 'I_2' } })
+  const one = await read(1)
+  assert.deepEqual(one.issueFieldValues.nodes, [
+    { __typename: 'IssueFieldSingleSelectValue', optionId: 'O2', name: 'P1', field: { id: 'IF_1', name: 'Priority' } },
+    { __typename: 'IssueFieldNumberValue', value: 5, field: { id: 'IF_2', name: 'Effort' } },
+    { __typename: 'IssueFieldDateValue', value: '2026-12-24', field: { id: 'IF_4', name: 'Target date' } },
+  ])
+  assert.deepEqual(one.relatesTo.nodes.map((node) => node.number), [2])
+  assert.deepEqual((await read(2)).relatesTo.nodes.map((node) => node.number), [1])
+  await client.request(docs.SET_ISSUE_FIELD, { input: { issueId: 'I_1', issueFields: [{ fieldId: 'IF_2', delete: true }] } })
+  assert.equal((await read(1)).issueFieldValues.nodes.length, 2)
+})
+
+test('branch heads answer by qualified name, and createLinkedBranch adds the branch', async () => {
+  const { fake, docs, client, create, read } = setup({ branches: { main: 'a'.repeat(40), develop: 'b'.repeat(40) } })
+  const head = async (qualifiedName) => (await client.request(docs.BRANCH_HEAD, { ...REPO, qualifiedName })).repository
+  assert.deepEqual(await head('refs/heads/develop'), { id: 'R_1', ref: { name: 'develop', target: { oid: 'b'.repeat(40) } } })
+  assert.equal((await head('refs/heads/feature')).ref, null)
+  await create({ title: 'A' })
+  await client.request(docs.CREATE_LINKED_BRANCH, { input: { issueId: 'I_1', repositoryId: 'R_1', name: '1-a', oid: 'b'.repeat(40) } })
+  assert.deepEqual((await read(1)).linkedBranches.nodes, [{ ref: { name: '1-a' } }])
+  assert.equal(fake.state.repositories[0].branches['1-a'], 'b'.repeat(40))
+  fake.seedBranch('develop', 'c'.repeat(40), 'acme/other')
+  const other = (await client.request(docs.BRANCH_HEAD, { owner: 'acme', name: 'other', qualifiedName: 'refs/heads/develop' })).repository
+  assert.deepEqual(other, { id: 'R_2', ref: { name: 'develop', target: { oid: 'c'.repeat(40) } } })
+  assert.equal((await head('refs/heads/develop')).ref.target.oid, 'b'.repeat(40))
+})
+
+test('assignable users page, and the repository, Project and linked Projects answer from the state', async () => {
+  const { client, fake } = setup()
+  const users = await client.paginate('query PmkitAssignableUsers($owner: String!, $name: String!, $first: Int!, $after: String) { repository(owner: $owner, name: $name) { assignableUsers(first: $first, after: $after) { nodes { id login name } pageInfo { hasNextPage endCursor } } } }', REPO, { pageSize: 1, select: (data) => data.repository.assignableUsers })
+  assert.deepEqual(users.nodes.map((user) => user.login), ['octocat', 'hubot'])
+  const repo = fake.handle('PmkitRepo', REPO, 'query PmkitRepo { x }').data
+  assert.deepEqual([repo.viewer.login, repo.viewer.id, repo.repository.id], ['octocat', 'U_1', 'R_1'])
+  assert.deepEqual(repo.repository.labels.nodes[0], { id: 'LA_1', name: 'bug' })
+  assert.equal(repo.repository.issueTypes.nodes.length, repoReply().data.repository.issueTypes.nodes.length)
+  const project = fake.handle('PmkitProject', { owner: 'acme', number: 7 }, 'query PmkitProject { x }').data.repositoryOwner.projectV2
+  assert.equal(project.id, 'PVT_1')
+  assert.ok(project.fields.nodes.some((field) => field.name === 'Status'))
+  assert.deepEqual(fake.handle('PmkitLinkedProjects', REPO, 'query PmkitLinkedProjects { x }').data.repository.projectsV2.nodes.map((node) => node.number), [7])
+})
+
+test('seed adds issues of another repository that PmkitIssue reads', async () => {
+  const { fake, read } = setup()
+  const seeded = fake.seed({ repo: 'acme/other', number: 5, title: 'Elsewhere', state: 'CLOSED', stateReason: 'COMPLETED', labels: ['bug'] })
+  assert.equal(seeded.number, 5)
+  const other = await read(5, { owner: 'acme', name: 'other' })
+  assert.deepEqual([other.title, other.state, other.repository.nameWithOwner], ['Elsewhere', 'CLOSED', 'acme/other'])
+  fake.seed({ title: 'Local', item: { status: 'Todo', archived: true } })
+  const local = await read(1)
+  assert.deepEqual([local.projectItems.nodes[0].status.name, local.projectItems.nodes[0].isArchived], ['Todo', true])
+})
+
+test('failNext answers the given error once for that operation', async () => {
+  const { fake, create } = setup()
+  fake.failNext('PmkitCreateIssue', { errors: [{ type: 'INTERNAL', message: 'boom' }] })
+  await assert.rejects(create({ title: 'A' }), /boom/)
+  assert.equal((await create({ title: 'A' })).number, 1)
+})
+
+test('toJSON round trips through fakeGithubIssuesFrom, and the clock continues', async () => {
+  const { fake, create } = setup({ now: '2026-11-16T10:00:00.000Z' })
+  const first = await create({ title: 'A' })
+  const json = JSON.parse(JSON.stringify(fake.toJSON()))
+  const restored = fakeGithubIssuesFrom(json)
+  assert.deepEqual(restored.toJSON(), json)
+  const client = createGithubClient({ exec: restored.exec, retries: 0 })
+  const docs = issueDocuments(hostFeatures({ host: 'github.com' }), { status: true, estimate: true, due: true })
+  const second = (await client.request(docs.CREATE_ISSUE, { input: { repositoryId: 'R_1', title: 'B' }, ...VARS })).createIssue.issue
+  assert.equal(second.number, 2)
+  assert.ok(second.createdAt > first.createdAt)
+})
+
+test('answerGh without fixture.issues still answers PmkitRepo from fixture.graphql', () => {
+  const fixture = standardFixture()
+  const { exec } = fakeGhExec(fixture)
+  const answer = exec('gh', ['api', 'graphql', '--include', '--input', '-'], { input: JSON.stringify({ query: 'query PmkitRepo { x }', variables: {} }) })
+  assert.equal(answer.status, 0)
+  assert.deepEqual(JSON.parse(answer.stdout.split('\r\n\r\n')[1]), repoReply())
+  const missing = answerGh(['api', 'graphql'], JSON.stringify({ query: 'query PmkitIssue { x }' }), fixture)
+  assert.equal(missing.status, 1)
+})
+
+test('answerGh with fixture.issues answers from the fake and writes the new state back', () => {
+  const docs = issueDocuments(hostFeatures({ host: 'github.com' }), {})
+  const fixture = standardFixture({ issues: fakeGithubIssues().toJSON() })
+  const call = (query, variables) => answerGh(['api', 'graphql', '--include', '--input', '-'], JSON.stringify({ query, variables }), fixture)
+  assert.equal(call(docs.CREATE_ISSUE, { input: { repositoryId: 'R_1', title: 'A' } }).status, 0)
+  const read = call(docs.ISSUE, { ...REPO, number: 1 })
+  assert.equal(JSON.parse(read.stdout.split('\r\n\r\n')[1]).data.repository.issue.title, 'A')
+  assert.equal(fixture.issues.issues.length, 1)
+  assert.equal(JSON.parse(call('query PmkitRepo { x }', REPO).stdout.split('\r\n\r\n')[1]).data.viewer.name, 'The Octocat')
+})
+
+test('itemTypes filters keep every item type of ITEM_TYPES, the Status change event included', async () => {
+  const { fake, docs, client, create } = setup()
+  const all = ITEM_TYPES(hostFeatures({ host: 'github.com' }))
+  assert.deepEqual(Object.keys(TIMELINE_TYPENAMES).sort(), [...all].sort())
+  for (const itemType of all) {
+    const typename = TIMELINE_TYPENAMES[itemType]
+    assert.equal(typename.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase(), itemType)
+  }
+  await create({ title: 'A' })
+  const item = (await client.request(docs.ADD_PROJECT_ITEM, { input: { projectId: 'PVT_1', contentId: 'I_1' } })).addProjectV2ItemById.item
+  await client.request(docs.SET_PROJECT_FIELD, { input: { projectId: 'PVT_1', itemId: item.id, fieldId: 'PF_1', value: { singleSelectOptionId: 'S2' } } })
+  const items = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10, itemTypes: ['PROJECT_V2_ITEM_STATUS_CHANGED_EVENT'] })).node.timelineItems.nodes
+  assert.deepEqual(items.map((node) => [node.__typename, node.previousStatus, node.status]), [['ProjectV2ItemStatusChangedEvent', null, 'In Progress']])
+  const filtered = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10, itemTypes: all })).node.timelineItems.nodes
+  assert.equal(filtered.length, fake.state.issues[0].timeline.length)
+})
+
+test('closing as a duplicate of the same issue twice records one event and keeps updatedAt', async () => {
+  const { docs, client, create, read } = setup()
+  await create({ title: 'A' })
+  await create({ title: 'B' })
+  const close = () => client.request(docs.CLOSE_ISSUE, { input: { issueId: 'I_1', stateReason: 'DUPLICATE', duplicateIssueId: 'I_2' }, ...VARS })
+  await close()
+  const updated = (await read(1)).updatedAt
+  await close()
+  assert.equal((await read(1)).updatedAt, updated)
+  const items = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10 })).node.timelineItems.nodes
+  assert.deepEqual(items.map((node) => node.__typename), ['MarkedAsDuplicateEvent', 'ClosedEvent'])
+})
+
+test('fake GitHub lists, reads and comments on seeded discussions, and keeps them in toJSON', () => {
+  const fake = fakeGithubIssues()
+  const first = fake.seedDiscussion({ title: 'RFC: plugins', body: 'Should we?', category: 'Ideas', author: 'hubot', labels: ['documentation'], updatedAt: '2026-11-10T00:00:00Z', comments: [{ author: 'octocat', body: 'Yes', upvotes: 2, replies: [{ author: 'hubot', body: 'Why?' }] }] })
+  const second = fake.seedDiscussion({ title: 'How do I log in?', category: 'Q&A', updatedAt: '2026-11-12T00:00:00Z', comments: [{ body: 'Use gh', isAnswer: true }] })
+  fake.seedDiscussion({ title: 'Old news', category: 'General', state: 'CLOSED', stateReason: 'OUTDATED' })
+  assert.deepEqual([first.number, second.number], [1, 2])
+  const listed = fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10, states: ['OPEN'] })
+  assert.equal(listed.data.repository.hasDiscussionsEnabled, true)
+  assert.deepEqual(listed.data.repository.discussions.nodes.map((node) => node.number), [2, 1])
+  const ideas = fake.handle('PmkitDiscussionCategories', { owner: 'acme', name: 'widgets' }).data.repository.discussionCategories.nodes.find((node) => node.name === 'Ideas')
+  assert.deepEqual(fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10, categoryId: ideas.id }).data.repository.discussions.nodes.map((node) => node.number), [1])
+  assert.deepEqual(fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10, answered: true }).data.repository.discussions.nodes.map((node) => node.number), [2])
+  const read = fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 1, comments: 100, replies: 100 }).data.repository.discussion
+  assert.equal(read.category.name, 'Ideas')
+  assert.equal(read.comments.nodes[0].replies.nodes[0].body, 'Why?')
+  assert.deepEqual(read.labels.nodes, [{ name: 'documentation' }])
+  assert.equal(fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 2, comments: 100, replies: 100 }).data.repository.discussion.answer.body, 'Use gh')
+  const posted = fake.handle('PmkitAddDiscussionComment', { input: { discussionId: read.id, body: 'Tracked in #4' } })
+  assert.match(posted.data.addDiscussionComment.comment.url, /^https:\/\/github\.com\/acme\/widgets\/discussions\/1#discussioncomment-\d+$/)
+  const again = fakeGithubIssuesFrom(fake.toJSON())
+  const comments = again.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 1, comments: 100, replies: 100 }).data.repository.discussion.comments
+  assert.deepEqual(comments.nodes.map((node) => node.body), ['Yes', 'Tracked in #4'])
+  assert.equal(comments.totalCount, 2)
+  const missing = fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 9, comments: 100, replies: 100 })
+  assert.deepEqual(missing.data, { repository: { discussion: null } })
+  assert.equal(missing.errors[0].type, 'NOT_FOUND')
+  const issue = fake.seed({ title: 'After the discussions' })
+  assert.equal(issue.number, 4)
+})
+
+test('fake GitHub with Discussions off answers hasDiscussionsEnabled false and finds no discussion', () => {
+  const fake = fakeGithubIssues({ discussionsEnabled: false })
+  assert.equal(fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10 }).data.repository.hasDiscussionsEnabled, false)
+  assert.equal(fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 1, comments: 1, replies: 1 }).errors[0].type, 'NOT_FOUND')
+})

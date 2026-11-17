@@ -3,87 +3,11 @@
 import { PmkitError } from '../errors.mjs'
 import { isCredentialKey, isCredentialString } from '../user-store.mjs'
 import { linearCredential } from './credential.mjs'
+import { isMutation, operationName, paginateConnection } from '../graphql.mjs'
+
+export { isMutation, operationName }
 
 export const LINEAR_ENDPOINT = 'https://api.linear.app/graphql'
-
-
-const DEFINITION_KEYWORDS = new Set(['query', 'mutation', 'subscription', 'fragment'])
-
-/**
- * Each top-level definition as { keyword, name }, with keyword '{' for an anonymous query and name null when none follows,
- * or null when the document cannot be read: an unclosed string, unbalanced brackets or an unknown keyword.
- * Strings, block strings and comments are skipped, so a word inside them never counts.
- */
-function definitions(document) {
-  const found = []
-  let expectName = false
-  const stack = []
-  let expectDefinition = true
-  let index = 0
-  while (index < document.length) {
-    const char = document[index]
-    if (char === '#') {
-      let end = index + 1
-      while (end < document.length && document[end] !== '\n' && document[end] !== '\r') end += 1
-      index = end
-    } else if (document.startsWith('"""', index)) {
-      let end = index + 3
-      while (end < document.length && !(document.startsWith('"""', end) && document[end - 1] !== '\\')) end += 1
-      if (end >= document.length) return null
-      index = end + 3
-    } else if (char === '"') {
-      let end = index + 1
-      while (end < document.length && document[end] !== '"' && document[end] !== '\n') end += document[end] === '\\' ? 2 : 1
-      if (end >= document.length || document[end] !== '"') return null
-      index = end + 1
-    } else if (char === '{' || char === '(' || char === '[') {
-      expectName = false
-      if (char === '{' && stack.length === 0 && expectDefinition) {
-        found.push({ keyword: '{', name: null })
-        expectDefinition = false
-      }
-      stack.push(char)
-      index += 1
-    } else if (char === '}' || char === ')' || char === ']') {
-      const open = stack.pop()
-      if (open !== { '}': '{', ')': '(', ']': '[' }[char]) return null
-      if (char === '}' && stack.length === 0) expectDefinition = true
-      index += 1
-    } else if (/[A-Za-z_]/.test(char)) {
-      const name = /^[A-Za-z_]\w*/.exec(document.slice(index))[0]
-      if (stack.length === 0 && expectDefinition) {
-        const keyword = name.toLowerCase()
-        if (!DEFINITION_KEYWORDS.has(keyword)) return null
-        found.push({ keyword, name: null })
-        expectDefinition = false
-        expectName = true
-      } else if (stack.length === 0 && expectName) {
-        found[found.length - 1].name = name
-        expectName = false
-      }
-      index += name.length
-    } else {
-      if (!/\s|,/.test(char)) expectName = false
-      index += 1
-    }
-  }
-  return stack.length === 0 ? found : null
-}
-
-/**
- * True when any operation in the document is a mutation, so the client sends it once.
- * A document the lexer cannot read counts as a mutation too: a wrong yes costs a retry, a wrong no can apply a change twice.
- */
-export function isMutation(document) {
-  const found = definitions(document)
-  return found === null || found.some((definition) => definition.keyword === 'mutation')
-}
-
-/** The name of the first operation in a document, skipping fragments, or null when it is anonymous or the document cannot be read. */
-export function operationName(document) {
-  const operation = definitions(document)?.find((definition) => definition.keyword !== 'fragment')
-  return operation?.name ?? null
-}
 
 /** The paths of secret-like keys and values in the tracker block, sorted. Values are never included. */
 export function secretKeyPaths(tracker) {
@@ -356,37 +280,12 @@ export function createLinearClient({
     return send(document, variables)
   }
 
-  const positiveInteger = (value) => Number.isInteger(value) && value >= 1
+  const paginate = (document, variables = {}, options = {}) =>
+    paginateConnection(request, document, variables, options, {
+      maxPageSize: 250,
+      broken: (name) => new PmkitError('UPSTREAM', `Linear returned a broken page for ${name}`, RETRY_STEP),
+    })
 
-  async function paginate(document, variables = {}, options = {}) {
-    const { select, pageSize = 100, limit, maxPages } = options
-    if (typeof select !== 'function') throw new TypeError('paginate needs a select function')
-    if (!positiveInteger(pageSize) || pageSize > 250) throw new TypeError('pageSize must be an integer from 1 to 250')
-    if (maxPages !== undefined && !positiveInteger(maxPages)) throw new TypeError('maxPages must be an integer of at least 1')
-    if (limit !== undefined && !positiveInteger(limit)) throw new TypeError('limit must be an integer of at least 1')
-    const cap = maxPages ?? (limit === undefined ? 10 : Infinity)
-    const broken = () =>
-      new PmkitError('UPSTREAM', `Linear returned a broken page for ${operationName(document) ?? 'an anonymous query'}`, RETRY_STEP)
-    const nodes = []
-    let after = null
-    for (let pages = 1; ; pages += 1) {
-      const first = limit === undefined ? pageSize : Math.min(pageSize, limit - nodes.length)
-      const data = await request(document, { ...variables, first, after })
-      let connection
-      try {
-        connection = select(data)
-      } catch {
-        throw broken()
-      }
-      if (!Array.isArray(connection?.nodes) || connection.pageInfo === null || typeof connection.pageInfo !== 'object') throw broken()
-      nodes.push(...connection.nodes)
-      if (connection.pageInfo.hasNextPage !== true) return { nodes: nodes.slice(0, limit), hasMore: false }
-      const cursor = connection.pageInfo.endCursor
-      if (typeof cursor !== 'string' || cursor === '' || cursor === after) throw broken()
-      if ((limit !== undefined && nodes.length >= limit) || pages >= cap) return { nodes: nodes.slice(0, limit), hasMore: true }
-      after = cursor
-    }
-  }
   function rateLimit() {
     if (!rate) return null
     const bucket = (state) => ({

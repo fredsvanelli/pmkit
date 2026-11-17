@@ -79,6 +79,10 @@ export const CASES = {
   'linear customers show': () => [['--customer', 'acme']],
   'linear customers set': () => [['--customer', 'acme', '--tier', 'gold']],
   'linear customers link': () => [['--customer', 'acme', '--issue', 'ISS-1']],
+  // GitHub-only: every fixture is a Local tracker, so the goldens record the refusal. scripts/cli-discussions-github.test.mjs covers GitHub.
+  'github discussions list': () => [[]],
+  'github discussions get': () => [['1']],
+  'github discussions comment': () => [['1', '--body-file', input('comment.md')]],
   'epic list': () => [[]],
   'epic get': (a) => [[a.epic]],
   'epic progress': (a) => [[a.epic]],

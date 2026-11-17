@@ -13,8 +13,9 @@ import { fixedNow, makeRepo, tempDir, userStoreEnv } from './test-helpers.mjs'
 
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
-test('the product registry holds local and linear', () => {
-  assert.deepEqual(Object.keys(ADAPTERS), ['local', 'linear'])
+test('the product registry holds local, linear and github', () => {
+  assert.deepEqual(Object.keys(ADAPTERS), ['local', 'linear', 'github'])
+  assert.equal(adapterFor('github').hosted, true)
   assert.equal(adapterFor('local'), ADAPTERS.local)
   assert.equal(ADAPTERS.local.hosted, false)
   assert.equal(adapterFor('linear').hosted, true)
@@ -53,6 +54,16 @@ test('the linear descriptor asks for a workspace and lists no secret', () => {
   assert.equal(settings.isEpicId('EPC-1x'), true)
   assert.equal(settings.isEpicId('P-ABC-12'), true)
   assert.equal(settings.isEpicId('a1b2c3d4e5f6'), true)
+})
+
+test('the github descriptor reads issue ids, names the linked branch and creates it on origin', () => {
+  const settings = ADAPTERS.github.settings()
+  assert.deepEqual(settings.defaults, builtInDefaults())
+  assert.equal(settings.epicPrefix, null)
+  assert.equal(settings.trackerBranch, true)
+  assert.equal(settings.remoteBranch, true)
+  for (const id of ['12', '#12', 'acme/widgets#12']) assert.equal(settings.isEpicId(id), false, id)
+  for (const id of ['EPC-1', 'Roadmap', 'acme/widgets']) assert.equal(settings.isEpicId(id), true, id)
 })
 
 test('the linear descriptor checks the estimate and type mappings offline', () => {
