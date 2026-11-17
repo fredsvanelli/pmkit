@@ -575,3 +575,39 @@ test('rest GET is retried like a query', async () => {
   assert.deepEqual(await client.rest('GET', 'repos/acme/widgets'), { ok: 1 })
   assert.equal(calls.length, 2)
 })
+
+// Rate limits are kept per resource
+
+const limited = (resource) => ({ 'x-ratelimit-limit': 5000, 'x-ratelimit-remaining': 0, 'x-ratelimit-reset': Math.floor(Date.now() / 1000) + 3600, 'x-ratelimit-resource': resource })
+
+test('a REST answer at remaining 0 does not stop the next GraphQL call', async () => {
+  const rest = answer({ status: 200, body: { ok: 1 }, headers: limited('core') })
+  const { client, calls } = setup([rest, answer()])
+  await client.rest('GET', 'repos/acme/widgets')
+  assert.deepEqual(await client.request(QUERY), { ok: true })
+  assert.equal(calls.length, 2)
+  assert.equal(client.rateLimit(), null)
+})
+
+test('a REST answer at remaining 0 blocks the next REST call with no request', async () => {
+  const { client, calls } = setup([answer({ status: 200, body: { ok: 1 }, headers: limited('core') })])
+  await client.rest('GET', 'repos/acme/widgets')
+  const error = await failure(client.rest('GET', 'repos/acme/widgets'))
+  assert.equal(error.code, 'RATE_LIMITED')
+  assert.equal(calls.length, 1)
+})
+
+test('a GraphQL answer at remaining 0 does not stop a REST call, and rateLimit reports the GraphQL bucket', async () => {
+  const { client, calls } = setup([answer({ headers: limited('graphql') }), restAnswer(200, { ok: 1 })])
+  await client.request(QUERY)
+  assert.deepEqual(await client.rest('GET', 'repos/acme/widgets'), { ok: 1 })
+  assert.equal(calls.length, 2)
+  assert.equal(client.rateLimit().resource, 'graphql')
+})
+
+test('rest names a too-large answer by its own command', async () => {
+  const { client } = setup([spawnError('ENOBUFS')])
+  const error = await failure(client.rest('GET', 'repos/acme/widgets'))
+  assert.match(error.message, /^gh api output is too large/)
+  assert.doesNotMatch(error.nextStep, /nodes per page/)
+})

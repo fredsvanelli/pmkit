@@ -219,40 +219,43 @@ export function createGithubClient({
   }
   const run = exec ?? defaultExec({ root, env })
   const args = ['api', ...(host ? ['--hostname', host] : []), 'graphql', '--include', '--input', '-']
-  let rate = null
+  // One bucket per GitHub rate-limit resource: REST answers count against core, GraphQL against graphql.
+  const rates = new Map()
 
-  /** Throws RATE_LIMITED, with no call, when the last answer said the limit is at 0 until a future time. */
-  function assertRoom() {
+  /** Throws RATE_LIMITED, with no call, when the last answer for this bucket said the limit is at 0 until a future time. */
+  function assertRoom(bucket) {
+    const rate = rates.get(bucket)
     if (rate?.remaining === 0 && rate.resetMs !== null && rate.resetMs > now()) {
       throw rateLimitError(`Wait until ${isoOf(rate.resetMs)} and retry`)
     }
   }
 
   /** One gh run, read by classifier. The same row handles a gh failure, a timeout and a bad answer for GraphQL and REST. */
-  function attempt(ghArgs, input, mutation, classifier, tool) {
+  function attempt(ghArgs, input, mutation, classifier, tool, bucket) {
     let result
     try {
       result = run('gh', ghArgs, { ...(input === undefined ? {} : { input }), timeout: timeoutMs })
     } catch (error) {
       if (error?.code === 'ENOENT') throw new PmkitError('NOT_CONFIGURED', 'gh is not installed', INSTALL_STEP)
-      if (error?.code === 'ENOBUFS') throw new PmkitError('UPSTREAM', 'gh api graphql output is too large to read', 'Ask for fewer nodes per page')
+      if (error?.code === 'ENOBUFS') throw new PmkitError('UPSTREAM', `${tool} output is too large to read`, bucket === 'graphql' ? 'Ask for fewer nodes per page' : 'Ask for a smaller resource, or report the path that returned too much')
       if (error?.code === 'ETIMEDOUT') return unconfirmed(`timed out after ${timeoutMs / 1000} s`, mutation, { github: { status: null, errors: [] } })
       throw error
     }
     const answer = parseIncluded(result.stdout ?? '')
     if (!answer) return noAnswer(result, { mutation, host, tool })
-    rate = readRate(answer.headers) ?? rate
+    const seen = readRate(answer.headers)
+    if (seen) rates.set(seen.resource ?? bucket, seen)
     return classifier(answer, result.stderr ?? '')
   }
 
   const attemptGraphql = (query, variables, mutation) =>
-    attempt(args, JSON.stringify({ query, variables }), mutation, (answer, stderr) => classify(answer, stderr, { mutation, host }), 'gh api graphql')
+    attempt(args, JSON.stringify({ query, variables }), mutation, (answer, stderr) => classify(answer, stderr, { mutation, host }), 'gh api graphql', 'graphql')
 
   // One logical call. A query is sent again after a timeout, no connection or HTTP 5xx; a mutation is sent once.
-  async function withRetries(mutation, once) {
+  async function withRetries(mutation, bucket, once) {
     const attempts = mutation ? 1 : retries + 1
     for (let index = 0; ; index += 1) {
-      assertRoom()
+      assertRoom(bucket)
       const result = once()
       if (!result.error) return result.data
       if (!result.retry || index + 1 >= attempts) throw result.error
@@ -262,7 +265,7 @@ export function createGithubClient({
 
   const send = (query, variables) => {
     const mutation = isMutation(query)
-    return withRetries(mutation, () => attemptGraphql(query, variables, mutation))
+    return withRetries(mutation, 'graphql', () => attemptGraphql(query, variables, mutation))
   }
 
   /** One REST call. A method other than GET is a write: sent once, and an answer that is missing is unconfirmed. */
@@ -272,8 +275,8 @@ export function createGithubClient({
     const mutation = method !== 'GET'
     const ghArgs = ['api', ...(host ? ['--hostname', host] : []), '--method', method, path, '--include', ...(body === undefined ? [] : ['--input', '-'])]
     const input = body === undefined ? undefined : JSON.stringify(body)
-    return withRetries(mutation, () =>
-      attempt(ghArgs, input, mutation, (answer, stderr) => classifyRest(answer, stderr, { mutation, host, path, body }), 'gh api'),
+    return withRetries(mutation, 'core', () =>
+      attempt(ghArgs, input, mutation, (answer, stderr) => classifyRest(answer, stderr, { mutation, host, path, body }), 'gh api', 'core'),
     )
   }
 
@@ -289,6 +292,8 @@ export function createGithubClient({
     })
 
   function rateLimit() {
+    // The GraphQL bucket, as before REST existed.
+    const rate = rates.get('graphql')
     if (!rate) return null
     return { limit: rate.limit, remaining: rate.remaining, used: rate.used, resource: rate.resource, resetAt: isoOf(rate.resetMs) }
   }
