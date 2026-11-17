@@ -4,3 +4,4 @@
 {"at":"2026-11-17T22:21:55Z","by":"fred","op":"comment","to":"2026-11-17T22-21-55Z-fred.md"}
 {"at":"2026-11-17T22:21:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-17T22:21:55Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_review"}
+{"at":"2026-11-17T22:32:32Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
