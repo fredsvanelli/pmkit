@@ -307,3 +307,39 @@ test('closing as a duplicate of the same issue twice records one event and keeps
   const items = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10 })).node.timelineItems.nodes
   assert.deepEqual(items.map((node) => node.__typename), ['MarkedAsDuplicateEvent', 'ClosedEvent'])
 })
+
+test('fake GitHub lists, reads and comments on seeded discussions, and keeps them in toJSON', () => {
+  const fake = fakeGithubIssues()
+  const first = fake.seedDiscussion({ title: 'RFC: plugins', body: 'Should we?', category: 'Ideas', author: 'hubot', labels: ['documentation'], updatedAt: '2026-11-10T00:00:00Z', comments: [{ author: 'octocat', body: 'Yes', upvotes: 2, replies: [{ author: 'hubot', body: 'Why?' }] }] })
+  const second = fake.seedDiscussion({ title: 'How do I log in?', category: 'Q&A', updatedAt: '2026-11-12T00:00:00Z', comments: [{ body: 'Use gh', isAnswer: true }] })
+  fake.seedDiscussion({ title: 'Old news', category: 'General', state: 'CLOSED', stateReason: 'OUTDATED' })
+  assert.deepEqual([first.number, second.number], [1, 2])
+  const listed = fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10, states: ['OPEN'] })
+  assert.equal(listed.data.repository.hasDiscussionsEnabled, true)
+  assert.deepEqual(listed.data.repository.discussions.nodes.map((node) => node.number), [2, 1])
+  const ideas = fake.handle('PmkitDiscussionCategories', { owner: 'acme', name: 'widgets' }).data.repository.discussionCategories.nodes.find((node) => node.name === 'Ideas')
+  assert.deepEqual(fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10, categoryId: ideas.id }).data.repository.discussions.nodes.map((node) => node.number), [1])
+  assert.deepEqual(fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10, answered: true }).data.repository.discussions.nodes.map((node) => node.number), [2])
+  const read = fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 1, comments: 100, replies: 100 }).data.repository.discussion
+  assert.equal(read.category.name, 'Ideas')
+  assert.equal(read.comments.nodes[0].replies.nodes[0].body, 'Why?')
+  assert.deepEqual(read.labels.nodes, [{ name: 'documentation' }])
+  assert.equal(fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 2, comments: 100, replies: 100 }).data.repository.discussion.answer.body, 'Use gh')
+  const posted = fake.handle('PmkitAddDiscussionComment', { input: { discussionId: read.id, body: 'Tracked in #4' } })
+  assert.match(posted.data.addDiscussionComment.comment.url, /^https:\/\/github\.com\/acme\/widgets\/discussions\/1#discussioncomment-\d+$/)
+  const again = fakeGithubIssuesFrom(fake.toJSON())
+  const comments = again.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 1, comments: 100, replies: 100 }).data.repository.discussion.comments
+  assert.deepEqual(comments.nodes.map((node) => node.body), ['Yes', 'Tracked in #4'])
+  assert.equal(comments.totalCount, 2)
+  const missing = fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 9, comments: 100, replies: 100 })
+  assert.deepEqual(missing.data, { repository: { discussion: null } })
+  assert.equal(missing.errors[0].type, 'NOT_FOUND')
+  const issue = fake.seed({ title: 'After the discussions' })
+  assert.equal(issue.number, 4)
+})
+
+test('fake GitHub with Discussions off answers hasDiscussionsEnabled false and finds no discussion', () => {
+  const fake = fakeGithubIssues({ discussionsEnabled: false })
+  assert.equal(fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10 }).data.repository.hasDiscussionsEnabled, false)
+  assert.equal(fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 1, comments: 1, replies: 1 }).errors[0].type, 'NOT_FOUND')
+})

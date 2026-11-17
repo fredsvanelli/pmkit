@@ -1,5 +1,5 @@
 // E2E test of docs/runbooks/issues-github.md: the real CLI, run as a subprocess, with a fake gh first on PATH.
-// The fake answers from a fixture file through answerGh (scripts/fake-github-api.mjs). Its `issues` key holds the state of the
+// The fake (scripts/fake-gh-path.mjs) answers from a fixture file through answerGh (scripts/fake-github-api.mjs). Its `issues` key holds the state of the
 // stateful fake GitHub (scripts/fake-github-issues.mjs), and the wrapper writes the fixture back after each call, so the state persists
 // between CLI runs. Every call is logged, and no logged call may hold the token.
 import { test } from 'node:test'
@@ -7,9 +7,10 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { fakeGithubIssues } from './fake-github-issues.mjs'
 import { addBareOrigin } from './fake-gh.mjs'
+import { statefulGhOnPath } from './fake-gh-path.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -19,31 +20,7 @@ const TOKEN = `ghp_${'Zx9Q'.repeat(9)}`
 const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'issues-github.md')
 const BRANCH = '1-login-fails-on-safari'
 
-/** Writes the fake gh into a new folder and returns { bin, fixtureFile, log }. The fake saves the fixture after each call. */
-function fakeGhOnPath(fixture) {
-  const bin = tempDir('pmkit-fake-gh-')
-  const fixtureFile = path.join(bin, 'fixture.json')
-  const log = path.join(bin, 'calls.jsonl')
-  fs.writeFileSync(fixtureFile, JSON.stringify(fixture))
-  const api = pathToFileURL(path.join(SCRIPTS, 'fake-github-api.mjs')).href
-  const script = `#!/usr/bin/env node
-import fs from 'node:fs'
-import { answerGh } from ${JSON.stringify(api)}
-const args = process.argv.slice(2)
-let input = ''
-try { input = fs.readFileSync(0, 'utf8') } catch {}
-fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, input }) + '\\n')
-const fixture = JSON.parse(fs.readFileSync(${JSON.stringify(fixtureFile)}, 'utf8'))
-const answer = answerGh(args, input, fixture)
-fs.writeFileSync(${JSON.stringify(fixtureFile)}, JSON.stringify(fixture))
-process.stdout.write(answer.stdout)
-process.stderr.write(answer.stderr)
-process.exitCode = answer.status
-`
-  fs.writeFileSync(path.join(bin, 'gh.mjs'), script)
-  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${path.join(bin, 'gh.mjs')}" "$@"\n`, { mode: 0o755 })
-  return { bin, fixtureFile, log }
-}
+const fakeGhOnPath = statefulGhOnPath
 
 const baseEnv = () => ({ ...childEnv(), ...userStoreEnv().env })
 
