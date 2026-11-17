@@ -2,12 +2,13 @@
 id: PMK-338
 title: "Adicionar o comando /pmkit:spec:from-prd, do PRD de uma página ao backlog ligado"
 type: feature
-status: backlog
+status: in_review
 priority: medium
 estimate: 8
 parent: EPC-6
+branch: pmk-338-spec-from-prd
 created: 2026-11-17T20:29:33.736Z
-updated: 2026-11-17T21:37:52Z
+updated: 2026-11-17T22:21:55Z
 ---
 
 ## Description
@@ -45,14 +46,14 @@ O design aprovado está em `docs/specs/2026-11-17-pmk-338-spec-from-prd-design.m
 
 ## Acceptance criteria
 
-- [ ] /pmkit:spec:from-prd aparece no README e na tabela de comandos do skill pmkit
-- [ ] Com um PRD de uma página, a entrevista faz uma pergunta por mensagem e nenhuma pergunta sobre tecnologia, arquitetura ou banco de dados
-- [ ] A entrevista não pergunta o que o PRD ou o código já respondem
-- [ ] O PM aprova separadamente o PRD refinado, cada ADR, o épico com os milestones e a árvore de issues antes de cada gravação
-- [ ] Recusar uma ADR transforma a decisão em "só PRD" e o fluxo segue para a próxima etapa
-- [ ] Cada issue criada tem descrição completa, critérios de aceite vindos do PRD refinado e uma estimativa da escala do tracker
-- [ ] As issues criadas têm as ligações de bloqueio aprovadas pelo PM, e /pmkit:issues:dependencies mostra o caminho crítico do épico
-- [ ] A checagem final lista todo requisito do PRD refinado que ficou sem issue
-- [ ] Quando o PM recusa uma etapa, o comando lista o que já gravou e diz qual comando retoma o fluxo
-- [ ] O fluxo funciona do começo ao fim sem subagents
-- [ ] npm test passa, incluindo o E2E do runbook do fluxo
+- [x] /pmkit:spec:from-prd aparece no README e na tabela de comandos do skill pmkit
+- [x] Com um PRD de uma página, a entrevista faz uma pergunta por mensagem e nenhuma pergunta sobre tecnologia, arquitetura ou banco de dados
+- [x] A entrevista não pergunta o que o PRD ou o código já respondem
+- [x] O PM aprova separadamente o PRD refinado, cada ADR, o épico com os milestones e a árvore de issues antes de cada gravação
+- [x] Recusar uma ADR transforma a decisão em "só PRD" e o fluxo segue para a próxima etapa
+- [x] Cada issue criada tem descrição completa, critérios de aceite vindos do PRD refinado e uma estimativa da escala do tracker
+- [x] As issues criadas têm as ligações de bloqueio aprovadas pelo PM, e /pmkit:issues:dependencies mostra o caminho crítico do épico
+- [x] A checagem final lista todo requisito do PRD refinado que ficou sem issue
+- [x] Quando o PM recusa uma etapa, o comando lista o que já gravou e diz qual comando retoma o fluxo
+- [x] O fluxo funciona do começo ao fim sem subagents
+- [x] npm test passa, incluindo o E2E do runbook do fluxo
