@@ -7,7 +7,7 @@ priority: medium
 estimate: 8
 parent: EPC-6
 created: 2026-11-17T20:29:33.736Z
-updated: 2026-11-17T20:29:33Z
+updated: 2026-11-17T21:37:52Z
 ---
 
 ## Description
@@ -16,7 +16,7 @@ updated: 2026-11-17T20:29:33Z
 
 Um PM com um PRD de uma página não tem um comando do pmkit que transforme esse PRD em backlog. Hoje o caminho é uma entrevista com skills externas (`grilling` ou `brainstorming`), depois `/pmkit:spec:record-decision` uma vez por decisão, depois `/pmkit:spec:import` e por fim `issues:update`, `issues:breakdown` e `issues:link` para fechar as lacunas. O `spec:import` não inventa critérios de aceite, então um PRD vago vira uma árvore de issues marcadas "needs criteria". O usuário precisa conhecer a sequência, e etapas ficam pela metade.
 
-O design aprovado está em `docs/specs/2026-11-17-spec-from-prd-design.md`.
+O design aprovado está em `docs/specs/2026-11-17-pmk-338-spec-from-prd-design.md`.
 
 ### Scope (in)
 
