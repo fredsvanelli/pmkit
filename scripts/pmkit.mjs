@@ -1315,7 +1315,8 @@ export const COMMANDS = [
     run: async (ctx) => {
       const sprints = await (await ctx.tracker()).listCycles({ state: ctx.opt('state') })
       const text = sprints.length === 0 ? 'no sprints' : table(['ID', 'State', 'Start', 'End', 'Name'], sprints.map((s) => [s.id, s.state, s.start, s.end, s.name]))
-      return { data: sprints, text }
+      // GitHub hangs the warnings of two iterations on one start date on the list, outside its JSON.
+      return { data: sprints, text, warnings: Array.isArray(sprints.warnings) ? sprints.warnings : [] }
     },
   },
   {

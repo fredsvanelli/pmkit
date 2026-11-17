@@ -72,6 +72,14 @@ test('cycle list and cycle current read the iterations of the sprint field', asy
   assert.equal(dataOf(await cli(['cycle', 'current', '--json'])).id, '2026-11-16')
 })
 
+test('cycle list warns about two iterations on one start date, and keeps the warning out of the JSON', async () => {
+  const twice = { iterations: [{ id: 'IT_1', title: 'First', startDate: '2026-11-16', duration: 14 }, { id: 'IT_2', title: 'Second', startDate: '2026-11-16', duration: 7 }] }
+  const { cli } = githubRepo({ project: { iterations: twice } })
+  const result = await cli(['cycle', 'list', '--json'])
+  assert.deepEqual(dataOf(result).map((sprint) => [sprint.id, sprint.name]), [['2026-11-16', 'First']])
+  assert.match(result.stderr, /^warning: two iterations start on 2026-11-16; pmkit shows the first$/m)
+})
+
 test('cycle open adds an iteration on github.com and refuses on GitHub Enterprise Server', async () => {
   const { cli } = githubRepo()
   const opened = dataOf(await cli(['cycle', 'open', '--start', '2026-11-30', '--json']))

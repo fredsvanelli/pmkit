@@ -60,6 +60,14 @@ test('listCycles lists the completed and current iterations in start order with 
   ])
 })
 
+test('listCycles keeps the first of two iterations on one start date and carries the warning outside the list JSON', async () => {
+  const { cycles } = await setup({ iterations: { iterations: [...CURRENT, { id: 'IT_2', title: 'Twin', startDate: '2026-11-16', duration: 7 }], completed: COMPLETED } })
+  const sprints = await cycles.listCycles()
+  assert.deepEqual(ids(sprints), ['2026-11-02', '2026-11-16'])
+  assert.deepEqual(sprints.warnings, ['two iterations start on 2026-11-16; pmkit shows the first'])
+  assert.equal(JSON.stringify(sprints).includes('warnings'), false)
+})
+
 test('listCycles filters by state and refuses an unknown state', async () => {
   const { cycles } = await setup()
   assert.deepEqual(ids(await cycles.listCycles({ state: 'active' })), ['2026-11-16'])
