@@ -96,6 +96,10 @@ _Avoid_: custom field
 A Projects v2 board that a GitHub user or organization owns, named in `tracker.scope.project` as `owner/number`, or `none` when the repository uses no board. The GitHub Issues adapter reads each issue's status from the board's single-select Status field plus the issue's open or closed state, and setup asks which Status option stands for each category.
 _Avoid_: project (alone, which reads as an Epic or a Linear project), board
 
+**Status label**:
+A repository label that `mappings.status` names as `label:<name>` on a GitHub Issues tracker without a Project, such as `in_progress: label:Doing`. An open issue takes the category of its status label, and one with none is `todo`; a closed issue is `done` or `canceled` whatever its labels (ADR 0009).
+_Avoid_: status tag, workflow label
+
 **Linked branch**:
 A branch that GitHub links to an issue in the issue's Development section. On GitHub Issues, `issues branch` creates it on GitHub at the head there of the branch it starts from, pmkit's default branch or `--from`, and the issue's `branch` reads it (ADR 0008).
 _Avoid_: issue branch (alone)

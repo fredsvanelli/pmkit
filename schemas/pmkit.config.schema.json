@@ -98,7 +98,7 @@
       "properties": {
         "status": {
           "title": "Status mappings",
-          "description": "A category, or blocked, to the tracker's status name, such as in_review: In Review. On GitHub Issues it is an option of the Project's Status field. none means this team has no such status.",
+          "description": "A category, or blocked, to the tracker's status name, such as in_review: In Review. On GitHub Issues it is an option of the Project's Status field, or label:<name> for a repository label when tracker.scope.project is none. none means this team has no such status.",
           "type": "object",
           "propertyNames": {
             "enum": ["triage", "backlog", "todo", "in_progress", "in_review", "done", "canceled", "blocked"]
@@ -126,7 +126,7 @@
         },
         "types": {
           "title": "Type mappings",
-          "description": "A pmkit issue type to the name of one label of the tracker, or of one issue type on GitHub Issues, such as bug: Bug. A type without one is left out.",
+          "description": "A pmkit issue type to the name of one label of the tracker, or of one issue type on GitHub Issues, such as bug: Bug. On GitHub Issues with no enabled issue type, label:<name> names a repository label. A type without one is left out.",
           "type": "object",
           "additionalProperties": {
             "title": "Label name",

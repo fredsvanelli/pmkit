@@ -70,7 +70,15 @@ const SETUP = [
  * of main is origin/main's, and the config that setup writes. `behind` commits are on origin/main only. The origin is a local folder,
  * so setup takes the host and repository from flags. Returns { root, fake, pmkit }.
  */
-function runbookRepo({ behind = 0 } = {}) {
+const SETUP_NO_PROJECT = [
+  'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'none',
+  ...['triage=none', 'backlog=Backlog', 'in_progress=In progress', 'in_review=In review'].flatMap((item) => ['--status', item]),
+  ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date'].flatMap((item) => ['--field', item]),
+  ...['feature=none', 'bug=bug', 'task=none', 'chore=none'].flatMap((item) => ['--type-label', item]),
+  '--json',
+]
+
+function runbookRepo({ behind = 0, project = true } = {}) {
   const root = tempDir('pmkit-runbook-issues-github-')
   git(root, 'init', '-q', '-b', 'main')
   git(root, 'commit', '--allow-empty', '-qm', 'init')
@@ -78,13 +86,14 @@ function runbookRepo({ behind = 0 } = {}) {
   for (let index = 0; index < behind; index += 1) git(root, 'commit', '--allow-empty', '-qm', `c${index}`)
   git(root, 'push', '-q', 'origin', 'main')
   if (behind > 0) git(root, 'reset', '-q', '--hard', `HEAD~${behind}`)
-  const fake = fakeGhOnPath({ meta: null, issues: fakeGithubIssues({ branches: { main: git(root, 'rev-parse', 'refs/remotes/origin/main') } }).toJSON() })
+  const github = project ? {} : { project: null, issueTypes: [], labels: ['bug', 'documentation', 'Backlog', 'In progress', 'In review'] }
+  const fake = fakeGhOnPath({ meta: null, issues: fakeGithubIssues({ branches: { main: git(root, 'rev-parse', 'refs/remotes/origin/main') }, ...github }).toJSON() })
   const env = { ...baseEnv(), GH_TOKEN: TOKEN, PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
   const pmkit = (...args) => {
     const result = spawnSync(process.execPath, [CLI, ...args], { cwd: root, env, encoding: 'utf8' })
     return { code: result.status, stdout: result.stdout, stderr: result.stderr }
   }
-  json(pmkit(...SETUP))
+  json(pmkit(...(project ? SETUP : SETUP_NO_PROJECT)))
   fs.mkdirSync(path.join(root, 'tmp'))
   const files = {
     'title-1.txt': 'Login fails on Safari\n',
@@ -138,6 +147,10 @@ test('the runbook names the commands this test runs', () => {
     'issues branch 1 --json',
     'issues branch 1 --from origin/main --json',
     'issues move 1 done --json',
+    'issues move 1 in_review --json',
+    'issues update 1 --label documentation --json',
+    'capabilities --json',
+    'issues archive 1 --json',
     'issues get 1 --history --json',
     'issues archive 1 --json',
     'issues list --archived --json',
@@ -290,5 +303,61 @@ test('runbook: the real run from a main behind origin/main names the rebase (ste
   const real = json(pmkit('issues', 'branch', '1', '--json'))
   assert.ok(real.notes.includes(pushNote('main', 'main', false)), JSON.stringify(real.notes))
   assert.deepEqual(githubIssue(fake, 1).linkedBranches, [BRANCH])
+  assertNoToken(fake)
+})
+
+test('runbook: the issue flows without a Project, steps 17 to 23', () => {
+  const { fake, pmkit } = runbookRepo({ project: false })
+  const labels = (number) => githubIssue(fake, number).labelIds.map((id) => githubState(fake).labels.find((label) => label.id === id).name).sort()
+
+  // Step 17: the type is a label.
+  const created = json(pmkit('issues', 'create', '--title-file', 'tmp/title-1.txt', '--type', 'bug', '--json')).after
+  assert.deepEqual([created.id, created.type, created.labels, created.status], ['1', 'bug', ['bug'], { name: 'Open', category: 'todo' }])
+  assert.deepEqual(labels(1), ['bug'])
+
+  // Step 18: moves add the target label, then remove the other status labels.
+  assert.deepEqual(json(pmkit('issues', 'move', '1', 'in_progress', '--json')).after.status, { name: 'In progress', category: 'in_progress' })
+  const review = json(pmkit('issues', 'move', '1', 'in_review', '--json')).after
+  assert.deepEqual([review.status, review.labels], [{ name: 'In review', category: 'in_review' }, ['In review', 'bug']])
+
+  // Step 19: a labels patch keeps the status and type labels, and refuses them.
+  const updated = json(pmkit('issues', 'update', '1', '--label', 'documentation', '--json')).after
+  assert.deepEqual([updated.labels, updated.status.category], [['In review', 'bug', 'documentation'], 'in_review'])
+  const refused = pmkit('issues', 'update', '1', '--label', 'In review', '--json')
+  assert.equal(JSON.parse(refused.stdout).error.message, 'label In review holds a status; use pmkit issues move')
+
+  // Step 20: done closes the issue and drops the status label.
+  const done = json(pmkit('issues', 'move', '1', 'done', '--json')).after
+  assert.deepEqual([done.status, done.labels], [{ name: 'Closed', category: 'done' }, ['bug', 'documentation']])
+  assert.deepEqual([githubIssue(fake, 1).state, githubIssue(fake, 1).stateReason], ['CLOSED', 'COMPLETED'])
+
+  // Step 21: the history shows moves, not label updates, for the status labels.
+  const { history } = json(pmkit('issues', 'get', '1', '--history', '--json'))
+  const changes = history.filter((entry) => entry.op !== 'create').map((entry) => [entry.op, entry.field, entry.from ?? null, entry.to])
+  assert.deepEqual(changes.filter(([op, field]) => op === 'move' || field === 'type'), [
+    ['update', 'type', null, 'bug'],
+    ['move', 'status', 'Open', 'In progress'],
+    ['move', 'status', 'In progress', 'In review'],
+    ['move', 'status', null, 'Closed'],
+  ])
+  assert.ok(!changes.some(([op, field, from, to]) => field === 'labels' && /In (progress|review)|bug/.test(`${from} ${to}`)))
+
+  // Step 22: the capabilities a Project gives are absent.
+  const manifest = json(pmkit('capabilities', '--json'))
+  for (const id of ['cycles', 'capacity', 'deliverables', 'status_update']) {
+    const entry = manifest.capabilities.find((item) => item.id === id)
+    assert.deepEqual([entry.path, entry.enableHint], ['absent', 'Needs a GitHub Project: set tracker.scope.project with /pmkit:setup'])
+  }
+  assert.equal(manifest.capabilities.find((item) => item.id === 'native_triage').enableHint, 'Map a triage label with /pmkit:setup')
+  assert.ok(manifest.warnings.includes('tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent'))
+
+  // Step 23: archive needs a Project.
+  const archive = pmkit('issues', 'archive', '1', '--json')
+  assert.equal(archive.code, 2)
+  assert.deepEqual(JSON.parse(archive.stdout).error, {
+    code: 'NOT_SUPPORTED',
+    message: 'acme/widgets has no Project, and GitHub has no archive for an issue outside one',
+    nextStep: 'Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup',
+  })
   assertNoToken(fake)
 })

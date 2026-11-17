@@ -39,7 +39,7 @@ import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
 import { HOST_NAME } from './lib/github/client.mjs'
-import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
+import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, mappedLabelNames, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
 import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
@@ -251,7 +251,7 @@ const storedViewText = (view) => (view.unreadable === undefined ? `filter: ${fil
 
 /** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
 async function issueSearchResult(tracker, found, { sort, sprint }) {
-  const warnings = found.problems.map(problemLine)
+  const warnings = [...found.problems.map(problemLine), ...(found.warnings ?? [])]
   if (found.hasMore === true) {
     const order = (sort ?? 'created') === 'created' ? '' : '; the order covers the issues read'
     warnings.push(`Linear has more matching issues than the 1000 pmkit read; narrow the filter${order}`)
@@ -4458,13 +4458,17 @@ async function runInitGithub(ctx) {
 
   // The repository first, with the default scopes. The Project is read only once it is chosen (ADR 0007).
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
-  const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec })
+  // Every label the file or the flags name is read by name too, so one past the first page of labels is still found.
+  const flags = parseMappingFlags(ctx)
+  const answered = [...Object.values(flags.status ?? {}), ...Object.values(flags.types ?? {})].filter((value) => value !== NONE)
+  const labelNames = mappedLabelNames({ mappings: current }, answered)
+  const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec, labels: labelNames })
   const projectStep = await resolveGithubProject(ctx, client, raw, current.scope.project, scope.repo)
   const defaults = withLocalDefaults({}).types
   const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]
   const proposal = projectStep.question
     ? { applied: [], questions: [projectStep.question], broken: projectStep.broken, notes: [], values: null }
-    : proposeGithubSetup(raw, current, parseMappingFlags(ctx), types)
+    : proposeGithubSetup(raw, current, flags, types)
 
   for (const [key, value] of [['host', scope.host], ['repo', scope.repo], ['project', proposal.values ? projectStep.value : undefined]]) {
     if (value !== undefined && value !== current.scope[key]) text = edit(`tracker.scope.${key}`, () => setScalar(text, ['tracker', 'scope', key], value))

@@ -137,3 +137,67 @@ test('toComment maps a comment node to the pmkit comment', () => {
   assert.equal(toComment({ id: 'IC_2', author: null, body: null, createdAt: at(7) }, '1').author, null)
   assert.equal(toComment({ id: 'IC_2', author: null, body: null, createdAt: at(7) }, '1').body, '')
 })
+
+const LABEL_PMKIT = {
+  tracker: { system: 'github', scope: { host: 'github.com', repo: 'acme/widgets', project: 'none' } },
+  mappings: { status: { backlog: 'label:Backlog', in_progress: 'label:Doing', in_review: 'label:Review' }, types: { bug: 'label:bug', feature: 'label:enhancement' } },
+}
+const labelFake = fakeGithubIssues({ project: null, issueTypes: [], labels: ['Backlog', 'Doing', 'Review', 'bug', 'enhancement', 'x'] })
+const labelClient = createGithubClient({ exec: labelFake.exec, retries: 0, sleep: async () => {} })
+const labelContext = makeContext(await fetchDiscovery(labelClient, { host: 'github.com', repo: 'acme/widgets', project: 'none', exec: labelFake.exec, users: true }), LABEL_PMKIT)
+const labelled = (typename, minute, name) => item(typename, minute, { label: { name } })
+const replay = (items, extra) => toEvents(node(extra), items, labelContext).slice(1).map(({ op, field, from, to }) => [op, field, from, to])
+
+test('status label items become moves when the read status changes', () => {
+  // pmkit adds the target label, then removes the others, so a move forward or back is one event.
+  assert.deepEqual(replay([labelled('LabeledEvent', 1, 'Doing'), labelled('LabeledEvent', 2, 'Review'), labelled('UnlabeledEvent', 3, 'Doing')]), [
+    ['move', 'status', 'Open', 'Doing'],
+    ['move', 'status', 'Doing', 'Review'],
+  ])
+  assert.deepEqual(replay([labelled('LabeledEvent', 1, 'Review'), labelled('LabeledEvent', 2, 'Doing'), labelled('UnlabeledEvent', 3, 'Review')]), [
+    ['move', 'status', 'Open', 'Review'],
+    ['move', 'status', 'Review', 'Doing'],
+  ])
+})
+
+test('label items at the same instant count as one change', () => {
+  assert.deepEqual(replay([labelled('LabeledEvent', 1, 'Doing'), labelled('UnlabeledEvent', 2, 'Doing'), labelled('LabeledEvent', 2, 'Review')]), [
+    ['move', 'status', 'Open', 'Doing'],
+    ['move', 'status', 'Doing', 'Review'],
+  ])
+})
+
+test('a status label further back than the one held changes nothing', () => {
+  assert.deepEqual(replay([labelled('LabeledEvent', 1, 'Review'), labelled('LabeledEvent', 2, 'backlog')]), [['move', 'status', 'Open', 'Review']])
+})
+
+test('status label items while the issue is closed give no move', () => {
+  assert.deepEqual(replay([item('ClosedEvent', 1, { stateReason: 'COMPLETED' }), labelled('LabeledEvent', 2, 'Doing')], { state: 'CLOSED', stateReason: 'COMPLETED' }), [
+    ['move', 'status', null, 'Closed'],
+  ])
+})
+
+test('removing the last status label moves to Open', () => {
+  assert.deepEqual(replay([labelled('LabeledEvent', 1, 'Doing'), labelled('UnlabeledEvent', 2, 'Doing')]), [
+    ['move', 'status', 'Open', 'Doing'],
+    ['move', 'status', 'Doing', 'Open'],
+  ])
+})
+
+test('type label items become type updates, and other labels stay label updates', () => {
+  assert.deepEqual(replay([labelled('LabeledEvent', 1, 'bug'), labelled('LabeledEvent', 2, 'x'), labelled('UnlabeledEvent', 3, 'bug'), labelled('LabeledEvent', 3, 'enhancement')]), [
+    ['update', 'type', null, 'bug'],
+    ['update', 'labels', null, 'x'],
+    ['update', 'type', 'bug', 'feature'],
+  ])
+})
+
+test('a reopen without a Project moves to the status the labels give at that time', () => {
+  const items = [labelled('LabeledEvent', 1, 'Doing'), item('ClosedEvent', 2, { stateReason: 'COMPLETED' }), item('ReopenedEvent', 3), labelled('LabeledEvent', 4, 'Review')]
+  assert.deepEqual(replay(items), [
+    ['move', 'status', 'Open', 'Doing'],
+    ['move', 'status', null, 'Closed'],
+    ['move', 'status', null, 'Doing'],
+    ['move', 'status', 'Doing', 'Review'],
+  ])
+})

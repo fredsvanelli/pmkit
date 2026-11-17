@@ -133,13 +133,29 @@ test('a full answer writes the scope and the mappings, and a second run keeps th
   assert.match(capsText.stdout, /^project: acme\/7$/m)
 })
 
-test('project none asks no Status question and writes none', async () => {
+test('project none asks status labels and writes them as label:<name>', async () => {
   const context = fresh()
-  const data = dataOf(await cli(context, [...INIT, '--project', 'none', ...FIELDS, ...TYPES, '--json']))
+  const fixture = () => standardFixture({ graphql: { PmkitRepo: repoReply({ labels: ['bug', 'Doing', 'Review'] }), PmkitLinkedProjects: linkedReply() } })
+  const asked = dataOf(await cli(context, [...INIT, '--project', 'none', ...FIELDS, ...TYPES, '--dry-run', '--json'], fixture()))
+  assert.deepEqual(asked.questions.map((q) => q.path), ['mappings.status.triage', 'mappings.status.backlog', 'mappings.status.in_progress', 'mappings.status.in_review'])
+  const labels = ['triage=none', 'backlog=none', 'in_progress=Doing', 'in_review=label:Review'].flatMap((item) => ['--status', item])
+  const data = dataOf(await cli(context, [...INIT, '--project', 'none', ...labels, ...FIELDS, ...TYPES, '--json'], fixture()))
   assert.equal(data.project, null)
   assert.match(read(context), /project: none/)
-  assert.doesNotMatch(read(context), /status:/)
-  assert.deepEqual(data.statuses, [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }, { name: 'Closed as not planned', category: 'canceled' }])
+  assert.match(read(context), /in_progress: "?label:Doing"?/)
+  assert.match(read(context), /in_review: "?label:Review"?/)
+  assert.deepEqual(data.statuses, [{ name: 'Doing', category: 'in_progress' }, { name: 'Review', category: 'in_review' }, { name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }, { name: 'Closed as not planned', category: 'canceled' }])
+})
+
+test('project none without issue types writes type labels', async () => {
+  const context = fresh()
+  const fixture = standardFixture({ graphql: { PmkitRepo: repoReply({ labels: ['bug', 'enhancement', 'Doing'], types: [] }), PmkitLinkedProjects: linkedReply() } })
+  const labels = ['triage=none', 'backlog=none', 'in_progress=Doing', 'in_review=none'].flatMap((item) => ['--status', item])
+  const types = ['feature=enhancement', 'bug=bug', 'task=none', 'chore=none'].flatMap((item) => ['--type-label', item])
+  const data = dataOf(await cli(context, [...INIT, '--project', 'none', ...labels, ...FIELDS, ...types, '--json'], fixture))
+  assert.deepEqual(data.questions, [])
+  assert.match(read(context), /feature: "?label:enhancement"?/)
+  assert.match(read(context), /bug: "?label:bug"?/)
 })
 
 test('an update asks again for a held Project GitHub no longer returns', async () => {
@@ -217,4 +233,13 @@ test('a cut read on GitHub names GitHub', () => {
   assert.equal(capWarning('comments', '12', 'github'), 'GitHub has more comments for 12 than the 1000 pmkit read')
   assert.equal(capWarning('issues', undefined, 'github'), 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
   assert.equal(capWarning('issues', undefined, 'linear'), 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
+})
+
+test('a --status answer may name a label past the first 100 labels', async () => {
+  const context = fresh()
+  const labels = Array.from({ length: 120 }, (_, index) => `Label ${index + 1}`)
+  const fixture = standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitLinkedProjects: linkedReply() } })
+  const answers = ['triage=none', 'backlog=none', 'in_progress=Label 115', 'in_review=none'].flatMap((item) => ['--status', item])
+  dataOf(await cli(context, [...INIT, '--project', 'none', ...answers, ...FIELDS, ...TYPES, '--json'], fixture))
+  assert.match(read(context), /in_progress: "?label:Label 115"?/)
 })

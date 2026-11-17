@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
-import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, needsVersionCheck, parseProject } from './discovery.mjs'
+import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, mappedLabelNames, needsVersionCheck, parseProject } from './discovery.mjs'
 
 const rejectsWith = (promise, code, pattern) =>
   assert.rejects(promise, (error) => {
@@ -309,4 +309,43 @@ test('discoveryView warns when GitHub has more assignable users than discovery r
   const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', users: true })
   assert.equal(raw.users.length, 20)
   assert.ok(discoveryView(raw, pmkitWith({}, 'none')).warnings.includes('GitHub has more assignable users than discovery reads; it kept the first 1000'))
+})
+
+test('fetchDiscovery reads mapped labels by name past the first page of labels', async () => {
+  const labels = Array.from({ length: 120 }, (_, index) => `Label ${index + 1}`)
+  const { client, calls } = setup(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }) } }), 'github.com')
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', labels: ['label 115', 'Label 2', 'Gone'] })
+  const body = JSON.parse(calls[0].input)
+  assert.match(body.query, /\$l0: String!, \$l1: String!, \$l2: String!/)
+  assert.match(body.query, /l0: label\(name: \$l0\) \{ id name \}/)
+  assert.deepEqual(body.variables, { owner: 'acme', name: 'widgets', l0: 'label 115', l1: 'Label 2', l2: 'Gone' })
+  assert.equal(raw.labels.length, 101)
+  assert.deepEqual(raw.labels.at(-1), { id: 'LA_115', name: 'Label 115' })
+  assert.deepEqual(raw.truncated, ['labels'])
+})
+
+test('discoveryView lists status labels with their categories without a Project', async () => {
+  const raw = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: ['Doing', 'Review'] }) } }), 'none')
+  const view = discoveryView(raw, pmkitWith({ status: { in_review: 'label:Review', in_progress: 'label:doing', backlog: 'none' } }, 'none'))
+  assert.deepEqual(view.statuses, [
+    { name: 'Doing', category: 'in_progress' },
+    { name: 'Review', category: 'in_review' },
+    { name: 'Open', category: 'todo' },
+    { name: 'Closed', category: 'done' },
+    { name: 'Closed as not planned', category: 'canceled' },
+  ])
+  assert.ok(!view.warnings.some((warning) => /PMK-89|no status label/.test(warning)))
+})
+
+test('discoveryView warns once when no status label is mapped without a Project', async () => {
+  const view = discoveryView(await rawOf(standardFixture(), 'none'), pmkitWith({}, 'none'))
+  assert.deepEqual(view.warnings.filter((warning) => /tracker\.scope\.project is none/.test(warning)), [
+    'tracker.scope.project is none and no status label is mapped; issues read open as todo and closed as done',
+  ])
+})
+
+test('mappedLabelNames lists each label the config and the answers name, once without case', () => {
+  const pmkit = { mappings: { status: { in_progress: 'label:Doing', done: 'Done', backlog: 'none' }, types: { bug: 'label:bug' } } }
+  assert.deepEqual(mappedLabelNames(pmkit), ['Doing', 'bug'])
+  assert.deepEqual(mappedLabelNames(pmkit, ['doing', 'Label 115', 'label:Review']), ['Doing', 'bug', 'Label 115', 'Review'])
 })

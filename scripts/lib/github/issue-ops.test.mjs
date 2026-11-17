@@ -461,7 +461,7 @@ test('moveToCategory with a status of another category fails with INVALID_INPUT'
 test('moveToCategory without a Project refuses in_progress and closes for done', async () => {
   const { fake, ops } = await writeSetup({ project: null, pmkit: NO_PROJECT })
   fake.seed({})
-  await assert.rejects(ops.moveToCategory('1', 'in_progress', ME), { code: 'NOT_SUPPORTED', message: 'tracker.scope.project is none, so issues have no status but open and closed' })
+  await assert.rejects(ops.moveToCategory('1', 'in_progress', ME), { code: 'NOT_SUPPORTED', message: 'no label of acme/widgets stands for in_progress', nextStep: '/pmkit:setup' })
   const result = await ops.moveToCategory('1', 'done', ME)
   assert.deepEqual(sent(fake), ['PmkitCloseIssue'])
   assert.deepEqual(result.after.status, { name: 'Closed', category: 'done' })
@@ -512,7 +512,7 @@ test('archive archives the Project item, refuses an issue with no item and a rep
   await assert.rejects(ops.archive('2', ME), { code: 'INVALID_INPUT', message: '2 is not in acme/7', nextStep: 'pmkit issues move 2 <category> adds it' })
   const bare = await writeSetup({ project: null, pmkit: NO_PROJECT })
   bare.fake.seed({})
-  await assert.rejects(bare.ops.archive('1', ME), (error) => error.code === 'NOT_SUPPORTED' && error.nextStep === 'Set tracker.scope.project with /pmkit:setup')
+  await assert.rejects(bare.ops.archive('1', ME), (error) => error.code === 'NOT_SUPPORTED' && error.nextStep === 'Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup')
 })
 
 test('delete refuses with CONFLICT while the issue blocks another, then deletes', async () => {
@@ -586,4 +586,55 @@ test('moveToCategory canceled keeps an issue closed as a duplicate', async () =>
   const result = await ops.moveToCategory('2', 'canceled', ME)
   assert.deepEqual(fake.mutations, [])
   assert.deepEqual(result.after, result.before)
+})
+
+const LABELS_CONFIG = {
+  tracker: { system: 'github', scope: { host: 'github.com', repo: 'acme/widgets', project: 'none' } },
+  mappings: { status: { backlog: 'label:Backlog', in_progress: 'label:Doing', in_review: 'label:Review' }, types: { bug: 'label:bug', feature: 'label:enhancement' } },
+}
+
+// A repository without a Project and without issue types, whose statuses and types are labels.
+async function setupLabels(options = {}) {
+  const fake = fakeGithubIssues({ project: null, issueTypes: [], labels: ['Backlog', 'Doing', 'Review', 'bug', 'enhancement', 'x'], ...options })
+  const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', exec: fake.exec, users: true })
+  let context = makeContext(raw, LABELS_CONFIG)
+  fake.reads.splice(0)
+  fake.mutations.splice(0)
+  const ops = issueOperations({ client, config: { pmkit: LABELS_CONFIG }, getContext: async () => context })
+  return { fake, ops, refresh: () => { context = makeContext(raw, LABELS_CONFIG) } }
+}
+
+test('searchIssues carries the warnings of issues with several status labels', async () => {
+  const { fake, ops } = await setupLabels()
+  fake.seed({ title: 'Two', labels: ['Doing', 'Review'] })
+  fake.seed({ title: 'One', labels: ['Doing', 'bug'] })
+  const result = await ops.searchIssues({})
+  assert.deepEqual(result.issues.map((issue) => [issue.status.category, issue.type ?? null]), [['in_review', null], ['in_progress', 'bug']])
+  assert.deepEqual(result.warnings, ['1 has several status labels (Doing, Review); pmkit reads Review'])
+  fake.seed({ title: 'Clean', labels: ['x'] })
+  assert.equal('warnings' in (await ops.searchIssues({ text: 'clean' })), false)
+})
+
+test('moveToCategory without a Project removes and adds status labels on GitHub', async () => {
+  const { fake, ops } = await setupLabels()
+  fake.seed({ title: 'Move me', labels: ['Doing', 'x'] })
+  const result = await ops.moveToCategory('1', 'in_review', 'octocat')
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitAddLabels', 'PmkitRemoveLabels'])
+  assert.equal(fake.mutations[0].input.labelableId, fake.state.issues[0].id)
+  assert.deepEqual(result.after.status, { name: 'Review', category: 'in_review' })
+  assert.deepEqual(result.after.labels, ['Review', 'x'])
+  const done = await ops.moveToCategory('1', 'done', 'octocat')
+  assert.deepEqual(done.after.status, { name: 'Closed', category: 'done' })
+  assert.deepEqual(done.after.labels, ['x'])
+})
+
+test('archive without a Project names the repository and the move', async () => {
+  const { fake, ops } = await setupLabels()
+  fake.seed({})
+  await assert.rejects(ops.archive('1', 'octocat'), {
+    code: 'NOT_SUPPORTED',
+    message: 'acme/widgets has no Project, and GitHub has no archive for an issue outside one',
+    nextStep: 'Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup',
+  })
 })

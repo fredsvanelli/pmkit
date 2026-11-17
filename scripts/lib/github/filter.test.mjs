@@ -178,3 +178,22 @@ test('serverLimit is set only for the created sort without client steps', () => 
   assert.equal(translate({ limit: 5, archived: true }, withProject).serverLimit, 5)
   assert.equal(translate({}).serverLimit, undefined)
 })
+
+const typeLabels = makeContext(
+  { ...raw({ project: false }), issueTypes: [], labels: [{ id: 'L1', name: 'bug' }, { id: 'L2', name: 'chore' }, { id: 'L3', name: 'ui' }] },
+  { tracker: { scope: { repo: 'acme/widgets', project: 'none' } }, mappings: { types: { bug: 'label:bug', chore: 'label:chore' } } },
+)
+const withLabels = (...names) => node({ labels: { nodes: names.map((name) => typeLabels.raw.labels.find((label) => label.name === name)) } })
+
+test('a single type with type labels filters by the label on GitHub', () => {
+  const translated = translate({ types: ['bug'] }, typeLabels)
+  assert.deepEqual(translated.variables.filterBy, { labels: ['bug'] })
+  assert.ok(keeps(translated, withLabels('bug'), typeLabels))
+})
+
+test('a type label with a labels filter filters the type on the client', () => {
+  const translated = translate({ types: ['bug'], labels: ['ui'] }, typeLabels)
+  assert.deepEqual(translated.variables.filterBy, { labels: ['ui'] })
+  assert.ok(keeps(translated, withLabels('bug', 'ui'), typeLabels))
+  assert.ok(!keeps(translated, withLabels('chore', 'ui'), typeLabels))
+})

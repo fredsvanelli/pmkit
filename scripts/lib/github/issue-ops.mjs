@@ -10,7 +10,7 @@ import { checkFilter, issueComparator } from '../issue-filter.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
-import { itemOf, toIssue } from './issues.mjs'
+import { itemOf, toIssue, toIssueWithWarnings } from './issues.mjs'
 import { docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
@@ -79,6 +79,7 @@ export function issueOperations({ client, config, getContext }) {
     // GitHub's order (created, oldest first) is pmkit's order for the created sort, so that read stops once limit issues passed.
     const enough = translated.sort === 'created' && translated.limit !== undefined ? translated.limit : Infinity
     const kept = []
+    const warnings = []
     let stopped = false
     const { hasMore } = await client.paginate(docsOf(context).ISSUES, variables, {
       select: (data) => data.repository.issues,
@@ -87,8 +88,11 @@ export function issueOperations({ client, config, getContext }) {
       stop: async (nodes) => {
         for (const node of nodes) {
           await completeNested(node, context)
-          const issue = toIssue(node, context)
-          if (translated.clientSteps.every((step) => step(issue, node))) kept.push(issue)
+          const { issue, warnings: read } = toIssueWithWarnings(node, context)
+          if (translated.clientSteps.every((step) => step(issue, node))) {
+            kept.push(issue)
+            warnings.push(...read)
+          }
         }
         stopped = kept.length >= enough
         return stopped
@@ -97,7 +101,9 @@ export function issueOperations({ client, config, getContext }) {
     const issues = kept.sort(issueComparator(translated.sort, context.priorities))
     const cut = translated.limit === undefined ? issues : issues.slice(0, translated.limit)
     // hasMore means the page cap cut a read that still needed issues, never that the limit was reached.
-    return { issues: cut, problems: [], hasMore: hasMore && !stopped }
+    const shown = new Set(cut.map((issue) => `${issue.id} `))
+    const shownWarnings = warnings.filter((warning) => shown.has(warning.slice(0, warning.indexOf(' ') + 1)))
+    return { issues: cut, problems: [], hasMore: hasMore && !stopped, ...(shownWarnings.length > 0 ? { warnings: shownWarnings } : {}) }
   }
 
   // Writes.
@@ -167,6 +173,14 @@ export function issueOperations({ client, config, getContext }) {
     if (op.op === 'setStatus') {
       const input = () => ({ projectId: context.project.id, itemId: item.id, fieldId: context.project.statusField.id, value: { singleSelectOptionId: op.option.id } })
       return { done: `set the Status of ${id} to ${op.option.name}`, doing: `setting its Status to ${op.option.name}`, run: () => send(context, 'SET_PROJECT_FIELD', input()) }
+    }
+    if (op.op === 'removeLabels' || op.op === 'addLabels') {
+      const adding = op.op === 'addLabels'
+      const names = op.names.join(', ')
+      const run = () => send(context, adding ? 'ADD_LABELS' : 'REMOVE_LABELS', { labelableId: nodeId, labelIds: op.labelIds })
+      return adding
+        ? { done: `added label ${names} to ${id}`, doing: `adding label ${names}`, run }
+        : { done: `removed label ${names} from ${id}`, doing: `removing label ${names}`, run }
     }
     if (op.op === 'reopen') return { done: `reopened ${id}`, doing: 'reopening it', run: () => send(context, 'REOPEN_ISSUE', { issueId: nodeId }, true) }
     const words = CLOSE_WORDS[op.reason]
@@ -305,7 +319,9 @@ export function issueOperations({ client, config, getContext }) {
 
   async function archive(id, actor, { dryRun = false } = {}) {
     const context = await writable(id, actor)
-    if (!context.project) throw new PmkitError('NOT_SUPPORTED', `tracker.scope.project is none, so pmkit has no Project to archive ${id} in`, 'Set tracker.scope.project with /pmkit:setup')
+    if (!context.project) {
+      throw new PmkitError('NOT_SUPPORTED', `${context.repo} has no Project, and GitHub has no archive for an issue outside one`, `Close it with pmkit issues move ${id} canceled, or set tracker.scope.project with /pmkit:setup`)
+    }
     const { node, issue: before } = await readNode(id)
     const item = itemOf(node, context)
     if (!item) throw invalid(`${before.id} is not in ${projectName(context)}`, `pmkit issues move ${before.id} <category> adds it`)
