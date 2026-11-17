@@ -206,7 +206,7 @@ export function skeletonNode(context, at) {
 }
 
 /** The node with a plan applied, so toIssue of it is the after of a dry run. */
-function applyPlan(node, plan, context, parentNode) {
+function applyPlan(node, plan, context, parentNode, milestones) {
   const next = structuredClone(node)
   const { input } = plan
   if (input.title !== undefined) next.title = input.title
@@ -218,6 +218,7 @@ function applyPlan(node, plan, context, parentNode) {
   if (input.labelIds !== undefined) next.labels = { nodes: input.labelIds.map((id) => context.raw.labels.find((label) => label.id === id)), pageInfo: { hasNextPage: false } }
   if (input.assigneeIds !== undefined) next.assignees = { nodes: input.assigneeIds.map((id) => ({ id, login: assignable(context).find((user) => user.id === id).login })) }
   if (input.parentIssueId !== undefined) next.parent = parentNode
+  if (input.milestoneId !== undefined) next.milestone = input.milestoneId === null ? null : milestones.find((milestone) => milestone.id === input.milestoneId)
   for (const write of plan.fields) applyField(next, write, context)
   return next
 }
@@ -227,9 +228,22 @@ const given = (value) => value !== undefined && value !== null
 function checkPatch(patch, create) {
   checkKeys(patch, create ? CREATE_KEYS : UPDATE_KEYS)
   if (patch.docs !== undefined) throw notSupported('the GitHub adapter does not link docs to issues yet')
-  for (const key of ['milestone', 'release']) {
-    if (given(patch[key])) throw notSupported(`the GitHub adapter does not set ${key} yet`)
-  }
+  if (given(patch.release)) throw notSupported('the GitHub adapter does not set release yet')
+}
+
+/** The milestone a title names, or INVALID_INPUT with the command that creates it. The title matches exactly. */
+export function requireMilestone(title, milestones) {
+  const found = typeof title === 'string' ? milestones.find((milestone) => milestone.title === title) : undefined
+  if (!found) throw invalid(`milestone ${title} does not exist`, `pmkit milestone create ${title}`)
+  return found
+}
+
+/** The milestoneId of a write: the node id of the titled milestone, or null to clear it. A create skips null and a milestone the issue has. */
+function planMilestone(patch, node, create, milestones) {
+  if (patch.milestone === undefined) return {}
+  const target = patch.milestone === null ? null : requireMilestone(patch.milestone, milestones)
+  const current = node.milestone?.id ?? null
+  return (target?.id ?? null) === current ? {} : { milestoneId: target?.id ?? null }
 }
 
 function planTitle(patch, node, create) {
@@ -355,12 +369,13 @@ function planCreateStatus(status, preview, context) {
 
 /**
  * The GitHub input of a patch. mode is create or update; before is the issue's fragment node (null on create); parentNode the
- * fragment node of patch.parent on create (the caller reads it). Returns { input, fields, branch, move, after }: input for
+ * fragment node of patch.parent on create (the caller reads it); milestones the { id, number, title } of the repository's milestones, which
+ * the caller reads only when the patch names a milestone. Returns { input, fields, branch, move, after }: input for
  * createIssue (repositoryId included) or updateIssue (id left to the caller, only the keys that change), one field write per changed
  * role, the branch name of an update, the move steps of a create's status, and the issue a dry run shows. Throws before any request;
  * a name the discovery may not know yet throws with details.stale.
  */
-export function planWrite(patch, { mode, before = null, context, parentNode = null, now = new Date().toISOString() }) {
+export function planWrite(patch, { mode, before = null, context, parentNode = null, milestones = [], now = new Date().toISOString() }) {
   const create = mode === 'create'
   checkPatch(patch, create)
   const node = before ?? skeletonNode(context, now)
@@ -371,19 +386,20 @@ export function planWrite(patch, { mode, before = null, context, parentNode = nu
   Object.assign(input, planType(patch, node, create, context))
   Object.assign(input, planLabels(patch, node, create, context))
   Object.assign(input, planCreateOnly(patch, create, context, parentNode))
+  Object.assign(input, planMilestone(patch, node, create, milestones))
   const fields = planFields(patch, create, beforeIssue, context, now.slice(0, 10))
   const branch = planBranch(patch, create)
 
   const plan = { input, fields, branch, move: [] }
-  const preview = previewOf(plan, { node, patch, create, context, parentNode })
+  const preview = previewOf(plan, { node, patch, create, context, parentNode, milestones })
   const after = toIssue(preview, context)
   plan.after = create ? { ...after, id: null } : after
   return plan
 }
 
 /** The node a dry run shows: the plan applied, then a create's status move and an update's branch. Sets plan.move. */
-function previewOf(plan, { node, patch, create, context, parentNode }) {
-  let preview = applyPlan(node, plan, context, parentNode)
+function previewOf(plan, { node, patch, create, context, parentNode, milestones }) {
+  let preview = applyPlan(node, plan, context, parentNode, milestones)
   if (create && given(patch.status)) {
     const move = planCreateStatus(patch.status, preview, context)
     plan.move = move.steps

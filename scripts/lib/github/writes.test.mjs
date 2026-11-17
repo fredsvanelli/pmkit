@@ -63,12 +63,38 @@ test('planWrite refuses a missing title, an unknown key, an owned key and a line
   assert.throws(create({ title: 'A', status: 'Nope' }), { code: 'INVALID_INPUT' })
 })
 
-test('planWrite refuses milestone and release values, and passes null', async () => {
+test('planWrite refuses release values, and passes null', async () => {
   const { context } = await contextOf()
-  for (const key of ['milestone', 'release']) {
-    assert.throws(() => planWrite({ title: 'A', [key]: 'x' }, { mode: 'create', before: null, context }), { code: 'NOT_SUPPORTED' })
-    assert.doesNotThrow(() => planWrite({ title: 'A', [key]: null }, { mode: 'create', before: null, context }))
-  }
+  assert.throws(() => planWrite({ title: 'A', release: 'x' }, { mode: 'create', before: null, context }), { code: 'NOT_SUPPORTED' })
+  assert.doesNotThrow(() => planWrite({ title: 'A', release: null }, { mode: 'create', before: null, context }))
+})
+
+const MILESTONES = [{ id: 'MI_1', number: 1, title: 'v1.0' }, { id: 'MI_2', number: 2, title: 'v2.0' }]
+
+test('planWrite sets milestoneId from the title, and shows the milestone in the after', async () => {
+  const { context } = await contextOf()
+  const plan = planWrite({ title: 'A', milestone: 'v1.0' }, { mode: 'create', before: null, context, milestones: MILESTONES })
+  assert.equal(plan.input.milestoneId, 'MI_1')
+  assert.equal(plan.after.milestone, 'v1.0')
+})
+
+test('planWrite on update sends milestoneId only when the milestone changes, and null clears it', async () => {
+  const { fake, context } = await contextOf({ milestones: [{ title: 'v1.0' }, { title: 'v2.0' }] })
+  fake.seed({ title: 'Has one', milestone: 'v1.0' })
+  const before = nodeOf(fake, context, 1)
+  const update = (patch) => planWrite(patch, { mode: 'update', before, context, milestones: MILESTONES })
+  assert.deepEqual(update({ milestone: 'v1.0' }).input, {})
+  assert.deepEqual(update({ milestone: 'v2.0' }).input, { milestoneId: 'MI_2' })
+  const cleared = update({ milestone: null })
+  assert.deepEqual(cleared.input, { milestoneId: null })
+  assert.equal(cleared.after.milestone, undefined)
+})
+
+test('planWrite refuses an unknown milestone title with the create step, and a create with null sends no milestoneId', async () => {
+  const { context } = await contextOf()
+  assert.throws(() => planWrite({ title: 'A', milestone: 'v9' }, { mode: 'create', before: null, context, milestones: MILESTONES }),
+    (error) => error.code === 'INVALID_INPUT' && error.message === 'milestone v9 does not exist' && error.nextStep === 'pmkit milestone create v9')
+  assert.equal('milestoneId' in planWrite({ title: 'A', milestone: null }, { mode: 'create', before: null, context, milestones: MILESTONES }).input, false)
 })
 
 test('planWrite refuses a field role mapped none with NOT_SUPPORTED and /pmkit:setup', async () => {

@@ -106,6 +106,17 @@ const KEY_HANDLERS = [
     const step = sprintStep(filter.sprint, context, today)
     if (step) out.clientSteps.push(step)
   },
+  function milestone(filter, out, context, viewerLogin, today, milestones) {
+    if (filter.milestone === undefined || filter.milestone === null) return
+    if (filter.milestone === 'none') {
+      out.filterBy.milestoneNumber = 'none'
+      return
+    }
+    // A title GitHub does not have matches no issue; it is not an error, as for any other filter value.
+    const found = milestones.find((item) => item.title === filter.milestone)
+    if (found) out.filterBy.milestoneNumber = String(found.number)
+    else out.empty = true
+  },
   function archived(filter, out, context) {
     // Without a Project no item exists, so no issue reads archived.
     if (filter.archived !== true && context.project) out.clientSteps.push((issue) => issue.archived !== true)
@@ -120,12 +131,12 @@ function serverLimitOf(sort, clientSteps, limit) {
 /**
  * Translates a filter that checkFilter accepted. Each client step is (issue, node) => boolean and keeps the issue when true.
  * `serverLimit` is set only when GitHub's order (created, oldest first) is the final order and no step drops issues.
- * `empty` says no issue can match, so no request is needed. `today` (YYYY-MM-DD) is the day a sprint named `current` is read on.
+ * `empty` says no issue can match, so no request is needed. `today` (YYYY-MM-DD) is the day a sprint named `current` is read on; `milestones` ({ number, title }) are the repository's, read by the caller when the filter names a milestone.
  */
-export function translateFilter(filter, context, viewerLogin, { today = new Date().toISOString().slice(0, 10) } = {}) {
+export function translateFilter(filter, context, viewerLogin, { today = new Date().toISOString().slice(0, 10), milestones = [] } = {}) {
   if (filter.release !== undefined) throw notSupported('release')
   const out = { filterBy: {}, clientSteps: [], empty: false }
-  for (const handle of KEY_HANDLERS) handle(filter, out, context, viewerLogin, today)
+  for (const handle of KEY_HANDLERS) handle(filter, out, context, viewerLogin, today, milestones)
   const { filterBy, clientSteps, empty } = out
   const sort = filter.sort ?? 'created'
   return { variables: { filterBy }, clientSteps, sort, limit: filter.limit, serverLimit: serverLimitOf(sort, clientSteps, filter.limit), empty }

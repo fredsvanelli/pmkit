@@ -168,6 +168,16 @@ test('release answers NOT_SUPPORTED, and a null sprint adds no step', () => {
   assert.equal(translate({ sprint: null }).clientSteps.length, 0)
 })
 
+test('a milestone title filters by its number, none by "none", and an unknown title matches nothing', () => {
+  const milestones = [{ id: 'MI_1', number: 7, title: 'v1.0' }]
+  const run = (milestone) => translateFilter({ milestone }, noProject, 'octocat', { milestones })
+  assert.deepEqual(run('v1.0').variables, { filterBy: { milestoneNumber: '7' } })
+  assert.deepEqual(run('none').variables, { filterBy: { milestoneNumber: 'none' } })
+  assert.equal(run('v1.0').empty, false)
+  assert.equal(run('V1.0').empty, true)
+  assert.equal(run('nope').empty, true)
+})
+
 const sprintRaw = raw()
 sprintRaw.project.fields.push({
   id: 'F2', name: 'Sprint', dataType: 'ITERATION', options: [], issueField: null,

@@ -650,3 +650,39 @@ test('updateIssue clears the sprint of an item and sets another one', async () =
   const set = await ops.updateIssue('1', { sprint: '2026-11-16' }, ME)
   assert.equal(set.after.sprint, '2026-11-16')
 })
+
+// The milestone of an issue, through the real planning, the client and the fake.
+const withMilestones = () => setup({ milestones: [{ title: 'v1.0' }, { title: 'v2.0' }] })
+
+test('createIssue and updateIssue with a milestone title send milestoneId, and null clears it', async () => {
+  const { fake, ops } = await withMilestones()
+  const created = await ops.createIssue({ title: 'A', milestone: 'v1.0' }, 'octocat')
+  assert.equal(created.after.milestone, 'v1.0')
+  assert.equal(fake.mutations.find((call) => call.name === 'PmkitCreateIssue').input.milestoneId, 'MI_1')
+  const moved = await ops.updateIssue('1', { milestone: 'v2.0' }, 'octocat')
+  assert.equal(moved.after.milestone, 'v2.0')
+  const cleared = await ops.updateIssue('1', { milestone: null }, 'octocat')
+  assert.equal(cleared.after.milestone, undefined)
+})
+
+test('an unknown milestone title is INVALID_INPUT with the create step and no mutation, and one run reads the milestones once', async () => {
+  const { fake, ops } = await withMilestones()
+  await assert.rejects(ops.createIssue({ title: 'A', milestone: 'v9' }, 'octocat'), (error) => error.code === 'INVALID_INPUT' && error.nextStep === 'pmkit milestone create v9')
+  assert.deepEqual(fake.mutations, [])
+  await ops.createIssue({ title: 'A', milestone: 'v1.0' }, 'octocat')
+  await ops.createIssue({ title: 'B', milestone: 'v2.0' }, 'octocat')
+  await ops.searchIssues({ milestone: 'v1.0' })
+  assert.equal(fake.reads.filter((call) => call.name === 'PmkitMilestones').length, 1)
+})
+
+test('searchIssues by milestone sends milestoneNumber, none finds issues without one, and an unknown title finds nothing', async () => {
+  const { fake, ops } = await withMilestones()
+  fake.seed({ title: 'In one', milestone: 'v1.0' })
+  fake.seed({ title: 'In two', milestone: 'v2.0' })
+  fake.seed({ title: 'Free' })
+  assert.deepEqual((await ops.searchIssues({ milestone: 'v1.0' })).issues.map((issue) => issue.title), ['In one'])
+  assert.deepEqual((await ops.searchIssues({ milestone: 'none' })).issues.map((issue) => issue.title), ['Free'])
+  fake.reads.splice(0)
+  assert.deepEqual((await ops.searchIssues({ milestone: 'nope' })).issues, [])
+  assert.equal(fake.reads.filter((call) => call.name === 'PmkitIssues').length, 0)
+})
