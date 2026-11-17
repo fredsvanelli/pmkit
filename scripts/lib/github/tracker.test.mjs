@@ -290,8 +290,11 @@ test('the cycle, epic and milestone operations are not stubs, and each runs thro
 })
 
 test('capabilities shows the epic paging warning once the epics were read', async () => {
-  const fake = fakeGithubIssues({ project: { statusOptions: ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done'] } })
+  const many = Array.from({ length: 205 }, (_, at) => ({ id: `PVT_M${at}`, owner: 'acme', number: 100 + at }))
+  const fake = fakeGithubIssues({ project: { statusOptions: ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done'] }, epics: many })
   const tracker = githubTracker(issuesContext(), fake)
-  await tracker.listDeliverables()
-  assert.ok(Array.isArray((await tracker.capabilities()).warnings))
+  const paging = (warnings) => warnings.filter((line) => line === 'acme/widgets has more than 200 linked Projects, so pmkit read the first 200 as epics')
+  assert.deepEqual(paging((await tracker.capabilities()).warnings), [])
+  assert.equal((await tracker.listDeliverables()).length, 199)
+  assert.equal(paging((await tracker.capabilities()).warnings).length, 1)
 })
