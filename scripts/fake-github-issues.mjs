@@ -6,6 +6,7 @@
 import { answerGhWith, linkedReply, projectReply, repoReply, withNamedLabels } from './fake-github-api.mjs'
 import { hostFeatures } from './lib/github/documents.mjs'
 import { discussionRoutes, initDiscussions } from './fake-github-discussions.mjs'
+import { draftRoutes, initDrafts } from './fake-github-drafts.mjs'
 
 const STATE_VERSION = 1
 const DEFAULT_USERS = [{ id: 'U_1', login: 'octocat', name: 'The Octocat' }, { id: 'U_2', login: 'hubot', name: 'Hubot' }]
@@ -104,6 +105,8 @@ export function fakeGithubIssues(options = {}) {
   const state = initialState(options)
   // discussionsEnabled (default true) and discussionCategories: see scripts/fake-github-discussions.mjs.
   initDiscussions(state, options)
+  // extraProjects: the Projects --project reads; see scripts/fake-github-drafts.mjs.
+  initDrafts(state, options)
   return build(state)
 }
 
@@ -115,6 +118,7 @@ export function fakeGithubIssuesFrom(json) {
 
 function build(state) {
   initDiscussions(state)
+  initDrafts(state)
   const features = hostFeatures({ host: state.host, ghesVersion: state.ghesVersion })
   const mutations = []
   const reads = []
@@ -373,7 +377,7 @@ function build(state) {
       Object.assign(reply.repositoryOwner.projectV2, { id: project.id, url: `https://${state.host}/orgs/${project.owner}/projects/${project.number}` })
       return reply
     },
-    PmkitLinkedProjects: () => linkedReply(state.project ? [{ number: state.project.number, title: state.project.title, owner: state.project.owner }] : []).data,
+    PmkitLinkedProjects: () => linkedReply(drafts.linked()).data,
     PmkitIssue(vars) {
       const entry = requireRepository(vars)
       const record = issueByNumber(entry.nameWithOwner, vars.number)
@@ -649,12 +653,14 @@ function build(state) {
   }
 
   const discussions = discussionRoutes(state, { stamp, register, requireRepository, refuseWithData, unknownNode, connection, page })
+  const userByLogin = (name) => state.users.find((user) => user.login === name) ?? null
+  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin })
 
   /** Answers one operation: { data } or { errors }, as GitHub's JSON body. query may be omitted to skip the schema check. */
   function handle(name, variables = {}, query) {
     const vars = variables ?? {}
-    const queryRoute = name?.startsWith('PmkitIssueMore_') ? queries.PmkitIssueMore : queries[name] ?? discussions.queries[name]
-    const mutationRoute = mutationRoutes[name] ?? discussions.mutations[name]
+    const queryRoute = name?.startsWith('PmkitIssueMore_') ? queries.PmkitIssueMore : queries[name] ?? discussions.queries[name] ?? drafts.queries[name]
+    const mutationRoute = mutationRoutes[name] ?? discussions.mutations[name] ?? drafts.mutations[name]
     if (!queryRoute && !mutationRoute) return { errors: [{ message: `fake GitHub has no operation ${name}` }] }
     const invalid = query === undefined ? null : schemaError(query, vars)
     if (invalid) return { errors: [{ message: invalid }] }
@@ -748,5 +754,5 @@ function build(state) {
     }
   }
 
-  return { state, exec, handle, mutations, reads, seed, seedBranch, seedDiscussion: discussions.seedDiscussion, failNext, features, toJSON: () => structuredClone(state) }
+  return { state, exec, handle, mutations, reads, seed, seedBranch, seedDiscussion: discussions.seedDiscussion, seedDraft: drafts.seedDraft, seedRepository: drafts.seedRepository, failNext, features, toJSON: () => structuredClone(state) }
 }
