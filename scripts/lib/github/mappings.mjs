@@ -34,6 +34,22 @@ const words = (key) => key.replace(/_/g, ' ')
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const isSet = (value) => typeof value === 'string' && value !== ''
 
+export const LABEL_PREFIX = 'label:'
+
+/** The label name of a label:<name> value, trimmed, or null for any other value. */
+export function parseLabelValue(value) {
+  if (typeof value !== 'string' || !value.startsWith(LABEL_PREFIX)) return null
+  const name = value.slice(LABEL_PREFIX.length).trim()
+  return name === '' ? null : name
+}
+
+/** The { id, name } of a repository label, compared without case as GitHub keeps label names unique without case, or null. */
+export function labelOf(raw, name) {
+  const wanted = String(name).toLowerCase()
+  const found = (raw.labels ?? []).find((label) => label.name.toLowerCase() === wanted)
+  return found ? { id: found.id, name: found.name } : null
+}
+
 /** { source: issue|project|none, name } of a mappings.fields value, or null when it has another shape. */
 export function parseFieldSource(value) {
   if (value === NONE) return { source: NONE, name: null }
@@ -60,8 +76,12 @@ export function fieldOf(raw, value) {
 /** Why a held value is broken, or null when GitHub still has what it names. */
 function problemOf(raw, path, value) {
   const group = path.split('.')[1]
+  const label = parseLabelValue(value)
+  const missingLabel = () => (labelOf(raw, label) ? null : `${path} names label ${label}, which ${raw.repo} no longer has`)
   if (group === 'status') {
-    if (raw.project === null || statusOptionsOf(raw).includes(value)) return null
+    if (raw.project === null) return label ? missingLabel() : `${path} names Status option ${value}, but tracker.scope.project is none`
+    if (label) return `${path} names label ${label}, but statuses come from the Status field of ${projectId(raw)}`
+    if (statusOptionsOf(raw).includes(value)) return null
     return `${path} names ${value}, which the Status field of ${projectId(raw)} no longer has`
   }
   if (group === 'fields') {
@@ -73,6 +93,7 @@ function problemOf(raw, path, value) {
     return `${path} names Project field ${parsed.name}, which ${projectId(raw)} no longer has`
   }
   if (group === 'types') {
+    if (label) return raw.issueTypes.length > 0 ? `${path} names label ${label}, but ${raw.repo} has issue types` : missingLabel()
     return raw.issueTypes.some((type) => type.name === value) ? null : `${path} names issue type ${value}, which ${raw.repo} does not have enabled`
   }
   return null

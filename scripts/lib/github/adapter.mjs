@@ -5,7 +5,7 @@ import { builtInDefaults } from '../config.mjs'
 import { parseProject, parseRepo } from './discovery.mjs'
 import { HOST_NAME } from './client.mjs'
 import { isIssueId } from './ids.mjs'
-import { NONE, parseFieldSource } from './mappings.mjs'
+import { LABEL_PREFIX, NONE, parseFieldSource, parseLabelValue } from './mappings.mjs'
 
 /** The GitHub rules on a .pmkit/config.yaml whose shape is valid. */
 export function githubConfigProblems(pmkit) {
@@ -18,6 +18,11 @@ export function githubConfigProblems(pmkit) {
   if (scope.project !== undefined && parseProject(scope.project) === undefined) problems.push('tracker.scope.project must be owner/number or none')
   for (const [role, value] of Object.entries(pmkit?.mappings?.fields ?? {})) {
     if (!parseFieldSource(value)) problems.push(`mappings.fields.${role} must be issue:<name>, project:<name> or none for github`)
+  }
+  for (const group of ['status', 'types']) {
+    for (const [key, value] of Object.entries(pmkit?.mappings?.[group] ?? {})) {
+      if (typeof value === 'string' && value.startsWith(LABEL_PREFIX) && !parseLabelValue(value)) problems.push(`mappings.${group}.${key} must be label:<name> with a name`)
+    }
   }
   for (const [type, value] of Object.entries(pmkit?.mappings?.types ?? {})) {
     if (value === NONE) problems.push(`mappings.types.${type} cannot be none; leave the type out instead`)

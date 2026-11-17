@@ -24,6 +24,10 @@ test('the config check needs host and repo, and reads project and field values',
   assert.deepEqual(githubConfigProblems(pmkit({ ...SCOPE, project: '7' })), ['tracker.scope.project must be owner/number or none'])
   assert.deepEqual(githubConfigProblems(pmkit(SCOPE, { fields: { priority: 'issue:Priority', estimate: 'none', start_date: 'Start' } })), ['mappings.fields.start_date must be issue:<name>, project:<name> or none for github'])
   assert.deepEqual(githubConfigProblems(pmkit(SCOPE, { types: { bug: 'none' } })), ['mappings.types.bug cannot be none; leave the type out instead'])
+  assert.deepEqual(githubConfigProblems(pmkit(SCOPE, { status: { backlog: 'label: ' }, types: { bug: 'label:' } })), [
+    'mappings.status.backlog must be label:<name> with a name',
+    'mappings.types.bug must be label:<name> with a name',
+  ])
 })
 
 async function trackerOf(scope = SCOPE, fixture = standardFixture(), mappings = {}) {

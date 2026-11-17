@@ -3,7 +3,7 @@ import test from 'node:test'
 import { fakeGhExec, projectReply, repoReply, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
-import { brokenGithubMappings, parseFieldSource, proposeGithubSetup, proposeProject } from './mappings.mjs'
+import { brokenGithubMappings, labelOf, parseFieldSource, parseLabelValue, proposeGithubSetup, proposeProject } from './mappings.mjs'
 
 const TYPES = ['feature', 'bug', 'task', 'chore']
 
@@ -167,4 +167,36 @@ test('brokenGithubMappings names a Project field while the repository has no Pro
   const raw = await rawOf(standardFixture(), 'none')
   const broken = brokenGithubMappings(raw, { mappings: { fields: { estimate: 'project:Story points' } } })
   assert.deepEqual(broken, [{ path: 'mappings.fields.estimate', value: 'project:Story points', problem: 'mappings.fields.estimate names Project field Story points, but tracker.scope.project is none' }])
+})
+
+test('parseLabelValue reads label:<name>', () => {
+  assert.equal(parseLabelValue('label:Doing'), 'Doing')
+  assert.equal(parseLabelValue('label: In review '), 'In review')
+  for (const value of ['label:', 'label:  ', 'Label:x', 'Doing', 3, undefined]) assert.equal(parseLabelValue(value), null)
+})
+
+test('labelOf finds a label without case', async () => {
+  const raw = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: ['Doing'] }) } }), 'none')
+  assert.deepEqual(labelOf(raw, 'doing'), { id: 'LA_1', name: 'Doing' })
+  assert.equal(labelOf(raw, 'Review'), null)
+})
+
+test('brokenGithubMappings reports label values a Project or issue types rule out', async () => {
+  const labels = ['Doing', 'bug']
+  const withProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitProject: projectReply() } }))
+  assert.deepEqual(brokenGithubMappings(withProject, { mappings: { status: { in_progress: 'label:Doing' } } }).map((item) => item.problem), [
+    'mappings.status.in_progress names label Doing, but statuses come from the Status field of acme/7',
+  ])
+  const noProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }) } }), 'none')
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { status: { in_progress: 'label:doing', in_review: 'label:Review', backlog: 'In Progress' } } }).map((item) => item.problem), [
+    'mappings.status.in_review names label Review, which acme/widgets no longer has',
+    'mappings.status.backlog names Status option In Progress, but tracker.scope.project is none',
+  ])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { types: { bug: 'label:bug' } } }).map((item) => item.problem), [
+    'mappings.types.bug names label bug, but acme/widgets has issue types',
+  ])
+  const noTypes = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels, types: [] }) } }), 'none')
+  assert.deepEqual(brokenGithubMappings(noTypes, { mappings: { types: { bug: 'label:Bug', task: 'label:task' } } }).map((item) => item.problem), [
+    'mappings.types.task names label task, which acme/widgets no longer has',
+  ])
 })
