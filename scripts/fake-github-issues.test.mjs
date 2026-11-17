@@ -278,6 +278,23 @@ test('answerGh with fixture.issues answers from the fake and writes the new stat
   assert.equal(JSON.parse(call('query PmkitRepo { x }', REPO).stdout.split('\r\n\r\n')[1]).data.viewer.name, 'The Octocat')
 })
 
+test('answerGh with fixture.issues routes POST milestones to the fake and writes the state back; a fixture without issues does not know it', () => {
+  const fixture = standardFixture({ issues: fakeGithubIssues({ milestones: [{ title: 'v1.0' }] }).toJSON() })
+  const post = (body) => answerGh(['api', '--hostname', 'github.com', '--method', 'POST', 'repos/acme/widgets/milestones', '--include', '--input', '-'], JSON.stringify(body), fixture)
+  const created = post({ title: 'v2.0', due_on: '2026-12-31T00:00:00Z' })
+  assert.equal(created.status, 0)
+  assert.match(created.stdout, /^HTTP\/2\.0 201 Created\r\n/)
+  assert.equal(restBody(created).number, 2)
+  assert.deepEqual(fixture.issues.milestones.map((milestone) => milestone.title), ['v1.0', 'v2.0'])
+  const taken = post({ title: 'v2.0' })
+  assert.equal(taken.status, 1)
+  assert.match(taken.stdout, /^HTTP\/2\.0 422 /)
+  assert.equal(fixture.issues.milestones.length, 2)
+  const bare = answerGh(['api', '--method', 'POST', 'repos/acme/widgets/milestones', '--input', '-'], '{"title":"x"}', standardFixture())
+  assert.equal(bare.status, 1)
+  assert.match(bare.stderr, /unknown api call/)
+})
+
 test('itemTypes filters keep every item type of ITEM_TYPES, the Status change event included', async () => {
   const { fake, docs, client, create } = setup()
   const all = ITEM_TYPES(hostFeatures({ host: 'github.com' }))

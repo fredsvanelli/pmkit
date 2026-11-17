@@ -1019,5 +1019,5 @@ function build(state) {
     return { id: addStatusUpdate(project, { ...update, createdAt: update.createdAt ?? stamp() }).id }
   }
 
-  return { state, exec, handle, mutations, reads, seed, seedBranch, seedProjectItem, seedStatusUpdate, seedDiscussion: discussions.seedDiscussion, seedDraft: drafts.seedDraft, seedRepository: drafts.seedRepository, failNext, features, toJSON: () => structuredClone(state) }
+  return { state, exec, handle, rest, mutations, reads, seed, seedBranch, seedProjectItem, seedStatusUpdate, seedDiscussion: discussions.seedDiscussion, seedDraft: drafts.seedDraft, seedRepository: drafts.seedRepository, failNext, features, toJSON: () => structuredClone(state) }
 }

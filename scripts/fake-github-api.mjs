@@ -18,6 +18,13 @@ export const hostnameOf = (args) => {
 
 /** What gh prints for args and stdin under the fixture: { status, stdout, stderr }. */
 export function answerGh(args, input, fixture) {
+  // With fixture.issues the REST calls of the stateful fake (POST milestones) answer too, and the new state is written back.
+  const rest = fixture.issues ? (method, path, body) => {
+    const fake = fakeGithubIssuesFrom(fixture.issues)
+    const answered = fake.rest(method, path, body)
+    fixture.issues = fake.toJSON()
+    return answered
+  } : undefined
   return answerGhWith(args, input, fixture, (name, body) => {
     const canned = fixture.graphql?.[name]
     if (canned !== undefined && canned !== null) return name === 'PmkitRepo' ? withNamedLabels(canned, body.variables ?? {}) : canned
@@ -26,7 +33,7 @@ export function answerGh(args, input, fixture) {
     const reply = fake.handle(name, body.variables ?? {}, body.query)
     fixture.issues = fake.toJSON()
     return reply
-  })
+  }, rest)
 }
 
 /**
