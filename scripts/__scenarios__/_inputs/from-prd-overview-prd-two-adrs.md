@@ -1,0 +1,37 @@
+# Webhook platform overview
+
+## Problem
+
+Receivers lose events when a delivery fails, and they cannot tell a real delivery from a forged one.
+
+## Users
+
+Developers who receive our webhooks, and support agents who answer their tickets.
+
+## Scope (in)
+
+Signed payloads, retries with backoff, and a dead-letter queue for deliveries that run out of attempts.
+
+## Out of scope
+
+Replaying a parked delivery from the dashboard.
+
+## Use cases
+
+A receiver verifies the signature of a delivery. A delivery that fails is retried. Support finds a delivery that ran out of attempts.
+
+## Requirements
+
+1. Sign webhook payloads. Criteria: each delivery carries a signature header that the receiver can verify.
+2. Retry failed deliveries with backoff. Criteria: a failed delivery is retried up to six times, with a longer wait each time.
+3. Park exhausted deliveries in a dead-letter queue. Criteria: a delivery that ran out of attempts appears in the queue with its last error.
+
+## Decisions
+
+- Deliveries are retried at most six times: ADR.
+- Parked deliveries stay in the queue for 30 days: ADR.
+- The signature uses HMAC with SHA-256: PRD only.
+
+## Open questions
+
+None.

@@ -60,6 +60,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:report:roadmap-review`: Epics and milestones with dates, health and delays, and the epics with no recent status update, in one read-only report.
 - `/pmkit:report:release-readiness`: What is left for a release: open issues, open pull requests and deploys. Without releases it uses a milestone or a sprint and says so.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
+- `/pmkit:spec:from-prd`: Interview the PM on a one-page PRD, then store the refined PRD, write an ADR per decision that is hard to reverse, and create the epic, the estimated issues and their blocker links, with an approval at each stage.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
 - `/pmkit:spec:adr-status`: Mark an existing ADR accepted, deprecated or superseded by a newer one, after you confirm the new `Status:` line.
 - `/pmkit:spec:record-decision`: Write an ADR from a decision after you confirm it, and link it to the issues it affects with a comment on each and in each issue's `docs` list (on Linear, as a link to the file on GitHub). When the decision replaces an older ADR, the new one gets a `Supersedes` line and the older one is marked superseded after you confirm. The file is `docs/adr/NNNN-title.md` when the repository has that folder or the tracker cannot create documents, and the tracker folder (`.issues/docs/adr/` by default) otherwise.
