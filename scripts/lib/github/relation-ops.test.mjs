@@ -285,6 +285,16 @@ test('setParent null on an issue whose only epic item is archived has no parent 
   assert.deepEqual(result.after, result.before)
 })
 
+test('setParent to an epic where the issue item is archived is INVALID_INPUT and sends nothing, dry run or not', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: [{ project: 'acme/12', archived: true }, 'acme/9'] })
+  clear()
+  const refusal = { code: 'INVALID_INPUT', message: '1 is archived in epic acme/12', nextStep: 'Restore the item from the archived items of the Project on GitHub' }
+  await assert.rejects(relations.setParent('1', 'acme/12', ME, { dryRun: true }), refusal)
+  await assert.rejects(relations.setParent('1', 'acme/12', ME), refusal)
+  assert.deepEqual(fake.mutations, [])
+})
+
 test('setParent null previews the epic that remains after the parent issue goes, as the real run reads it', async () => {
   const { fake, relations, clear } = await epicSetup()
   fake.seed({ number: 1 })

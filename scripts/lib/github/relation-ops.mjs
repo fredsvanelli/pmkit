@@ -153,6 +153,10 @@ export function relationOperations({ client, ops, getContext }) {
   /** Puts the issue in the epic: the parent issue goes first, then the epic's item is added, then the items in the other epics are deleted. */
   async function setEpicParent(read, epic, context, dryRun) {
     const { node, issue: before } = read
+    // pmkit does not unarchive on GitHub (ADR 0008), and an add would return the archived item, so the issue would not join the epic.
+    if ((node.projectItems?.nodes ?? []).some((item) => item.isArchived && item.project?.id === epic.projectId)) {
+      throw invalid(`${before.id} is archived in epic ${epic.id}`, 'Restore the item from the archived items of the Project on GitHub')
+    }
     const items = epicItems(node, context)
     const others = items.filter((item) => item.project.id !== epic.projectId)
     if (before.parent === epic.id && others.length === 0) return { before, after: before }
