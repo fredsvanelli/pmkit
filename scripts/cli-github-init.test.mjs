@@ -234,3 +234,12 @@ test('a cut read on GitHub names GitHub', () => {
   assert.equal(capWarning('issues', undefined, 'github'), 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
   assert.equal(capWarning('issues', undefined, 'linear'), 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
 })
+
+test('a --status answer may name a label past the first 100 labels', async () => {
+  const context = fresh()
+  const labels = Array.from({ length: 120 }, (_, index) => `Label ${index + 1}`)
+  const fixture = standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitLinkedProjects: linkedReply() } })
+  const answers = ['triage=none', 'backlog=none', 'in_progress=Label 115', 'in_review=none'].flatMap((item) => ['--status', item])
+  dataOf(await cli(context, [...INIT, '--project', 'none', ...answers, ...FIELDS, ...TYPES, '--json'], fixture))
+  assert.match(read(context), /in_progress: "?label:Label 115"?/)
+})
