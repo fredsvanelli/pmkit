@@ -189,7 +189,7 @@ function sprintOf(node, context) {
 }
 
 // The parent issue, else the epic of the lowest-numbered linked epic Project the issue is an item of.
-function parentOf(node, context) {
+export function parentOf(node, context) {
   if (node.parent) return issueIdOf(node.parent, context.repo)
   const found = nodesOf(node.projectItems)
     .filter((item) => context.epics.has(item.project?.id))

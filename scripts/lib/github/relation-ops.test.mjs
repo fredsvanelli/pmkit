@@ -275,6 +275,18 @@ test('setParent null removes the parent issue when there is one, else the epic i
   assert.deepEqual(none.after, none.before)
 })
 
+test('setParent null previews the epic that remains after the parent issue goes, as the real run reads it', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1 })
+  fake.seed({ number: 2, parent: 1, epics: ['acme/12', 'acme/9'], item: { status: 'Todo' } })
+  clear()
+  const dry = await relations.setParent('2', null, ME, { dryRun: true })
+  assert.deepEqual(fake.mutations, [])
+  const real = await relations.setParent('2', null, ME)
+  assert.equal(real.after.parent, 'acme/9')
+  assert.equal(dry.after.parent, real.after.parent)
+})
+
 test('setParent to an epic names the add that was done when the delete of the other epic item fails', async () => {
   const { fake, relations, clear } = await epicSetup()
   fake.seed({ number: 1, epics: ['acme/9'] })

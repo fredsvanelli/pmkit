@@ -1173,7 +1173,13 @@ export const COMMANDS = [
   },
   {
     name: 'issues parent', summary: 'sets the parent', usage: '<id> <parent|none>', write: true, args: ['id', 'parent'], flags: [],
-    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).setParent(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
+    run: async (ctx) => {
+      const none = ctx.args[1] === 'none'
+      const result = issueWrite(ctx, await (await ctx.tracker()).setParent(ctx.args[0], none ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun }))
+      // GitHub removes the parent issue first, and an epic item then still reads as the parent.
+      const left = result.data.after.parent
+      return none && left !== undefined ? { ...result, notes: [`${result.data.after.id} still belongs to epic ${left}; run pmkit issues parent ${result.data.after.id} none again to remove it`] } : result
+    },
   },
   {
     name: 'issues bulk', summary: 'applies one change to every issue a filter or a saved view returns; --dry-run is the full preview and prints a digest, the real run needs it as --expect', write: true, args: ['change', 'value?'],

@@ -5,6 +5,7 @@ import { PmkitError } from '../errors.mjs'
 import { compareGithubIds } from './ids.mjs'
 import { LINK_KINDS } from '../model.mjs'
 import { epicOf, parseEpicId } from './projects.mjs'
+import { parentOf } from './issues.mjs'
 import { sender } from './requests.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -124,7 +125,12 @@ export function relationOperations({ client, ops, getContext }) {
     if (node.parent) steps.push({ done: `removed the parent issue of ${before.id}`, doing: 'removing its parent issue', run: () => send(context, 'REMOVE_SUB_ISSUE', { issueId: node.parent.id, subIssueId: node.id }) })
     else steps.push(...epicItems(node, context).map((item) => deleteItemStep(item, before.id, context, item.project.id)))
     if (steps.length === 0) return { before, after: before }
-    if (dryRun) return { before, after: { ...before, parent: undefined } }
+    if (dryRun) {
+      // The real run removes only the parent issue when there is one, so an epic item still gives the issue its parent.
+      const remaining = node.parent ? parentOf({ ...node, parent: null }, context) : undefined
+      const { parent, ...rest } = before
+      return { before, after: remaining === undefined ? rest : { ...rest, parent: remaining } }
+    }
     return run(before.id, steps, before)
   }
 
