@@ -3,3 +3,7 @@
 {"at":"2026-11-17T22:22:35Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-17T22:22:35Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-17T22:22:35Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-91-add-the-github-draft-issues-command"}
+{"at":"2026-11-17T22:54:52Z","by":"fred","op":"comment","to":"2026-11-17T22-54-52Z-fred.md"}
+{"at":"2026-11-17T22:55:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-17T22:55:09Z","by":"fred","op":"comment","to":"2026-11-17T22-55-09Z-fred.md"}
+{"at":"2026-11-17T22:55:09Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
