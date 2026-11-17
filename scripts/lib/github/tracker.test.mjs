@@ -230,3 +230,11 @@ test('a mapped label created after the cached discovery is found by the one refr
   const sent = fake.reads.filter((call) => call.name === 'PmkitRepo').at(-1)
   assert.equal(sent.variables.l0, 'Doing')
 })
+
+test('capabilities without a Project warns about the capabilities a Project gives', async () => {
+  const { tracker } = await trackerOf({ ...SCOPE, project: 'none' })
+  const manifest = await tracker.capabilities()
+  assert.ok(manifest.warnings.includes('tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent'))
+  const withProject = await (await trackerOf()).tracker.capabilities()
+  assert.ok(!withProject.warnings.some((warning) => warning.includes('tracker.scope.project is none')))
+})

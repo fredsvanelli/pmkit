@@ -12,7 +12,7 @@ import { historyOperations } from './history-ops.mjs'
 import { defaultExec } from './host.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
-import { buildGithubCapabilities } from './manifest.mjs'
+import { buildGithubCapabilities, PROJECT_ONLY } from './manifest.mjs'
 import { brokenGithubMappings } from './mappings.mjs'
 import { relationOperations } from './relation-ops.mjs'
 
@@ -104,7 +104,7 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
       repo: scope.repo,
       project: scope.project ?? null,
       capabilities: buildGithubCapabilities(raw, config.pmkit),
-      warnings: [...warnings],
+      warnings: [...warnings, ...(raw.project === null ? [`tracker.scope.project is none, so ${PROJECT_ONLY.slice(0, -1).join(', ')} and ${PROJECT_ONLY.at(-1)} are absent`] : [])],
     }
   }
 
