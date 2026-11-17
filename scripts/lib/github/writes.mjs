@@ -11,6 +11,7 @@ import { CATEGORIES, TERMINAL } from '../model.mjs'
 import { CLOSED, CLOSED_NOT_PLANNED, OPEN } from './discovery.mjs'
 import { itemOf, optionForPriority, PRIORITIES, ROLES, statusOf, toIssue } from './issues.mjs'
 import { parseFieldSource } from './mappings.mjs'
+import { sprintsOf } from './cycles.mjs'
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', message, nextStep)
@@ -124,8 +125,36 @@ function dateWrite(value, field, project) {
   return { write: { fieldId: field.id, dateValue: value }, shown: { __typename: 'IssueFieldDateValue', value } }
 }
 
+/** The iteration of a sprint value in a field's configuration: 'current' is the active one, else a start date. Null when the date has none. */
+function iterationOf(value, field, today) {
+  if (value !== 'current' && !validDate(value)) throw invalid('sprint must be current or a start date as YYYY-MM-DD')
+  const { sprints } = sprintsOf(field.configuration, today)
+  const target = value === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === value)
+  if (value === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
+  if (!target) return null
+  // sprintsOf keeps the first iteration of a start date, and so does this lookup.
+  const all = [...(field.configuration?.completedIterations ?? []), ...(field.configuration?.iterations ?? [])]
+  return all.find((iteration) => iteration.startDate === target.id)
+}
+
+/** The iteration a sprint value stands for. An unknown date is stale, so the caller refreshes once. */
+function requireIteration(value, field, today) {
+  const iteration = iterationOf(value, field, today)
+  if (!iteration) throw stale(`sprint ${value} is not an iteration of the field ${field.name}`, 'pmkit cycle list')
+  return iteration
+}
+
+function iterationWrite(value, field, today) {
+  const iteration = requireIteration(value, field, today)
+  return {
+    write: { iterationId: iteration.id },
+    shown: { __typename: 'ProjectV2ItemFieldIterationValue', iterationId: iteration.id, title: iteration.title, startDate: iteration.startDate, duration: iteration.duration },
+  }
+}
+
 /** The { write, shown } of a value that is not null, by the field's data type. */
-function valueWrite(role, value, field, project) {
+function valueWrite(role, value, field, project, today) {
+  if (role === 'sprint' && field.dataType === 'ITERATION' && project) return iterationWrite(value, field, today)
   if (field.dataType === 'SINGLE_SELECT') return selectWrite(role, value, field, project)
   if (role === 'estimate' && field.dataType === 'NUMBER') return numberWrite(value, field, project)
   if (role === 'due' && field.dataType === 'DATE') return dateWrite(value, field, project)
@@ -136,11 +165,11 @@ function valueWrite(role, value, field, project) {
  * The write of one field role: { role, value, source, fieldId, write, shown }. `write` is GitHub's value (null clears it for a
  * Project field), `shown` the value the issue fragment would read after it.
  */
-function fieldWrite(role, value, context) {
+function fieldWrite(role, value, context, today) {
   const { source, field } = mappedField(role, context)
   const project = source === 'project'
   if (value === null) return { role, value, source, fieldId: field.id, write: project ? null : { fieldId: field.id, delete: true }, shown: null }
-  const { write, shown } = valueWrite(role, value, field, project)
+  const { write, shown } = valueWrite(role, value, field, project, today)
   return { role, value, source, fieldId: field.id, write, shown }
 }
 
@@ -198,7 +227,7 @@ const given = (value) => value !== undefined && value !== null
 function checkPatch(patch, create) {
   checkKeys(patch, create ? CREATE_KEYS : UPDATE_KEYS)
   if (patch.docs !== undefined) throw notSupported('the GitHub adapter does not link docs to issues yet')
-  for (const key of ['sprint', 'milestone', 'release']) {
+  for (const key of ['milestone', 'release']) {
     if (given(patch[key])) throw notSupported(`the GitHub adapter does not set ${key} yet`)
   }
 }
@@ -289,14 +318,19 @@ function planCreateOnly(patch, create, context, parentNode) {
 }
 
 /** One field write per role the patch changes. A create skips the null roles, an update the roles that keep their value. */
-function planFields(patch, create, beforeIssue, context) {
+function planFields(patch, create, beforeIssue, context, today) {
+  // A sprint value is current or a start date. It compares as the start date it stands for, so 'current' on the sprint the issue holds changes nothing.
+  const valueOf = (role) => {
+    const value = patch[role]
+    if (role !== 'sprint' || value === undefined || value === null) return value
+    const mapped = context.field('sprint')
+    return mapped ? requireIteration(value, mapped.field, today).startDate : value
+  }
   const changes = (role) => {
     if (patch[role] === undefined) return false
-    return create ? patch[role] !== null : (beforeIssue[role] ?? null) !== patch[role]
+    return create ? patch[role] !== null : (beforeIssue[role] ?? null) !== valueOf(role)
   }
-  // The sprint is an iteration, not a plain field value. Task 7 owns its write, so until then a change is refused.
-  if (changes('sprint')) throw notSupported('the GitHub adapter does not set sprint yet')
-  return Object.keys(ROLES).filter((role) => role !== 'sprint' && changes(role)).map((role) => fieldWrite(role, patch[role], context))
+  return Object.keys(ROLES).filter(changes).map((role) => fieldWrite(role, valueOf(role), context, today))
 }
 
 /** The branch name an update links, or undefined. */
@@ -337,7 +371,7 @@ export function planWrite(patch, { mode, before = null, context, parentNode = nu
   Object.assign(input, planType(patch, node, create, context))
   Object.assign(input, planLabels(patch, node, create, context))
   Object.assign(input, planCreateOnly(patch, create, context, parentNode))
-  const fields = planFields(patch, create, beforeIssue, context)
+  const fields = planFields(patch, create, beforeIssue, context, now.slice(0, 10))
   const branch = planBranch(patch, create)
 
   const plan = { input, fields, branch, move: [] }

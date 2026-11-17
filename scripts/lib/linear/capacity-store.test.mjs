@@ -132,3 +132,12 @@ test('no file under the root holds the key', () => {
     assert.ok(!fs.readFileSync(path.join(entry.parentPath, entry.name), 'utf8').includes(FAKE_KEY))
   }
 })
+
+test('ids that are dates sort as text, so a GitHub sprint file keeps its order', () => {
+  const root = tempDir()
+  writeEntry(root, 'github:acme/7', '2026-11-30', { capacity: { [ADA]: 3 } }, { sprint: { start: '2026-11-30', end: '2026-12-11' }, members: MEMBERS })
+  writeEntry(root, 'github:acme/7', '2026-11-02', { capacity: { [ADA]: 5 } }, { sprint: { start: '2026-11-02', end: '2026-11-13' }, members: MEMBERS })
+  const content = text(root)
+  assert.ok(content.indexOf('2026-11-02') < content.indexOf('2026-11-30'))
+  assert.deepEqual(entryFor(readCapacity(root, 'github:acme/7'), '2026-11-02').capacity, { [ADA]: 5 })
+})

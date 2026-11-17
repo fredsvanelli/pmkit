@@ -60,3 +60,8 @@ test('the documents start with their operation', () => {
   assert.match(ITERATION_FIELD_QUERY, /^query PmkitIterationField\(\$project: ID!, \$field: String!\)/)
   assert.match(UPDATE_ITERATIONS, /^mutation PmkitUpdateIterations\(\$input: UpdateProjectV2FieldInput!\)/)
 })
+
+test('an iteration past its end date that GitHub still lists as current reads closed', () => {
+  const { sprints } = sprintsOf({ iterations: [current], completedIterations: [] }, '2026-11-30')
+  assert.deepEqual(sprints.map((sprint) => [sprint.id, sprint.state]), [['2026-11-16', 'closed']])
+})

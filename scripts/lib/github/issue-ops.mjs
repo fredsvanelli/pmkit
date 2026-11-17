@@ -26,9 +26,9 @@ const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 
 /**
  * The issue operations over a GitHub client. getContext({ refresh }) returns the context of makeContext; the tracker
- * passes one over its discovery memo, and refresh rereads GitHub. The writes read config.pmkit for pmkit's default branch.
+ * passes one over its discovery memo, and refresh rereads GitHub. `now` is the clock a sprint named `current` reads. The writes read config.pmkit for pmkit's default branch.
  */
-export function issueOperations({ client, config, getContext }) {
+export function issueOperations({ client, config, getContext, now = () => new Date() }) {
   /** Reads every page of each nested connection GitHub cut, so the node lists are complete before mapping. */
   async function completeNested(node, context) {
     const docs = docsOf(context)
@@ -70,9 +70,9 @@ export function issueOperations({ client, config, getContext }) {
     const context = await getContext()
     const viewer = context.raw.viewer?.login ?? null
     const members = [...new Set([viewer, ...(context.raw.users ?? []).map((user) => user.login)].filter(Boolean))]
-    // Any sprint passes the check here, so translateFilter answers NOT_SUPPORTED for it.
+    // Any sprint passes the check here, because translateFilter checks it against the iterations.
     checkFilter(filter, { types: Object.keys(context.pmkit?.mappings?.types ?? {}), members, sprintExists: () => true })
-    const translated = translateFilter(filter, context, viewer)
+    const translated = translateFilter(filter, context, viewer, { today: now().toISOString().slice(0, 10) })
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const [owner, name] = context.repo.split('/')
     const variables = { owner, name, ...translated.variables, orderBy: { field: 'CREATED_AT', direction: 'ASC' }, ...context.fieldVariables }
@@ -221,7 +221,7 @@ export function issueOperations({ client, config, getContext }) {
   async function createIssue(input, actor, { dryRun = false } = {}) {
     await requireActor(actor)
     const parentNode = await parentNodeOf(input?.parent)
-    const { value: plan, context } = await withRefresh((current) => planWrite(input ?? {}, { mode: 'create', context: current, parentNode }))
+    const { value: plan, context } = await withRefresh((current) => planWrite(input ?? {}, { mode: 'create', context: current, parentNode, now: now().toISOString() }))
     if (dryRun) return { before: null, after: plan.after }
     const node = (await send(context, 'CREATE_ISSUE', plan.input, true)).createIssue.issue
     const id = issueIdOf(node, context.repo)
@@ -270,7 +270,7 @@ export function issueOperations({ client, config, getContext }) {
   async function updateIssue(id, patch, actor, { dryRun = false, base } = {}) {
     await writable(id, actor)
     const { node, issue: before } = await readNode(id)
-    const { value: plan, context } = await withRefresh((current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current }))
+    const { value: plan, context } = await withRefresh((current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current, now: now().toISOString() }))
     const branch = await planBranch(plan.branch, before, base, context)
     const notes = branch?.note ? [branch.note] : []
     const linked = branch ? { linked: { branch: branch.name, base: branch.start } } : {}

@@ -137,11 +137,11 @@ test('an empty categories list and limit 0 send no request', async () => {
   assert.deepEqual(fake.reads, [])
 })
 
-test('a bad filter fails with INVALID_INPUT, sprint with NOT_SUPPORTED', async () => {
+test('a bad filter fails with INVALID_INPUT, a sprint that is not a date too', async () => {
   const { ops } = await setup()
   await assert.rejects(ops.searchIssues({ assignee: 'stranger' }), { code: 'INVALID_INPUT' })
   await assert.rejects(ops.searchIssues({ types: ['epic'] }), { code: 'INVALID_INPUT' })
-  await assert.rejects(ops.searchIssues({ sprint: '3' }), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(ops.searchIssues({ sprint: '3' }), { code: 'INVALID_INPUT', message: 'sprint "3" is not current, none or a start date' })
 })
 
 test('a search completes the nested pages of each node that needs it', async () => {
@@ -639,11 +639,14 @@ test('archive without a Project names the repository and the move', async () => 
   })
 })
 
-test('updateIssue refuses to clear the sprint of an issue, and sends nothing', async () => {
+test('updateIssue clears the sprint of an item and sets another one', async () => {
   const pmkit = { ...WRITE_PMKIT, mappings: { ...WRITE_PMKIT.mappings, fields: { ...WRITE_PMKIT.mappings.fields, sprint: 'project:Sprint' } } }
   const { fake, ops } = await writeSetup({ pmkit, project: { fields: WRITE_FIELDS, iterations: { iterations: [{ id: 'IT_a', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 }] } } })
   fake.seed({ number: 1, item: { values: { Sprint: '2026-11-16' } } })
   assert.equal((await ops.getIssue('1')).sprint, '2026-11-16')
-  await assert.rejects(ops.updateIssue('1', { sprint: null }, ME), { code: 'NOT_SUPPORTED', message: 'the GitHub adapter does not set sprint yet' })
-  assert.deepEqual(fake.mutations, [])
+  const result = await ops.updateIssue('1', { sprint: null }, ME)
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitClearProjectField'])
+  assert.equal(result.after.sprint, undefined)
+  const set = await ops.updateIssue('1', { sprint: '2026-11-16' }, ME)
+  assert.equal(set.after.sprint, '2026-11-16')
 })

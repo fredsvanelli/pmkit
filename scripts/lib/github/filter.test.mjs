@@ -163,10 +163,45 @@ test('sort and limit pass through, created is the default sort', () => {
   assert.equal(translated.limit, 5)
 })
 
-test('sprint and release answer NOT_SUPPORTED', () => {
-  assert.throws(() => translate({ sprint: 'current' }), { code: 'NOT_SUPPORTED' })
+test('release answers NOT_SUPPORTED, and a null sprint adds no step', () => {
   assert.throws(() => translate({ release: 'v1' }), { code: 'NOT_SUPPORTED' })
-  assert.equal(translate({ sprint: null }).empty, false)
+  assert.equal(translate({ sprint: null }).clientSteps.length, 0)
+})
+
+const sprintRaw = raw()
+sprintRaw.project.fields.push({
+  id: 'F2', name: 'Sprint', dataType: 'ITERATION', options: [], issueField: null,
+  configuration: { duration: 14, startDay: 1, iterations: [{ id: 'IT_2', title: 'Sprint 2', startDate: '2026-11-16', duration: 14 }], completedIterations: [{ id: 'IT_1', title: 'Sprint 1', startDate: '2026-11-02', duration: 14 }] },
+})
+const withSprint = makeContext(sprintRaw, { ...pmkit, mappings: { ...pmkit.mappings, fields: { sprint: 'project:Sprint' } } })
+const inSprint = (startDate) => ({ projectItems: { nodes: [{ id: 'IT', isArchived: false, project: { id: 'P1' }, fSprint: startDate ? { __typename: 'ProjectV2ItemFieldIterationValue', iterationId: 'x', title: 't', startDate, duration: 14 } : null }] } })
+
+test('sprint current, a start date and none are client steps on the issue sprint', () => {
+  const today = { today: '2026-11-17' }
+  const run = (sprint) => translateFilter({ sprint }, withSprint, 'octocat', today)
+  assert.equal(keeps(run('current'), node(inSprint('2026-11-16')), withSprint), true)
+  assert.equal(keeps(run('current'), node(inSprint('2026-11-02')), withSprint), false)
+  assert.equal(keeps(run('current'), node(), withSprint), false)
+  assert.equal(keeps(run('2026-11-02'), node(inSprint('2026-11-02')), withSprint), true)
+  assert.equal(keeps(run('2026-11-02'), node(inSprint('2026-11-16')), withSprint), false)
+  assert.equal(keeps(run('none'), node(inSprint(null)), withSprint), true)
+  assert.equal(keeps(run('none'), node(inSprint('2026-11-16')), withSprint), false)
+  assert.equal(run('current').serverLimit, undefined)
+})
+
+test('sprint current with no active iteration is INVALID_INPUT', () => {
+  assert.throws(() => translateFilter({ sprint: 'current' }, withSprint, 'octocat', { today: '2026-12-31' }), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+})
+
+test('any other sprint value is INVALID_INPUT with the exact message', () => {
+  for (const value of ['x', '2026-13-45x', '12', 'Sprint 2']) {
+    assert.throws(() => translateFilter({ sprint: value }, withSprint, 'octocat'), { code: 'INVALID_INPUT', message: `sprint "${value}" is not current, none or a start date` })
+  }
+})
+
+test('a sprint filter without a mapped iteration field is NOT_SUPPORTED, and none keeps every issue', () => {
+  assert.throws(() => translate({ sprint: 'current' }, withProject), { code: 'NOT_SUPPORTED', nextStep: '/pmkit:setup' })
+  assert.equal(translate({ sprint: 'none' }, withProject).clientSteps.length, translate({}, withProject).clientSteps.length)
 })
 
 test('serverLimit is set only for the created sort without client steps', () => {
