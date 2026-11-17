@@ -61,8 +61,8 @@ const cliOf = (name) => COMMANDS.find((command) => command.name === name)
 const isWrite = (call) => call.dryRun || Boolean(cliOf(call.command)?.write)
 
 describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
-  test('there are 56 command files', () => {
-    assert.equal(FILES.length, 56, FILES.map((file) => file.rel).join(', '))
+  test('there are 57 command files', () => {
+    assert.equal(FILES.length, 57, FILES.map((file) => file.rel).join(', '))
   })
 
   test('every command file has a scenario', async () => {

@@ -1,0 +1,56 @@
+$ pmkit docs read specs/webhook-replay-prd.md --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 1, read]
+exit 0
+$ pmkit epic list --json  [step 1, read]
+exit 0
+$ pmkit milestone list --json  [step 1, read]
+exit 0
+$ pmkit docs list --json  [step 1, read]
+exit 0
+$ pmkit issues list --text replay --json  [step 1, read]
+exit 0
+$ pmkit issues list --text parked --json  [step 1, read]
+exit 0
+$ pmkit docs list --json  [step 2, read]
+exit 0
+$ pmkit docs read adr/0001-replays-stay-manual-in-v1.md --json  [step 2, read]
+exit 0
+? Resume  [confirmed]
+$ pmkit issues list --category done --text deliveries --json  [step 8, read]
+exit 0
+$ pmkit issues list --parent EPC-M0GZ --json  [step 8, read]
+exit 0
+$ pmkit issues get ISS-M0GZ --json  [step 9, read]
+exit 0
+$ pmkit issues get ISS-Y8KQ --json  [step 9, read]
+exit 0
+$ pmkit issues dependencies EPC-M0GZ --json  [step 9, read]
+exit 0
+$ pmkit docs adr-get 1 --json  [step 9, read]
+exit 0
+$ pmkit issues link ISS-M0GZ ISS-Y8KQ --kind blocks --dry-run --json  [step 9, dry run]
+exit 0
+? Stage 6  [confirmed]
+$ pmkit issues link ISS-M0GZ ISS-Y8KQ --kind blocks --json  [step 9, write]
+exit 0
+
+--- changed .issues/issues/ISS-Y8KQ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-Y8KQ","title":"Replay a parked delivery","type":"task","status":"backlog","estimate":2,"labels":[],"parent":"EPC-M0GZ","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-M0GZ"}
+--- changed .issues/issues/ISS-Y8KQ/issue.md
+  ---
+  id: ISS-Y8KQ
+  title: Replay a parked delivery
+  type: task
+  status: backlog
+  estimate: 2
+  parent: EPC-M0GZ
++blocked_by: [ISS-M0GZ]
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Acceptance criteria
+
+  - [ ] A replayed delivery leaves the list and is sent again
