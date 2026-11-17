@@ -1,6 +1,6 @@
 # PMK-89 design: GitHub Issues without a Project
 
-Issue PMK-89, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: draft, waiting for the user's approval. The user answered five questions on 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-89, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: approved by the user on 2026-11-17, with the builder's calls. The user answered five questions on 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -82,7 +82,7 @@ It also exposes `categoryOfLabels(names)`, which returns the category of the sta
 - one: `{ name: <label name>, category }`;
 - several: the one furthest along `triage`, `backlog`, `todo`, `in_progress`, `in_review`, with the warning `<id> has several status labels (<names>); pmkit reads <name>`. `triage` comes first in that order, since it is the earliest category **(builder's call)**.
 
-`toIssue` reads the type from the issue type when the repository has issue types, and from the type labels otherwise. Search and get carry the warnings of the issues they return in the result's `warnings`, as other read warnings do.
+`toIssue` reads the type from the issue type when the repository has issue types, and from the type labels otherwise. Search carries the warnings of the issues it returns in the result's `warnings`. The contract's `getIssue` returns the issue alone, so it has no warning channel; a move removes the extra labels.
 
 ### Writes
 
