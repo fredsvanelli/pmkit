@@ -68,7 +68,7 @@ The flow of `/pmkit:spec:from-prd` (`commands/spec/from-prd.md`) on a Local trac
 
 ## Stage 4: epic and milestones
 
-5. After the PM approves the epic and its milestone, the command follows steps 6 and 7 of `commands/spec/import.md`:
+5. After the PM approves the epic and its milestone, the command follows steps 6 and 7 of `commands/spec/import.md`. It runs the dry runs of step 6 before these writes. Then it writes:
 
    ```
    node scripts/pmkit.mjs epic create --title-file tmp/epic-title.txt --json
@@ -79,7 +79,7 @@ The flow of `/pmkit:spec:from-prd` (`commands/spec/from-prd.md`) on a Local trac
 
 ## Stage 5: issue tree
 
-6. After the PM approves the tree, the command follows steps 6, 8 and 9 of `commands/spec/import.md`. It creates each issue under the epic, with its estimate, description and criteria:
+6. After the PM approves the tree, the command follows steps 6, 8 and 9 of `commands/spec/import.md`. It runs the dry runs of step 6 for the top-level issues before these writes. Then it creates each issue under the epic, with its estimate, description and criteria:
 
    ```
    node scripts/pmkit.mjs issues create --title-file tmp/title-1.txt --type feature --estimate 3 --milestone v1 --parent <epic-id> --description-file tmp/description-1.txt --criteria-file tmp/criteria-1.txt --json
@@ -96,14 +96,16 @@ The flow of `/pmkit:spec:from-prd` (`commands/spec/from-prd.md`) on a Local trac
 
 ## Stage 6: final check
 
-7. The check reads the issues of the epic and its blocker chain:
+7. The check reads each new issue, then the blocker chain of the epic:
 
    ```
-   node scripts/pmkit.mjs issues list --parent <epic-id> --json
+   node scripts/pmkit.mjs issues get <id-1> --json
+   node scripts/pmkit.mjs issues get <id-2> --json
+   node scripts/pmkit.mjs issues get <id-3> --json
    node scripts/pmkit.mjs issues dependencies <epic-id> --json
    ```
 
-   Expect the three issues, each with an `estimate`, a non-empty `acceptanceCriteria` and `milestone: "v1"`. `issues dependencies` returns `basis: "blockers"`, `problems: []` and `criticalPath.ids` with the three IDs in the order of the chain. The output of the command shows that critical path and ends with `/pmkit:cycle:plan`.
+   The E2E test reads the issues with `issues list --parent <epic-id> --json`, one call that stands in for the three `issues get` calls. Expect the three issues, each with an `estimate`, a non-empty `acceptanceCriteria` and `milestone: "v1"`. `issues dependencies` returns `basis: "blockers"`, `problems: []` and `criticalPath.ids` with the three IDs in the order of the chain. The output of the command shows that critical path and ends with `/pmkit:cycle:plan`.
 
 ## Resume
 
