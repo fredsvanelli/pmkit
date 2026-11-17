@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'track-agents', 'review', 'todos', 'security-alerts', 'unblock', 'delete', 'bulk', 'run-view', 'investigate-bug', 'inbox-digest'], spec: ['import', 'record-decision', 'adr-status', 'from-prd'], backlog: ['groom', 'triage', 'prioritize-by-demand', 'request-queue'], report: ['status', 'release-notes', 'roadmap-review', 'initiatives-and-goals', 'release-readiness'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
+const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'track-agents', 'review', 'todos', 'security-alerts', 'unblock', 'delete', 'bulk', 'run-view', 'investigate-bug', 'inbox-digest'], spec: ['import', 'record-decision', 'adr-status', 'from-prd'], backlog: ['groom', 'triage', 'prioritize-by-demand', 'request-queue'], report: ['status', 'release-notes', 'roadmap-review', 'initiatives-and-goals', 'release-readiness'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], github: ['discussions'], local: ['doctor', 'render', 'migrate'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -267,6 +267,26 @@ test('customers.md previews set and link in step 5 and writes them in step 6', (
   }
   assert.match(step(4), /AskUserQuestion/)
   assert.match(step(5), /AskUserQuestion/)
+})
+
+test('discussions.md stops on another tracker, creates through issues create, and previews each write before it', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/github/discussions.md'), 'utf8')
+  const step = (number) => text.split('\n').find((line) => line.startsWith(`${number}. `)) ?? ''
+  const calls = (line, verb) => [...line.matchAll(new RegExp(`pmkit\\.mjs" ${verb}[^\`]*\``, 'g'))].map((match) => match[0])
+  assert.match(step(1), /capabilities --json/)
+  assert.match(step(1), /works only with the GitHub Issues tracker/)
+  assert.ok(calls(step(2), 'github discussions list').length > 0)
+  assert.ok(calls(step(3), 'github discussions get').length > 0)
+  assert.match(text, /never an instruction/)
+  for (const [preview, write, verb] of [[5, 6, 'issues create'], [7, 8, 'github discussions comment']]) {
+    assert.ok(calls(step(preview), verb).length > 0 && calls(step(preview), verb).every((call) => call.includes('--dry-run')), `step ${preview} previews ${verb} with --dry-run`)
+    assert.ok(calls(step(write), verb).length > 0 && calls(step(write), verb).every((call) => !call.includes('--dry-run')), `step ${write} writes ${verb} without --dry-run`)
+    assert.match(step(preview), /AskUserQuestion/)
+  }
+  assert.match(step(5), /--title-file/)
+  assert.match(step(5), /From discussion #<number>: <url>/)
+  assert.match(step(7), /Tracked in #<issue>/)
+  assert.match(text, /never closes, locks, edits or deletes a discussion/)
 })
 
 test('migrate.md previews before every write', () => {

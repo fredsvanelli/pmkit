@@ -8,6 +8,7 @@ import { PmkitError, unarchiveNotSupported } from '../errors.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createGithubClient } from './client.mjs'
 import { discoveryView, fetchDiscovery, mappedLabelNames, parseProject } from './discovery.mjs'
+import { discussionOperations } from './discussions.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { defaultExec } from './host.mjs'
 import { issueOperations } from './issue-ops.mjs'
@@ -191,5 +192,12 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
     ...Object.fromEntries(Object.keys(ABSENT_CAPABILITY).map((operation) => [operation, absent(operation)])),
   }
   const implemented = { discover, capabilities, ...refused, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
-  return Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)]))
+  // GitHub-only features beside the contract, as the Linear tracker returns triage and customers. Discussions read no status,
+  // type or field, so they run the scope check but skip the mapping check (PMK-90).
+  const scoped = (operations) => Object.fromEntries(Object.entries(operations).map(([name, body]) => [name, async (...args) => {
+    requireScope()
+    return body(...args)
+  }]))
+  const discussions = scoped(discussionOperations({ client, scope: { ...scope, repo: scope.repo ?? '' } }))
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), discussions }
 }

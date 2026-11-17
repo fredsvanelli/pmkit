@@ -51,6 +51,7 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
+import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
 import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
@@ -907,6 +908,7 @@ async function flowInputs(ctx, tracker, statuses) {
 // A command reaches the tracker through ctx.tracker(), which holds only the contract operations. `local: true` marks the commands
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
 // `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear(feature).
+// `github: true` does the same for GitHub-only features (discussions): they use ctx.github(feature).
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear or github writes only .pmkit/config.yaml and returns what setup must ask',
@@ -2554,6 +2556,32 @@ export const COMMANDS = [
     run: async (ctx) => (await ctx.linear('customers')).link({
       customer: ctx.opt('customer'), issue: ctx.opt('issue'), project: ctx.opt('project'), request: ctx.opt('request'), body: ctx.opt('body'), important: ctx.flag('important') ? true : undefined, dryRun: ctx.dryRun,
     }),
+  },
+  // GitHub Discussions (PMK-90): read a discussion and comment back on it, for /pmkit:github:discussions.
+  {
+    name: 'github discussions list', summary: 'the discussions of the repository, open ones by default, newest activity first; says so when Discussions are off',
+    usage: '[--category NAME] [--answered yes|no] [--state open|closed|all] [--limit n]', github: true, flags: ['category', 'answered', 'state', 'limit'],
+    run: async (ctx) => {
+      const result = await (await ctx.github('discussions')).list({ category: ctx.opt('category'), answered: ctx.opt('answered'), state: ctx.opt('state'), limit: ctx.opt('limit') })
+      return { data: result, text: discussionListText(result) }
+    },
+  },
+  {
+    name: 'github discussions get', summary: 'one discussion with its answer, its first 100 comments and the first 100 replies of each; warns when the thread is longer',
+    usage: '<number>', github: true, args: ['number'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.github('discussions')).get(ctx.args[0])
+      return { data: result, text: discussionGetText(result), warnings: result.warnings }
+    },
+  },
+  {
+    name: 'github discussions comment', summary: 'posts one comment on a discussion; --dry-run previews',
+    usage: '<number> --body-file f', write: true, dryRun: true, github: true, args: ['number'], flags: ['body-file'],
+    run: async (ctx) => {
+      if (ctx.opt('body-file') === undefined) throw usageError('github discussions comment needs --body-file', 'Pass a file, or - for stdin')
+      const result = await (await ctx.github('discussions')).comment(ctx.args[0], readInput(ctx.opt('body-file')), { dryRun: ctx.dryRun })
+      return { data: result, text: discussionCommentText(result, ctx.dryRun) }
+    },
   },
   {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
@@ -4781,6 +4809,12 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         await ctx.tracker()
         return tracker[feature]
       },
+      // The GitHub-only features of the raw GitHub tracker, or null for any other system.
+      github: async (feature) => {
+        if (ctx.config().system !== 'github') return null
+        await ctx.tracker()
+        return tracker[feature]
+      },
       settings: () => adapterFor(ctx.config().system, adapters).settings(ctx.config()),
       host: () => (host ??= makeHost(ctx)),
       actor: async () => (typeof options.as === 'string' ? options.as : (await requireMember(ctx)).id),
@@ -4803,6 +4837,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (command.linear) {
       const { system } = ctx.config()
       if (system !== 'linear') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Linear tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
+    }
+    if (command.github) {
+      const { system } = ctx.config()
+      if (system !== 'github') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the GitHub Issues tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
     // auto_commit commits Local tracker files, so a hosted tracker never commits.
     const autoCommit = (commit, written) => {

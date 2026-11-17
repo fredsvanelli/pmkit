@@ -104,6 +104,10 @@ _Avoid_: status tag, workflow label
 A branch that GitHub links to an issue in the issue's Development section. On GitHub Issues, `issues branch` creates it on GitHub at the head there of the branch it starts from, pmkit's default branch or `--from`, and the issue's `branch` reads it (ADR 0008).
 _Avoid_: issue branch (alone)
 
+**Discussion**:
+A GitHub Discussions thread of the repository of a GitHub Issues tracker: an RFC, an idea or a question, with comments and one level of replies, and a marked answer in a Q&A category. `/pmkit:github:discussions` summarizes one and can turn it into an issue, whose description names the discussion. A discussion is not an issue and has no status.
+_Avoid_: forum post, thread (a thread is a root comment and its replies on an issue)
+
 **Blocked**:
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.
 _Avoid_: on hold, stuck, waiting

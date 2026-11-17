@@ -1,0 +1,41 @@
+$ pmkit github discussions comment 1 --body-file <inputs>/comment.md
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `github discussions comment` works only with the GitHub Issues tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit github discussions comment 1 --body-file <inputs>/comment.md --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`github discussions comment` works only with the GitHub Issues tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit github discussions comment 1 --body-file <inputs>/comment.md --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `github discussions comment` works only with the GitHub Issues tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit github discussions comment 1 --body-file <inputs>/comment.md --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`github discussions comment` works only with the GitHub Issues tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)

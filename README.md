@@ -50,6 +50,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
 - `/pmkit:linear:customers`: List and edit Linear customers (tier, revenue, size, status) and link customer requests to issues and projects.
+- `/pmkit:github:discussions`: Summarize a GitHub discussion (an RFC, an idea, a question) and turn it into an issue after you confirm. It works only with the GitHub Issues tracker.
 - `/pmkit:linear:triage-rotation`: See who is on triage duty in Linear, change the rotation, and read Linear's Triage Intelligence suggestions.
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
@@ -186,6 +187,9 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `pr sync` | moves `in_review` issues to `done` when their pull request is merged |
 | `deploys list [--environment e] [--limit n]` | the repository deployments (default 20, at most 100) with the state of the latest status of each, read in one call (a status that cannot be read shows `unknown`, not `pending`); reads only |
 | `ci logs [--branch b] [--run id] [--tail n]` | the log of the failed steps of a workflow run: `--run`, or the newest failed run of a branch (default: the current branch); keeps the last `--tail` lines (default 200); the result has the workflow name, URL, conclusion, `createdAt` and `headSha`, `supersededNote` (a newer run of the workflow succeeded) and `logNote` says when the run did not fail, has not finished, was a `startup_failure` or has no log; reads only |
+| `github discussions list [--category NAME] [--answered yes\|no] [--state open\|closed\|all] [--limit n]` | the discussions of the GitHub repository, open ones by default, newest activity first (default 20, at most 100); `available: false` with the next step when the repository has Discussions turned off; GitHub Issues tracker only |
+| `github discussions get <number>` | one discussion (`12` or `#12`) with its answer, labels, first 100 comments and the first 100 replies of each, and a warning when the thread is longer; reads only |
+| `github discussions comment <number> --body-file f` | posts one comment on a discussion; `--dry-run` reads the discussion and writes nothing |
 | `changelog --file f --since v` | prints the `CHANGELOG.md` sections newer than a version, oldest first; needs no config |
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
 | `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
