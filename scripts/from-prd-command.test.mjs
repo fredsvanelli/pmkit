@@ -291,7 +291,7 @@ test('stage 3b checks a new name with a dry run before writing', () => {
 test('a CLI error during an ADR write stops the flow, unlike a declined ADR', () => {
   const step = stage('Stage 3')
   assert.match(step, /error from the CLI[^.]*stops the flow/)
-  assert.match(step, /each decision not yet reached, or whose write failed, still marked `ADR`/)
+  assert.match(step, /each decision not yet reached[^.]*whose write failed[^.]*still marked `ADR`/)
   assert.match(step, /stops as the rule above the steps says/)
   assert.doesNotMatch(step, /\/pmkit:spec:from-prd specs/, 'the stop rule names the command, since stage 3b can fail too')
 })
@@ -325,4 +325,33 @@ test('stage 4 asks nothing when an existing epic needs no new milestone', () => 
 
 test('the output gives the commit state of repository ADRs', () => {
   assert.match(section('Output'), /`docs\/adr\/`[^.]*no commit yet/)
+})
+
+test('a stop in stage 3 keeps the decision at which the PM stopped marked ADR', () => {
+  assert.match(stage('Stage 3'), /the one at which the PM stopped[^.]*still marked `ADR`/)
+})
+
+test('a stop at a stage 3b CONFLICT names the ADRs written, which a new run with the original PRD offers again', () => {
+  const conflict = stage('Stage 3b').split('\n').find((line) => line.includes('`CONFLICT`')) ?? ''
+  assert.match(conflict, /new run with the original PRD offers[^.]*ADRs[^.]*again/)
+  assert.match(conflict, /with their numbers/)
+  assert.match(conflict, /declines them there/)
+})
+
+// The placeholders a call may hold bare: IDs, numbers and files that the CLI returned or the agent made, and the slug,
+// which holds only letters, digits and `-`.
+const SAFE = ['<file>', '<slug>', '<id>', '<blocking id>', '<blocked id>', '<number>', '<epic-id>']
+
+test('a path or an ID from data or the user reaches the shell between single quotes', () => {
+  // Each pmkit.mjs call of the command file, up to its closing backtick.
+  const calls = [...text.matchAll(/pmkit\.mjs" ([^`]*)/g)].map((match) => match[1])
+  const reads = calls.filter((call) => call.startsWith('docs read '))
+  assert.equal(reads.length, 2, 'stage 0 and the resume step read documents')
+  assert.deepEqual(reads.filter((call) => call !== "docs read '<path>' --json"), [])
+  assert.ok(calls.includes("epic get '<epic-id>' --json"), 'the epic ID the user gives is quoted')
+  const bare = calls.flatMap((call) => [...call.replace(/'[^']*'/g, '').matchAll(/<[^<>]+>/g)].map((match) => match[0]))
+  assert.deepEqual([...new Set(bare)].filter((placeholder) => !SAFE.includes(placeholder)), [])
+  for (const name of ['Stage 0', 'Resume']) assert.match(stage(name), /`'\\''`/, `${name} says how to quote`)
+  assert.match(stage('Stage 0'), /[Ll]ater calls use the `id` that `epic get` returned/)
+  assert.match(stage('Stage 2'), /new name[^.]*same rule as the slug/)
 })

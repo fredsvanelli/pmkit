@@ -63,7 +63,7 @@ The user picked approach 1 on 2026-11-17. Approach 3 can come later without brea
 - The interview targets a PM with a one-page PRD and covers scope, use cases and acceptance criteria, with no technical questions.
 - Every stage has its own approval (option 2 of the conversation): the refined PRD, each ADR, the epic and milestones, the issue tree, and the extra links of the final check.
 - An ADR records only a product decision that is hard to reverse: the billing model, limits, what stays out of v1. The rest stays in the refined PRD.
-- A declined ADR turns its decision into `PRD only` and the flow goes on. The refined PRD is stored after the ADRs, so it carries the final marks and a resume never offers a declined ADR again (decided on 2026-11-17).
+- A declined ADR turns its decision into `PRD only` and the flow goes on. The refined PRD is stored after the ADRs, so it carries the final marks and a resume never offers a declined ADR again (decided on 2026-11-17). This holds for an ADR declined in the run that stores the PRD. On a resume the PRD is already stored, and the CLI has no `docs update`, so an ADR declined there stays `ADR` in the stored PRD and a later resume offers it again.
 
 ## The flow
 
@@ -146,19 +146,19 @@ The refined PRD path, the ADR numbers and titles, the epic ID, the created tree 
 
 ### When the PM declines a stage
 
-A declined ADR is the exception: stage 3 goes on, as above. For any other stage, the flow stops there. It lists what it already wrote and names the command that continues from there: `/pmkit:spec:from-prd specs/<slug>-prd.md` reruns from the stored refined PRD.
+A declined ADR is the exception: stage 3 goes on, as above. For any other stage, the flow stops there. It lists what it already wrote and names the command that continues from there. Once stage 3b stored the refined PRD, `/pmkit:spec:from-prd specs/<slug>-prd.md` reruns from it. Before stage 3b, the command is `/pmkit:spec:from-prd <prd>` with the original PRD. When the flow knows an epic ID, given, chosen in stage 0 or created in stage 4, the command names it after the PRD, such as `/pmkit:spec:from-prd specs/<slug>-prd.md <epic-id>`.
 
 ### Resuming
 
-When the input is a refined PRD already in `docs/specs/` **(builder's call: recognized by its `-prd.md` name and its Decisions section)**, the command skips stages 1 and 2. It finds the ADRs that cite the PRD path in both places an ADR can live: the tracker's ADRs through `docs list` and `docs read`, and the repository's `docs/adr/` through the file tools **(builder's call)**. It skips the decisions that already have one. It finds an epic whose title matches the PRD and asks whether it is the one; when it is, stage 4 is skipped and stage 5 does not repeat the issues the epic already holds, as `spec:import` step 2 does.
+When the input is a refined PRD already in `docs/specs/` **(builder's call: recognized by its `-prd.md` name and its Decisions section)**, the command skips stages 1 and 2. It finds the ADRs that cite the PRD path in both places an ADR can live: the tracker's ADRs through `docs list` and `docs read`, and the repository's `docs/adr/` through the file tools **(builder's call)**. It skips the decisions that already have one. A decision declined in the run that stored the PRD is `PRD only` there, so a resume never offers it. A decision declined during a resume stays `ADR`, because the stored PRD cannot change, so a later resume offers it again. It finds an epic whose title matches the PRD and asks whether it is the one; when it is, stage 4 is skipped and stage 5 does not repeat the issues the epic already holds, as `spec:import` step 2 does.
 
 ## Subagents
 
 | Subagent | Stage | Reads | Writes | Fallback without subagents |
 |---|---|---|---|---|
 | Recon | 0 | PRD, docs, tracker, code | nothing | the main agent reads in sequence |
-| Drafting | 5 | refined PRD, its slice of requirements, `discover`, `issues similar` | nothing; returns rows | the main agent drafts each slice in turn |
-| Check | 6 | refined PRD, new issues, `issues dependencies` | nothing; returns findings | the main agent runs the same checklist |
+| Drafting | 5 | refined PRD, its slice of requirements, `discover`, done issues from `issues list --category done --text` | nothing; returns rows | the main agent drafts each slice in turn |
+| Check | 6 | refined PRD, new issues, the issues the epic already held, the ADRs of stage 3 and of the resume, `issues dependencies` | nothing; returns findings | the main agent runs the same checklist |
 
 No subagent writes to the tracker. Every write runs in the main agent after an approval, so the confirmations stay where the user can see them.
 
