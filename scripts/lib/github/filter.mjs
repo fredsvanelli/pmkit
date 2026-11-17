@@ -41,7 +41,8 @@ function sprintStep(sprint, context, today) {
   if (sprint === 'none') return (issue) => issue.sprint === undefined
   if (sprint !== 'current') return (issue) => issue.sprint === sprint
   const active = sprintsOf(mapped.field.configuration, today).sprints.find((item) => item.state === 'active')
-  if (!active) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
+  // The configuration comes from the discovery cache, so the error is stale: the caller refreshes once and translates again.
+  if (!active) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list', { stale: true })
   return (issue) => issue.sprint === active.id
 }
 

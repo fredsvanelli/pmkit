@@ -84,6 +84,22 @@ test('listCycles reads the field on every call, so an iteration added on GitHub 
   assert.equal(fake.reads.filter((call) => call.name === 'PmkitIterationField').length, 1)
 })
 
+test('searchIssues --sprint current refreshes the discovery once when the cached field has no active iteration', async () => {
+  const { fake, ops, state } = await setup({ iterations: { iterations: [], completed: COMPLETED } })
+  // GitHub gains the current iteration after the discovery was cached.
+  fake.state.project.fields.find((field) => field.name === 'Sprint').configuration.iterations.push(...structuredClone(CURRENT))
+  fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+  fake.seed({ number: 2, item: { status: 'Todo', values: { Sprint: '2026-11-02' } } })
+  assert.deepEqual(ids((await ops.searchIssues({ sprint: 'current' })).issues), ['1'])
+  assert.equal(state.refreshes, 1)
+})
+
+test('searchIssues --sprint current with no active sprint after the refresh answers INVALID_INPUT, after one refresh', async () => {
+  const { ops, state } = await setup({ now: new Date('2026-12-30T00:00:00Z') })
+  await assert.rejects(ops.searchIssues({ sprint: 'current' }), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+  assert.equal(state.refreshes, 1)
+})
+
 test('currentCycle is the active sprint, or null when none is active', async () => {
   const { cycles } = await setup()
   assert.equal((await cycles.currentCycle()).id, '2026-11-16')

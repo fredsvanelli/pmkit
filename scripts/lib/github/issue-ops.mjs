@@ -68,15 +68,17 @@ export function issueOperations({ client, config, getContext, now = () => new Da
 
   /** Narrows on GitHub with filterBy, then runs the client steps, pmkit's order and the limit. */
   async function searchIssues(filter = {}) {
-    const context = await getContext()
-    const viewer = context.raw.viewer?.login ?? null
-    const members = [...new Set([viewer, ...(context.raw.users ?? []).map((user) => user.login)].filter(Boolean))]
+    const held = await getContext()
+    const viewer = held.raw.viewer?.login ?? null
+    const members = [...new Set([viewer, ...(held.raw.users ?? []).map((user) => user.login)].filter(Boolean))]
     // The shared check does not know the milestone key, which only GitHub filters by, so the adapter checks that key and passes on the rest.
     // Any sprint passes the shared check, because translateFilter checks it against the iterations.
     const shared = filter !== null && typeof filter === 'object' && !Array.isArray(filter) ? Object.fromEntries(Object.entries(filter).filter(([key]) => key !== 'milestone')) : filter
     if (filter?.milestone !== undefined && typeof filter.milestone !== 'string') throw invalid('milestone must be a string', 'pmkit milestone list')
-    checkFilter(shared, { types: Object.keys(context.pmkit?.mappings?.types ?? {}), members, sprintExists: () => true })
-    const translated = translateFilter(filter, context, viewer, { today: now().toISOString().slice(0, 10), milestones: needed(filter.milestone) ? await milestonesOf(context) : [] })
+    checkFilter(shared, { types: Object.keys(held.pmkit?.mappings?.types ?? {}), members, sprintExists: () => true })
+    // A sprint the cached discovery cannot place, such as --sprint current with no active iteration, refreshes it once. The rest of
+    // the search then reads with the context the filter was translated against.
+    const { value: translated, context } = await withRefresh(async (current) => translateFilter(filter, current, viewer, { today: now().toISOString().slice(0, 10), milestones: needed(filter.milestone) ? await milestonesOf(current) : [] }))
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const [owner, name] = context.repo.split('/')
     const variables = { owner, name, ...translated.variables, orderBy: { field: 'CREATED_AT', direction: 'ASC' }, ...context.fieldVariables }
