@@ -4,12 +4,13 @@
 // See docs/specs/2026-11-17-pmk-91-github-draft-issues-design.md.
 
 import { PmkitError } from '../errors.mjs'
-import { fetchLinkedProjects, parseProject } from './discovery.mjs'
+import { fetchLinkedProjects, parseProject, parseRepo } from './discovery.mjs'
 
 const PAGE_SIZE = 100
 const MAX_PAGES = 10
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
+const MAX_CONVERT = 50
 const GHOST = 'ghost'
 const TITLE_FIELD = 'Title'
 const ITEM_ID = /^[A-Za-z0-9_=+/-]{1,200}$/
@@ -43,6 +44,15 @@ export const DRAFT_DOCUMENTS = Object.freeze({
       }
     }
   }
+}`,
+  ITEM: `query PmkitDraftItem($id: ID!) {
+  node(id: $id) { ... on ProjectV2Item { ${ITEM} project { id } } }
+}`,
+  TARGET: `query PmkitDraftTarget($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) { id nameWithOwner hasIssuesEnabled }
+}`,
+  CONVERT: `mutation PmkitConvertDraftItem($input: ConvertProjectV2DraftIssueItemToIssueInput!) {
+  convertProjectV2DraftIssueItemToIssue(input: $input) { item { id content { ... on Issue { id number url repository { nameWithOwner } } } } }
 }`,
 })
 
@@ -93,6 +103,15 @@ export function listText(result) {
   return [...lines, ...(result.hasMore ? ['more drafts exist; pass --limit to read more'] : []), ...result.warnings.map((line) => `warning: ${line}`)].join('\n')
 }
 
+/** The plain text of a convert result. */
+export function convertText(result, dryRun) {
+  const count = dryRun ? result.drafts.length : result.converted.length
+  const head = dryRun
+    ? `would convert ${count} draft${count === 1 ? '' : 's'} of ${result.project.title} into issues in ${result.target.repo}`
+    : `converted ${count} draft${count === 1 ? '' : 's'} into issues in ${result.target.repo}: ${result.converted.map((item) => `#${item.number}`).join(', ')}`
+  return [head, ...result.warnings.map((line) => `warning: ${line}`)].join('\n')
+}
+
 /** The draft issue operations of one repository. scope is tracker.scope: { host, repo, project }. */
 export function draftIssueOperations({ client, scope }) {
   /** The Project to read: { name, id, title, url }, or null when none is set. A --project the repository does not link is INVALID_INPUT. */
@@ -135,5 +154,76 @@ export function draftIssueOperations({ client, scope }) {
     return { available: true, project: { id: found.id, title: found.title, url: found.url }, repo: scope.repo, drafts: drafts.slice(0, cap), hasMore: drafts.length > cap, warnings }
   }
 
-  return { list }
+  /** The ids of a convert call: 1 to 50 checked ids, a repeated one once, in the order given. */
+  function itemIds(items) {
+    const ids = [...new Set((items ?? []).map(parseItemId))]
+    if (ids.length < 1 || ids.length > MAX_CONVERT) throw new PmkitError('INVALID_INPUT', `convert takes 1 to ${MAX_CONVERT} item ids`, 'Pass the items of the drafts to convert from pmkit github draft-issues list')
+    return ids
+  }
+
+  /** The repository the drafts become issues in: { id, repo, tracked }. */
+  async function resolveTarget(option) {
+    const name = option ?? scope.repo
+    const parsed = parseRepo(name)
+    if (!parsed) throw new PmkitError('INVALID_INPUT', '--repo must be owner/name, such as acme/widgets', 'Pass --repo owner/name')
+    let repository
+    try {
+      repository = (await client.request(DRAFT_DOCUMENTS.TARGET, parsed)).repository
+    } catch (error) {
+      if (error?.code !== 'NOT_FOUND') throw error
+    }
+    if (!repository) throw new PmkitError('NOT_FOUND', `GitHub has no repository ${name}`, 'Check the --repo name, and that the gh account can see it')
+    if (repository.hasIssuesEnabled === false) throw new PmkitError('INVALID_INPUT', `${repository.nameWithOwner} has issues turned off`, 'Turn on issues in the repository settings on GitHub, or pass another --repo')
+    const tracked = repository.nameWithOwner.toLowerCase() === String(scope.repo).toLowerCase()
+    return { id: repository.id, repo: tracked ? scope.repo : repository.nameWithOwner, tracked }
+  }
+
+  /** One draft item of the Project, read and checked. Anything else is INVALID_INPUT that names the id. */
+  async function readDraft(id, project) {
+    const refuse = (reason) => new PmkitError('INVALID_INPUT', `item ${id} ${reason}`, 'pmkit github draft-issues list')
+    let node
+    try {
+      node = (await client.request(DRAFT_DOCUMENTS.ITEM, { id })).node
+    } catch (error) {
+      if (error?.code !== 'NOT_FOUND') throw error
+    }
+    if (!node?.id) throw refuse('does not exist')
+    if (node.project?.id !== project.id) throw refuse(`is not in ${project.name}`)
+    if (node.type !== 'DRAFT_ISSUE') throw refuse(`is ${node.type === 'ISSUE' ? 'an issue' : node.type === 'PULL_REQUEST' ? 'a pull request' : 'not readable'}, not a draft`)
+    if (node.isArchived) throw refuse('is archived')
+    return node
+  }
+
+  async function convert(items, { project, repo, dryRun = false } = {}) {
+    const ids = itemIds(items)
+    const found = await resolveProject(project)
+    if (!found) throw new PmkitError('NOT_SUPPORTED', `no Project to read drafts from for ${scope.repo}`, NO_PROJECT_HINT)
+    const target = await resolveTarget(repo)
+    const nodes = []
+    for (const id of ids) nodes.push(await readDraft(id, found))
+    const head = { project: { id: found.id, title: found.title, url: found.url }, target: { repo: target.repo, tracked: target.tracked } }
+    const warnings = target.tracked ? [] : [`${target.repo} is not tracker.scope.repo (${scope.repo}), so pmkit will not track the new issues`]
+    if (dryRun) {
+      const drafts = nodes.map((node) => {
+        const { item, title, body, assignees, fields } = draftView(node)
+        return { item, title, body, assignees, fields }
+      })
+      return { dryRun: true, ...head, drafts, warnings }
+    }
+    const converted = []
+    for (const [index, node] of nodes.entries()) {
+      let issue
+      try {
+        issue = (await client.request(DRAFT_DOCUMENTS.CONVERT, { input: { itemId: node.id, repositoryId: target.id } })).convertProjectV2DraftIssueItemToIssue.item.content
+      } catch (error) {
+        if (converted.length === 0) throw error
+        const notConverted = nodes.slice(index).map((item) => item.id)
+        throw new PmkitError('UPSTREAM', `GitHub converted ${converted.length} of ${nodes.length} drafts, but ${node.id} failed: ${error.message}`, `pmkit github draft-issues convert ${notConverted.join(' ')}`, { converted, notConverted })
+      }
+      converted.push({ item: node.id, title: node.content.title, number: issue.number, id: target.tracked ? String(issue.number) : null, url: issue.url })
+    }
+    return { ...head, converted, warnings }
+  }
+
+  return { list, convert }
 }

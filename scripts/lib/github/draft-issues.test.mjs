@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fakeGithubIssues } from '../../fake-github-issues.mjs'
 import { createGithubClient } from './client.mjs'
-import { draftIssueOperations, listText, parseItemId } from './draft-issues.mjs'
+import { convertText, draftIssueOperations, listText, parseItemId } from './draft-issues.mjs'
 
 const SCOPE = { host: 'github.com', repo: 'acme/widgets', project: 'acme/7' }
 const PROJECT = { id: 'PVT_1', title: 'Roadmap', url: 'https://github.com/orgs/acme/projects/7' }
@@ -85,4 +85,104 @@ test('parseItemId accepts node ids and refuses the rest', () => {
   for (const value of ['a b', '$(x)', '', 'x'.repeat(201), undefined]) {
     assert.throws(() => parseItemId(value), (error) => error.code === 'INVALID_INPUT')
   }
+})
+
+/** Two drafts in the scope Project, the first with a Status and an assignee. */
+function seeded(options) {
+  const { fake, ops } = setup(options)
+  const a = fake.seedDraft({ title: 'Offline mode', body: 'Work without a network.', assignees: ['hubot'], values: { Status: 'Todo' } }).item
+  const b = fake.seedDraft({ title: 'Dark theme', body: 'A dark palette.' }).item
+  return { fake, ops, a, b }
+}
+
+test('convert previews every draft and writes nothing', async () => {
+  const { fake, ops, a, b } = seeded()
+  const result = await ops.convert([a, b], { dryRun: true })
+  assert.deepEqual(result, {
+    dryRun: true, project: PROJECT, target: { repo: 'acme/widgets', tracked: true },
+    drafts: [
+      { item: a, title: 'Offline mode', body: 'Work without a network.', assignees: ['hubot'], fields: { Status: 'Todo' } },
+      { item: b, title: 'Dark theme', body: 'A dark palette.', assignees: [], fields: {} },
+    ],
+    warnings: [],
+  })
+  assert.deepEqual(fake.mutations, [])
+  assert.equal(convertText(result, true), 'would convert 2 drafts of Roadmap into issues in acme/widgets')
+})
+
+test('convert turns the drafts into issues in the scope repository', async () => {
+  const { fake, ops, a, b } = seeded()
+  const result = await ops.convert([a, b])
+  assert.deepEqual(result, {
+    project: PROJECT, target: { repo: 'acme/widgets', tracked: true },
+    converted: [
+      { item: a, title: 'Offline mode', number: 1, id: '1', url: 'https://github.com/acme/widgets/issues/1' },
+      { item: b, title: 'Dark theme', number: 2, id: '2', url: 'https://github.com/acme/widgets/issues/2' },
+    ],
+    warnings: [],
+  })
+  const item = fake.state.items.find((candidate) => candidate.id === a)
+  const issue = fake.state.issues.find((record) => record.id === item.issueId)
+  assert.deepEqual([issue.title, issue.body, issue.assigneeIds, item.draft, Object.keys(item.values).length], ['Offline mode', 'Work without a network.', ['U_2'], undefined, 1])
+  assert.equal(convertText(result, false), 'converted 2 drafts into issues in acme/widgets: #1, #2')
+  assert.deepEqual((await ops.list()).drafts, [])
+})
+
+test('convert counts a repeated item once', async () => {
+  const { fake, ops, a } = seeded()
+  assert.equal((await ops.convert([a, a])).converted.length, 1)
+  assert.equal(fake.mutations.length, 1)
+})
+
+test('convert refuses the whole batch when one id is wrong', async () => {
+  const { fake, ops } = setup({ extraProjects: [{ id: 'PVT_9', owner: 'acme', number: 9, title: 'Epic: sync' }] })
+  const draft = fake.seedDraft({ title: 'Offline mode' }).item
+  fake.seed({ title: 'An issue', item: { status: 'Todo' } })
+  const issueItem = fake.state.items.find((item) => item.issueId !== null).id
+  const archived = fake.seedDraft({ title: 'Old', archived: true }).item
+  const other = fake.seedDraft({ project: 'PVT_9', title: 'Elsewhere' }).item
+  for (const [id, reason] of [[issueItem, 'is an issue, not a draft'], [archived, 'is archived'], [other, 'is not in acme/7'], ['PVTI_404', 'does not exist']]) {
+    await rejectsWith(ops.convert([draft, id]), 'INVALID_INPUT', `item ${id} ${reason}`)
+  }
+  await rejectsWith(ops.convert([]), 'INVALID_INPUT', 'convert takes 1 to 50 item ids')
+  await rejectsWith(ops.convert(Array.from({ length: 51 }, (_, index) => `PVTI_x${index}`)), 'INVALID_INPUT', 'convert takes 1 to 50 item ids')
+  await rejectsWith(ops.convert(['$(rm)']), 'INVALID_INPUT')
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('convert sends drafts to another repository with a warning', async () => {
+  const { fake, ops, a } = seeded()
+  fake.seedRepository('acme/docs')
+  const dry = await ops.convert([a], { repo: 'acme/docs', dryRun: true })
+  assert.deepEqual(dry.target, { repo: 'acme/docs', tracked: false })
+  assert.deepEqual(dry.warnings, ['acme/docs is not tracker.scope.repo (acme/widgets), so pmkit will not track the new issues'])
+  const done = await ops.convert([a], { repo: 'acme/docs' })
+  assert.deepEqual(done.converted, [{ item: a, title: 'Offline mode', number: 1, id: null, url: 'https://github.com/acme/docs/issues/1' }])
+  await rejectsWith(ops.convert([a], { repo: 'acme/nope', dryRun: true }), 'NOT_FOUND', 'GitHub has no repository acme/nope')
+  await rejectsWith(ops.convert([a], { repo: 'nope', dryRun: true }), 'INVALID_INPUT', '--repo must be owner/name, such as acme/widgets')
+  fake.seedRepository('acme/closed', { hasIssuesEnabled: false })
+  await rejectsWith(ops.convert([a], { repo: 'acme/closed', dryRun: true }), 'INVALID_INPUT', 'acme/closed has issues turned off')
+})
+
+test('convert stops on a failure partway and names what converted', async () => {
+  const { fake, a, b } = seeded()
+  const c = fake.seedDraft({ title: 'Third' }).item
+  // The second conversion fails: the exec queues the failure once the first conversion went through.
+  let conversions = 0
+  const exec = (cmd, args, options) => {
+    if (String(options?.input ?? '').includes('mutation PmkitConvertDraftItem') && (conversions += 1) === 2) fake.failNext('PmkitConvertDraftItem')
+    return fake.exec(cmd, args, options)
+  }
+  const ops = draftIssueOperations({ client: createGithubClient({ exec, retries: 0, sleep: async () => {} }), scope: SCOPE })
+  await assert.rejects(ops.convert([a, b, c]), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, new RegExp(`^GitHub converted 1 of 3 drafts, but ${b} failed: `))
+    assert.deepEqual(error.details.converted.map((item) => item.item), [a])
+    assert.deepEqual(error.details.notConverted, [b, c])
+    return true
+  })
+
+  const first = seeded()
+  first.fake.failNext('PmkitConvertDraftItem')
+  await assert.rejects(first.ops.convert([first.a]), (error) => error.code === 'UPSTREAM' && !/^GitHub converted/.test(error.message))
 })
