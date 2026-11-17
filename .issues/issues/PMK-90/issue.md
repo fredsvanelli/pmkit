@@ -2,7 +2,7 @@
 id: PMK-90
 title: Add the github-discussions command
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-87]
 milestone: github-issues
 branch: pmk-90-add-the-github-discussions-command
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-17T21:23:49Z
+updated: 2026-11-17T22:17:12Z
 ---
 
 ## Description
@@ -20,5 +20,5 @@ Source: Unified model, System-specific skills (`github-discussions`: "Turns disc
 
 ## Acceptance criteria
 
-- [ ] Summarizes a discussion
-- [ ] Turns a discussion into an issue after confirmation
+- [x] Summarizes a discussion
+- [x] Turns a discussion into an issue after confirmation
