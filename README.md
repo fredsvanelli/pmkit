@@ -51,6 +51,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
 - `/pmkit:linear:customers`: List and edit Linear customers (tier, revenue, size, status) and link customer requests to issues and projects.
 - `/pmkit:github:discussions`: Summarize a GitHub discussion (an RFC, an idea, a question) and turn it into an issue after you confirm. It works only with the GitHub Issues tracker.
+- `/pmkit:github:draft-issues`: Review the draft issues of a GitHub Project and convert the ready ones into issues after a full preview. It works only with the GitHub Issues tracker.
 - `/pmkit:linear:triage-rotation`: See who is on triage duty in Linear, change the rotation, and read Linear's Triage Intelligence suggestions.
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
@@ -190,6 +191,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `github discussions list [--category NAME] [--answered yes\|no] [--state open\|closed\|all] [--limit n]` | the discussions of the GitHub repository, open ones by default, newest activity first (default 20, at most 100); `available: false` with the next step when the repository has Discussions turned off; GitHub Issues tracker only |
 | `github discussions get <number>` | one discussion (`12` or `#12`) with its answer, labels, first 100 comments and the first 100 replies of each, and a warning when the thread is longer; reads only |
 | `github discussions comment <number> --body-file f` | posts one comment on a discussion; `--dry-run` reads the discussion and writes nothing |
+| `github draft-issues list [--project owner/number] [--limit n]` | the unarchived draft issues of the Project (`tracker.scope.project`, or a linked `--project`), in board order, with their field values (default 50, at most 200; reads up to 1000 items); `available: false` with the next step when no Project is set; GitHub Issues tracker only |
+| `github draft-issues convert <item...> [--project owner/number] [--repo owner/name]` | converts 1 to 50 draft items into issues of `tracker.scope.repo` or `--repo`, keeping their Project item and field values; `--dry-run` checks every item and the target and writes nothing; one wrong item converts nothing |
 | `changelog --file f --since v` | prints the `CHANGELOG.md` sections newer than a version, oldest first; needs no config |
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
 | `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
