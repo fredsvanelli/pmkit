@@ -281,6 +281,15 @@ test('sprint: tracker.scope.project none asks no sprint question and sets none',
   assert.equal(result.values.fields.sprint, 'none')
 })
 
+test('sprint: tracker.scope.project none turns a held sprint field and a --field answer into none, with no question', async () => {
+  const raw = await rawOf(standardFixture(), 'none')
+  const held = proposeGithubSetup(raw, { fields: { sprint: 'project:Sprint' } }, {}, TYPES)
+  assert.equal(questionAt(held, 'mappings.fields.sprint'), undefined)
+  assert.equal(held.values.fields.sprint, 'none')
+  const answered = proposeGithubSetup(raw, {}, { fields: { sprint: 'project:Sprint' } }, TYPES)
+  assert.equal(answered.values.fields.sprint, 'none')
+})
+
 test('sprint: an answer must be an iteration field of the Project', async () => {
   const raw = await rawOf(sprintFixture(ITERATION_FIELD))
   invalid(() => proposeGithubSetup(raw, {}, { fields: { sprint: 'issue:Sprint' } }, TYPES), /sprint=issue:Sprint.*project:Sprint/)

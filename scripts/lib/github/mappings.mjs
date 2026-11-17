@@ -246,8 +246,7 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
     usedBy.set(seen, key)
   }
   for (const key of fieldKeys) {
-    // The sprint is a Project field: with no Project it is none, and setup asks nothing.
-    const value = key === 'sprint' && raw.project === null ? NONE : fieldValue(state, key)
+    const value = fieldValue(state, key)
     if (value !== undefined) values.fields[key] = value
   }
   const result = () => ({ applied: state.applied, questions: state.questions, broken: state.broken, notes: state.notes, values })
@@ -327,6 +326,8 @@ function fieldCandidates(raw, key) {
 
 /** The value of one field role: the answer, the held value, an inferred one, or undefined with a question recorded. */
 function fieldValue(state, key) {
+  // The sprint is a Project field: with no Project it is none, and setup asks nothing.
+  if (key === 'sprint' && state.raw.project === null) return NONE
   const path = `mappings.fields.${key}`
   const { match, candidates } = fieldCandidates(state.raw, key)
   const answer = state.given.fields[key]
