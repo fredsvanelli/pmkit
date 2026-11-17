@@ -194,7 +194,7 @@ test('planMove without a Project moves through status labels', async () => {
   fake.seed({ labels: ['Doing', 'x'] })
   const node = nodeOf(fake, context, 1)
   const review = planMove(node, 'in_review', {}, context)
-  assert.deepEqual(moveOps(review), [['removeLabels', ['Doing']], ['addLabels', ['Review']]])
+  assert.deepEqual(moveOps(review), [['addLabels', ['Review']], ['removeLabels', ['Doing']]])
   assert.equal(review.after.status.category, 'in_review')
   assert.deepEqual(review.after.labels, ['Review', 'x'])
   assert.deepEqual(moveOps(planMove(node, 'done', {}, context)), [['removeLabels', ['Doing']], ['close', 'COMPLETED']])
@@ -203,7 +203,7 @@ test('planMove without a Project moves through status labels', async () => {
   fake.seed({ state: 'CLOSED', stateReason: 'COMPLETED' })
   assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 2), 'backlog', {}, context)), [['addLabels', ['Backlog']], ['reopen', null]])
   fake.seed({ labels: ['Doing', 'Review'] })
-  assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 3), 'backlog', {}, context)), [['removeLabels', ['Doing', 'Review']], ['addLabels', ['Backlog']]])
+  assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 3), 'backlog', {}, context)), [['addLabels', ['Backlog']], ['removeLabels', ['Doing', 'Review']]])
 })
 
 test('planMove without a label for the category fails with the setup step', async () => {
@@ -225,7 +225,7 @@ test('a todo label adds it on a move to todo', async () => {
   const pmkit = { ...LABEL_PMKIT, mappings: { ...LABEL_PMKIT.mappings, status: { ...LABEL_PMKIT.mappings.status, todo: 'label:Ready' } } }
   const { fake, context } = await labelContext(pmkit)
   fake.seed({ labels: ['Doing'] })
-  assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 1), 'todo', {}, context)), [['removeLabels', ['Doing']], ['addLabels', ['Ready']]])
+  assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 1), 'todo', {}, context)), [['addLabels', ['Ready']], ['removeLabels', ['Doing']]])
 })
 
 test('planWrite swaps type labels without issue types', async () => {

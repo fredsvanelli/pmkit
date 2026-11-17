@@ -620,7 +620,7 @@ test('moveToCategory without a Project removes and adds status labels on GitHub'
   const { fake, ops } = await setupLabels()
   fake.seed({ title: 'Move me', labels: ['Doing', 'x'] })
   const result = await ops.moveToCategory('1', 'in_review', 'octocat')
-  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitRemoveLabels', 'PmkitAddLabels'])
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitAddLabels', 'PmkitRemoveLabels'])
   assert.equal(fake.mutations[0].input.labelableId, fake.state.issues[0].id)
   assert.deepEqual(result.after.status, { name: 'Review', category: 'in_review' })
   assert.deepEqual(result.after.labels, ['Review', 'x'])

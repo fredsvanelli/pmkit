@@ -386,7 +386,8 @@ function labelSteps(node, category, status, context) {
   const remove = held.filter((label) => statusIds.has(label.id) && label.id !== target?.id)
   const add = target && !held.some((label) => label.id === target.id) ? [target] : []
   const step = (op, labels) => ({ op, labelIds: labels.map((label) => label.id), names: labels.map((label) => label.name) })
-  return [...(remove.length > 0 ? [step('removeLabels', remove)] : []), ...(add.length > 0 ? [step('addLabels', add)] : [])]
+  // The target first: the issue then reads the target as soon as it holds it, so history records one move, not a pass through todo.
+  return [...(add.length > 0 ? [step('addLabels', add)] : []), ...(remove.length > 0 ? [step('removeLabels', remove)] : [])]
 }
 
 /** The Status option a move sets, or null when the move changes only the issue's state. */
@@ -432,8 +433,8 @@ const PREVIEW_STEP = {
 }
 
 /**
- * The steps of moveToCategory: { op: 'addItem' }, { op: 'setStatus', option }, without a Project { op: 'removeLabels' } and
- * { op: 'addLabels' } with labelIds and names, then { op: 'reopen' } and { op: 'close', reason }, in the
+ * The steps of moveToCategory: { op: 'addItem' }, { op: 'setStatus', option }, without a Project { op: 'addLabels' } and
+ * { op: 'removeLabels' } with labelIds and names, then { op: 'reopen' } and { op: 'close', reason }, in the
  * order GitHub gets them, only those that change something. Returns { steps, node, after }: the preview node and its issue.
  */
 export function planMove(node, category, { status } = {}, context) {
