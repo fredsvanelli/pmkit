@@ -458,6 +458,20 @@ test('PmkitEpic answers the Project with its status updates newest first, and NO
   assert.equal(missing.errors[0].type, 'NOT_FOUND')
 })
 
+test('PmkitEpics answers Projects by node id with their latest status update, and NOT_FOUND with null for an unknown id', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  fake.seedStatusUpdate('PVT_E12', { status: 'ON_TRACK', body: 'old', createdAt: '2026-11-01T00:00:00Z' })
+  fake.seedStatusUpdate('PVT_E12', { status: 'AT_RISK', body: 'new', createdAt: '2026-11-10T00:00:00Z' })
+  const query = 'query PmkitEpics($ids: [ID!]!) { nodes(ids: $ids) { __typename ... on ProjectV2 { id } } }'
+  const nodes = data(fake.handle('PmkitEpics', { ids: ['PVT_E12', 'PVT_1'] }, query)).nodes
+  assert.deepEqual(nodes.map((node) => [node.__typename, node.id, node.number]), [['ProjectV2', 'PVT_E12', 12], ['ProjectV2', 'PVT_1', 7]])
+  assert.deepEqual(nodes[0].statusUpdates.nodes.map((node) => node.body), ['new'])
+  const missing = fake.handle('PmkitEpics', { ids: ['PVT_E12', 'nope'] }, query)
+  assert.equal(missing.errors[0].type, 'NOT_FOUND')
+  assert.deepEqual(missing.errors[0].path, ['nodes', 1])
+  assert.equal(missing.data.nodes[1], null)
+})
+
 test('PmkitStatusUpdates pages newest first', () => {
   const fake = fakeGithubIssues({ epics: EPICS })
   for (const day of ['01', '02', '03']) fake.seedStatusUpdate('PVT_E12', { status: 'ON_TRACK', body: `day ${day}`, createdAt: `2026-11-${day}T00:00:00Z` })

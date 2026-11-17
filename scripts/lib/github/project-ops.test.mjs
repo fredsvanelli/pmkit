@@ -181,6 +181,25 @@ test('listDeliverables lists linked Projects without the scope one, sorted by st
   assert.equal(list[1].description, 'Nine short')
 })
 
+test('listDeliverables reads every epic in one PmkitEpics read, 100 Project ids a read', async () => {
+  const many = Array.from({ length: 150 }, (_, at) => ({ id: `PVT_M${at}`, owner: 'acme', number: 100 + at }))
+  const { fake, projects } = await epicSetup({ epics: [...EPICS, ...many] })
+  fake.seedStatusUpdate('PVT_E12', { status: 'AT_RISK', body: 'Late', targetDate: '2027-01-15', createdAt: '2026-11-10T09:00:00Z' })
+  fake.reads.splice(0)
+  const list = await projects.listDeliverables()
+  assert.equal(list.length, 152)
+  assert.deepEqual(fake.reads.map((call) => call.name), ['PmkitEpics', 'PmkitEpics'])
+  assert.deepEqual(fake.reads.map((call) => call.variables.ids.length), [100, 52])
+  const twelve = list.find((epic) => epic.id === 'acme/12')
+  assert.deepEqual([twelve.health, twelve.target, twelve.description], ['at_risk', '2027-01-15', 'The long text'])
+})
+
+test('listDeliverables leaves out an epic Project GitHub no longer resolves', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.state.projects.splice(fake.state.projects.findIndex((project) => project.id === 'PVT_E9'), 1)
+  assert.deepEqual((await projects.listDeliverables()).map((epic) => epic.id), ['acme/12'])
+})
+
 test('getDeliverable finds an epic with or without the case of the owner', async () => {
   const { projects } = await epicSetup()
   assert.equal((await projects.getDeliverable('acme/12')).title, 'Epic twelve')

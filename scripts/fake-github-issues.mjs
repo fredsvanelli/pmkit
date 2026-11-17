@@ -495,6 +495,18 @@ function build(state) {
       if (!project) refuseWithData({ repositoryOwner: { projectV2: null } }, ['repositoryOwner', 'projectV2'], `Could not resolve to a ProjectV2 with the number ${vars.number}.`)
       return { repositoryOwner: { projectV2: { ...projectNode(project), statusUpdates: statusUpdatesOf(project, vars.statusFirst, vars.statusAfter) } } }
     },
+    // Projects by node id, in the order asked, each with its latest status update: the one read of epic list. An unknown id is null with a NOT_FOUND error, as GitHub answers.
+    PmkitEpics(vars, _name, query) {
+      const typed = /\bnodes\(ids: \$ids\)\s*\{\s*__typename\b/.test(query ?? '')
+      const ids = vars.ids ?? []
+      const nodes = ids.map((id) => {
+        const project = allProjects().find((candidate) => candidate.id === id)
+        return project ? withTypename({ __typename: 'ProjectV2', ...projectNode(project), statusUpdates: statusUpdatesOf(project, 1) }, typed) : null
+      })
+      const missing = ids.map((id, index) => [id, index]).filter(([, index]) => nodes[index] === null)
+      if (missing.length) throw new Refusal({ data: { nodes }, errors: missing.map(([id, index]) => ({ type: 'NOT_FOUND', path: ['nodes', index], message: `Could not resolve to a node with the global id of '${id}'` })) })
+      return { nodes }
+    },
     PmkitEpicItems(vars, _name, query) {
       const project = projectById(vars.project)
       const items = state.items.filter((item) => item.projectId === project.id).map((item) => ({ ...itemNode(item, vars), status: projectValue(item, 'Status'), content: withTypename(item.kind ? contentOfOtherItem(item) : issueNode(issueById(item.issueId), vars), /\bcontent\s*\{\s*__typename\b/.test(query ?? '')) }))

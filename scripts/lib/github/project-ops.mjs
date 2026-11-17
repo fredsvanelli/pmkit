@@ -10,7 +10,7 @@ import { parseProject } from './discovery.mjs'
 import { toIssue } from './issues.mjs'
 import { docsOf } from './requests.mjs'
 import {
-  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, STATUS_UPDATES_QUERY, UPDATE_PROJECT_README, epicItemsQuery, issueNodesQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
+  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, EPICS_QUERY, STATUS_UPDATES_QUERY, UPDATE_PROJECT_README, epicItemsQuery, issueNodesQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -122,13 +122,31 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     return { project, latest: project.statusUpdates?.nodes?.[0] ?? null }
   }
 
+  /**
+   * The epics of up to 100 Project node ids in one read, as pmkit epics. When GitHub no longer resolves one of them, the read fails
+   * as a whole, so each Project of the batch is read alone and the missing one is left out.
+   */
+  async function readEpicBatch(ids, epics) {
+    let data
+    try {
+      data = await client.request(EPICS_QUERY, { ids })
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.code !== 'NOT_FOUND') throw error
+      const found = []
+      for (const id of ids) {
+        const epic = await readEpic(epics.get(id))
+        if (epic) found.push(toEpic(epic.project, epic.latest))
+      }
+      return found
+    }
+    return data.nodes.filter((node) => node?.__typename === 'ProjectV2').map((project) => toEpic(project, project.statusUpdates?.nodes?.[0] ?? null))
+  }
+
   async function listDeliverables() {
     const { epics } = await getContext()
+    const ids = [...epics.keys()]
     const found = []
-    for (const written of epics.values()) {
-      const epic = await readEpic(written)
-      if (epic) found.push(toEpic(epic.project, epic.latest))
-    }
+    for (let at = 0; at < ids.length; at += ITEM_PAGE) found.push(...(await readEpicBatch(ids.slice(at, at + ITEM_PAGE), epics)))
     return sortEpics(found)
   }
 

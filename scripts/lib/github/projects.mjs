@@ -57,6 +57,17 @@ export const EPIC_QUERY = `query PmkitEpic($owner: String!, $number: Int!, $stat
   }
 }`
 
+/** Up to 100 Projects by node id, each with its latest status update, in one read. nodes(ids:) answers the Node interface, so the fields sit in a fragment. */
+export const EPICS_QUERY = `query PmkitEpics($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    __typename
+    ... on ProjectV2 {
+      ${PROJECT_FIELDS}
+      statusUpdates(first: 1, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { ${UPDATE_FIELDS} } }
+    }
+  }
+}`
+
 export const STATUS_UPDATES_QUERY = `query PmkitStatusUpdates($project: ID!, $first: Int!, $after: String) {
   node(id: $project) {
     ... on ProjectV2 {
