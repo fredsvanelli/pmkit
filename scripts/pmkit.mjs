@@ -1849,7 +1849,7 @@ export const COMMANDS = [
       const updates = await (await ctx.tracker()).listStatusUpdates(ctx.args[0])
       const text = updates.length === 0
         ? 'no status updates'
-        : updates.map((u) => [`${u.at}  ${u.health}  ${u.author}`, u.body].join('\n')).join('\n\n')
+        : updates.map((u) => [`${u.at}  ${u.health ?? '-'}  ${u.author}`, u.body].join('\n')).join('\n\n')
       return { data: updates, text }
     },
   },
