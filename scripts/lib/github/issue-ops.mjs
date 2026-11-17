@@ -11,7 +11,7 @@ import { CATEGORIES } from '../model.mjs'
 import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
 import { itemOf, toIssue, toIssueWithWarnings } from './issues.mjs'
-import { readMilestoneNodes } from './projects.mjs'
+import { parseEpicId, readMilestoneNodes } from './projects.mjs'
 import { docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
@@ -231,11 +231,21 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     }
   }
 
-  async function createIssue(input, actor, { dryRun = false } = {}) {
+  /** The linked epic of an id, { nodeId, id } with the id as GitHub writes it, or null when the id names no linked epic. */
+  function epicOf(context, parent) {
+    if (parseEpicId(parent) === null) return null
+    for (const [nodeId, id] of context.epics) if (id.toLowerCase() === parent.toLowerCase()) return { nodeId, id }
+    return null
+  }
+
+  async function createIssue(request, actor, { dryRun = false } = {}) {
     await requireActor(actor)
+    const epic = epicOf(await getContext(), request?.parent)
+    // An epic parent is no sub-issue link: the create leaves it out, and a step after the create adds the issue to the epic Project.
+    const input = epic ? { ...request, parent: undefined } : request
     const parentNode = await parentNodeOf(input?.parent)
     const { value: plan, context } = await withRefresh(async (current) => planWrite(input ?? {}, { mode: 'create', context: current, parentNode, milestones: needed(input?.milestone) ? await milestonesOf(current) : [], now: now().toISOString() }))
-    if (dryRun) return { before: null, after: plan.after }
+    if (dryRun) return { before: null, after: epic ? { ...plan.after, parent: epic.id } : plan.after }
     const node = (await send(context, 'CREATE_ISSUE', plan.input, true)).createIssue.issue
     const id = issueIdOf(node, context.repo)
     const item = { id: null }
@@ -243,6 +253,7 @@ export function issueOperations({ client, config, getContext, now = () => new Da
       ...(context.project ? [addItemStep(id, node.id, item, context)] : []),
       ...plan.fields.map((write) => fieldStep(write, id, node.id, item, context)),
       ...plan.move.map((op) => moveStep(op, id, node.id, item, context)),
+      ...(epic ? [{ done: `added ${id} to epic ${epic.id}`, doing: `adding it to epic ${epic.id}`, run: () => send(context, 'ADD_PROJECT_ITEM', { projectId: epic.nodeId, contentId: node.id }) }] : []),
     ]
     await runSteps(id, steps, { created: true })
     return { before: null, after: await afterOf(id) }
@@ -375,5 +386,5 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     return result
   }
 
-  return { getIssue, searchIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue }
+  return { getIssue, searchIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, runSteps }
 }

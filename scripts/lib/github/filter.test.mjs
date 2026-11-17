@@ -242,3 +242,15 @@ test('a type label with a labels filter filters the type on the client', () => {
   assert.ok(keeps(translated, withLabels('bug', 'ui'), typeLabels))
   assert.ok(!keeps(translated, withLabels('chore', 'ui'), typeLabels))
 })
+
+test('parent keeps the issues whose shown parent is that epic, in any case of the owner', () => {
+  const epics = makeContext(raw(), pmkit, { epics: new Map([['E12', 'acme/12'], ['E9', 'acme/9']]) })
+  const items = (id) => ({ projectItems: { nodes: [{ id: 'IT', isArchived: false, project: { id } }] } })
+  const inEpic = (id) => node(items(id))
+  const translated = translate({ parent: 'ACME/12' }, epics)
+  assert.equal(keeps(translated, inEpic('E12'), epics), true)
+  assert.equal(keeps(translated, inEpic('E9'), epics), false)
+  assert.equal(keeps(translated, node(), epics), false)
+  assert.equal(keeps(translated, node({ parent: { number: 4, repository }, ...items('E12') }), epics), false)
+  assert.equal(keeps(translate({ parent: '4' }, epics), node({ parent: { number: 4, repository }, ...items('E12') }), epics), true)
+})

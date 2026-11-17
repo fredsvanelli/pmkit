@@ -4,6 +4,7 @@
 import { PmkitError } from '../errors.mjs'
 import { compareGithubIds } from './ids.mjs'
 import { LINK_KINDS } from '../model.mjs'
+import { parseEpicId } from './projects.mjs'
 import { sender } from './requests.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -103,12 +104,35 @@ export function relationOperations({ client, ops, getContext }) {
     return chain
   }
 
-  /** Removes the parent of an issue: { node, issue } from readNode. */
+  /** The items of a node in linked epic Projects: [{ id, project: { id } }]. The scope Project is no epic, so its item is never in the list. */
+  const epicItems = (node, context) => (node.projectItems?.nodes ?? []).filter((item) => context.epics.has(item.project?.id))
+
+  /** The linked epic of an id, { nodeId, id } with the id as GitHub writes it, or null when the id names no linked epic. */
+  function epicOf(context, parent) {
+    if (parseEpicId(parent) === null) return null
+    for (const [nodeId, id] of context.epics) if (id.toLowerCase() === parent.toLowerCase()) return { nodeId, id }
+    return null
+  }
+
+  /** Runs the steps in order. A failure after the first write names what was done. */
+  async function run(id, steps, before) {
+    await ops.runSteps(id, steps)
+    return { before, after: await afterOf(id) }
+  }
+
+  const deleteItemStep = (item, id, context, project) => ({
+    done: `removed ${id} from epic ${context.epics.get(project)}`, doing: `removing it from epic ${context.epics.get(project)}`,
+    run: () => send(context, 'DELETE_PROJECT_ITEM', { projectId: project, itemId: item.id }),
+  })
+
+  /** Takes the issue out of its parent: the parent issue when there is one, else its items in the epic Projects. */
   async function removeParent({ node, issue: before }, context, dryRun) {
-    if (before.parent === undefined) return { before, after: before }
+    const steps = []
+    if (node.parent) steps.push({ done: `removed the parent issue of ${before.id}`, doing: 'removing its parent issue', run: () => send(context, 'REMOVE_SUB_ISSUE', { issueId: node.parent.id, subIssueId: node.id }) })
+    else steps.push(...epicItems(node, context).map((item) => deleteItemStep(item, before.id, context, item.project.id)))
+    if (steps.length === 0) return { before, after: before }
     if (dryRun) return { before, after: { ...before, parent: undefined } }
-    await send(context, 'REMOVE_SUB_ISSUE', { issueId: node.parent.id, subIssueId: node.id })
-    return { before, after: await afterOf(before.id) }
+    return run(before.id, steps, before)
   }
 
   /** The node and issue of a new parent. A parent GitHub does not find is INVALID_INPUT, as a create's parent is. */
@@ -116,17 +140,38 @@ export function relationOperations({ client, ops, getContext }) {
     try {
       return await ops.readNode(parent)
     } catch (error) {
-      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`parent ${parent} is not an existing issue`, 'pmkit issues list')
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') {
+        const epic = parseEpicId(parent) !== null
+        throw invalid(`parent ${parent} is not an existing issue${epic ? ' or epic' : ''}`, 'pmkit issues list')
+      }
       throw error
     }
   }
 
-  /** `parent` is an issue id or null. A new parent replaces the current one (replaceParent), and null removes it. */
+  /** Puts the issue in the epic: the parent issue goes first, then the epic's item is added, then the items in the other epics are deleted. */
+  async function setEpicParent(read, epic, context, dryRun) {
+    const { node, issue: before } = read
+    const items = epicItems(node, context)
+    const others = items.filter((item) => item.project.id !== epic.nodeId)
+    if (before.parent === epic.id && others.length === 0) return { before, after: before }
+    if (dryRun) return { before, after: { ...before, parent: epic.id } }
+    const steps = []
+    if (node.parent) steps.push({ done: `removed the parent issue of ${before.id}`, doing: 'removing its parent issue', run: () => send(context, 'REMOVE_SUB_ISSUE', { issueId: node.parent.id, subIssueId: node.id }) })
+    if (items.length === others.length) {
+      steps.push({ done: `added ${before.id} to epic ${epic.id}`, doing: `adding it to epic ${epic.id}`, run: () => send(context, 'ADD_PROJECT_ITEM', { projectId: epic.nodeId, contentId: node.id }) })
+    }
+    steps.push(...others.map((item) => deleteItemStep(item, before.id, context, item.project.id)))
+    return run(before.id, steps, before)
+  }
+
+  /** `parent` is an issue id, an epic id (owner/number of a linked epic Project) or null. A new issue parent replaces the current one (replaceParent), and null removes it. */
   async function setParent(id, parent, actor, { dryRun = false } = {}) {
     await ops.requireActor(actor)
     const context = await getContext()
     const read = await ops.readNode(id)
     if (parent === null) return removeParent(read, context, dryRun)
+    const epic = epicOf(context, parent)
+    if (epic) return setEpicParent(read, epic, context, dryRun)
     const { node, issue: before } = read
     const target = await readParent(parent)
     if (target.issue.id === before.id) throw invalid(`${before.id} cannot be its own parent`)

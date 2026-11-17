@@ -6,6 +6,7 @@ import { createGithubClient } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
+import { epicProjects } from './project-ops.mjs'
 
 const PMKIT = {
   tracker: { system: 'github', scope: { host: 'github.com', repo: 'acme/widgets', project: 'acme/7' } },
@@ -685,4 +686,25 @@ test('searchIssues by milestone sends milestoneNumber, none finds issues without
   fake.reads.splice(0)
   assert.deepEqual((await ops.searchIssues({ milestone: 'nope' })).issues, [])
   assert.equal(fake.reads.filter((call) => call.name === 'PmkitIssues').length, 0)
+})
+
+test('createIssue with an epic parent sends no parentIssueId, adds the item to the epic after the create, and reads the epic back', async () => {
+  const fake = fakeGithubIssues({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12, title: 'Epic twelve', linked: true }] })
+  const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'acme/7', exec: fake.exec, users: true })
+  const context = makeContext(raw, PMKIT, { epics: await epicProjects(client, PMKIT.tracker.scope) })
+  const ops = issueOperations({ client, config: { pmkit: PMKIT }, getContext: async () => context })
+  fake.mutations.splice(0)
+  const dry = await ops.createIssue({ title: 'Child', parent: 'acme/12' }, ME, { dryRun: true })
+  assert.deepEqual(fake.mutations, [])
+  assert.equal(dry.after.parent, 'acme/12')
+  const result = await ops.createIssue({ title: 'Child', parent: 'ACME/12' }, ME)
+  assert.equal(fake.mutations[0].name, 'PmkitCreateIssue')
+  assert.equal(fake.mutations[0].input.parentIssueId, undefined)
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitCreateIssue', 'PmkitAddProjectItem', 'PmkitAddProjectItem'])
+  assert.equal(fake.mutations[2].input.projectId, 'PVT_E12')
+  assert.equal(result.after.parent, 'acme/12')
+  fake.mutations.splice(0)
+  await assert.rejects(ops.createIssue({ title: 'Orphan', parent: 'acme/99' }, ME), { code: 'INVALID_INPUT', message: 'parent acme/99 is not an existing issue or epic' })
+  assert.deepEqual(fake.mutations, [])
 })
