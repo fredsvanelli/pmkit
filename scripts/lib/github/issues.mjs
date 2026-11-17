@@ -17,6 +17,7 @@ export const ROLES = {
   priority: { key: 'priority', flag: 'priority', alias: 'fPriority', variable: 'fPriority' },
   estimate: { key: 'estimate', flag: 'estimate', alias: 'fEstimate', variable: 'fEstimate' },
   due: { key: 'target_date', flag: 'due', alias: 'fDue', variable: 'fDue' },
+  sprint: { key: 'sprint', flag: 'sprint', alias: 'fSprint', variable: 'fSprint' },
 }
 
 const nodesOf = (connection) => connection?.nodes ?? []

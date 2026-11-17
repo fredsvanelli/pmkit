@@ -31,10 +31,10 @@ test('the metric issue read selects only what toEvents reads, and the Status var
 })
 
 test('hostFeatures per host', () => {
-  assert.deepEqual(GITHUB, { issueFields: true, relatesTo: true, statusEvents: true })
-  assert.deepEqual(hostFeatures({ host: 'acme.ghe.com', ghesVersion: null }), { issueFields: true, relatesTo: true, statusEvents: true })
-  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.21.0' }), { issueFields: true, relatesTo: false, statusEvents: true })
-  assert.deepEqual(GHES, { issueFields: false, relatesTo: false, statusEvents: false })
+  assert.deepEqual(GITHUB, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
+  assert.deepEqual(hostFeatures({ host: 'acme.ghe.com', ghesVersion: null }), { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
+  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.21.0' }), { issueFields: true, relatesTo: false, statusEvents: true, iterationIds: false })
+  assert.deepEqual(GHES, { issueFields: false, relatesTo: false, statusEvents: false, iterationIds: false })
 })
 
 for (const [label, features] of [['github.com', GITHUB], ['GHES 3.19', GHES]]) {
@@ -129,4 +129,39 @@ test('timeline items carry typename and id', () => {
   assert.match(docs.TIMELINE, /ProjectV2ItemStatusChangedEvent/)
   assert.doesNotMatch(issueDocuments(GHES, {}).TIMELINE, /ProjectV2ItemStatusChangedEvent/)
   assert.match(docs.TIMELINE, /RenamedTitleEvent[\s\S]*previousTitle currentTitle/)
+})
+
+test('the issue fragment selects the milestone and each item Project with its number and owner', () => {
+  for (const features of [GITHUB, GHES]) {
+    for (const fields of [{}, ALL_FIELDS]) {
+      const docs = issueDocuments(features, fields)
+      for (const key of ['ISSUE', 'ISSUES']) assert.ok(docs[key].includes('milestone { id number title }'), key)
+      assert.ok(docs.ISSUE.includes('project { id number owner { login } }'))
+      assert.ok(docs.MORE('projectItems').includes('project { id number owner { login } }'))
+    }
+  }
+})
+
+test('the sprint alias is selected and declared only when projectFields.sprint is true', () => {
+  const on = issueDocuments(GITHUB, { ...ALL_FIELDS, sprint: true })
+  for (const doc of [on.ISSUE, on.ISSUES, on.MORE('projectItems')]) {
+    assert.ok(doc.includes('$fSprint: String!'))
+    assert.ok(doc.includes('fSprint: fieldValueByName(name: $fSprint)'))
+  }
+  assert.ok(on.ISSUE.includes('... on ProjectV2ItemFieldIterationValue { iterationId title startDate duration }'))
+  const off = issueDocuments(GITHUB, ALL_FIELDS)
+  assert.ok(!off.ISSUE.includes('fSprint'))
+})
+
+test('the timeline lists the milestone event types and selects milestoneTitle', () => {
+  for (const features of [GITHUB, GHES]) {
+    const types = ITEM_TYPES(features)
+    assert.ok(types.includes('MILESTONED_EVENT') && types.includes('DEMILESTONED_EVENT'))
+    const docs = issueDocuments(features, {})
+    for (const key of ['TIMELINE', 'TIMELINES']) {
+      assert.ok(docs[key].includes('... on MilestonedEvent {'), key)
+      assert.ok(docs[key].includes('... on DemilestonedEvent {'), key)
+      assert.ok(docs[key].includes('milestoneTitle'), key)
+    }
+  }
 })

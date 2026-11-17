@@ -37,7 +37,7 @@ export const TIMELINE_TYPENAMES = {
   BLOCKED_BY_ADDED_EVENT: 'BlockedByAddedEvent', BLOCKED_BY_REMOVED_EVENT: 'BlockedByRemovedEvent', BLOCKING_ADDED_EVENT: 'BlockingAddedEvent',
   BLOCKING_REMOVED_EVENT: 'BlockingRemovedEvent', PARENT_ISSUE_ADDED_EVENT: 'ParentIssueAddedEvent', PARENT_ISSUE_REMOVED_EVENT: 'ParentIssueRemovedEvent',
   SUB_ISSUE_ADDED_EVENT: 'SubIssueAddedEvent', SUB_ISSUE_REMOVED_EVENT: 'SubIssueRemovedEvent', MARKED_AS_DUPLICATE_EVENT: 'MarkedAsDuplicateEvent',
-  UNMARKED_AS_DUPLICATE_EVENT: 'UnmarkedAsDuplicateEvent', PROJECT_V2_ITEM_STATUS_CHANGED_EVENT: 'ProjectV2ItemStatusChangedEvent',
+  UNMARKED_AS_DUPLICATE_EVENT: 'UnmarkedAsDuplicateEvent', MILESTONED_EVENT: 'MilestonedEvent', DEMILESTONED_EVENT: 'DemilestonedEvent', PROJECT_V2_ITEM_STATUS_CHANGED_EVENT: 'ProjectV2ItemStatusChangedEvent',
 }
 const typenamesOf = (itemTypes) => new Set(itemTypes.map((itemType) => TIMELINE_TYPENAMES[itemType]))
 
