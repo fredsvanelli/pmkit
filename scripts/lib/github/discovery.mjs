@@ -3,7 +3,9 @@
 
 import { PmkitError } from '../errors.mjs'
 import { hideAbsolutePaths } from '../paths.mjs'
+import { hostFeatures, issueDocuments } from './documents.mjs'
 import { INSTALL_STEP } from './host.mjs'
+import { priorityRule } from './issues.mjs'
 import { brokenGithubMappings, fieldOf, NONE } from './mappings.mjs'
 
 export const MINIMUM_GHES = '3.19'
@@ -11,6 +13,9 @@ export const MINIMUM_GHES = '3.19'
 const ISSUE_FIELDS_GHES = '3.21'
 const FIRST = 50
 const LABELS_FIRST = 100
+const USERS_PAGE = 100
+// paginate stops after ten pages without a limit.
+const USERS_MAX = USERS_PAGE * 10
 const PRIORITIES = ['urgent', 'high', 'medium', 'low']
 
 const PAGE = 'pageInfo { hasNextPage }'
@@ -18,10 +23,10 @@ const ISSUE_FIELD_NODES = 'nodes { __typename ... on IssueFieldDate { id name da
 
 /** The repository query. Issue fields are asked only where the schema has them. */
 export const repoQuery = ({ issueFields }) =>
-  'query PmkitRepo($owner: String!, $name: String!) { viewer { login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { login __typename } ' +
+  'query PmkitRepo($owner: String!, $name: String!) { viewer { id login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { login __typename } ' +
   `issueTypes(first: ${FIRST}) { nodes { id name description isEnabled } ${PAGE} } ` +
   (issueFields ? `issueFields(first: ${FIRST}) { ${ISSUE_FIELD_NODES} ${PAGE} } ` : '') +
-  `labels(first: ${LABELS_FIRST}) { nodes { name } ${PAGE} } } }`
+  `labels(first: ${LABELS_FIRST}) { nodes { id name } ${PAGE} } } }`
 
 /** The Project query: the Project of an owner, user or organization, with its fields. */
 export const projectQuery = ({ issueFields }) => {
@@ -136,41 +141,60 @@ export async function fetchProject(client, project, { issueFields = true } = {})
   }
 }
 
+/** The users GitHub can assign issues of the repository to, as { users: [{ id, login, name }], truncated }. */
+async function fetchAssignableUsers(client, features, { owner, name }) {
+  const { nodes, hasMore } = await client.paginate(issueDocuments(features).ASSIGNABLE_USERS, { owner, name }, { select: (data) => data.repository.assignableUsers, pageSize: USERS_PAGE })
+  return { users: nodes.filter((node) => node?.login).map((node) => ({ id: node.id, login: node.login, name: node.name ?? null })), truncated: hasMore }
+}
+
 /**
  * Reads the repository, then the Project when `project` is owner/number, and returns the raw data setup and discover read.
+ * With users, it also pages the assignable users; setup leaves them out and gets users: [].
  * exec runs the GHES check; a host that needs none never calls it.
  */
-export async function fetchDiscovery(client, { host, repo, project, exec }) {
+export async function fetchDiscovery(client, { host, repo, project, exec, users = false }) {
   const ghesVersion = await checkGhesVersion({ exec, host })
   const issueFields = hasIssueFields(ghesVersion)
   const { owner, name } = parseRepo(repo) ?? {}
   const data = await client.request(repoQuery({ issueFields }), { owner, name })
   const repository = data?.repository
   if (!repository) throw new PmkitError('NOT_FOUND', `GitHub found no repository ${repo}`, 'Check tracker.scope.repo, and that the gh account can see the repository')
-  const truncated = []
-  if (repository.issueTypes?.pageInfo?.hasNextPage) truncated.push('issue types')
-  if (repository.issueFields?.pageInfo?.hasNextPage) truncated.push('issue fields')
-  if (repository.labels?.pageInfo?.hasNextPage) truncated.push('labels')
-
-  let projectData = null
-  if (parseProject(project)) {
-    const read = await fetchProject(client, project, { issueFields })
-    if (read.truncated) truncated.push('Project fields')
-    projectData = read.project
-  }
-
+  const truncated = TRUNCATED_LISTS.filter(([key]) => repository[key]?.pageInfo?.hasNextPage).map(([, kind]) => kind)
+  const features = hostFeatures({ host, ghesVersion })
+  const assignable = users ? await readNested(fetchAssignableUsers(client, features, { owner, name }), 'assignable users', truncated) : { users: [] }
+  const projectRead = parseProject(project) ? await readNested(fetchProject(client, project, { issueFields }), 'Project fields', truncated) : { project: null }
   return {
     version: 1,
     host,
     repo: repository.nameWithOwner,
+    repositoryId: repository.id,
     ghesVersion,
-    viewer: { login: data.viewer?.login ?? null, name: data.viewer?.name ?? null },
+    features,
+    ...repositoryLists(data, repository),
+    users: assignable.users,
+    project: projectRead.project,
+    truncated,
+  }
+}
+
+// The repository lists discovery reads in the first request, and the name a truncation warning gives each.
+const TRUNCATED_LISTS = [['issueTypes', 'issue types'], ['issueFields', 'issue fields'], ['labels', 'labels']]
+
+/** Awaits a read that pages on its own, and adds its kind to truncated when GitHub had more than it read. */
+async function readNested(promise, kind, truncated) {
+  const read = await promise
+  if (read.truncated) truncated.push(kind)
+  return read
+}
+
+/** The viewer, owner, issue types, issue fields and labels of the repository query's answer. */
+function repositoryLists(data, repository) {
+  return {
+    viewer: { id: data.viewer?.id ?? null, login: data.viewer?.login ?? null, name: data.viewer?.name ?? null },
     owner: { login: repository.owner?.login ?? null, type: repository.owner?.__typename ?? null },
     issueTypes: (repository.issueTypes?.nodes ?? []).filter((node) => node?.isEnabled !== false).map((node) => ({ id: node.id, name: node.name, description: node.description ?? null })),
     issueFields: (repository.issueFields?.nodes ?? []).filter((node) => node?.name).map(field),
-    labels: (repository.labels?.nodes ?? []).map((node) => node.name),
-    project: projectData,
-    truncated,
+    labels: (repository.labels?.nodes ?? []).filter((node) => node?.name).map((node) => ({ id: node.id, name: node.name })),
   }
 }
 
@@ -188,34 +212,67 @@ export const statusFieldOf = (project) => project?.fields.find((item) => item.na
 const plainField = ({ name, dataType, options }) => ({ name, dataType, options: options.map((item) => item.name) })
 
 /** The estimate unit and scale of the mapped estimate field: sizes for a single select, points otherwise. */
-function estimateOf(raw, pmkit) {
+export function estimateOf(raw, pmkit) {
   const found = fieldOf(raw, pmkit?.mappings?.fields?.estimate)
   if (found?.dataType === 'SINGLE_SELECT') return { unit: 'sizes', scale: found.options.map((item) => item.name) }
   return { unit: 'points', scale: [] }
 }
 
-/** The statuses of the discover result: each Status option with its mapped category, or open and closed without a Project. */
+// The names pmkit gives an issue's state when no Status option names it: history moves use them, so discover lists them.
+export const OPEN = 'Open'
+export const CLOSED = 'Closed'
+export const CLOSED_NOT_PLANNED = 'Closed as not planned'
+const STATE_STATUSES = [{ name: OPEN, category: 'todo' }, { name: CLOSED, category: 'done' }, { name: CLOSED_NOT_PLANNED, category: 'canceled' }]
+
+/**
+ * The statuses of the discover result: each Status option with its mapped category, then Open, Closed and Closed as not planned,
+ * each unless an option has that name. Without a Project, only those three.
+ */
 function statusesOf(raw, status, warnings) {
   if (raw.project === null) {
     warnings.push('tracker.scope.project is none; statuses are open and closed only until PMK-89 adds the rest')
-    return [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }]
+    return STATE_STATUSES.map((entry) => ({ ...entry }))
   }
   const statusField = statusFieldOf(raw.project)
   if (!statusField) warnings.push(`GitHub Project ${raw.project.owner}/${raw.project.number} has no single-select Status field`)
   const categoryOf = new Map(Object.entries(status).filter(([category, value]) => category !== 'blocked' && typeof value === 'string' && value !== NONE).map(([category, value]) => [value, category]))
-  return (statusField?.options ?? []).map(({ name }) => {
+  const options = (statusField?.options ?? []).map(({ name }) => {
     const category = categoryOf.get(name)
     if (!category) warnings.push(`Status option ${name} has no category in mappings.status; issues in it count as in_progress`)
     return { name, category: category ?? 'in_progress' }
   })
+  const taken = new Set(options.map((option) => option.name))
+  return [...options, ...STATE_STATUSES.filter((entry) => !taken.has(entry.name)).map((entry) => ({ ...entry }))]
+}
+
+/** The assignable users as members, ids by login, with the viewer first when GitHub leaves the viewer out. */
+function membersOf(raw) {
+  const member = (user) => ({ id: user.login, name: user.name ?? null, email: null })
+  const users = (raw.users ?? []).map(member)
+  const { login } = raw.viewer
+  if (login && !users.some((user) => user.id === login)) users.unshift(member(raw.viewer))
+  return users
+}
+
+/** The warning for the options of the mapped priority field that the priority rule maps to no priority, or null. */
+function unsetPriorityWarning(raw, pmkit) {
+  const found = fieldOf(raw, pmkit?.mappings?.fields?.priority)
+  if (found?.dataType !== 'SINGLE_SELECT') return null
+  const rule = priorityRule(found.options)
+  const unset = found.options.map((item) => item.name).filter((name) => !rule.has(name))
+  if (unset.length === 0) return null
+  return `the priority field ${found.name} has options that map to no priority (${unset.join(', ')}); issues in them read with no priority`
 }
 
 /** The discover result. pmkit is config.pmkit; the raw discovery stays on it as a hidden property. */
 export function discoveryView(raw, pmkit = {}) {
-  const warnings = raw.truncated.map((kind) => `GitHub has more ${kind} than discovery reads; it kept the first ${kind === 'labels' ? LABELS_FIRST : FIRST}`)
+  const keptOf = { labels: LABELS_FIRST, 'assignable users': USERS_MAX }
+  const warnings = raw.truncated.map((kind) => `GitHub has more ${kind} than discovery reads; it kept the first ${keptOf[kind] ?? FIRST}`)
   const statusOptions = (statusFieldOf(raw.project)?.options ?? []).map((item) => item.name)
   const statuses = statusesOf(raw, pmkit?.mappings?.status ?? {}, warnings)
   warnings.push(...brokenGithubMappings(raw, pmkit).map((item) => item.problem))
+  const priorityWarning = unsetPriorityWarning(raw, pmkit)
+  if (priorityWarning) warnings.push(priorityWarning)
 
   const types = Object.entries(pmkit?.mappings?.types ?? {}).filter(([, value]) => typeof value === 'string' && value !== NONE).map(([type]) => type)
   const view = {
@@ -231,8 +288,8 @@ export function discoveryView(raw, pmkit = {}) {
     statuses,
     types,
     priorities: [...PRIORITIES],
-    labels: [...raw.labels],
-    members: raw.viewer.login ? [{ id: raw.viewer.login, name: raw.viewer.name, email: null }] : [],
+    labels: raw.labels.map((label) => label.name),
+    members: membersOf(raw),
     estimate: estimateOf(raw, pmkit),
     warnings,
   }

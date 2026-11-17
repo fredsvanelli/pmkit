@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { CAPABILITIES, SERVED_BY, unservedCapabilities } from '../capabilities.mjs'
+import { hostFeatures } from './documents.mjs'
+import { buildGithubCapabilities } from './manifest.mjs'
+
+const RAW = {
+  version: 1,
+  host: 'github.com',
+  repo: 'acme/widgets',
+  ghesVersion: null,
+  features: hostFeatures({ host: 'github.com', ghesVersion: null }),
+  issueFields: [{ id: 'IF_2', name: 'Effort', dataType: 'NUMBER', options: [] }],
+  project: { id: 'PVT_1', owner: 'acme', number: 7, title: 'Roadmap', fields: [{ id: 'PF_6', name: 'Size', dataType: 'SINGLE_SELECT', options: [{ id: 'X', name: 'S' }, { id: 'Y', name: 'L' }], issueField: false }] },
+}
+const GHES = { ...RAW, host: 'ghes.example.com', ghesVersion: '3.21.0', features: hostFeatures({ host: 'ghes.example.com', ghesVersion: '3.21.0' }) }
+const pmkit = (fields, gitHost = 'github') => ({ tracker: { system: 'github' }, git_host: { system: gitHost }, mappings: { fields } })
+const entryOf = (entries, id) => entries.find((entry) => entry.id === id)
+
+test('the manifest has one entry per capability, in order', () => {
+  assert.deepEqual(buildGithubCapabilities(RAW, pmkit({})).map((entry) => entry.id), CAPABILITIES)
+})
+
+test('estimation is native with the unit and scale of the mapped field, absent without one', () => {
+  assert.deepEqual(entryOf(buildGithubCapabilities(RAW, pmkit({ estimate: 'issue:Effort' })), 'estimation'), { id: 'estimation', path: 'native', detail: { unit: 'points', scale: [] } })
+  assert.deepEqual(entryOf(buildGithubCapabilities(RAW, pmkit({ estimate: 'project:Size' })), 'estimation'), { id: 'estimation', path: 'native', detail: { unit: 'sizes', scale: ['S', 'L'] } })
+  const absent = { id: 'estimation', path: 'absent', enableHint: 'Map an estimate field with /pmkit:setup' }
+  assert.deepEqual(entryOf(buildGithubCapabilities(RAW, pmkit({ estimate: 'none' })), 'estimation'), absent)
+  assert.deepEqual(entryOf(buildGithubCapabilities(RAW, pmkit({})), 'estimation'), absent)
+  assert.deepEqual(entryOf(buildGithubCapabilities(RAW, pmkit({ estimate: 'issue:Gone' })), 'estimation'), absent)
+})
+
+test('hierarchy, dependencies, metrics and linked code follow the spec table', () => {
+  const entries = buildGithubCapabilities(RAW, pmkit({}))
+  assert.deepEqual(entryOf(entries, 'multilevel_hierarchy'), { id: 'multilevel_hierarchy', path: 'native' })
+  assert.deepEqual(entryOf(entries, 'dependencies'), { id: 'dependencies', path: 'native' })
+  assert.deepEqual(entryOf(entries, 'native_metrics'), { id: 'native_metrics', path: 'derived', detail: { source: 'history' } })
+  assert.deepEqual(entryOf(entries, 'linked_code'), { id: 'linked_code', path: 'derived', detail: { source: 'git' } })
+  assert.deepEqual(entryOf(buildGithubCapabilities(RAW, pmkit({}, 'none')), 'linked_code'), { id: 'linked_code', path: 'derived', detail: { source: 'git' }, enableHint: 'Set git_host in .pmkit/config.yaml' })
+})
+
+test('dependencies lists related as unsupported on GHES only', () => {
+  assert.deepEqual(entryOf(buildGithubCapabilities(GHES, pmkit({})), 'dependencies'), { id: 'dependencies', path: 'native', detail: { unsupported: ['related'] } })
+  assert.equal(entryOf(buildGithubCapabilities(RAW, pmkit({})), 'dependencies').detail, undefined)
+})
+
+test('triage, delegation, time tracking and the rest are absent with their hints', () => {
+  const entries = buildGithubCapabilities(RAW, pmkit({}))
+  assert.deepEqual(entryOf(entries, 'native_triage'), { id: 'native_triage', path: 'absent', enableHint: 'GitHub has no triage; map a Status option to triage in .pmkit/config.yaml' })
+  assert.deepEqual(entryOf(entries, 'agent_delegation'), { id: 'agent_delegation', path: 'absent', enableHint: 'The GitHub adapter does not delegate to agents yet' })
+  assert.deepEqual(entryOf(entries, 'time_tracking'), { id: 'time_tracking', path: 'absent', enableHint: 'GitHub has no time tracking' })
+  assert.deepEqual(entryOf(entries, 'cycles'), { id: 'cycles', path: 'absent', enableHint: 'The GitHub adapter does not serve cycles yet (EPC-8)' })
+})
+
+test('every capability the manifest claims has a command that serves it', () => {
+  for (const raw of [RAW, GHES]) assert.deepEqual(unservedCapabilities(buildGithubCapabilities(raw, pmkit({ estimate: 'issue:Effort' })), SERVED_BY), [])
+})

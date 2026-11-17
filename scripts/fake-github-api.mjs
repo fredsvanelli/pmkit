@@ -2,8 +2,11 @@
 // Unit tests call answerGh through an injected exec; the E2E test puts a gh wrapper that calls it first on PATH.
 // scripts/fake-gh.mjs is a different fake: it serves the git host commands (pr, run, api) of scripts/lib/github/host.mjs.
 //
-// A fixture: { meta: { installed_version } | null, graphql: { <operation name>: <reply body> }, login: false }
-// A reply body is what GitHub returns, { data } or { errors }. An operation the fixture lacks answers with an UPSTREAM-shaped error.
+// A fixture: { meta: { installed_version } | null, graphql: { <operation name>: <reply body> }, login: false, issues }
+// A reply body is what GitHub returns, { data } or { errors }. An operation the fixture lacks answers with an UPSTREAM-shaped error,
+// unless the fixture has `issues`, the toJSON() of a fake GitHub (scripts/fake-github-issues.mjs): that fake answers, and its new
+// state replaces fixture.issues, so a caller that saves the fixture keeps the state between runs.
+import { fakeGithubIssuesFrom } from './fake-github-issues.mjs'
 
 const operationOf = (query) => /^\s*(?:query|mutation)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query ?? '')?.[1] ?? null
 
@@ -15,6 +18,19 @@ export const hostnameOf = (args) => {
 
 /** What gh prints for args and stdin under the fixture: { status, stdout, stderr }. */
 export function answerGh(args, input, fixture) {
+  return answerGhWith(args, input, fixture, (name, body) => {
+    const canned = fixture.graphql?.[name]
+    if (canned !== undefined && canned !== null) return canned
+    if (!fixture.issues) return { errors: [{ message: `fake gh has no answer for ${name}` }] }
+    const fake = fakeGithubIssuesFrom(fixture.issues)
+    const reply = fake.handle(name, body.variables ?? {}, body.query)
+    fixture.issues = fake.toJSON()
+    return reply
+  })
+}
+
+/** What gh prints for args and stdin, with each GraphQL reply from answer(operationName, body): { status, stdout, stderr }. */
+export function answerGhWith(args, input, fixture, answer) {
   if (args[0] !== 'api') return { status: 1, stdout: '', stderr: `fake gh: unknown command ${args[0]}` }
   if (fixture.login === false) return { status: 4, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' }
   const rest = args.slice(1).filter((arg, index, list) => arg !== '--hostname' && list[index - 1] !== '--hostname')
@@ -30,7 +46,7 @@ export function answerGh(args, input, fixture) {
       return { status: 1, stdout: '', stderr: 'fake gh: stdin is not JSON' }
     }
     const name = operationOf(body.query)
-    const reply = fixture.graphql?.[name] ?? { errors: [{ message: `fake gh has no answer for ${name}` }] }
+    const reply = answer(name, body)
     const failed = Array.isArray(reply.errors)
     const head = 'HTTP/2.0 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 4999\r\n\r\n'
     return { status: failed ? 1 : 0, stdout: `${head}${JSON.stringify(reply)}`, stderr: failed ? `gh: ${reply.errors[0].message}` : '' }
@@ -50,11 +66,11 @@ export function fakeGhExec(fixture) {
 
 const page = (nodes, hasNextPage = false) => ({ nodes, pageInfo: { hasNextPage } })
 
-/** A repository reply: the viewer, the repository with its issue types, issue fields and labels. */
+/** A repository reply: the viewer, the repository with its id, issue types, issue fields and labels. */
 export function repoReply({ owner = 'acme', name = 'widgets', ownerType = 'Organization', types, fields, labels, typesMore = false, fieldsMore = false } = {}) {
   return {
     data: {
-      viewer: { login: 'octocat', name: 'The Octocat' },
+      viewer: { id: 'U_1', login: 'octocat', name: 'The Octocat' },
       repository: {
         id: 'R_1',
         nameWithOwner: `${owner}/${name}`,
@@ -73,7 +89,7 @@ export function repoReply({ owner = 'acme', name = 'widgets', ownerType = 'Organ
             { __typename: 'IssueFieldDate', id: 'IF_4', name: 'Target date', dataType: 'DATE' },
           ], fieldsMore),
         }),
-        labels: page((labels ?? ['bug', 'documentation']).map((label) => ({ name: label }))),
+        labels: page((labels ?? ['bug', 'documentation']).map((label, index) => ({ id: `LA_${index + 1}`, name: label }))),
       },
     },
   }
@@ -103,6 +119,11 @@ export function projectReply({ number = 7, title = 'Roadmap', status = ['Backlog
   }
 }
 
+/** The users of the repository GitHub can assign, on one page. */
+export function assignableReply(users = [{ id: 'U_1', login: 'octocat', name: 'The Octocat' }, { id: 'U_2', login: 'hubot', name: 'Hubot' }]) {
+  return { data: { repository: { assignableUsers: { nodes: users, pageInfo: { hasNextPage: false, endCursor: null } } } } }
+}
+
 /** The linked Projects of the repository. */
 export function linkedReply(projects = [{ number: 7, title: 'Roadmap', owner: 'acme' }]) {
   return { data: { repository: { projectsV2: page(projects.map(({ number, title, owner }) => ({ number, title, owner: { login: owner } }))) } } }
@@ -116,7 +137,7 @@ export const SCOPE_ERROR = {
 export function standardFixture(overrides = {}) {
   return {
     meta: null,
-    graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply(), PmkitLinkedProjects: linkedReply() },
+    graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply(), PmkitLinkedProjects: linkedReply(), PmkitAssignableUsers: assignableReply() },
     ...overrides,
   }
 }

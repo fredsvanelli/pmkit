@@ -391,6 +391,22 @@ function syncNotes(from, sync, created = null) {
 }
 
 /**
+ * The note for a tracker that creates the issue branch on origin itself, such as GitHub's linked branch (PMK-87): it starts at the head of
+ * origin/<base> there, so a `from` that lacks commits of it makes the push of `pr open` non-fast-forward. Local refs only, nothing is fetched.
+ * No note when origin/<base> is missing or `from` contains it; `could not check` when git cannot tell. `created` is true on the real run, after
+ * `branch` exists: the next step then moves it, instead of passing another --from.
+ */
+function linkedBranchNotes(ctx, from, base, branch, created = false) {
+  const remote = `refs/remotes/origin/${base}`
+  if (!refExists(ctx, remote)) return []
+  const result = readGit(ctx, ['merge-base', '--is-ancestor', remote, from])
+  if (!result.error && result.status === 0) return []
+  if (result.error || result.status !== 1) return [`could not check whether ${from} contains origin/${base}, so the push of pr open may be refused. Run git fetch origin, then check with git log ${from}..origin/${base}`]
+  const next = created ? `Run git fetch origin, then git rebase --onto origin/${base} ${from} ${branch}` : `Pass --from origin/${base}`
+  return [`GitHub creates ${branch} on origin at the head of ${base} there, and ${from} lacks commits of origin/${base} (as of the last fetch), so the push of pr open would be refused. ${next}`]
+}
+
+/**
  * The note for a branch that lacks commits of the last fetched origin/<base> (PMK-305): `pr open` pushes it, and a pull request from an old base may conflict.
  * Local refs only, nothing is fetched and the push is never refused. No note when origin/<base> is missing or the branch has them all;
  * `could not compare` when git cannot count, which is not the same as up to date.
@@ -642,9 +658,11 @@ function grepFailure(result) {
 }
 
 /** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
-function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
+export function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
   const lines = [`${dryRun ? 'would delete' : 'deleted'} ${before.id}  ${before.title}`, issueRecord(before), '']
-  if (removes.trash) {
+  if (removes.issue) {
+    lines.push('removes: GitHub deletes the issue for good, and nothing can bring it back')
+  } else if (removes.trash) {
     lines.push(`removes: the issue moves to Linear's trash, where the workspace can restore it for a while: pmkit issues restore ${before.id}`)
   } else {
     lines.push('removes:', ...removes.files.map((file) => `  ${file}`))
@@ -652,7 +670,8 @@ function deleteText({ before, removes, warnings, mentions, files = [], unchecked
     const recovery = removes.autoCommit ? 'Only git history can bring them back.' : 'Nothing commits this delete (auto_commit is off), so git can bring them back only if you committed them before.'
     lines.push(`${count(removes.events, 'event')} and ${count(removes.comments, 'comment')} go with it. ${recovery}`)
   }
-  lines.push('references: no other issue lists it as blocked by, related, duplicate of or parent')
+  // GitHub shows no list of the issues marked as duplicates of an issue, so that check is under not checked there.
+  lines.push(removes.issue ? 'references: no other issue lists it as blocked by, related or parent' : 'references: no other issue lists it as blocked by, related, duplicate of or parent')
   if (warnings.length > 0) lines.push('warnings:', ...warnings.map((warning) => `  ${warning}`))
   if (mentions.length > 0) lines.push(`mentioned in the text of: ${mentions.map((mention) => `${mention.id} (${mention.in})`).join(', ')}. The text stays as it is.`)
   if (files.length > 0) {
@@ -828,17 +847,23 @@ async function requireMember(ctx) {
   throw new PmkitError('NOT_CONFIGURED', 'cannot tell which member you are', nextStep)
 }
 
-/** The warning for a Linear read that a page cap cut: `history` and `comments` of one issue, or `issues` for the metric events. */
-function capWarning(kind, id) {
-  if (kind === 'history') return `Linear has more history for ${id} than the 1000 entries pmkit read; the oldest are missing`
-  if (kind === 'comments') return `Linear has more comments for ${id} than the 1000 pmkit read`
-  return 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
+/**
+ * The warning for a hosted read that a page cap cut: `history` and `comments` of one issue, or `issues` for the metric events.
+ * `system` is tracker.system. GitHub reads a timeline oldest first, so a cut drops its newest entries.
+ */
+export function capWarning(kind, id, system) {
+  const name = system === 'github' ? 'GitHub' : 'Linear'
+  if (kind === 'history') return `${name} has more history for ${id} than the 1000 entries pmkit read; the ${system === 'github' ? 'newest' : 'oldest'} are missing`
+  if (kind === 'comments') return `${name} has more comments for ${id} than the 1000 pmkit read`
+  return `${name} has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated`
 }
-const capWarnings = (list, kind, id) => (list.truncated === true ? [capWarning(kind, id)] : [])
+/** The warnings of a read list: the cut warning when the tracker set the hidden truncated, then the tracker's own hidden warnings (GitHub on an older GHES). */
+const capWarnings = (list, kind, id, system) => [...(list.truncated === true ? [capWarning(kind, id, system)] : []), ...(Array.isArray(list.warnings) ? list.warnings : [])]
 
 /** The one note for a metric command: the path native_metrics took, and for velocity the sprint count and the estimates. */
 async function metricNotes(tracker, metric, extra = {}) {
-  return metricNotesFrom((await tracker.capabilities()).capabilities, metric, extra)
+  const manifest = await tracker.capabilities()
+  return metricNotesFrom(manifest.capabilities, metric, { tracker: manifest.tracker, ...extra })
 }
 
 /** metricNotes over a manifest already read, for a command that reads the manifest once. */
@@ -872,10 +897,10 @@ async function capabilityNotesOrNone(ctx, id = 'linked_code') {
 }
 
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
-async function flowInputs(tracker, statuses) {
+async function flowInputs(ctx, tracker, statuses) {
   const categoryOf = categoryLookup(statuses ?? (await tracker.discover()).statuses)
   const list = await tracker.metricEvents()
-  return { categoryOf, events: groupEventsByIssue(list), warnings: capWarnings(list, 'issues') }
+  return { categoryOf, events: groupEventsByIssue(list), warnings: capWarnings(list, 'issues', undefined, ctx.config().system) }
 }
 
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
@@ -1011,12 +1036,12 @@ export const COMMANDS = [
       const warnings = []
       if (ctx.flag('comments')) {
         data.comments = await tracker.listComments(issue.id)
-        warnings.push(...capWarnings(data.comments, 'comments', issue.id))
+        warnings.push(...capWarnings(data.comments, 'comments', issue.id, ctx.config().system))
         parts.push('', 'comments:', ...(data.comments.length > 0 ? data.comments.map(commentText) : ['(none)']))
       }
       if (ctx.flag('history')) {
         data.history = await tracker.getHistory(issue.id)
-        warnings.push(...capWarnings(data.history, 'history', issue.id))
+        warnings.push(...capWarnings(data.history, 'history', issue.id, ctx.config().system))
         parts.push('', 'history:', eventTable(data.history))
       }
       return { data, text: parts.join('\n'), warnings }
@@ -1891,7 +1916,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const window = ctx.opt('window') === undefined ? ctx.settings().defaults.velocity_window : whole('window', ctx.opt('window'))
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const sprints = await tracker.listCycles({ state: 'closed' })
       const bySprint = sprintIssues((await tracker.searchIssues({ archived: true })).issues, events, categoryOf)
       const result = velocity(sprints, bySprint, { window, categoryOf })
@@ -1905,7 +1930,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const issues = cycleTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
@@ -1918,7 +1943,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const issues = leadTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
@@ -1931,7 +1956,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const result = throughput(inRange, { categoryOf })
       const lines = [`count: ${result.count}`]
@@ -1946,7 +1971,7 @@ export const COMMANDS = [
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
       const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
       const asOf = new Date(Math.floor(asOfMs / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z')
-      const { categoryOf, events, warnings } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(ctx, tracker)
       const issues = aging(events, { categoryOf, asOf })
       const stats = summary(issues.map((item) => item.days))
       const lines = issues.length > 0
@@ -1966,7 +1991,7 @@ export const COMMANDS = [
       for (const key of ['since', 'until']) if (ctx.opt(key) !== undefined) range[key] = dateText(key, ctx.opt(key))
       const tracker = await ctx.tracker()
       const events = await tracker.metricEvents(range)
-      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues'), notes: await metricNotes(tracker, 'events') }
+      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues', undefined, ctx.config().system), notes: await metricNotes(tracker, 'events') }
     },
   },
   {
@@ -2099,11 +2124,25 @@ export const COMMANDS = [
       const createdNote = syncNotes(from, sync, branch)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()
-      await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
-      if (ctx.dryRun) return { data: { branch, from, ...(syncNote.length > 0 ? { notes: syncNote } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...syncNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
+      // A tracker that creates the branch on origin itself, such as GitHub, starts it at the head there of the branch `from` names (PMK-87).
+      const base = from.replace(/^origin\//, '')
+      const remote = ctx.settings().remoteBranch === true
+      // The adapter's notes, such as GitHub's fallback to the default branch, then the note for a push pr open would have refused.
+      // `linked.base` is the branch GitHub started the linked branch at, the fallback when it lacks base; no `linked` when nothing is linked.
+      const linked = (result, created) => {
+        const notes = result.notes ?? []
+        if (!remote || !result.linked) return notes
+        return [...notes, ...linkedBranchNotes(ctx, from, result.linked.base, branch, created)]
+      }
+      const dry = await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true, base })
+      if (ctx.dryRun) {
+        const notes = [...syncNote, ...linked(dry, false)]
+        return { data: { branch, from, ...(notes.length > 0 ? { notes } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
+      }
       host.createBranch(branch, { from })
-      const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, from, ...result, ...(createdNote.length > 0 ? { notes: createdNote } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...createdNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
+      const result = await tracker.updateIssue(issue.id, { branch }, actor, { base })
+      const notes = [...createdNote, ...linked(result, true)]
+      return { data: { branch, from, ...result, ...(notes.length > 0 ? { notes } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
@@ -2935,7 +2974,7 @@ const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
 async function runBulk(ctx) {
   const [kind, value] = ctx.args
   // PMK-256: Linear refuses unarchive before anything else is read or checked, whatever the other flags are.
-  if (kind === 'unarchive' && ctx.config().system !== 'local') throw unarchiveNotSupported()
+  if (kind === 'unarchive' && ctx.config().system !== 'local') throw unarchiveNotSupported(ctx.config().system)
   const tracker = await ctx.tracker()
   const view = ctx.opt('view')
   // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
@@ -3390,7 +3429,7 @@ async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = 
   // With no active sprint named nothing was read, so there is no age to compute.
   const aged = withAging && !noSprintNamed
   if (aged) {
-    const { categoryOf, events, warnings: capped } = await flowInputs(tracker, discovered.statuses)
+    const { categoryOf, events, warnings: capped } = await flowInputs(ctx, tracker, discovered.statuses)
     warnings.push(...capped)
     ages = aging(events, { categoryOf, asOf: ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z') })
   }
@@ -4703,7 +4742,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     const { options } = parsed
     const root = path.resolve(typeof options.root === 'string' ? options.root : findRoot(cwd))
     // PMK-267: Linear refuses bulk unarchive before the flag check, so a flag the command does not take answers NOT_SUPPORTED too.
-    if (command.name === 'issues bulk' && parsed.positionals[0] === 'unarchive' && loadPmkitConfig(root, { adapters }).system !== 'local') throw unarchiveNotSupported()
+    if (command.name === 'issues bulk' && parsed.positionals[0] === 'unarchive') {
+      const { system } = loadPmkitConfig(root, { adapters })
+      if (system !== 'local') throw unarchiveNotSupported(system)
+    }
     checkUsage(command, parsed)
     const dryRun = last(options['dry-run']) === true
     const now = clock(env)

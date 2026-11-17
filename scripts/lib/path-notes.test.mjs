@@ -11,6 +11,12 @@ test('native_metrics derived from history names the metric and Linear issue hist
   assert.equal(pathNote(entry, { metric: 'cycle time' }), 'cycle time computed from Linear issue history')
 })
 
+test('native_metrics derived from history on GitHub names GitHub issue history', () => {
+  const entry = { id: 'native_metrics', path: 'derived', detail: { source: 'history' } }
+  assert.equal(pathNote(entry, { metric: 'events', tracker: 'github' }), 'events computed from GitHub issue history')
+  assert.equal(pathNote(entry, { metric: 'events', tracker: 'linear' }), 'events computed from Linear issue history')
+})
+
 test('native_metrics derived from events names the Local event file', () => {
   const entry = { id: 'native_metrics', path: 'derived', detail: { source: 'events' } }
   assert.equal(pathNote(entry, { metric: 'throughput' }), 'throughput computed from .issues/events.jsonl')

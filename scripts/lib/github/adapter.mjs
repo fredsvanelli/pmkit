@@ -4,6 +4,7 @@
 import { builtInDefaults } from '../config.mjs'
 import { parseProject, parseRepo } from './discovery.mjs'
 import { HOST_NAME } from './client.mjs'
+import { isIssueId } from './ids.mjs'
 import { NONE, parseFieldSource } from './mappings.mjs'
 
 /** The GitHub rules on a .pmkit/config.yaml whose shape is valid. */
@@ -30,8 +31,9 @@ export function githubDescriptor({ exec } = {}) {
     system: 'github',
     hosted: true,
     configProblems: githubConfigProblems,
-    // PMK-87 decides how an issue id reads; until then no id is an epic id.
-    settings: () => ({ defaults: builtInDefaults(), epicPrefix: null }),
+    // An issue id is a number, #number or owner/name#number, so any other id goes to getDeliverable. GitHub names each issue's
+    // linked branch, and creates it on origin, so issues branch checks that the start point has origin's commits.
+    settings: () => ({ defaults: builtInDefaults(), epicPrefix: null, isEpicId: (id) => !isIssueId(id), trackerBranch: true, remoteBranch: true }),
     // The client and the runner that setup reads GitHub with before a config exists.
     connect: async ({ root, env, host }) => {
       const { createGithubClient } = await import('./client.mjs')

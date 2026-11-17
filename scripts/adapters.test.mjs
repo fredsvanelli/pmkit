@@ -56,6 +56,16 @@ test('the linear descriptor asks for a workspace and lists no secret', () => {
   assert.equal(settings.isEpicId('a1b2c3d4e5f6'), true)
 })
 
+test('the github descriptor reads issue ids, names the linked branch and creates it on origin', () => {
+  const settings = ADAPTERS.github.settings()
+  assert.deepEqual(settings.defaults, builtInDefaults())
+  assert.equal(settings.epicPrefix, null)
+  assert.equal(settings.trackerBranch, true)
+  assert.equal(settings.remoteBranch, true)
+  for (const id of ['12', '#12', 'acme/widgets#12']) assert.equal(settings.isEpicId(id), false, id)
+  for (const id of ['EPC-1', 'Roadmap', 'acme/widgets']) assert.equal(settings.isEpicId(id), true, id)
+})
+
 test('the linear descriptor checks the estimate and type mappings offline', () => {
   const linear = linearDescriptor()
   const base = { tracker: { system: 'linear', scope: { workspace: 'acme' } } }

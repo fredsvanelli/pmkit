@@ -177,6 +177,9 @@ test('discoveryView gives each Status option its mapped category and warns about
     { name: 'In Progress', category: 'in_progress' },
     { name: 'In Review', category: 'in_progress' },
     { name: 'Done', category: 'done' },
+    { name: 'Open', category: 'todo' },
+    { name: 'Closed', category: 'done' },
+    { name: 'Closed as not planned', category: 'canceled' },
   ])
   assert.ok(view.warnings.includes('Status option In Review has no category in mappings.status; issues in it count as in_progress'))
 })
@@ -186,7 +189,7 @@ test('discoveryView reports open and closed when the repository has no Project',
   assert.equal(view.project, null)
   assert.deepEqual(view.projectFields, [])
   assert.deepEqual(view.statusOptions, [])
-  assert.deepEqual(view.statuses, [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }])
+  assert.deepEqual(view.statuses, [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }, { name: 'Closed as not planned', category: 'canceled' }])
   assert.ok(view.warnings.some((warning) => /tracker\.scope\.project is none/.test(warning)))
 })
 
@@ -203,6 +206,16 @@ test('discoveryView warns about a mapping that names something GitHub no longer 
   assert.ok(view.warnings.includes('mappings.fields.priority names issue field Urgency, which acme/widgets no longer has'))
   assert.ok(view.warnings.includes('mappings.fields.estimate names Project field Size, which acme/7 no longer has'))
   assert.ok(view.warnings.includes('mappings.types.chore names issue type Chore, which acme/widgets does not have enabled'))
+})
+
+test('discoveryView warns about the priority options past the fourth, which read as no priority', async () => {
+  const raw = await rawOf()
+  const priority = raw.issueFields.find((item) => item.name === 'Priority')
+  priority.options = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5'].map((name, index) => ({ id: `opt-p${index}`, name }))
+  const view = discoveryView(raw, pmkitWith({ fields: { priority: 'issue:Priority' } }))
+  assert.ok(view.warnings.includes('the priority field Priority has options that map to no priority (P4, P5); issues in them read with no priority'))
+  priority.options = priority.options.slice(0, 4)
+  assert.ok(!discoveryView(raw, pmkitWith({ fields: { priority: 'issue:Priority' } })).warnings.some((warning) => /map to no priority/.test(warning)))
 })
 
 test('discoveryView warns about cut lists', async () => {
@@ -222,6 +235,78 @@ test('checkGhesVersion maps a timeout to UPSTREAM', async () => {
 test('discoveryView warns about a Project without a Status field', async () => {
   const fixture = standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ extra: [{ __typename: 'ProjectV2Field', id: 'P', name: 'Notes', dataType: 'TEXT', isIssueField: false }] }) } })
   const view = discoveryView(await rawOf(fixture), pmkitWith({}))
-  assert.deepEqual(view.statuses, [])
+  assert.deepEqual(view.statuses.map((status) => status.name), ['Open', 'Closed', 'Closed as not planned'])
   assert.ok(view.warnings.includes('GitHub Project acme/7 has no single-select Status field'))
+})
+
+test('discoveryView leaves out a state status that a Status option already names', async () => {
+  const fixture = standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ status: ['Open', 'Doing', 'Closed'] }) } })
+  const view = discoveryView(await rawOf(fixture), pmkitWith({ status: { todo: 'Open', in_progress: 'Doing', done: 'Closed' } }))
+  assert.deepEqual(view.statuses, [
+    { name: 'Open', category: 'todo' },
+    { name: 'Doing', category: 'in_progress' },
+    { name: 'Closed', category: 'done' },
+    { name: 'Closed as not planned', category: 'canceled' },
+  ])
+})
+
+/** An exec that answers PmkitAssignableUsers by page from users, two per page, and everything else from the fixture. */
+function pagedUsers(users, fixture = standardFixture()) {
+  const fake = fakeGhExec(fixture)
+  const exec = (cmd, args, options = {}) => {
+    const body = args.includes('graphql') ? JSON.parse(options.input) : null
+    if (!body?.query.startsWith('query PmkitAssignableUsers(')) return fake.exec(cmd, args, options)
+    fake.calls.push({ cmd, args, input: options.input })
+    const start = body.variables.after ? Number(body.variables.after) : 0
+    const nodes = users.slice(start, start + 2)
+    const hasNextPage = start + 2 < users.length
+    const reply = { data: { repository: { assignableUsers: { nodes, pageInfo: { hasNextPage, endCursor: hasNextPage ? String(start + 2) : null } } } } }
+    return { status: 0, stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify(reply)}`, stderr: '' }
+  }
+  return { ...fake, exec, client: createGithubClient({ root: '/repo', env: {}, exec, host: 'github.com', sleep: async () => {} }) }
+}
+
+const THREE_USERS = [{ id: 'U_1', login: 'octocat', name: 'The Octocat' }, { id: 'U_2', login: 'hubot', name: 'Hubot' }, { id: 'U_3', login: 'monalisa', name: null }]
+
+test('fetchDiscovery with users reads the ids and pages the assignable users', async () => {
+  const { client, calls } = pagedUsers(THREE_USERS)
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'acme/7', users: true })
+  const names = calls.map((call) => /query (\w+)/.exec(JSON.parse(call.input).query)[1])
+  assert.deepEqual(names, ['PmkitRepo', 'PmkitAssignableUsers', 'PmkitAssignableUsers', 'PmkitProject'])
+  assert.deepEqual(JSON.parse(calls[1].input).variables, { owner: 'acme', name: 'widgets', first: 100, after: null })
+  assert.equal(raw.repositoryId, 'R_1')
+  assert.deepEqual(raw.viewer, { id: 'U_1', login: 'octocat', name: 'The Octocat' })
+  assert.deepEqual(raw.labels, [{ id: 'LA_1', name: 'bug' }, { id: 'LA_2', name: 'documentation' }])
+  assert.deepEqual(raw.users, THREE_USERS)
+  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true })
+  assert.match(JSON.parse(calls[0].input).query, /viewer \{ id login name \}/)
+  assert.match(JSON.parse(calls[0].input).query, /labels\(first: 100\) \{ nodes \{ id name \}/)
+  const view = discoveryView(raw, pmkitWith({}))
+  assert.deepEqual(view.members, [
+    { id: 'octocat', name: 'The Octocat', email: null },
+    { id: 'hubot', name: 'Hubot', email: null },
+    { id: 'monalisa', name: null, email: null },
+  ])
+  assert.deepEqual(view.labels, ['bug', 'documentation'])
+})
+
+test('fetchDiscovery without users sends no user query and keeps users empty', async () => {
+  const { client, calls } = setup(standardFixture(), 'github.com')
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none' })
+  assert.equal(calls.length, 1)
+  assert.deepEqual(raw.users, [])
+})
+
+test('discoveryView puts the viewer first when the assignable users leave the viewer out', async () => {
+  const { client } = pagedUsers(THREE_USERS.slice(1))
+  const view = discoveryView(await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', users: true }), pmkitWith({}, 'none'))
+  assert.deepEqual(view.members.map((member) => member.id), ['octocat', 'hubot', 'monalisa'])
+})
+
+test('discoveryView warns when GitHub has more assignable users than discovery reads', async () => {
+  const many = Array.from({ length: 21 }, (_, index) => ({ id: `U_${index}`, login: `user${index}`, name: null }))
+  const { client } = pagedUsers(many)
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', users: true })
+  assert.equal(raw.users.length, 20)
+  assert.ok(discoveryView(raw, pmkitWith({}, 'none')).warnings.includes('GitHub has more assignable users than discovery reads; it kept the first 1000'))
 })

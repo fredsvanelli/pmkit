@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { run } from './pmkit.mjs'
+import { capWarning, run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { githubDescriptor } from './lib/github/adapter.mjs'
 import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from './fake-github-api.mjs'
@@ -109,6 +109,7 @@ test('a full answer writes the scope and the mappings, and a second run keeps th
   assert.deepEqual(data.statuses, [
     { name: 'Backlog', category: 'backlog' }, { name: 'Todo', category: 'todo' }, { name: 'In Progress', category: 'in_progress' },
     { name: 'In Review', category: 'in_review' }, { name: 'Done', category: 'done' },
+    { name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }, { name: 'Closed as not planned', category: 'canceled' },
   ])
   const again = dataOf(await cli(context, ['init', '--update', '--dry-run', '--json']))
   assert.deepEqual(again.questions, [])
@@ -138,7 +139,7 @@ test('project none asks no Status question and writes none', async () => {
   assert.equal(data.project, null)
   assert.match(read(context), /project: none/)
   assert.doesNotMatch(read(context), /status:/)
-  assert.deepEqual(data.statuses, [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }])
+  assert.deepEqual(data.statuses, [{ name: 'Open', category: 'todo' }, { name: 'Closed', category: 'done' }, { name: 'Closed as not planned', category: 'canceled' }])
 })
 
 test('an update asks again for a held Project GitHub no longer returns', async () => {
@@ -209,4 +210,11 @@ test('init refuses a missing repository, bad flags and Linear flags', async () =
   assert.match(errorOf(status).message, /todo=Ready/)
   const local = await cli(fresh(), ['init', '--host', 'github.com', '--dry-run', '--json'])
   assert.match(errorOf(local).message, /--host applies only with --tracker github/)
+})
+
+test('a cut read on GitHub names GitHub', () => {
+  assert.equal(capWarning('history', '12', 'github'), 'GitHub has more history for 12 than the 1000 entries pmkit read; the newest are missing')
+  assert.equal(capWarning('comments', '12', 'github'), 'GitHub has more comments for 12 than the 1000 pmkit read')
+  assert.equal(capWarning('issues', undefined, 'github'), 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
+  assert.equal(capWarning('issues', undefined, 'linear'), 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated')
 })
