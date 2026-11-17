@@ -484,6 +484,19 @@ function build(state) {
       reopen(record, at)
       return record
     }),
+    PmkitAddLabels: (input, at) => {
+      const record = issueById(input.labelableId)
+      setLabels(record, [...new Set([...record.labelIds, ...input.labelIds])], at)
+      touch(at, record)
+      return { addLabelsToLabelable: { clientMutationId: null } }
+    },
+    PmkitRemoveLabels: (input, at) => {
+      const record = issueById(input.labelableId)
+      input.labelIds.forEach(labelById)
+      setLabels(record, record.labelIds.filter((id) => !input.labelIds.includes(id)), at)
+      touch(at, record)
+      return { removeLabelsFromLabelable: { clientMutationId: null } }
+    },
     PmkitAddProjectItem: (input) => ({ addProjectV2ItemById: { item: { id: addItem(input.projectId, input.contentId).id } } }),
     PmkitSetProjectField: (input, at) => {
       projectById(input.projectId)

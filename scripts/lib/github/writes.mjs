@@ -18,7 +18,6 @@ const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', mess
 const stale = (message, nextStep) => invalid(message, nextStep, { stale: true })
 const LABEL_STEP = 'Create the label on GitHub, then run pmkit discover'
 const SETUP = '/pmkit:setup'
-const NO_PROJECT = 'tracker.scope.project is none, so issues have no status but open and closed'
 // The state each category asks for: closed with a reason for the terminal ones, open for the rest.
 const CLOSE_REASON = { done: 'COMPLETED', canceled: 'NOT_PLANNED' }
 const STATE_CATEGORY = { [OPEN]: 'todo', [CLOSED]: 'done', [CLOSED_NOT_PLANNED]: 'canceled' }
@@ -218,18 +217,57 @@ function planBody(patch, node, create) {
   return changed ? { body } : {}
 }
 
+/** True when types are labels: the repository has no enabled issue type. */
+const typesAreLabels = (context) => context.raw.issueTypes.length === 0
+
+/** The type label of a pmkit type, or null for type null. An unmapped type fails before any request. */
+function typeLabelOf(type, context) {
+  if (type === null) return null
+  const found = typeof type === 'string' ? context.typeLabels.get(type) : undefined
+  const known = [...context.typeLabels.keys()]
+  if (!found) throw invalid(`type "${type}" has no label in mappings.types${known.length > 0 ? ` (${known.join(', ')})` : ''}`, SETUP)
+  return found
+}
+
 function planType(patch, node, create, context) {
-  if (patch.type === undefined) return {}
+  if (patch.type === undefined || typesAreLabels(context)) return {}
   const id = issueTypeId(patch.type, context)
   const changed = create ? id !== null : id !== (node.issueType?.id ?? null)
   return changed ? { issueTypeId: id } : {}
 }
 
+/** The label a labels patch may not name: one that holds a status or a type, with the command that sets it. */
+function refuseMapped(label, given, context) {
+  if (!context.mappedLabelIds.has(label.id)) return
+  const status = [...context.statusLabels.values()].some((held) => held.id === label.id)
+  throw invalid(status ? `label ${given} holds a status; use pmkit issues move` : `label ${given} holds a type; use --type`)
+}
+
+/**
+ * The labels of a write. A labels patch sets the labels that hold no status and no type, and the mapped labels the issue has
+ * stay. Without issue types, a type patch swaps the type labels.
+ */
 function planLabels(patch, node, create, context) {
-  if (patch.labels === undefined) return {}
-  if (patch.labels !== null && !Array.isArray(patch.labels)) throw invalid('labels must be a list of strings')
-  const ids = [...new Set((patch.labels ?? []).map((name) => requireLabel(context, oneLine('label', name)).id))]
+  const typeLabel = patch.type !== undefined && typesAreLabels(context)
+  if (patch.labels === undefined && !typeLabel) return {}
+  if (patch.labels !== undefined && patch.labels !== null && !Array.isArray(patch.labels)) throw invalid('labels must be a list of strings')
   const current = (node.labels?.nodes ?? []).map((label) => label.id)
+  let ids = patch.labels === undefined
+    ? [...current]
+    : [
+        ...current.filter((id) => context.mappedLabelIds.has(id)),
+        ...(patch.labels ?? []).map((name) => {
+          const label = requireLabel(context, oneLine('label', name))
+          refuseMapped(label, name, context)
+          return label.id
+        }),
+      ]
+  if (typeLabel) {
+    const target = typeLabelOf(patch.type, context)
+    const typeIds = new Set([...context.typeLabels.values()].map((label) => label.id))
+    ids = [...ids.filter((id) => !typeIds.has(id)), ...(target ? [target.id] : [])]
+  }
+  ids = [...new Set(ids)]
   const same = ids.length === current.length && ids.every((id) => current.includes(id))
   const changed = create ? ids.length > 0 : !same
   return changed ? { labelIds: ids } : {}
@@ -331,13 +369,28 @@ function namedOption(category, status, context) {
   return option
 }
 
+/**
+ * Without a Project: the label steps of a move. The issue loses every status label but the target's, and gains the target's.
+ * A category with no label moves only when the issue's state alone reaches it (todo, done, canceled).
+ */
+function labelSteps(node, category, status, context) {
+  const target = context.statusLabels.get(category) ?? null
+  if (status !== undefined) {
+    const named = target !== null && sameText(target.name, status)
+    const stateMove = STATE_CATEGORY[status] === category && (category !== 'todo' || target === null)
+    if (!named && !stateMove) throw invalid(`status ${status} is not in category ${category}`, target ? `Use one of: ${target.name}` : SETUP)
+  }
+  if (!target && !['todo', ...TERMINAL].includes(category)) throw notSupported(`no label of ${context.repo} stands for ${category}`, SETUP)
+  const statusIds = new Set([...context.statusLabels.values()].map((label) => label.id))
+  const held = (node.labels?.nodes ?? []).filter(Boolean)
+  const remove = held.filter((label) => statusIds.has(label.id) && label.id !== target?.id)
+  const add = target && !held.some((label) => label.id === target.id) ? [target] : []
+  const step = (op, labels) => ({ op, labelIds: labels.map((label) => label.id), names: labels.map((label) => label.name) })
+  return [...(remove.length > 0 ? [step('removeLabels', remove)] : []), ...(add.length > 0 ? [step('addLabels', add)] : [])]
+}
+
 /** The Status option a move sets, or null when the move changes only the issue's state. */
 function pickOption(category, status, context) {
-  if (!context.project) {
-    const stateTarget = status === undefined || STATE_CATEGORY[status] === category
-    if (!stateTarget || !['todo', ...TERMINAL].includes(category)) throw notSupported(NO_PROJECT, SETUP)
-    return null
-  }
   if (status !== undefined) return namedOption(category, status, context)
   const option = context.optionOf(category)
   // A closed issue reads done or canceled whatever its option, so those two still move without one.
@@ -368,18 +421,25 @@ const PREVIEW_STEP = {
   setStatus: (next, step, context) => {
     previewItem(next, context).status = { __typename: 'ProjectV2ItemFieldSingleSelectValue', name: step.option.name, optionId: step.option.id }
   },
+  removeLabels: (next, step) => {
+    next.labels = { nodes: (next.labels?.nodes ?? []).filter((label) => !step.labelIds.includes(label.id)), pageInfo: { hasNextPage: false } }
+  },
+  addLabels: (next, step, context) => {
+    next.labels = { nodes: [...(next.labels?.nodes ?? []), ...step.labelIds.map((id) => context.raw.labels.find((label) => label.id === id))], pageInfo: { hasNextPage: false } }
+  },
   reopen: (next) => Object.assign(next, { state: 'OPEN', stateReason: 'REOPENED' }),
   close: (next, step) => Object.assign(next, { state: 'CLOSED', stateReason: step.reason }),
 }
 
 /**
- * The steps of moveToCategory: { op: 'addItem' }, { op: 'setStatus', option }, { op: 'reopen' } and { op: 'close', reason }, in the
+ * The steps of moveToCategory: { op: 'addItem' }, { op: 'setStatus', option }, without a Project { op: 'removeLabels' } and
+ * { op: 'addLabels' } with labelIds and names, then { op: 'reopen' } and { op: 'close', reason }, in the
  * order GitHub gets them, only those that change something. Returns { steps, node, after }: the preview node and its issue.
  */
 export function planMove(node, category, { status } = {}, context) {
   if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
-  const option = pickOption(category, status, context)
-  const steps = [...optionSteps(node, option, context), ...stateSteps(node, category, context)]
+  const first = context.project ? optionSteps(node, pickOption(category, status, context), context) : labelSteps(node, category, status, context)
+  const steps = [...first, ...stateSteps(node, category, context)]
   const next = structuredClone(node)
   for (const step of steps) PREVIEW_STEP[step.op](next, step, context)
   return { steps, node: next, after: toIssue(next, context) }

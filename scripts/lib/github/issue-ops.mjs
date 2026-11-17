@@ -174,6 +174,14 @@ export function issueOperations({ client, config, getContext }) {
       const input = () => ({ projectId: context.project.id, itemId: item.id, fieldId: context.project.statusField.id, value: { singleSelectOptionId: op.option.id } })
       return { done: `set the Status of ${id} to ${op.option.name}`, doing: `setting its Status to ${op.option.name}`, run: () => send(context, 'SET_PROJECT_FIELD', input()) }
     }
+    if (op.op === 'removeLabels' || op.op === 'addLabels') {
+      const adding = op.op === 'addLabels'
+      const names = op.names.join(', ')
+      const run = () => send(context, adding ? 'ADD_LABELS' : 'REMOVE_LABELS', { labelableId: nodeId, labelIds: op.labelIds })
+      return adding
+        ? { done: `added label ${names} to ${id}`, doing: `adding label ${names}`, run }
+        : { done: `removed label ${names} from ${id}`, doing: `removing label ${names}`, run }
+    }
     if (op.op === 'reopen') return { done: `reopened ${id}`, doing: 'reopening it', run: () => send(context, 'REOPEN_ISSUE', { issueId: nodeId }, true) }
     const words = CLOSE_WORDS[op.reason]
     return { done: `closed ${id} as ${words}`, doing: `closing it as ${words}`, run: () => send(context, 'CLOSE_ISSUE', { issueId: nodeId, stateReason: op.reason }, true) }
@@ -311,7 +319,9 @@ export function issueOperations({ client, config, getContext }) {
 
   async function archive(id, actor, { dryRun = false } = {}) {
     const context = await writable(id, actor)
-    if (!context.project) throw new PmkitError('NOT_SUPPORTED', `tracker.scope.project is none, so pmkit has no Project to archive ${id} in`, 'Set tracker.scope.project with /pmkit:setup')
+    if (!context.project) {
+      throw new PmkitError('NOT_SUPPORTED', `${context.repo} has no Project, and GitHub has no archive for an issue outside one`, `Close it with pmkit issues move ${id} canceled, or set tracker.scope.project with /pmkit:setup`)
+    }
     const { node, issue: before } = await readNode(id)
     const item = itemOf(node, context)
     if (!item) throw invalid(`${before.id} is not in ${projectName(context)}`, `pmkit issues move ${before.id} <category> adds it`)

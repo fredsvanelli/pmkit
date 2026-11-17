@@ -171,11 +171,84 @@ test('planMove without a Project opens and closes only', async () => {
   const node = nodeOf(fake, context, 1)
   assert.deepEqual(planMove(node, 'done', {}, context).steps.map((step) => [step.op, step.reason]), [['close', 'COMPLETED']])
   assert.deepEqual(planMove(node, 'todo', {}, context).steps, [])
-  assert.throws(() => planMove(node, 'in_progress', {}, context), { code: 'NOT_SUPPORTED', message: 'tracker.scope.project is none, so issues have no status but open and closed' })
+  assert.throws(() => planMove(node, 'in_progress', {}, context), { code: 'NOT_SUPPORTED', message: 'no label of acme/widgets stands for in_progress', nextStep: '/pmkit:setup' })
 })
 
 test('planWrite refuses a field mapped issue: on a host with no issue fields', async () => {
   const { context } = await contextOf()
   const ghes = { ...context, features: { ...context.features, issueFields: false } }
   assert.throws(() => planWrite({ title: 'A', estimate: 3 }, { mode: 'create', before: null, context: ghes }), (error) => error.code === 'NOT_SUPPORTED' && error.nextStep === '/pmkit:setup')
+})
+
+const LABEL_PMKIT = {
+  tracker: { system: 'github', scope: { host: 'github.com', repo: 'acme/widgets', project: 'none' } },
+  mappings: { status: { backlog: 'label:Backlog', in_progress: 'label:Doing', in_review: 'label:Review' }, types: { bug: 'label:bug', feature: 'label:enhancement' } },
+}
+const LABEL_NAMES = ['Backlog', 'Doing', 'Review', 'bug', 'enhancement', 'x', 'y', 'Ready']
+const labelContext = (pmkit = LABEL_PMKIT) => contextOf({ project: null, issueTypes: [], labels: LABEL_NAMES, pmkit })
+const moveOps = (move) => move.steps.map((step) => [step.op, step.names ?? step.reason ?? null])
+const labelIdsNamed = (context, ids) => ids.map((id) => context.raw.labels.find((label) => label.id === id).name)
+
+test('planMove without a Project moves through status labels', async () => {
+  const { fake, context } = await labelContext()
+  fake.seed({ labels: ['Doing', 'x'] })
+  const node = nodeOf(fake, context, 1)
+  const review = planMove(node, 'in_review', {}, context)
+  assert.deepEqual(moveOps(review), [['removeLabels', ['Doing']], ['addLabels', ['Review']]])
+  assert.equal(review.after.status.category, 'in_review')
+  assert.deepEqual(review.after.labels, ['Review', 'x'])
+  assert.deepEqual(moveOps(planMove(node, 'done', {}, context)), [['removeLabels', ['Doing']], ['close', 'COMPLETED']])
+  assert.deepEqual(moveOps(planMove(node, 'todo', {}, context)), [['removeLabels', ['Doing']]])
+  assert.deepEqual(planMove(node, 'in_progress', {}, context).steps, [])
+  fake.seed({ state: 'CLOSED', stateReason: 'COMPLETED' })
+  assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 2), 'backlog', {}, context)), [['addLabels', ['Backlog']], ['reopen', null]])
+  fake.seed({ labels: ['Doing', 'Review'] })
+  assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 3), 'backlog', {}, context)), [['removeLabels', ['Doing', 'Review']], ['addLabels', ['Backlog']]])
+})
+
+test('planMove without a label for the category fails with the setup step', async () => {
+  const { fake, context } = await labelContext()
+  fake.seed({})
+  assert.throws(() => planMove(nodeOf(fake, context, 1), 'triage', {}, context), { code: 'NOT_SUPPORTED', message: 'no label of acme/widgets stands for triage', nextStep: '/pmkit:setup' })
+})
+
+test('planMove takes --status as the category label or a state status', async () => {
+  const { fake, context } = await labelContext()
+  fake.seed({})
+  const node = nodeOf(fake, context, 1)
+  assert.deepEqual(moveOps(planMove(node, 'in_progress', { status: 'doing' }, context)), [['addLabels', ['Doing']]])
+  assert.deepEqual(moveOps(planMove(node, 'done', { status: 'Closed' }, context)), [['close', 'COMPLETED']])
+  assert.throws(() => planMove(node, 'in_progress', { status: 'Review' }, context), { code: 'INVALID_INPUT', message: 'status Review is not in category in_progress', nextStep: 'Use one of: Doing' })
+})
+
+test('a todo label adds it on a move to todo', async () => {
+  const pmkit = { ...LABEL_PMKIT, mappings: { ...LABEL_PMKIT.mappings, status: { ...LABEL_PMKIT.mappings.status, todo: 'label:Ready' } } }
+  const { fake, context } = await labelContext(pmkit)
+  fake.seed({ labels: ['Doing'] })
+  assert.deepEqual(moveOps(planMove(nodeOf(fake, context, 1), 'todo', {}, context)), [['removeLabels', ['Doing']], ['addLabels', ['Ready']]])
+})
+
+test('planWrite swaps type labels without issue types', async () => {
+  const { fake, context } = await labelContext()
+  fake.seed({ labels: ['enhancement', 'Doing', 'x'] })
+  const before = nodeOf(fake, context, 1)
+  const bug = planWrite({ type: 'bug' }, { mode: 'update', before, context })
+  assert.deepEqual(labelIdsNamed(context, bug.input.labelIds).sort(), ['Doing', 'bug', 'x'])
+  assert.equal(bug.input.issueTypeId, undefined)
+  assert.equal(bug.after.type, 'bug')
+  assert.deepEqual(labelIdsNamed(context, planWrite({ type: null }, { mode: 'update', before, context }).input.labelIds).sort(), ['Doing', 'x'])
+  assert.deepEqual(planWrite({ type: 'feature' }, { mode: 'update', before, context }).input, {})
+  const created = planWrite({ title: 'New', type: 'bug', labels: ['y'] }, { mode: 'create', context })
+  assert.deepEqual(labelIdsNamed(context, created.input.labelIds).sort(), ['bug', 'y'])
+  assert.throws(() => planWrite({ type: 'chore' }, { mode: 'update', before, context }), { code: 'INVALID_INPUT' })
+})
+
+test('a labels patch keeps the status and type labels and refuses them', async () => {
+  const { fake, context } = await labelContext()
+  fake.seed({ labels: ['Doing', 'bug', 'x'] })
+  const before = nodeOf(fake, context, 1)
+  assert.deepEqual(labelIdsNamed(context, planWrite({ labels: ['y'] }, { mode: 'update', before, context }).input.labelIds).sort(), ['Doing', 'bug', 'y'])
+  assert.deepEqual(labelIdsNamed(context, planWrite({ labels: null }, { mode: 'update', before, context }).input.labelIds).sort(), ['Doing', 'bug'])
+  assert.throws(() => planWrite({ labels: ['doing'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label doing holds a status; use pmkit issues move' })
+  assert.throws(() => planWrite({ labels: ['bug'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label bug holds a type; use --type' })
 })
