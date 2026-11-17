@@ -5,6 +5,7 @@
 
 import { answerGhWith, linkedReply, projectReply, repoReply, withNamedLabels } from './fake-github-api.mjs'
 import { hostFeatures } from './lib/github/documents.mjs'
+import { discussionRoutes, initDiscussions } from './fake-github-discussions.mjs'
 
 const STATE_VERSION = 1
 const DEFAULT_USERS = [{ id: 'U_1', login: 'octocat', name: 'The Octocat' }, { id: 'U_2', login: 'hubot', name: 'Hubot' }]
@@ -100,7 +101,10 @@ function projectOf(project, repo) {
  * branches { main: <oid> } (the scope repository's branch heads; seedBranch adds more, in any repository), now '2026-11-16T12:00:00.000Z' (the clock start).
  */
 export function fakeGithubIssues(options = {}) {
-  return build(initialState(options))
+  const state = initialState(options)
+  // discussionsEnabled (default true) and discussionCategories: see scripts/fake-github-discussions.mjs.
+  initDiscussions(state, options)
+  return build(state)
 }
 
 /** Rebuilds a fake from fake.toJSON(); its clock continues from the saved time. */
@@ -110,6 +114,7 @@ export function fakeGithubIssuesFrom(json) {
 }
 
 function build(state) {
+  initDiscussions(state)
   const features = hostFeatures({ host: state.host, ghesVersion: state.ghesVersion })
   const mutations = []
   const reads = []
@@ -643,11 +648,13 @@ function build(state) {
     return null
   }
 
+  const discussions = discussionRoutes(state, { stamp, register, requireRepository, refuseWithData, unknownNode, connection, page })
+
   /** Answers one operation: { data } or { errors }, as GitHub's JSON body. query may be omitted to skip the schema check. */
   function handle(name, variables = {}, query) {
     const vars = variables ?? {}
-    const queryRoute = name?.startsWith('PmkitIssueMore_') ? queries.PmkitIssueMore : queries[name]
-    const mutationRoute = mutationRoutes[name]
+    const queryRoute = name?.startsWith('PmkitIssueMore_') ? queries.PmkitIssueMore : queries[name] ?? discussions.queries[name]
+    const mutationRoute = mutationRoutes[name] ?? discussions.mutations[name]
     if (!queryRoute && !mutationRoute) return { errors: [{ message: `fake GitHub has no operation ${name}` }] }
     const invalid = query === undefined ? null : schemaError(query, vars)
     if (invalid) return { errors: [{ message: invalid }] }
@@ -741,5 +748,5 @@ function build(state) {
     }
   }
 
-  return { state, exec, handle, mutations, reads, seed, seedBranch, failNext, features, toJSON: () => structuredClone(state) }
+  return { state, exec, handle, mutations, reads, seed, seedBranch, seedDiscussion: discussions.seedDiscussion, failNext, features, toJSON: () => structuredClone(state) }
 }
