@@ -85,6 +85,20 @@ export function iterationFieldOf(raw, pmkit) {
   return raw.project?.fields.find((item) => item.name === parsed.name && item.dataType === 'ITERATION') ?? null
 }
 
+/**
+ * Why mappings.fields.sprint names no iteration field, or null: an issue field, or a Project field of another type. A Project field
+ * GitHub no longer has is left to the general field rule. Any other path is null.
+ */
+function sprintProblem(raw, path, value) {
+  if (path !== 'mappings.fields.sprint') return null
+  const { source } = parseFieldSource(value)
+  const issueField = source === 'issue'
+  const projectFieldRead = source === 'project' && raw.project !== null
+  const iterationField = projectFieldRead && iterationFieldOf(raw, { mappings: { fields: { sprint: value } } }) !== null
+  const otherProjectField = projectFieldRead && !iterationField && fieldOf(raw, value) !== null
+  return issueField || otherProjectField ? `${path} must name a Project iteration field` : null
+}
+
 /** Why a held value is broken, or null when GitHub still has what it names. */
 function problemOf(raw, path, value) {
   const group = path.split('.')[1]
@@ -99,9 +113,8 @@ function problemOf(raw, path, value) {
   if (group === 'fields') {
     const parsed = parseFieldSource(value)
     if (!parsed) return `${path} is ${value}, which is not issue:<name>, project:<name> or none`
-    if (path === 'mappings.fields.sprint' && parsed.source !== NONE) {
-      if (parsed.source === 'issue' || (raw.project !== null && !iterationFieldOf(raw, { mappings: { fields: { sprint: value } } }) && fieldOf(raw, value))) return `${path} must name a Project iteration field`
-    }
+    const sprint = sprintProblem(raw, path, value)
+    if (sprint) return sprint
     if (parsed.source === NONE || fieldOf(raw, value)) return null
     if (parsed.source === 'issue') return `${path} names issue field ${parsed.name}, which ${raw.repo} no longer has`
     if (raw.project === null) return `${path} names Project field ${parsed.name}, but tracker.scope.project is none`
