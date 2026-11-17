@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fakeGithubIssues } from '../../fake-github-issues.mjs'
 import { createGithubClient } from './client.mjs'
-import { discussionOperations, getText, listText, parseDiscussionNumber } from './discussions.mjs'
+import { commentText, discussionOperations, getText, listText, parseDiscussionNumber } from './discussions.mjs'
 
 const SCOPE = { host: 'github.com', repo: 'acme/widgets' }
 const OFF = { available: false, reason: 'disabled', enableHint: 'Turn on Discussions in the repository settings on GitHub' }
@@ -141,11 +141,24 @@ test('parseDiscussionNumber takes 12 and #12 and refuses anything else', () => {
   }
 })
 
+test('the text output says when Discussions are off, when nothing matches and when more match', async () => {
+  const off = await setup({ discussionsEnabled: false }).ops.list()
+  assert.equal(listText(off), 'acme/widgets has Discussions turned off; Turn on Discussions in the repository settings on GitHub')
+  assert.equal(getText({ ...off, discussion: null }), listText(off))
+  assert.equal(listText(await setup().ops.list()), 'no discussions in acme/widgets')
+  const { ops } = seeded()
+  assert.match(listText(await ops.list({ limit: '1' })), /\nmore discussions match; pass --limit to read more$/)
+  assert.equal(commentText({ discussion: 1, url: null }, true), 'would comment on discussion #1')
+  assert.equal(commentText({ discussion: 1, url: 'https://x/1' }, false), 'commented on discussion #1: https://x/1')
+})
+
 test('comment dry run reads the discussion and writes nothing', async () => {
   const { fake, ops } = seeded()
   const dry = await ops.comment('1', '  Tracked in #4\n', { dryRun: true })
   assert.deepEqual(dry, { discussion: 1, title: 'RFC: plugins', url: null, body: 'Tracked in #4', author: 'octocat' })
   assert.equal(fake.mutations.length, 0)
+  // The comment needs only the id and the title, so it reads one comment and one reply, not the thread.
+  assert.deepEqual(fake.reads.filter((call) => call.name === 'PmkitDiscussion').map((call) => [call.variables.comments, call.variables.replies]), [[1, 1]])
 })
 
 test('comment dry run on a missing number fails with NOT_FOUND and writes nothing', async () => {
@@ -167,4 +180,14 @@ test('comment refuses an empty body', async () => {
   const { fake, ops } = seeded()
   await assert.rejects(ops.comment('1', '  \n'), { code: 'INVALID_INPUT', message: 'the comment body is empty' })
   assert.equal(fake.mutations.length, 0)
+})
+
+test('the GitHub tracker refuses the discussion calls before any read when the scope has no repository', async () => {
+  const { createGithubTracker } = await import('./tracker.mjs')
+  const fake = fakeGithubIssues()
+  const tracker = createGithubTracker({ root: process.cwd(), pmkit: { tracker: { system: 'github', scope: { host: 'github.com' } } } }, { exec: fake.exec })
+  for (const call of [() => tracker.discussions.list(), () => tracker.discussions.get('1'), () => tracker.discussions.comment('1', 'x', { dryRun: true })]) {
+    await assert.rejects(call(), { code: 'NOT_CONFIGURED', message: 'tracker.scope.repo is not set in .pmkit/config.yaml', nextStep: '/pmkit:setup' })
+  }
+  assert.equal(fake.reads.length, 0)
 })

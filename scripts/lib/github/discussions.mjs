@@ -165,10 +165,13 @@ export function discussionOperations({ client, scope }) {
     return { available: true, repo: scope.repo, discussions: repository.discussions.nodes.map(summaryView), hasMore: repository.discussions.pageInfo.hasNextPage }
   }
 
-  /** The raw read of one discussion: { viewer, node }, or { enabled: false }. A missing number is NOT_FOUND with pmkit's message. */
-  async function read(number) {
+  /**
+   * The raw read of one discussion: { viewer, node }, or { enabled: false }. A missing number is NOT_FOUND with pmkit's message.
+   * size is { comments, replies }: the whole thread for get, one of each for comment, which needs only the id and the title.
+   */
+  async function read(number, size = { comments: READ_COMMENTS, replies: READ_REPLIES }) {
     try {
-      const data = await client.request(DISCUSSION_DOCUMENTS.GET, { ...where, number, comments: READ_COMMENTS, replies: READ_REPLIES })
+      const data = await client.request(DISCUSSION_DOCUMENTS.GET, { ...where, number, ...size })
       if (!data.repository.hasDiscussionsEnabled) return { enabled: false }
       if (data.repository.discussion) return { enabled: true, viewer: data.viewer?.login ?? null, node: data.repository.discussion }
     } catch (error) {
@@ -191,7 +194,7 @@ export function discussionOperations({ client, scope }) {
     const number = parseDiscussionNumber(value)
     const text = typeof body === 'string' ? body.trim() : ''
     if (text === '') throw new PmkitError('INVALID_INPUT', 'the comment body is empty', 'Write the comment to the --body-file file')
-    const found = await read(number)
+    const found = await read(number, { comments: 1, replies: 1 })
     if (!found.enabled) throw new PmkitError('NOT_SUPPORTED', `${scope.repo} has Discussions turned off`, ENABLE_HINT)
     const result = { discussion: number, title: found.node.title, url: null, body: text, author: found.viewer }
     if (dryRun) return result
