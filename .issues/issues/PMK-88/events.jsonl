@@ -4,3 +4,6 @@
 {"at":"2026-11-17T01:41:43Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-17T01:41:43Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-88-map-iterations-milestones-and-project"}
 {"at":"2026-11-17T21:00:28Z","by":"fred","op":"comment","to":"2026-11-17T21-00-28Z-fred.md"}
+{"at":"2026-11-17T23:17:17Z","by":"fred","op":"comment","to":"2026-11-17T23-17-17Z-fred.md"}
+{"at":"2026-11-17T23:17:17Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-17T23:17:17Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
