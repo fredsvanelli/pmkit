@@ -9,6 +9,10 @@ test('iterationEnd is the start plus the duration minus one day', () => {
   assert.equal(iterationEnd(current), '2026-11-29')
 })
 
+test('iterationState reads an iteration past its end that is still listed as active as closed', () => {
+  assert.equal(iterationState({ startDate: '2026-11-16', duration: 14 }, { completed: false, today: '2026-11-30' }), 'closed')
+})
+
 test('iterationState follows the dates and the completed list', () => {
   assert.equal(iterationState(current, { completed: false, today: '2026-11-16' }), 'active')
   assert.equal(iterationState(current, { completed: false, today: '2026-11-29' }), 'active')
