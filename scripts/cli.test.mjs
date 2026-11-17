@@ -933,7 +933,7 @@ test('every next step that starts with pmkit names a real CLI command', async ()
       if (!text.startsWith('pmkit ')) continue
       checked++
       const words = text.slice('pmkit '.length).split(/\s+/)
-      if (!names.has(words.slice(0, 2).join(' ')) && !names.has(words[0])) bad.push(`${path.relative(dir, file)}: ${text}`)
+      if (![3, 2, 1].some((count) => names.has(words.slice(0, count).join(' ')))) bad.push(`${path.relative(dir, file)}: ${text}`)
     }
   }
   assert.ok(checked > 10, `found ${checked} next steps`)
@@ -1618,6 +1618,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'linear customers set': ['--customer', 'acme', '--tier', 'gold'],
     'linear customers link': ['--customer', 'acme', '--issue', 'ACME-1'],
     'linear triage set': ['--off'],
+    'github discussions comment': ['1', '--body-file', input('comment.md')],
     migrate: [],
     'local-migrate export': ['--workspace', 'acme', '--team', 'ACME'],
     'local-migrate import': ['--workspace', 'acme', '--team', 'ACME'],
@@ -1746,6 +1747,8 @@ test('every read goes on with one warning', () => {
     'linear customers show': ['--customer', 'acme'],
     'linear triage show': [],
     'linear triage suggestions': [],
+    'github discussions list': [],
+    'github discussions get': ['1'],
     'local-migrate status': [],
     render: ['board'],
   }
