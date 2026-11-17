@@ -73,20 +73,18 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     return (await ops.searchIssues({ sprint: id })).issues
   }
 
-  /** The checked { start, end, name } of an openCycle input. */
-  function checkedOpen(input, duration) {
+  /** The checked { start, end, name } of an openCycle input. The default end needs the field's duration, so openCycle sets it after the read. */
+  async function checkedOpen(input) {
     for (const key of Object.keys(input ?? {})) {
       if (!OPEN_KEYS.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${OPEN_KEYS.join(', ')}`)
     }
     const { start } = input
     if (!validDate(start)) throw invalid('start must be a date as YYYY-MM-DD')
-    const end = input.end ?? addDays(start, duration - 1)
-    if (!validDate(end)) throw invalid('end must be a date as YYYY-MM-DD')
-    if (start > end) throw invalid(`start ${start} is after end ${end}`)
+    if (input.end !== undefined && !validDate(input.end)) throw invalid('end must be a date as YYYY-MM-DD')
     const name = input.name ?? `Sprint ${start}`
     if (typeof name !== 'string' || name.trim() === '') throw invalid('name must be a non-empty string')
     if (/[\r\n]/.test(name)) throw invalid('name must not contain a line break')
-    return { start, end, name: name.trim() }
+    return { start, end: input.end, name: name.trim() }
   }
 
   /**
@@ -100,9 +98,12 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     if (context.features?.iterationIds !== true) {
       throw new PmkitError('NOT_SUPPORTED', 'this GitHub host cannot keep the ids of the iterations when pmkit adds one', 'Add the iteration in the Project settings on GitHub')
     }
+    const given = await checkedOpen(input)
     const { sprints, found } = await readSprints(context, field, key)
     const { configuration } = found
-    const { start, end, name } = checkedOpen(input, configuration.duration)
+    const { start, name } = given
+    const end = given.end ?? addDays(start, configuration.duration - 1)
+    if (start > end) throw invalid(`start ${start} is after end ${end}`)
     if (sprints.some((sprint) => sprint.id === start)) throw invalid(`sprint ${start} already exists`, 'pmkit cycle list')
     const clash = sprints.find((sprint) => sprint.state !== 'closed' && overlaps(sprint, { start, end }))
     if (clash) throw invalid(`sprint ${start} to ${end} overlaps ${clash.id} (${clash.start} to ${clash.end})`, 'pmkit cycle list')
@@ -131,7 +132,7 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
 
   /**
    * `to` is a start date, 'current' for the active sprint, or null to take the issues out of their sprint. Every issue and the target
-   * are checked first, so a bad id writes nothing. Each issue then gets one item write, after an item add when it has no item.
+   * are checked first, so a bad id writes nothing, and a closed sprint is a target as on Local. Each issue then gets one item write, after an item add when it has no item.
    */
   async function moveToCycle(ids, to, actor, { dryRun = false } = {}) {
     await ops.requireActor(actor)
@@ -144,9 +145,12 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
       target = to === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === to)
       if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
       if (!target) throw notFound(to)
-      if (target.state === 'closed') throw invalid(`sprint ${target.id} is closed`, 'pmkit cycle list')
     }
-    for (const id of ids) await ops.readNode(id)
+    // Every issue is checked before the first write: the actor, the repository (the adapter writes the scope repository only) and the read.
+    for (const id of ids) {
+      await ops.writable(id, actor)
+      await ops.readNode(id)
+    }
     const results = []
     const moved = []
     for (const id of ids) {

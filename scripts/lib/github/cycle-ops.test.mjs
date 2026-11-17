@@ -216,25 +216,49 @@ test('moveToCycle checks every issue and the target before it writes', async () 
   clear()
   await assert.rejects(cycles.moveToCycle(['1', '99'], '2026-11-16', ME), { code: 'NOT_FOUND' })
   await assert.rejects(cycles.moveToCycle(['1'], '2027-01-04', ME), { code: 'NOT_FOUND', message: 'sprint 2027-01-04 does not exist', nextStep: 'pmkit cycle list' })
-  await assert.rejects(cycles.moveToCycle(['1'], '2026-11-02', ME), { code: 'INVALID_INPUT', message: 'sprint 2026-11-02 is closed', nextStep: 'pmkit cycle list' })
   await assert.rejects(cycles.moveToCycle([], '2026-11-16', ME), { code: 'INVALID_INPUT', message: 'ids must be a non-empty list' })
   assert.deepEqual(fake.mutations, [])
   const later = await setup({ now: new Date('2026-12-30T00:00:00Z') })
   await assert.rejects(later.cycles.moveToCycle(['1'], 'current', ME), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
 })
 
+test('moveToCycle accepts a closed sprint as Local does, and the issue reads it', async () => {
+  const { fake, ops, cycles } = await setup()
+  fake.seed({ number: 1, item: { status: 'Todo' } })
+  const [result] = await cycles.moveToCycle(['1'], '2026-11-02', ME)
+  assert.equal(result.after.sprint, '2026-11-02')
+  assert.equal((await ops.getIssue('1')).sprint, '2026-11-02')
+})
+
+test('an issue of another repository stops moveToCycle before any write', async () => {
+  const { fake, cycles, clear } = await setup()
+  fake.seed({ number: 1, item: { status: 'Todo' } })
+  fake.seed({ repo: 'acme/other', number: 5 })
+  clear()
+  await assert.rejects(cycles.moveToCycle(['1', 'acme/other#5'], '2026-11-16', ME), { code: 'INVALID_INPUT', message: 'the GitHub adapter writes issues of acme/widgets only' })
+  assert.deepEqual(fake.mutations, [])
+})
+
 test('a failure on the second issue lists the first as moved', async () => {
   const { fake, ops, cycles } = await setup()
   fake.seed({ number: 1, item: { status: 'Todo' } })
-  // An issue of another repository is readable, but the adapter writes the scope repository only, so its write fails.
-  fake.seed({ repo: 'acme/other', number: 2 })
-  await assert.rejects(cycles.moveToCycle(['1', 'acme/other#2'], '2026-11-16', ME), (error) => {
-    assert.equal(error.code, 'INVALID_INPUT')
+  // The second issue has no item, and the add of its item fails.
+  fake.seed({ number: 2 })
+  fake.failNext('PmkitAddProjectItem')
+  await assert.rejects(cycles.moveToCycle(['1', '2'], '2026-11-16', ME), (error) => {
     assert.equal(error.nextStep, '1 was moved; check GitHub before you retry')
     assert.deepEqual(error.details.moved, ['1'])
     return true
   })
   assert.equal((await ops.getIssue('1')).sprint, '2026-11-16')
+})
+
+test('openCycle checks start and end before it reads the field', async () => {
+  const { fake, cycles, clear } = await setup()
+  clear()
+  await assert.rejects(cycles.openCycle({ start: '2026-13-45' }, ME), { code: 'INVALID_INPUT', message: 'start must be a date as YYYY-MM-DD' })
+  await assert.rejects(cycles.openCycle({ start: '2026-11-30', end: 'x' }, ME), { code: 'INVALID_INPUT', message: 'end must be a date as YYYY-MM-DD' })
+  assert.deepEqual(fake.reads, [])
 })
 
 test('capacity is set, read, patched and cleared through .pmkit/capacity.yaml', async () => {

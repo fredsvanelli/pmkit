@@ -362,5 +362,5 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     return result
   }
 
-  return { getIssue, searchIssues, readNode, requireActor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue }
+  return { getIssue, searchIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue }
 }

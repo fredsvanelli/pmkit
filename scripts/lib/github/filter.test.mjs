@@ -194,7 +194,7 @@ test('sprint current with no active iteration is INVALID_INPUT', () => {
 })
 
 test('any other sprint value is INVALID_INPUT with the exact message', () => {
-  for (const value of ['x', '2026-13-45x', '12', 'Sprint 2']) {
+  for (const value of ['x', '2026-13-45', '12', 'Sprint 2']) {
     assert.throws(() => translateFilter({ sprint: value }, withSprint, 'octocat'), { code: 'INVALID_INPUT', message: `sprint "${value}" is not current, none or a start date` })
   }
 })

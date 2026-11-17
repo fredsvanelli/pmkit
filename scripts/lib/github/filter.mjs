@@ -2,6 +2,7 @@
 // GitHub answers. Pure: it makes no request. See the spec's "Search: Native search (criterion 1)" and its table.
 
 import { PmkitError } from '../errors.mjs'
+import { validDate } from '../local/sprints.mjs'
 import { parseIssueId } from './ids.mjs'
 import { sprintsOf } from './cycles.mjs'
 import { isBlockedNode } from './issues.mjs'
@@ -9,8 +10,6 @@ import { isBlockedNode } from './issues.mjs'
 const TERMINAL_CATEGORIES = ['done', 'canceled']
 const sameRepo = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
 const time = (value) => Date.parse(value)
-
-const SPRINT_VALUES = /^\d{4}-\d{2}-\d{2}$/
 
 const notSupported = (key) => new PmkitError('NOT_SUPPORTED', `the GitHub adapter does not filter by ${key} yet`, `Run the search without --${key}`)
 
@@ -23,7 +22,7 @@ function parentStep(parent, context) {
 
 /** The client step of a sprint filter: current, none or a start date. The date is the iteration's start, as an issue's `sprint` shows it. */
 function sprintStep(sprint, context, today) {
-  if (sprint !== 'current' && sprint !== 'none' && !SPRINT_VALUES.test(sprint)) {
+  if (sprint !== 'current' && sprint !== 'none' && !validDate(sprint)) {
     throw new PmkitError('INVALID_INPUT', `sprint "${sprint}" is not current, none or a start date`, 'pmkit cycle list')
   }
   const mapped = context.field('sprint')
