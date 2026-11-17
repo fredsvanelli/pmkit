@@ -466,10 +466,10 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     })
 
     it('creates a milestone that list and get agree on', ['milestones', 'milestone-writes'], async ({ tracker, actor }) => {
-      const created = await tracker.createMilestone({ id: 'contract-m1', name: 'Contract one', due: '2099-01-31' }, actor)
+      const created = await tracker.createMilestone({ id: 'contract-m1', due: '2099-01-31' }, actor)
       assert.equal(created.before, null)
       assert.equal(created.after.id, 'contract-m1')
-      assert.equal(created.after.name, 'Contract one')
+      assert.equal(created.after.name, 'contract-m1')
       assert.equal(created.after.due, '2099-01-31')
       assert.deepEqual(await tracker.listMilestones(), [created.after])
       assert.deepEqual(await tracker.getMilestone('contract-m1'), created.after)
