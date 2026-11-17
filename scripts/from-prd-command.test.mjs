@@ -31,6 +31,9 @@ const stage = (name) => steps.find((step) => step.includes(`${name}:`)) ?? ''
 // The text of a `## ` section, up to the next `## ` heading.
 const section = (name) => text.split(/\n(?=## )/).find((block) => block.startsWith(`## ${name}\n`)) ?? ''
 
+// The rules of `## Steps` that come before the first numbered step, such as the stop rule.
+const preamble = section('Steps').split(/\n(?=1\. )/)[0]
+
 test('stage 0 reads with a subagent that writes nothing, and runs in sequence without one', () => {
   const step = stage('Stage 0')
   assert.match(step, /subagent/)
@@ -187,8 +190,8 @@ test('the resume step comes before the interview', () => {
 })
 
 test('a declined stage lists what was written and names the next command', () => {
-  assert.match(text, /\/pmkit:spec:from-prd specs\/<slug>-prd\.md/)
-  assert.match(text, /lists what it already wrote/)
+  assert.match(preamble, /\/pmkit:spec:from-prd specs\/<slug>-prd\.md/)
+  assert.match(preamble, /lists what it already wrote/)
 })
 
 test('the confirmation points list every approval', () => {
@@ -196,7 +199,7 @@ test('the confirmation points list every approval', () => {
   assert.match(points, /refined PRD/)
   assert.match(points, /each ADR/)
   assert.match(points, /epic/)
-  assert.match(points, /issue tree|tree/)
+  assert.match(points, /tree/)
   assert.match(points, /extra links/)
 })
 
@@ -231,5 +234,38 @@ test('stage 3b checks a new name with a dry run before writing', () => {
 test('a CLI error during an ADR write stops the flow, unlike a declined ADR', () => {
   const step = stage('Stage 3')
   assert.match(step, /error from the CLI[^.]*stops the flow/)
-  assert.match(step, /lists what it already wrote/)
+  assert.match(step, /each decision not yet reached, or whose write failed, still marked `ADR`/)
+  assert.match(step, /stops as the rule above the steps says/)
+  assert.doesNotMatch(step, /\/pmkit:spec:from-prd specs/, 'the stop rule names the command, since stage 3b can fail too')
+})
+
+test('a resume needs a refined PRD in the specs folder and finds ADRs by the docs-relative path', () => {
+  const step = stage('Resume')
+  assert.match(step, /`specs\/` folder of the docs/)
+  assert.match(step, /`specs\/<slug>-prd\.md`, whatever form the input took/)
+  assert.match(step, /`CONFLICT` rename cite the old path/)
+})
+
+test('stage 3 on a resume takes the context from the stored refined PRD', () => {
+  assert.match(stage('Stage 3'), /no interview[^.]*stored refined PRD/)
+})
+
+test('stage 6 reads the place and path of an ADR found by a resume with docs adr-get', () => {
+  const step = stage('Stage 6')
+  assert.match(step, /docs adr-get <number> --json/)
+  assert.match(step, /`place`[^.]*`destination`/)
+})
+
+test('the confirmation points declare the superseded ADRs and the milestones of a resume', () => {
+  const points = section('Confirmation points').split('\n')
+  assert.match(points.find((line) => line.startsWith('- Stage 3:')) ?? '', /step 7 of `record-decision\.md`/)
+  assert.match(points.find((line) => line.startsWith('- Stage 5:')) ?? '', /new milestones/)
+})
+
+test('stage 4 asks nothing when an existing epic needs no new milestone', () => {
+  assert.match(stage('Stage 4'), /no new milestone[^.]*without asking/)
+})
+
+test('the output gives the commit state of repository ADRs', () => {
+  assert.match(section('Output'), /`docs\/adr\/`[^.]*no commit yet/)
 })
