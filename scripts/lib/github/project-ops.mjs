@@ -138,53 +138,55 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     return toEpic(found.project, found.latest)
   }
 
-  /**
-   * The Local progress shape over the epic: the issue items of the Project that have no parent issue, then their sub-issues level by
-   * level up to 10 levels. Archived items and issues are left out, a canceled issue is counted apart and an estimate adds to the points.
-   * More than 10 pages of items sets hasMore.
-   */
-  async function deliverableProgress(id) {
-    const found = await findEpic(id)
-    if (!found) throw notFoundEpic(id)
-    const context = await getContext()
-    const query = epicItemsQuery(fragmentOf(docsOf(context).ISSUE), Object.keys(context.fieldVariables))
-    const { nodes, hasMore } = await client.paginate(query, { project: found.project.id, ...context.fieldVariables }, { select: (data) => data.node.items, pageSize: ITEM_PAGE, maxPages: ITEM_PAGES })
-    const names = Object.keys(context.fieldVariables)
-    const nodesQuery = issueNodesQuery(fragmentOf(docsOf(context).ISSUE), names)
-    const wanted = context.epics.get(found.project.id)
-    const seen = new Map()
-    const take = (node) => {
-      if (seen.has(node.id)) return false
-      seen.set(node.id, toIssue(node, context))
-      return true
-    }
-    // The issue items whose shown parent is this epic: no parent issue, and no epic Project with a lower number.
-    let level = []
+  /** The issue items of the epic Project whose shown parent is the epic `wanted`: not archived, no parent issue, and no epic Project with a lower number. */
+  function topItems(nodes, wanted, context) {
+    const top = []
     for (const item of nodes) {
       const node = item.content
       if (item.isArchived || node?.__typename !== 'Issue' || node.parent) continue
-      if (toIssue(node, context).parent?.toLowerCase() !== wanted.toLowerCase()) continue
-      if (take(node)) level.push(node)
+      if (toIssue(node, context).parent?.toLowerCase() === wanted.toLowerCase()) top.push(node)
     }
-    // Each level of sub-issues is read in batches of 100 node ids. A list the fragment cut is paged first.
+    return top
+  }
+
+  /** The sub-issues of an issue node. A list the fragment cut is paged first. */
+  async function subIssuesOf(node, context) {
+    if (node.subIssues?.pageInfo?.hasNextPage !== true) return node.subIssues?.nodes ?? []
+    return (await client.paginate(docsOf(context).MORE('subIssues'), { id: node.id }, { select: (data) => data.node.subIssues, pageSize: 100 })).nodes
+  }
+
+  /** The node ids of the sub-issues of a level that `seen` lacks, once each, in order. */
+  async function childIdsOf(level, seen, context) {
+    const ids = []
+    for (const node of level) {
+      for (const child of await subIssuesOf(node, context)) if (!seen.has(child.id) && !ids.includes(child.id)) ids.push(child.id)
+    }
+    return ids
+  }
+
+  /** The issue nodes of a list of node ids, read in batches of 100. A node that is no issue is left out. */
+  async function readIssueNodes(ids, context) {
+    const nodesQuery = issueNodesQuery(fragmentOf(docsOf(context).ISSUE), Object.keys(context.fieldVariables))
+    const issues = []
+    for (let at = 0; at < ids.length; at += ITEM_PAGE) {
+      const read = await client.request(nodesQuery, { ids: ids.slice(at, at + ITEM_PAGE), ...context.fieldVariables })
+      for (const node of read.nodes) if (node?.__typename === 'Issue') issues.push(node)
+    }
+    return issues
+  }
+
+  /** Reads the sub-issues of a level, level by level up to 10 levels. `take(node)` keeps a node once and says whether it was new. */
+  async function readSubIssueLevels(level, context, { seen, take }) {
     for (let depth = 0; depth < SUB_ISSUE_LEVELS && level.length > 0; depth += 1) {
-      const ids = []
-      for (const node of level) {
-        let children = node.subIssues?.nodes ?? []
-        if (node.subIssues?.pageInfo?.hasNextPage === true) {
-          children = (await client.paginate(docsOf(context).MORE('subIssues'), { id: node.id }, { select: (data) => data.node.subIssues, pageSize: 100 })).nodes
-        }
-        for (const child of children) if (!seen.has(child.id) && !ids.includes(child.id)) ids.push(child.id)
-      }
-      const next = []
-      for (let at = 0; at < ids.length; at += ITEM_PAGE) {
-        const read = await client.request(nodesQuery, { ids: ids.slice(at, at + ITEM_PAGE), ...context.fieldVariables })
-        for (const node of read.nodes) if (node?.__typename === 'Issue' && take(node)) next.push(node)
-      }
-      level = next
+      const ids = await childIdsOf(level, seen, context)
+      level = (await readIssueNodes(ids, context)).filter(take)
     }
+  }
+
+  /** The Local progress shape of a list of pmkit issues: archived ones left out, a canceled issue counted apart, an estimate added to the points. */
+  function countProgress(issues) {
     const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
-    for (const issue of seen.values()) {
+    for (const issue of issues) {
       if (issue.archived) continue
       const { category } = issue.status
       if (category in progress.byCategory) progress.byCategory[category] += 1
@@ -199,6 +201,29 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
         if (category === 'done') progress.pointsDone += issue.estimate
       }
     }
+    return progress
+  }
+
+  /**
+   * The Local progress shape over the epic: the issue items of the Project that have no parent issue, then their sub-issues level by
+   * level up to 10 levels. Archived items and issues are left out, a canceled issue is counted apart and an estimate adds to the points.
+   * More than 10 pages of items sets hasMore.
+   */
+  async function deliverableProgress(id) {
+    const found = await findEpic(id)
+    if (!found) throw notFoundEpic(id)
+    const context = await getContext()
+    const query = epicItemsQuery(fragmentOf(docsOf(context).ISSUE), Object.keys(context.fieldVariables))
+    const { nodes, hasMore } = await client.paginate(query, { project: found.project.id, ...context.fieldVariables }, { select: (data) => data.node.items, pageSize: ITEM_PAGE, maxPages: ITEM_PAGES })
+    const seen = new Map()
+    const take = (node) => {
+      if (seen.has(node.id)) return false
+      seen.set(node.id, toIssue(node, context))
+      return true
+    }
+    const level = topItems(nodes, context.epics.get(found.project.id), context).filter(take)
+    await readSubIssueLevels(level, context, { seen, take })
+    const progress = countProgress(seen.values())
     if (hasMore) progress.hasMore = true
     return progress
   }
