@@ -11,9 +11,9 @@ export function initDrafts(state, { extraProjects = [] } = {}) {
 
 /**
  * The draft routes over a fake's state. helpers: stamp, register, requireRepository, repositoryById, newIssue, refuseWithData,
- * unknownNode, unprocessable, connection and userByLogin, as the fake defines them.
+ * unknownNode, unprocessable, connection, userByLogin and setItemValues, as the fake defines them.
  */
-export function draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin }) {
+export function draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues }) {
   const sameName = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
   const projects = () => [...(state.project ? [state.project] : []), ...state.extraProjects]
   const projectOf = (id) => projects().find((project) => project.id === id) ?? null
@@ -95,15 +95,7 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
     const at = createdAt ?? stamp()
     state.counters.item += 1
     const item = { id: `PVTI_${state.counters.item}`, projectId: found.id, issueId: null, isArchived: archived, values: {}, draft: { title, body, assignees: [...assignees], creator, createdAt: at, updatedAt: updatedAt ?? at } }
-    for (const [name, value] of Object.entries(values)) {
-      const field = (found.fields ?? []).find((candidate) => candidate.name === name)
-      if (!field) throw new Error(`fake GitHub: seedDraft names an unknown Project field ${name}`)
-      if (field.dataType === 'SINGLE_SELECT') {
-        const option = field.options.find((candidate) => candidate.name === value)
-        if (!option) throw new Error(`fake GitHub: seedDraft names an unknown option ${value}`)
-        item.values[field.id] = { optionId: option.id }
-      } else item.values[field.id] = field.dataType === 'NUMBER' ? { number: value } : { date: value }
-    }
+    setItemValues(item, found.fields ?? [], values)
     state.items.push(item)
     return { item: item.id }
   }

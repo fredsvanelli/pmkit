@@ -654,7 +654,7 @@ function build(state) {
 
   const discussions = discussionRoutes(state, { stamp, register, requireRepository, refuseWithData, unknownNode, connection, page })
   const userByLogin = (name) => state.users.find((user) => user.login === name) ?? null
-  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin })
+  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues })
 
   /** Answers one operation: { data } or { errors }, as GitHub's JSON body. query may be omitted to skip the schema check. */
   function handle(name, variables = {}, query) {
@@ -747,8 +747,13 @@ function build(state) {
     if (!state.project) throw new Error('fake GitHub: seed has an item but the fake has no Project')
     const item = addItem(state.project.id, record.id)
     item.isArchived = archived
-    for (const [name, value] of Object.entries({ ...values, ...(status === undefined ? {} : { Status: status }) })) {
-      const field = byName(state.project.fields, name, 'Project field')
+    setItemValues(item, state.project.fields, { ...values, ...(status === undefined ? {} : { Status: status }) })
+  }
+
+  /** Sets the seeded field values of an item: { <Project field name>: option name, number or date }. */
+  function setItemValues(item, fields, values) {
+    for (const [name, value] of Object.entries(values)) {
+      const field = byName(fields, name, 'Project field')
       if (field.dataType === 'SINGLE_SELECT') item.values[field.id] = { optionId: byName(field.options, value, 'option').id }
       else item.values[field.id] = field.dataType === 'NUMBER' ? { number: value } : { date: value }
     }
