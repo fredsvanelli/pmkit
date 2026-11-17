@@ -87,7 +87,7 @@ function unconfirmed(reason, mutation, details) {
 }
 
 /** A gh run that printed no answer: no login, no connection, or a failure of gh itself. */
-function noAnswer(result, { mutation, host }) {
+function noAnswer(result, { mutation, host, tool = 'gh api graphql' }) {
   const stderr = result.stderr ?? ''
   const details = { github: { status: null, errors: [] } }
   if (stderr.includes('gh auth login')) {
@@ -97,7 +97,7 @@ function noAnswer(result, { mutation, host }) {
   if (/^error connecting to /i.test(line)) return unconfirmed(line, mutation, details)
   const detail = line || `exit status ${result.status}`
   if (mutation) return unconfirmed(detail, true, details)
-  return { error: new PmkitError('UPSTREAM', `gh api graphql failed: ${detail}`, 'Check the output of the same command in a terminal', details), retry: false }
+  return { error: new PmkitError('UPSTREAM', `${tool} failed: ${detail}`, 'Check the output of the same command in a terminal', details), retry: false }
 }
 
 /** The parts of an answer the error rows read: the reply, its errors, details, the first message and every text to search. */
@@ -177,6 +177,33 @@ function classify(answer, stderr, { mutation, host }) {
   return unreadable(read, answer.status, mutation) ?? answerError(read, answer.status, mutation) ?? { data: read.reply.data }
 }
 
+/**
+ * Reads the answer to a REST call. Returns { data } (the parsed body) or { error, retry }, like classify.
+ * A taken milestone title is CONFLICT; any other 4xx is UPSTREAM with the message of GitHub.
+ */
+function classifyRest(answer, stderr, { mutation, host, path, body }) {
+  const read = readReply(answer, stderr)
+  const refused = refusal(read, answer, host)
+  if (refused) return refused
+  if (answer.status >= 500) return unconfirmed(`HTTP ${answer.status}`, mutation, read.details)
+  const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, read.details), retry: false })
+  if (answer.status >= 200 && answer.status < 300) {
+    if (answer.body.trim() === '') return { data: null }
+    try {
+      return { data: JSON.parse(answer.body) }
+    } catch {
+      // Falls through to the unreadable row.
+    }
+    if (mutation) return unconfirmed(`unreadable answer (HTTP ${answer.status})`, true, read.details)
+    return fail('UPSTREAM', `GitHub returned an unreadable answer (HTTP ${answer.status})`, 'Update the GitHub CLI and retry')
+  }
+  const taken = Array.isArray(read.reply?.errors) && read.reply.errors.some((error) => error?.code === 'already_exists')
+  if (taken && /\/milestones$/.test(path)) {
+    return fail('CONFLICT', `GitHub already has a milestone titled ${body?.title}`, 'Use another title, or reuse the existing milestone')
+  }
+  return fail('UPSTREAM', `GitHub answered with an error: ${read.message}`, "Check the request against GitHub's message")
+}
+
 export function createGithubClient({
   root,
   env,
@@ -201,10 +228,11 @@ export function createGithubClient({
     }
   }
 
-  function attempt(query, variables, mutation) {
+  /** One gh run, read by classifier. The same row handles a gh failure, a timeout and a bad answer for GraphQL and REST. */
+  function attempt(ghArgs, input, mutation, classifier, tool) {
     let result
     try {
-      result = run('gh', args, { input: JSON.stringify({ query, variables }), timeout: timeoutMs })
+      result = run('gh', ghArgs, { ...(input === undefined ? {} : { input }), timeout: timeoutMs })
     } catch (error) {
       if (error?.code === 'ENOENT') throw new PmkitError('NOT_CONFIGURED', 'gh is not installed', INSTALL_STEP)
       if (error?.code === 'ENOBUFS') throw new PmkitError('UPSTREAM', 'gh api graphql output is too large to read', 'Ask for fewer nodes per page')
@@ -212,22 +240,41 @@ export function createGithubClient({
       throw error
     }
     const answer = parseIncluded(result.stdout ?? '')
-    if (!answer) return noAnswer(result, { mutation, host })
+    if (!answer) return noAnswer(result, { mutation, host, tool })
     rate = readRate(answer.headers) ?? rate
-    return classify(answer, result.stderr ?? '', { mutation, host })
+    return classifier(answer, result.stderr ?? '')
   }
 
+  const attemptGraphql = (query, variables, mutation) =>
+    attempt(args, JSON.stringify({ query, variables }), mutation, (answer, stderr) => classify(answer, stderr, { mutation, host }), 'gh api graphql')
+
   // One logical call. A query is sent again after a timeout, no connection or HTTP 5xx; a mutation is sent once.
-  async function send(query, variables) {
-    const mutation = isMutation(query)
+  async function withRetries(mutation, once) {
     const attempts = mutation ? 1 : retries + 1
     for (let index = 0; ; index += 1) {
       assertRoom()
-      const result = attempt(query, variables, mutation)
+      const result = once()
       if (!result.error) return result.data
       if (!result.retry || index + 1 >= attempts) throw result.error
       await sleep(DELAYS[Math.min(index, DELAYS.length - 1)])
     }
+  }
+
+  const send = (query, variables) => {
+    const mutation = isMutation(query)
+    return withRetries(mutation, () => attemptGraphql(query, variables, mutation))
+  }
+
+  /** One REST call. A method other than GET is a write: sent once, and an answer that is missing is unconfirmed. */
+  async function rest(method, path, body) {
+    if (typeof method !== 'string' || !/^[A-Z]+$/.test(method)) throw new TypeError('rest needs an HTTP method in capitals')
+    if (typeof path !== 'string' || path === '' || path.startsWith('-')) throw new TypeError('rest needs a path')
+    const mutation = method !== 'GET'
+    const ghArgs = ['api', ...(host ? ['--hostname', host] : []), '--method', method, path, '--include', ...(body === undefined ? [] : ['--input', '-'])]
+    const input = body === undefined ? undefined : JSON.stringify(body)
+    return withRetries(mutation, () =>
+      attempt(ghArgs, input, mutation, (answer, stderr) => classifyRest(answer, stderr, { mutation, host, path, body }), 'gh api'),
+    )
   }
 
   async function request(document, variables = {}) {
@@ -246,5 +293,5 @@ export function createGithubClient({
     return { limit: rate.limit, remaining: rate.remaining, used: rate.used, resource: rate.resource, resetAt: isoOf(rate.resetMs) }
   }
 
-  return Object.freeze({ request, paginate, rateLimit })
+  return Object.freeze({ request, paginate, rest, rateLimit })
 }

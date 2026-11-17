@@ -510,3 +510,68 @@ test('unreadable rate headers read as null, and a limit at 0 with no reset time 
   await client.request(QUERY)
   assert.equal(calls.length, 2)
 })
+
+// The REST call
+
+const REST_PATH = 'repos/acme/widgets/milestones'
+const restAnswer = (status, body, exit) => answer({ status, body, exit: exit ?? (status < 300 ? 0 : 1) })
+
+test('rest POST runs gh api with the method, the path and the body on stdin, and returns the parsed body', async () => {
+  const { client, calls } = setup([restAnswer(201, { number: 3, title: 'v1' })], { host: 'github.acme.com' })
+  const data = await client.rest('POST', REST_PATH, { title: 'v1' })
+  assert.deepEqual(data, { number: 3, title: 'v1' })
+  assert.deepEqual(calls[0].args, ['api', '--hostname', 'github.acme.com', '--method', 'POST', REST_PATH, '--include', '--input', '-'])
+  assert.deepEqual(JSON.parse(calls[0].input), { title: 'v1' })
+})
+
+test('rest sends no --input when there is no body', async () => {
+  const { client, calls } = setup([restAnswer(200, { ok: true })])
+  await client.rest('GET', 'repos/acme/widgets')
+  assert.deepEqual(calls[0].args, ['api', '--method', 'GET', 'repos/acme/widgets', '--include'])
+  assert.equal(calls[0].input, undefined)
+})
+
+test('rest maps 401 to AUTH', async () => {
+  const { client } = setup([restAnswer(401, { message: 'Bad credentials' })])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.equal(error.code, 'AUTH')
+})
+
+test('rest maps a taken milestone title to CONFLICT', async () => {
+  const body = { message: 'Validation Failed', errors: [{ resource: 'Milestone', code: 'already_exists', field: 'title' }] }
+  const { client } = setup([restAnswer(422, body)])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.equal(error.code, 'CONFLICT')
+  assert.equal(error.message, 'GitHub already has a milestone titled v1')
+})
+
+test('rest maps other 4xx answers to UPSTREAM with the message of GitHub', async () => {
+  const { client } = setup([restAnswer(422, { message: 'Validation Failed', errors: [{ code: 'invalid', field: 'due_on' }] })])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1', due_on: 'x' }))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.match(error.message, /Validation Failed/)
+})
+
+test('rest write is never retried: a timeout or 5xx is the unconfirmed-mutation error', async () => {
+  const timeout = setup([spawnError('ETIMEDOUT')])
+  const first = await failure(timeout.client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.equal(first.code, 'UPSTREAM')
+  assert.match(first.message, /did not confirm the change/)
+  assert.equal(timeout.calls.length, 1)
+  const server = setup([restAnswer(502, { message: 'Bad Gateway' })])
+  const second = await failure(server.client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.match(second.message, /did not confirm the change/)
+  assert.equal(server.calls.length, 1)
+})
+
+test('rest write with an unreadable answer is unconfirmed', async () => {
+  const { client } = setup([restAnswer(200, 'not json', 0)])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.match(error.message, /did not confirm the change/)
+})
+
+test('rest GET is retried like a query', async () => {
+  const { client, calls } = setup([spawnError('ETIMEDOUT'), restAnswer(200, { ok: 1 })])
+  assert.deepEqual(await client.rest('GET', 'repos/acme/widgets'), { ok: 1 })
+  assert.equal(calls.length, 2)
+})
