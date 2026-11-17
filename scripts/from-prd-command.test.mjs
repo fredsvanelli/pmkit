@@ -192,15 +192,72 @@ test('the resume step comes before the interview', () => {
 test('a declined stage lists what was written and names the next command', () => {
   assert.match(preamble, /\/pmkit:spec:from-prd specs\/<slug>-prd\.md/)
   assert.match(preamble, /lists what it already wrote/)
+  assert.match(preamble, /[Bb]efore Stage 3b[^.]*`\/pmkit:spec:from-prd <prd>`/)
+})
+
+test('the continue command names the epic ID the flow knows', () => {
+  assert.match(preamble, /epic ID[^.]*given, chosen in Stage 0 or created in Stage 4/)
+  assert.match(preamble, /`\/pmkit:spec:from-prd specs\/<slug>-prd\.md <epic-id>`/)
+})
+
+test('any stop during stage 3 stores the refined PRD first, so no ADR is recorded twice', () => {
+  assert.match(preamble, /[Aa]ny stop during Stage 3[^.]*stores the refined PRD first/)
+  const step = stage('Stage 3')
+  assert.match(step, /[Aa]ny stop during Stage 3[^.]*PM says stop[^.]*CLI fails/)
+  assert.match(step, /[Bb]efore the stop, Stage 3b stores the refined PRD/)
+  assert.match(step, /no ADR is recorded twice/)
+})
+
+test('a stop at a stage 3b CONFLICT lists the ADRs written and the path they cite', () => {
+  assert.match(stage('Stage 3b'), /`CONFLICT`[^\n]*stop there lists the ADRs written and the path they cite/)
+})
+
+test('no subagent writes to the tracker or asks the PM anything', () => {
+  assert.match(preamble, /No subagent writes to the tracker or asks the PM anything/)
 })
 
 test('the confirmation points list every approval', () => {
-  const points = section('Confirmation points')
-  assert.match(points, /refined PRD/)
-  assert.match(points, /each ADR/)
-  assert.match(points, /epic/)
-  assert.match(points, /tree/)
-  assert.match(points, /extra links/)
+  const points = section('Confirmation points').split('\n')
+  const point = (name) => points.find((line) => line.startsWith(`- ${name}:`)) ?? ''
+  assert.match(point('Stage 2'), /the refined PRD, its content and its path/)
+  assert.match(point('Stage 3'), /each ADR, one approval per ADR/)
+  assert.match(point('Stage 4'), /the epic with its milestones/)
+  assert.match(point('Stage 5'), /the full issue tree/)
+  assert.match(point('Stage 6'), /the extra links of the final check/)
+})
+
+test('stage 6 runs the same checklist without subagents', () => {
+  assert.match(stage('Stage 6'), /[Ww]ithout subagents, the main agent runs the same checklist/)
+})
+
+test('the stage 6 checker counts the issues the epic already held, from the stage 5 list', () => {
+  const step = stage('Stage 6')
+  assert.match(step, /the issues the epic already held, from the `issues list --parent` result of Stage 5/)
+  assert.doesNotMatch(step, /issues list --parent <epic-id>/, 'stage 6 reuses the stage 5 result and runs no new list')
+})
+
+test('the stage 6 checker gets the ADRs of stage 3 and those the resume found', () => {
+  assert.match(stage('Stage 6'), /the ADRs of Stage 3 and those the Resume step found/)
+})
+
+test('stage 5 says so and goes on to stage 6 when the epic already holds every row', () => {
+  assert.match(stage('Stage 5'), /no row is left[^.]*go on to Stage 6 without asking/)
+})
+
+test('an ADR decision in the refined PRD carries its context and rejected alternatives', () => {
+  assert.match(stage('Stage 2'), /`ADR` decision[^.]*context and the rejected alternatives/)
+})
+
+test('each ADR keeps Related issues: none, and the links live in the issue comments and docs lists', () => {
+  assert.match(stage('Stage 3'), /keeps "Related issues: none"[^.]*no `docs update`/)
+  assert.match(section('Output'), /"Related issues: none"[^.]*issue comments and the `docs` lists of Stage 6/)
+})
+
+test('CONTEXT.md stores the refined PRD in the tracker docs folder or the repository, and does not call a spec one issue design', () => {
+  const context = fs.readFileSync(path.join(path.dirname(FILE), '..', '..', 'CONTEXT.md'), 'utf8')
+  const entry = context.split(/\n(?=\*\*)/).find((block) => block.startsWith('**Refined PRD**:')) ?? ''
+  assert.match(entry, /`specs\/<slug>-prd\.md` in the tracker's docs folder, or `docs\/specs\/<slug>-prd\.md` in the repository when the tracker cannot create documents/)
+  assert.doesNotMatch(entry, /technical design of one issue/)
 })
 
 test('the output ends with the critical path and cycle:plan', () => {

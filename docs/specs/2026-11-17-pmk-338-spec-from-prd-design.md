@@ -131,7 +131,7 @@ The main agent merges the drafts, removes overlaps and shows the full tree as th
 
 ### Stage 6: final check (approval 4 when it finds something)
 
-A checking subagent, given the refined PRD and the new IDs, reads every new issue with `issues get --json` and `issues dependencies <epic-id> --json` and reports:
+A checking subagent, given the refined PRD, the epic ID, the new issue IDs, the issues the epic already held (the `issues list --parent` result of stage 5) and the ADRs of stage 3 and of the resume, reads every new and held issue with `issues get --json` and `issues dependencies <epic-id> --json` and reports:
 
 - requirements of the refined PRD with no issue;
 - issues with no criteria or no estimate;

@@ -53,8 +53,8 @@ The done issues of a release, a sprint or a period, grouped by type and written 
 _Avoid_: changelog (that is the plugin's own `CHANGELOG.md`), release (the object, not its notes)
 
 **Refined PRD**:
-The PRD after the `/pmkit:spec:from-prd` interview, with scope, use cases, requirements with acceptance criteria, and each decision marked `ADR` or `PRD only`. It is stored at `docs/specs/<slug>-prd.md` in the tracker or the repository.
-_Avoid_: spec (a spec is the technical design of one issue)
+The PRD after the `/pmkit:spec:from-prd` interview, with scope, use cases, requirements with acceptance criteria, and each decision marked `ADR` or `PRD only`. It is stored at `specs/<slug>-prd.md` in the tracker's docs folder, or `docs/specs/<slug>-prd.md` in the repository when the tracker cannot create documents.
+_Avoid_: PRD (the one-page input before the interview), final PRD
 
 **Customer**:
 A company or person the team builds for, kept as `customers/<ID>.md` with a name and an optional status, tier, revenue, size and owner. Its ID is `CUS-` and a code that follows the ID style. Linear has customers of its own, which `/pmkit:linear:customers` reads.
