@@ -95,21 +95,21 @@ const isDraft = (item) => item.type === 'DRAFT_ISSUE' && item.isArchived !== tru
 /** The first single-select value of a draft, the Status when it has one. */
 const statusOf = (draft) => draft.fields.Status ?? Object.values(draft.fields).find((value) => typeof value === 'string') ?? ''
 
-/** The plain text of a list result. */
+/** The plain text of a list result. The CLI prints the warnings on stderr. */
 export function listText(result) {
   if (!result.available) return `no Project to read for ${result.repo}; ${result.enableHint}`
   if (result.drafts.length === 0) return `no draft issues in ${result.project.title}`
   const lines = result.drafts.map((draft) => `${draft.item}  ${draft.title}  ${statusOf(draft)}  ${draft.updated}`.trimEnd())
-  return [...lines, ...(result.hasMore ? ['more drafts exist; pass --limit to read more'] : []), ...result.warnings.map((line) => `warning: ${line}`)].join('\n')
+  return [...lines, ...(result.hasMore ? ['more drafts exist; pass --limit to read more'] : [])].join('\n')
 }
 
-/** The plain text of a convert result. */
+/** The plain text of a convert result. The CLI prints the warnings on stderr. */
 export function convertText(result, dryRun) {
   const count = dryRun ? result.drafts.length : result.converted.length
   const head = dryRun
     ? `would convert ${count} draft${count === 1 ? '' : 's'} of ${result.project.title} into issues in ${result.target.repo}`
     : `converted ${count} draft${count === 1 ? '' : 's'} into issues in ${result.target.repo}: ${result.converted.map((item) => `#${item.number}`).join(', ')}`
-  return [head, ...result.warnings.map((line) => `warning: ${line}`)].join('\n')
+  return head
 }
 
 /** The draft issue operations of one repository. scope is tracker.scope: { host, repo, project }. */
