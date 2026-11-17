@@ -7,7 +7,8 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
+import { statefulGhOnPath } from './fake-gh-path.mjs'
 import { fakeGithubIssues } from './fake-github-issues.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
@@ -16,32 +17,6 @@ const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
 const CLI = path.join(SCRIPTS, 'pmkit.mjs')
 const TOKEN = `ghp_${'Zx9Q'.repeat(9)}`
 const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'cycles-epics-github.md')
-
-/** Writes the fake gh into a new folder and returns { bin, fixtureFile, log }. The fake saves the fixture after each call. */
-function fakeGhOnPath(fixture) {
-  const bin = tempDir('pmkit-fake-gh-')
-  const fixtureFile = path.join(bin, 'fixture.json')
-  const log = path.join(bin, 'calls.jsonl')
-  fs.writeFileSync(fixtureFile, JSON.stringify(fixture))
-  const api = pathToFileURL(path.join(SCRIPTS, 'fake-github-api.mjs')).href
-  const script = `#!/usr/bin/env node
-import fs from 'node:fs'
-import { answerGh } from ${JSON.stringify(api)}
-const args = process.argv.slice(2)
-let input = ''
-try { input = fs.readFileSync(0, 'utf8') } catch {}
-fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, input }) + '\\n')
-const fixture = JSON.parse(fs.readFileSync(${JSON.stringify(fixtureFile)}, 'utf8'))
-const answer = answerGh(args, input, fixture)
-fs.writeFileSync(${JSON.stringify(fixtureFile)}, JSON.stringify(fixture))
-process.stdout.write(answer.stdout)
-process.stderr.write(answer.stderr)
-process.exitCode = answer.status
-`
-  fs.writeFileSync(path.join(bin, 'gh.mjs'), script)
-  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${path.join(bin, 'gh.mjs')}" "$@"\n`, { mode: 0o755 })
-  return { bin, fixtureFile, log }
-}
 
 const SETUP = [
   'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'acme/7',
@@ -61,7 +36,7 @@ function runbookRepo() {
   state.seed({ number: 1, title: 'Index the catalog' })
   state.seed({ number: 2, title: 'Add the search box' })
   state.seed({ number: 3, title: 'Rank the results' })
-  const fake = fakeGhOnPath({ meta: null, issues: state.toJSON() })
+  const fake = statefulGhOnPath({ meta: null, issues: state.toJSON() })
   const env = { ...childEnv(), ...userStoreEnv().env, GH_TOKEN: TOKEN, PMKIT_NOW: '2026-11-17T12:00:00Z', PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
   const pmkit = (...args) => {
     const result = spawnSync(process.execPath, [CLI, ...args], { cwd: root, env, encoding: 'utf8' })
