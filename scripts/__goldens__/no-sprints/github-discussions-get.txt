@@ -1,0 +1,20 @@
+$ pmkit github discussions get 1
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `github discussions get` works only with the GitHub Issues tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit github discussions get 1 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`github discussions get` works only with the GitHub Issues tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)
