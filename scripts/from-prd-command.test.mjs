@@ -89,3 +89,46 @@ test('stage 2 approves the content and the path, and does not write the file', (
   assert.match(step, /AskUserQuestion/)
   assert.match(step, /Stage 3b/)
 })
+
+test('each ADR follows record-decision and is asked one by one', () => {
+  const step = stage('Stage 3')
+  assert.match(step, /commands\/spec\/record-decision\.md/)
+  assert.match(step, /once per ADR|one approval per ADR/)
+})
+
+test('an ADR cites the refined PRD path and has no related issues yet', () => {
+  const step = stage('Stage 3')
+  assert.match(step, /names the refined PRD path/)
+  assert.match(step, /stage 6 links them/i)
+})
+
+test('a declined ADR becomes PRD only and the flow goes on', () => {
+  const step = stage('Stage 3')
+  assert.match(step, /declines one ADR[^.]*`PRD only`/)
+  assert.match(step, /never stops the flow/)
+})
+
+test('stage 3b writes the refined PRD after the ADRs, with no new approval', () => {
+  const step = stage('Stage 3b')
+  assert.match(step, /docs create/)
+  assert.match(step, /after the ADRs/)
+  assert.match(step, /no new approval|covers it/)
+})
+
+test('a taken path asks for a new name and names both paths', () => {
+  const step = stage('Stage 3b')
+  assert.match(step, /`CONFLICT`/)
+  assert.match(step, /both paths/)
+})
+
+test('a tracker that cannot create documents gets a repository file', () => {
+  const step = stage('Stage 3b')
+  assert.match(step, /`NOT_SUPPORTED`/)
+  assert.match(step, /docs\/specs\/<slug>-prd\.md/)
+})
+
+test('a missing epic-id is a main agent question, not a recon subagent action', () => {
+  const step = stage('Stage 0')
+  assert.match(step, /the main agent asks for a corrected ID before the first question/)
+  assert.doesNotMatch(step, /stops the flow before the first question/)
+})
