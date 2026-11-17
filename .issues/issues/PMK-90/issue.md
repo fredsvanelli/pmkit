@@ -2,14 +2,16 @@
 id: PMK-90
 title: Add the github-discussions command
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
+assignee: fred
 parent: EPC-8
 blocked_by: [PMK-87]
 milestone: github-issues
+branch: pmk-90-add-the-github-discussions-command
 created: 2026-10-25T19:13:23Z
-updated: 2026-10-25T19:13:27Z
+updated: 2026-11-17T21:23:49Z
 ---
 
 ## Description
