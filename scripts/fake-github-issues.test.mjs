@@ -572,3 +572,29 @@ test('fakeGithubIssuesFrom accepts a version 1 JSON and fills the new keys empty
   assert.equal(data(restored.handle('PmkitCreateProject', { input: { ownerId: 'O_1', title: 'x' } })).createProjectV2.projectV2.number, 8)
   assert.throws(() => fakeGithubIssuesFrom({ version: 3 }), /needs the toJSON/)
 })
+
+test('the fake refuses a Project owner selected as owner { login }, as GitHub does for ProjectV2Owner', async () => {
+  const { client } = setup({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
+  const bad = 'query PmkitEpic($owner: String!, $number: Int!) { repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) { id owner { login } } } } }'
+  await assert.rejects(client.request(bad, { owner: 'acme', number: 12 }), /Field 'login' doesn't exist on type 'ProjectV2Owner'/)
+  const good = bad.replace('owner { login }', 'owner { ... on Organization { login } ... on User { login } }')
+  assert.equal((await client.request(good, { owner: 'acme', number: 12 })).repositoryOwner.projectV2.owner.login, 'acme')
+})
+
+test('an epic Project can hold a pull request item and a draft item, and PmkitEpicItems answers their content', async () => {
+  const { fake, client } = setup({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
+  fake.seedProjectItem('acme/12', { kind: 'PULL_REQUEST' })
+  fake.seedProjectItem('acme/12', { kind: 'DRAFT_ISSUE', title: 'Idea' })
+  const query = 'query PmkitEpicItems($project: ID!, $first: Int!, $after: String) { node(id: $project) { ... on ProjectV2 { items(first: $first, after: $after) { nodes { id content { __typename } } } } } }'
+  const { nodes } = await client.paginate(query, { project: 'PVT_E12' }, { select: (data) => data.node.items })
+  assert.deepEqual(nodes.map((node) => node.content.__typename), ['PullRequest', 'DraftIssue'])
+})
+
+test('PmkitIssueNodes answers issues by node id in order, with null for an unknown id', async () => {
+  const { fake, client } = setup()
+  const one = fake.seed({ number: 1 })
+  const two = fake.seed({ number: 2 })
+  const query = 'query PmkitIssueNodes($ids: [ID!]!) { nodes(ids: $ids) { ... on Issue { id number } } }'
+  const { nodes } = await client.request(query, { ids: [two.id, 'nope', one.id] })
+  assert.deepEqual(nodes.map((node) => node?.number ?? null), [2, null, 1])
+})

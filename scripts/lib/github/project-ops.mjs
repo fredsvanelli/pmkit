@@ -10,7 +10,7 @@ import { parseProject } from './discovery.mjs'
 import { toIssue } from './issues.mjs'
 import { docsOf } from './requests.mjs'
 import {
-  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, STATUS_UPDATES_QUERY, UPDATE_PROJECT_README, epicItemsQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
+  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, STATUS_UPDATES_QUERY, UPDATE_PROJECT_README, epicItemsQuery, issueNodesQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -149,28 +149,37 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     const context = await getContext()
     const query = epicItemsQuery(fragmentOf(docsOf(context).ISSUE), Object.keys(context.fieldVariables))
     const { nodes, hasMore } = await client.paginate(query, { project: found.project.id, ...context.fieldVariables }, { select: (data) => data.node.items, pageSize: ITEM_PAGE, maxPages: ITEM_PAGES })
+    const names = Object.keys(context.fieldVariables)
+    const nodesQuery = issueNodesQuery(fragmentOf(docsOf(context).ISSUE), names)
+    const wanted = context.epics.get(found.project.id)
     const seen = new Map()
+    const take = (node) => {
+      if (seen.has(node.id)) return false
+      seen.set(node.id, toIssue(node, context))
+      return true
+    }
+    // The issue items whose shown parent is this epic: no parent issue, and no epic Project with a lower number.
     let level = []
     for (const item of nodes) {
       const node = item.content
-      if (item.isArchived || !node || node.parent) continue
-      let issue = toIssue(node, context)
-      // A sub-issue list the fragment cut is read whole through the issue operations.
-      if (node.subIssues?.pageInfo?.hasNextPage === true) issue = await ops.getIssue(issue.id)
-      if (!seen.has(issue.id)) {
-        seen.set(issue.id, issue)
-        level.push(issue)
-      }
+      if (item.isArchived || node?.__typename !== 'Issue' || node.parent) continue
+      if (toIssue(node, context).parent?.toLowerCase() !== wanted.toLowerCase()) continue
+      if (take(node)) level.push(node)
     }
+    // Each level of sub-issues is read in batches of 100 node ids. A list the fragment cut is paged first.
     for (let depth = 0; depth < SUB_ISSUE_LEVELS && level.length > 0; depth += 1) {
-      const next = []
-      for (const parent of level) {
-        for (const childId of parent.children) {
-          if (seen.has(childId)) continue
-          const child = await ops.getIssue(childId)
-          seen.set(child.id, child)
-          next.push(child)
+      const ids = []
+      for (const node of level) {
+        let children = node.subIssues?.nodes ?? []
+        if (node.subIssues?.pageInfo?.hasNextPage === true) {
+          children = (await client.paginate(docsOf(context).MORE('subIssues'), { id: node.id }, { select: (data) => data.node.subIssues, pageSize: 100 })).nodes
         }
+        for (const child of children) if (!seen.has(child.id) && !ids.includes(child.id)) ids.push(child.id)
+      }
+      const next = []
+      for (let at = 0; at < ids.length; at += ITEM_PAGE) {
+        const read = await client.request(nodesQuery, { ids: ids.slice(at, at + ITEM_PAGE), ...context.fieldVariables })
+        for (const node of read.nodes) if (node?.__typename === 'Issue' && take(node)) next.push(node)
       }
       level = next
     }
@@ -244,12 +253,15 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     const written = `${context.repo.split('/')[0]}/${made.number}`
     // The run's epic map learns the new Project, so a later operation of this run finds it.
     context.epics.set(made.id, written)
+    const README_STEP = 'Set the readme of the Project on GitHub'
+    const STATUS_STEP = 'Publish a status update with the dates on GitHub'
     if (fields.description !== undefined) {
-      await afterCreate(written, 'could not set its readme', 'Set the readme of the Project on GitHub', () => client.request(UPDATE_PROJECT_README, { input: { projectId: made.id, readme: fields.description } }))
+      // A failed readme leaves the dated update unsent too, so the next step names both.
+      await afterCreate(written, 'could not set its readme', dated ? `${README_STEP}. ${STATUS_STEP}` : README_STEP, () => client.request(UPDATE_PROJECT_README, { input: { projectId: made.id, readme: fields.description } }))
     }
     if (dated) {
       const update = { projectId: made.id, status: 'INACTIVE', ...(fields.start ? { startDate: fields.start } : {}), ...(fields.target ? { targetDate: fields.target } : {}) }
-      await afterCreate(written, 'could not publish its first status update', 'Publish a status update with the dates on GitHub', () => client.request(CREATE_STATUS_UPDATE, { input: update }))
+      await afterCreate(written, 'could not publish its first status update', STATUS_STEP, () => client.request(CREATE_STATUS_UPDATE, { input: update }))
     }
     const read = await afterCreate(written, 'could not read it back', 'Run pmkit epic list to check it', () => readEpic(written))
     if (!read) throw new PmkitError('UPSTREAM', `GitHub created the Project ${written} but a read of it found nothing`, 'pmkit epic list')

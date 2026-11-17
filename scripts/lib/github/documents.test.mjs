@@ -136,8 +136,8 @@ test('the issue fragment selects the milestone and each item Project with its nu
     for (const fields of [{}, ALL_FIELDS]) {
       const docs = issueDocuments(features, fields)
       for (const key of ['ISSUE', 'ISSUES']) assert.ok(docs[key].includes('milestone { id number title }'), key)
-      assert.ok(docs.ISSUE.includes('project { id number owner { login } }'))
-      assert.ok(docs.MORE('projectItems').includes('project { id number owner { login } }'))
+      assert.ok(docs.ISSUE.includes('project { id number owner { ... on Organization { login } ... on User { login } } }'))
+      assert.ok(docs.MORE('projectItems').includes('project { id number owner { ... on Organization { login } ... on User { login } } }'))
     }
   }
 })

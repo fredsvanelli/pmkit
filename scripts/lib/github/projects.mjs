@@ -44,7 +44,7 @@ const HEALTH_STATUSES = ['ON_TRACK', 'AT_RISK', 'OFF_TRACK']
 
 const UPDATE_FIELDS = 'id status body startDate targetDate createdAt creator { login }'
 const PAGE = 'pageInfo { hasNextPage endCursor }'
-const PROJECT_FIELDS = 'id number title closed url shortDescription readme owner { login }'
+const PROJECT_FIELDS = 'id number title closed url shortDescription readme owner { ... on Organization { login } ... on User { login } }'
 
 export const EPIC_QUERY = `query PmkitEpic($owner: String!, $number: Int!, $statusFirst: Int, $statusAfter: String) {
   repositoryOwner(login: $owner) {
@@ -82,9 +82,15 @@ export const CREATE_STATUS_UPDATE = `mutation PmkitCreateStatusUpdate($input: Cr
 export const epicItemsQuery = (fragment, variables) => `query PmkitEpicItems(${['$project: ID!', '$first: Int!', '$after: String', ...variables.map((name) => `$${name}: String!`)].join(', ')}) {
   node(id: $project) {
     ... on ProjectV2 {
-      items(first: $first, after: $after) { nodes { id isArchived content { ... on Issue { ...PmkitIssueFields } } } ${PAGE} }
+      items(first: $first, after: $after) { nodes { id isArchived content { __typename ... on Issue { ...PmkitIssueFields } } } ${PAGE} }
     }
   }
+}
+${fragment}`
+
+/** The issues of a list of node ids with the issue fragment, in one read. The same field variables as epicItemsQuery. */
+export const issueNodesQuery = (fragment, variables) => `query PmkitIssueNodes(${['$ids: [ID!]!', ...variables.map((name) => `$${name}: String!`)].join(', ')}) {
+  nodes(ids: $ids) { ... on Issue { ...PmkitIssueFields } }
 }
 ${fragment}`
 

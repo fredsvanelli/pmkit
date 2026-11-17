@@ -440,6 +440,9 @@ function build(state) {
     return item
   }
 
+  /** What a Project item that is no issue answers as content: a pull request matches no Issue fragment, a draft is a DraftIssue. */
+  const contentOfOtherItem = (item) => (item.kind === 'DRAFT_ISSUE' ? { __typename: 'DraftIssue', title: item.title } : { __typename: 'PullRequest' })
+
   function addStatusUpdate(project, { status, body = null, startDate = null, targetDate = null, createdAt, creator = state.viewer }) {
     if (!UPDATE_STATUSES.includes(status)) unprocessable(`${status} is not a valid status for a Project update`)
     state.counters.statusUpdate += 1
@@ -487,8 +490,12 @@ function build(state) {
     },
     PmkitEpicItems(vars) {
       const project = projectById(vars.project)
-      const items = state.items.filter((item) => item.projectId === project.id).map((item) => ({ ...itemNode(item, vars), status: projectValue(item, 'Status'), content: issueNode(issueById(item.issueId), vars) }))
+      const items = state.items.filter((item) => item.projectId === project.id).map((item) => ({ ...itemNode(item, vars), status: projectValue(item, 'Status'), content: item.kind ? contentOfOtherItem(item) : issueNode(issueById(item.issueId), vars) }))
       return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
+    },
+    // Issues by node id, in the order asked, null for an id that is no issue: the batched read of the epic progress.
+    PmkitIssueNodes(vars) {
+      return { nodes: (vars.ids ?? []).map((id) => { const record = state.issues.find((candidate) => candidate.id === id); return record ? issueNode(record, vars) : null }) }
     },
     PmkitStatusUpdates(vars) {
       return { node: { __typename: 'ProjectV2', statusUpdates: statusUpdatesOf(projectById(vars.project), vars.first, vars.after) } }
@@ -834,6 +841,8 @@ function build(state) {
       [features.issueFields, /\bissueFields\s*\(/, "Field 'issueFields' doesn't exist on type 'Repository'"],
       [features.issueFields, /\bisIssueField\b/, "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'"],
       [features.statusEvents, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
+      // ProjectV2Owner is an interface with id, projectV2 and projectsV2 only: a login needs an inline fragment on Organization or User.
+      [false, /\bowner\s*\{\s*login\b/, "Field 'login' doesn't exist on type 'ProjectV2Owner'"],
     ]
     const found = checks.find(([present, pattern]) => !present && pattern.test(query ?? ''))
     if (found) return found[2]
@@ -985,11 +994,22 @@ function build(state) {
     }
   }
 
+  /** Adds an item that is no issue to an epic Project ('owner/number'): { kind: 'PULL_REQUEST' | 'DRAFT_ISSUE', title }. Returns { id }. */
+  function seedProjectItem(epic, { kind, title = 'Item' }) {
+    const [owner, number] = epic.split('/')
+    const project = state.projects.find((candidate) => sameName(candidate.owner, owner) && candidate.number === Number(number))
+    if (!project) throw new Error(`fake GitHub: seed names an unknown epic ${epic}`)
+    state.counters.item += 1
+    const item = { id: `PVTI_${state.counters.item}`, projectId: project.id, issueId: null, kind, title, isArchived: false, values: {} }
+    state.items.push(item)
+    return { id: item.id }
+  }
+
   /** Adds a status update to an epic Project by its id: { status, body, startDate, targetDate, createdAt, creator }. Returns { id }. */
   function seedStatusUpdate(epicId, update) {
     const project = projectById(epicId)
     return { id: addStatusUpdate(project, { ...update, createdAt: update.createdAt ?? stamp() }).id }
   }
 
-  return { state, exec, handle, mutations, reads, seed, seedBranch, seedStatusUpdate, seedDiscussion: discussions.seedDiscussion, seedDraft: drafts.seedDraft, seedRepository: drafts.seedRepository, failNext, features, toJSON: () => structuredClone(state) }
+  return { state, exec, handle, mutations, reads, seed, seedBranch, seedProjectItem, seedStatusUpdate, seedDiscussion: discussions.seedDiscussion, seedDraft: drafts.seedDraft, seedRepository: drafts.seedRepository, failNext, features, toJSON: () => structuredClone(state) }
 }

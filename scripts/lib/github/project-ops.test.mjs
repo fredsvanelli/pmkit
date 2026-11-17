@@ -255,12 +255,12 @@ test('createDeliverable with one date sends only that date', async () => {
   assert.equal('start' in after, false)
 })
 
-test('a failure of the readme mutation is UPSTREAM, names the Project and the step, and sends no third mutation', async () => {
+test('a failure of the readme mutation is UPSTREAM, names the Project and both missing steps, and sends no third mutation', async () => {
   const { fake, projects } = await epicSetup()
   fake.failNext('PmkitUpdateProjectReadme')
   await assert.rejects(
     projects.createDeliverable({ title: 'Launch', start: '2026-12-01', description: 'Plan' }, 'octocat'),
-    (error) => error.code === 'UPSTREAM' && error.message.includes('acme/31') && error.nextStep === 'Set the readme of the Project on GitHub',
+    (error) => error.code === 'UPSTREAM' && error.message.includes('acme/31') && error.nextStep === 'Set the readme of the Project on GitHub. Publish a status update with the dates on GitHub',
   )
   assert.deepEqual(mutationNames(fake), ['PmkitCreateProject', 'PmkitUpdateProjectReadme'])
 })
@@ -355,4 +355,43 @@ test('listStatusUpdates is newest first, with health or status', async () => {
   assert.equal(list[1].health, 'on_track')
   assert.equal(list[1].author, 'hubot')
   await assert.rejects(projects.listStatusUpdates('acme/30'), { code: 'NOT_FOUND' })
+})
+
+test('a failure of the readme mutation without dates names only the readme step', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.failNext('PmkitUpdateProjectReadme')
+  await assert.rejects(projects.createDeliverable({ title: 'Launch', description: 'Plan' }, 'octocat'), { code: 'UPSTREAM', nextStep: 'Set the readme of the Project on GitHub' })
+})
+
+test('deliverableProgress skips a pull request item and a draft item of the Project', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/12'], item: { status: 'Done' } })
+  fake.seedProjectItem('acme/12', { kind: 'PULL_REQUEST' })
+  fake.seedProjectItem('acme/12', { kind: 'DRAFT_ISSUE', title: 'Idea' })
+  const progress = await projects.deliverableProgress('acme/12')
+  assert.equal(progress.total, 1)
+  assert.equal(progress.done, 1)
+})
+
+test('deliverableProgress reads each level of sub-issues in one batched read', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/12'], item: { status: 'Todo' } })
+  for (let number = 2; number <= 41; number += 1) fake.seed({ number, parent: 1, item: { status: 'Done' } })
+  for (let number = 42; number <= 81; number += 1) fake.seed({ number, parent: number - 40, item: { status: 'Done' } })
+  fake.reads.splice(0)
+  const progress = await projects.deliverableProgress('acme/12')
+  assert.equal(progress.total, 81)
+  const names = fake.reads.map((call) => call.name)
+  assert.equal(names.filter((name) => name === 'PmkitEpicItems').length, 1)
+  // Two levels of children, and a third read that finds no further children is not needed.
+  assert.equal(names.filter((name) => name === 'PmkitIssueNodes').length, 2)
+  assert.equal(names.includes('PmkitIssue'), false)
+})
+
+test('an issue in two epic Projects counts only for the epic its parent reads as', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/12', 'acme/9'], item: { status: 'Done' } })
+  fake.seed({ number: 2, epics: ['acme/12'], item: { status: 'Done' } })
+  assert.equal((await projects.deliverableProgress('acme/9')).total, 1)
+  assert.equal((await projects.deliverableProgress('acme/12')).total, 1)
 })

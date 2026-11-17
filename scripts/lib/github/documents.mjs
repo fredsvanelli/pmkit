@@ -72,7 +72,7 @@ export function issueDocuments(features, projectFields = {}) {
   const vars = fieldVariables(projectFields)
   // The Status of each item, archived ones included as in the issue fragment, for the open issues a ReopenedEvent names.
   const metricStatus = projectFields?.status ? `projectItems(first: 20, includeArchived: true) { nodes { project { id } status: fieldValueByName(name: $fStatus) ${PROJECT_VALUE} } }` : ''
-  const ITEM_SELECTION = `id isArchived project { id number owner { login } } ${fieldSelections(projectFields)}`
+  const ITEM_SELECTION = `id isArchived project { id number owner { ... on Organization { login } ... on User { login } } } ${fieldSelections(projectFields)}`
   const fragment = `fragment PmkitIssueFields on Issue {
   id number title body state stateReason createdAt updatedAt url
   ${REPO}
