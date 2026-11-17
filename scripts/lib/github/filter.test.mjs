@@ -254,3 +254,9 @@ test('parent keeps the issues whose shown parent is that epic, in any case of th
   assert.equal(keeps(translated, node({ parent: { number: 4, repository }, ...items('E12') }), epics), false)
   assert.equal(keeps(translate({ parent: '4' }, epics), node({ parent: { number: 4, repository }, ...items('E12') }), epics), true)
 })
+
+test('parent of an epic id that is no linked epic is INVALID_INPUT', () => {
+  const epics = makeContext(raw(), pmkit, { epics: new Map([['E12', 'acme/12']]) })
+  assert.throws(() => translate({ parent: 'acme/99' }, epics), { code: 'INVALID_INPUT', message: 'parent acme/99 is not an existing issue or epic' })
+  assert.throws(() => translate({ parent: 'acme/12' }), { code: 'INVALID_INPUT' })
+})

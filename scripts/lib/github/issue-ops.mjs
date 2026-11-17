@@ -11,7 +11,7 @@ import { CATEGORIES } from '../model.mjs'
 import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
 import { itemOf, toIssue, toIssueWithWarnings } from './issues.mjs'
-import { parseEpicId, readMilestoneNodes } from './projects.mjs'
+import { epicOf, readMilestoneNodes } from './projects.mjs'
 import { docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
@@ -231,13 +231,6 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     }
   }
 
-  /** The linked epic of an id, { nodeId, id } with the id as GitHub writes it, or null when the id names no linked epic. */
-  function epicOf(context, parent) {
-    if (parseEpicId(parent) === null) return null
-    for (const [nodeId, id] of context.epics) if (id.toLowerCase() === parent.toLowerCase()) return { nodeId, id }
-    return null
-  }
-
   async function createIssue(request, actor, { dryRun = false } = {}) {
     await requireActor(actor)
     const epic = epicOf(await getContext(), request?.parent)
@@ -253,7 +246,7 @@ export function issueOperations({ client, config, getContext, now = () => new Da
       ...(context.project ? [addItemStep(id, node.id, item, context)] : []),
       ...plan.fields.map((write) => fieldStep(write, id, node.id, item, context)),
       ...plan.move.map((op) => moveStep(op, id, node.id, item, context)),
-      ...(epic ? [{ done: `added ${id} to epic ${epic.id}`, doing: `adding it to epic ${epic.id}`, run: () => send(context, 'ADD_PROJECT_ITEM', { projectId: epic.nodeId, contentId: node.id }) }] : []),
+      ...(epic ? [{ done: `added ${id} to epic ${epic.id}`, doing: `adding it to epic ${epic.id}`, run: () => send(context, 'ADD_PROJECT_ITEM', { projectId: epic.projectId, contentId: node.id }) }] : []),
     ]
     await runSteps(id, steps, { created: true })
     return { before: null, after: await afterOf(id) }

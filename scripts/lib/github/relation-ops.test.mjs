@@ -274,3 +274,16 @@ test('setParent null removes the parent issue when there is one, else the epic i
   assert.deepEqual(fake.mutations, [])
   assert.deepEqual(none.after, none.before)
 })
+
+test('setParent to an epic names the add that was done when the delete of the other epic item fails', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/9'] })
+  clear()
+  fake.failNext('PmkitDeleteProjectItem')
+  await assert.rejects(relations.setParent('1', 'acme/12', ME), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /^GitHub added 1 to epic acme\/12, but removing it from epic acme\/9 failed/)
+    return true
+  })
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitAddProjectItem', 'PmkitDeleteProjectItem'])
+})

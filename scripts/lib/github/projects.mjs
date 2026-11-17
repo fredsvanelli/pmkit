@@ -103,6 +103,13 @@ export function parseEpicId(id) {
   return { owner, number: Number(number) }
 }
 
+/** The linked epic of an id, { id, projectId } with the id as GitHub writes it, or null when the id is no epic id or names no linked epic. The owner matches in any case. */
+export function epicOf(context, id) {
+  if (parseEpicId(id) === null) return null
+  for (const [projectId, written] of context.epics) if (written.toLowerCase() === id.toLowerCase()) return { id: written, projectId }
+  return null
+}
+
 /**
  * The pmkit epic of a Project node and its latest status update (or none). The id is the owner as GitHub writes it and the number.
  * A closed Project reads as done and shows no health. start and target come from the latest update and stay out when null.

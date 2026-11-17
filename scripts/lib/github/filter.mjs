@@ -4,7 +4,7 @@
 import { PmkitError } from '../errors.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { parseIssueId } from './ids.mjs'
-import { parseEpicId } from './projects.mjs'
+import { epicOf, parseEpicId } from './projects.mjs'
 import { sprintsOf } from './cycles.mjs'
 import { isBlockedNode } from './issues.mjs'
 
@@ -17,7 +17,11 @@ const notSupported = (key) => new PmkitError('NOT_SUPPORTED', `the GitHub adapte
 /** The client step of a parent filter: keep the sub-issues of that issue id, or the issues whose shown parent is that epic. */
 function parentStep(parent, context) {
   const epic = parseEpicId(parent)
-  if (epic) return (issue) => typeof issue.parent === 'string' && issue.parent.toLowerCase() === parent.toLowerCase()
+  if (epic) {
+    const linked = epicOf(context, parent)
+    if (!linked) throw new PmkitError('INVALID_INPUT', `parent ${parent} is not an existing issue or epic`, 'pmkit issues list')
+    return (issue) => issue.parent === linked.id
+  }
   const target = parseIssueId(parent, context.repo)
   if (!target) throw new PmkitError('INVALID_INPUT', `parent ${parent} is not an existing issue or epic`, 'pmkit issues list')
   return (issue, node) => node.parent?.number === target.number && sameRepo(node.parent.repository?.nameWithOwner, target.repo)

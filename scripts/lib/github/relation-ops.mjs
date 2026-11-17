@@ -4,7 +4,7 @@
 import { PmkitError } from '../errors.mjs'
 import { compareGithubIds } from './ids.mjs'
 import { LINK_KINDS } from '../model.mjs'
-import { parseEpicId } from './projects.mjs'
+import { epicOf, parseEpicId } from './projects.mjs'
 import { sender } from './requests.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -107,13 +107,6 @@ export function relationOperations({ client, ops, getContext }) {
   /** The items of a node in linked epic Projects: [{ id, project: { id } }]. The scope Project is no epic, so its item is never in the list. */
   const epicItems = (node, context) => (node.projectItems?.nodes ?? []).filter((item) => context.epics.has(item.project?.id))
 
-  /** The linked epic of an id, { nodeId, id } with the id as GitHub writes it, or null when the id names no linked epic. */
-  function epicOf(context, parent) {
-    if (parseEpicId(parent) === null) return null
-    for (const [nodeId, id] of context.epics) if (id.toLowerCase() === parent.toLowerCase()) return { nodeId, id }
-    return null
-  }
-
   /** Runs the steps in order. A failure after the first write names what was done. */
   async function run(id, steps, before) {
     await ops.runSteps(id, steps)
@@ -152,13 +145,13 @@ export function relationOperations({ client, ops, getContext }) {
   async function setEpicParent(read, epic, context, dryRun) {
     const { node, issue: before } = read
     const items = epicItems(node, context)
-    const others = items.filter((item) => item.project.id !== epic.nodeId)
+    const others = items.filter((item) => item.project.id !== epic.projectId)
     if (before.parent === epic.id && others.length === 0) return { before, after: before }
     if (dryRun) return { before, after: { ...before, parent: epic.id } }
     const steps = []
     if (node.parent) steps.push({ done: `removed the parent issue of ${before.id}`, doing: 'removing its parent issue', run: () => send(context, 'REMOVE_SUB_ISSUE', { issueId: node.parent.id, subIssueId: node.id }) })
     if (items.length === others.length) {
-      steps.push({ done: `added ${before.id} to epic ${epic.id}`, doing: `adding it to epic ${epic.id}`, run: () => send(context, 'ADD_PROJECT_ITEM', { projectId: epic.nodeId, contentId: node.id }) })
+      steps.push({ done: `added ${before.id} to epic ${epic.id}`, doing: `adding it to epic ${epic.id}`, run: () => send(context, 'ADD_PROJECT_ITEM', { projectId: epic.projectId, contentId: node.id }) })
     }
     steps.push(...others.map((item) => deleteItemStep(item, before.id, context, item.project.id)))
     return run(before.id, steps, before)
