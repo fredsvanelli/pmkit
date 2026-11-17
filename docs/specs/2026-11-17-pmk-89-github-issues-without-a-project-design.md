@@ -86,11 +86,13 @@ It also exposes `categoryOfLabels(names)`, which returns the category of the sta
 
 ### Writes
 
-`planMove` without a Project builds label steps before the state steps:
+`planMove` without a Project builds label steps:
 
-- `removeLabels` for every status label the issue has other than the target's;
 - `addLabels` for the target's label, when the category has one and the issue lacks it;
-- the existing open and close steps.
+- `removeLabels` for every status label the issue has other than the target's;
+- the existing open and close steps, after the label steps for an open category and before them for `done` and `canceled`.
+
+The order differs from the wording of decision 1 on purpose. GitHub records each request at its own time, so removing first would show a pass through `Open` in the history, and so would removing a label before a close. With the target added first and the close first, every move is one history event, and the end state is the same **(builder's call, made during execution)**.
 
 `done` and `canceled` close the issue and remove the labels of the open categories. Moving to `todo` removes all status labels, unless `mappings.status.todo` names a label, which setup does not ask but a hand-written config may hold; then it adds that label **(builder's call)**. A category that is not terminal, is not `todo`, and has no label fails with `NOT_SUPPORTED`, `no label of <repo> stands for <category>`, next step `/pmkit:setup`. `moveToCategory(id, category, actor, { status })` accepts `status` only when it names the category's label (or `Open`, `Closed` and `Closed as not planned`, as today) **(builder's call)**.
 
