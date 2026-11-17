@@ -193,14 +193,11 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
   }
   const implemented = { discover, capabilities, ...refused, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // GitHub-only features beside the contract, as the Linear tracker returns triage and customers. Discussions read no status,
-  // type or field, so they skip the mapping check (PMK-90).
-  const discussions = discussionOperations({ client, scope: { ...scope, repo: scope.repo ?? '' } })
-  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), discussions: requireScopeFirst(discussions) }
-
-  function requireScopeFirst(operations) {
-    return Object.fromEntries(Object.entries(operations).map(([name, body]) => [name, async (...args) => {
-      requireScope()
-      return body(...args)
-    }]))
-  }
+  // type or field, so they run the scope check but skip the mapping check (PMK-90).
+  const scoped = (operations) => Object.fromEntries(Object.entries(operations).map(([name, body]) => [name, async (...args) => {
+    requireScope()
+    return body(...args)
+  }]))
+  const discussions = scoped(discussionOperations({ client, scope: { ...scope, repo: scope.repo ?? '' } }))
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), discussions }
 }
