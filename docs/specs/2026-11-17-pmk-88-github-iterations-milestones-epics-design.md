@@ -1,6 +1,6 @@
 # PMK-88 design: iterations, milestones, epics and status updates for GitHub Issues
 
-Issue PMK-88, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: waiting for the user's approval. The user answered four questions on 2026-11-16 and 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-88, epic EPC-8 (GitHub Issues tracker adapter), milestone `github-issues`. Status: approved by the user on 2026-11-17, with the ten builder's calls. The user answered four questions on 2026-11-16 and 2026-11-17, and "Decisions from the user" records the answers. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -246,7 +246,7 @@ Epics need the `project` scope that the scope Project already needs (ADR 0007), 
 
 ## Risks
 
-- `openCycle` relies on the schema's description that ids keep identity in a replacement. The fake implements that rule. A live check on a throwaway Project on github.com (one `openCycle`, then a read of an item's iteration) is a manual step in the new runbook; it needs a Project the user owns, so the plan does not run it.
+- `openCycle` relies on the schema's description that ids keep identity in a replacement. The fake implements that rule. A live check on a throwaway Project on github.com (one `openCycle`, then a read of an item's iteration) is a manual step in the new runbook; it needs a Project the user owns, so the plan does not run it. It is a follow-up candidate for the `PMKIT_LIVE` checks of PMK-335.
 - The sprint filter scans the repository's issues on the client. A large repository makes `cycle issues` slow. `items(query:)` on github.com could replace it later.
 - `createDeliverable` sends up to three mutations, and the client never retries, so a failure can leave a Project without its readme or dates. The error names the Project and the step to finish by hand.
 - An issue item can sit in an epic Project of another repository's link set; only Projects linked to the scope repository count.
