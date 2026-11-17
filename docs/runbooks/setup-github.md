@@ -49,7 +49,7 @@ The flow of `/pmkit:setup` when the user picks GitHub Issues: "GitHub first run"
    node scripts/pmkit.mjs capabilities --json
    ```
 
-   `validate` finds no problem in `.pmkit/config.yaml`, which now holds `mappings.fields.sprint: project:Sprint`. `discover` returns `issueTypes`, `issueFields`, `projectFields`, `statusOptions` and `statuses` with the mapped categories. `capabilities` returns `tracker: github`, with `estimation` `native` because `mappings.fields.estimate` names a field, `multilevel_hierarchy` (sub-issues) and `dependencies` `native`, `native_metrics` and `linked_code` `derived`, and every other capability `absent`. Without an estimate field, `estimation` is `absent` too.
+   `validate` finds no problem in `.pmkit/config.yaml`, which now holds `mappings.fields.sprint: project:Sprint`. `discover` returns `issueTypes`, `issueFields`, `projectFields`, `statusOptions` and `statuses` with the mapped categories. `capabilities` returns `tracker: github`, with `estimation` `native` because `mappings.fields.estimate` names a field, `multilevel_hierarchy` (sub-issues) and `dependencies` `native`, `deliverables` and `status_update` `native` (the Project is set), `cycles` `native` (`sprint=project:Sprint` is mapped), and `capacity`, `native_metrics` and `linked_code` `derived`. Every other capability is `absent`. Without an estimate field, `estimation` is `absent` too.
 
 ## Existing config
 
