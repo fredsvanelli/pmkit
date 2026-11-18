@@ -37,7 +37,7 @@ Both selections add `pageInfo { hasNextPage endCursor }` to their `projectItems`
 - Blockers: `completeNested` already pages `blockedBy`. Right after, it completes the `projectItems` of each blocker node, from the fragment or from the `blockedBy` pages. The reread includes archived items, so pmkit drops them to keep today's rule: a blocker's archived item gives no Status **(builder's call)**.
 - Metrics: `metricEvents` in `scripts/lib/github/history-ops.mjs` completes each issue node before `toEvents` maps it. The metric selection already includes archived items, so the reread keeps them.
 
-One shared helper, `completeProjectItems(client, context, node, { archived })`, does both. It lives next to `docsOf` in `scripts/lib/github/requests.mjs`, which both operation modules import already **(builder's call)**. A node within 20 items costs no extra request.
+One shared helper, `completeProjectItems(client, context, node, { archived })`, does both. It lives next to `docsOf` in `scripts/lib/github/requests.mjs`, which both operation modules import already **(builder's call)**. `completeNested` uses the same helper for the issue's own items (`archived: true`) instead of its own `projectItems` branch, so the reread lives in one place **(builder's call, found in review)**. A node within 20 items costs no extra request.
 
 ### Linked Projects (criterion 2)
 
@@ -56,6 +56,7 @@ One shared helper, `completeProjectItems(client, context, node, { archived })`, 
 - `scripts/lib/github/issue-ops.test.mjs`: a blocker whose configured item, in Done, comes after 20 other items does not block in `searchIssues({ blocked })`; with that item archived the blocker still blocks.
 - `scripts/lib/github/history-ops.test.mjs`: a reopened issue whose configured item comes after 20 other items names its option in the `ReopenedEvent`.
 - `scripts/lib/github/discovery.test.mjs`: `fetchLinkedProjects` over a fake with 151 linked Projects returns all of them in two reads of 100.
+- `scripts/cli-issues-github.test.mjs`: through the CLI, `issues list --blocked` and `events` read the configured item past the first 20.
 - `scripts/fake-github-issues.test.mjs`: a blocker's `projectItems` stops at 20 with `hasNextPage: true`.
 - `scripts/lib/github/discovery.test.mjs`: a repository answer with no `repository` still lists no Projects, as before the read paged.
 - Runbooks: `docs/runbooks/draft-issues-github.md` gains step 8, `github draft-issues list --project acme/220` with 120 extra linked Projects, so `--project` needs a second page of linked Projects; `scripts/runbook-draft-issues-github.test.mjs` runs it. `docs/runbooks/setup-github.md` says that the Project question lists every linked Project. The `issues-github` and `setup-github` flows keep their steps, and their E2E tests run unchanged.
