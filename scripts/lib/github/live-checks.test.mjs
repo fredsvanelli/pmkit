@@ -5,8 +5,9 @@ import test from 'node:test'
 import { fakeGithubIssues } from '../../fake-github-issues.mjs'
 import { createGithubClient } from './client.mjs'
 import { liveGhExec } from '../../fake-gh-live.mjs'
+import { projectReply } from '../../fake-github-api.mjs'
 import {
-  checkMissingScope, checkNoLogin, checkNotFound, checkRateHeaders, checkRejectedToken, guardExec, LIVE_DOCUMENTS, liveTargets, MARKER,
+  checkDiscover, checkMissingScope, checkNoLogin, checkNotFound, checkRateHeaders, checkRejectedToken, guardExec, LIVE_DOCUMENTS, liveTargets, MARKER,
   preflightProject, skipReasons,
 } from './live-checks.mjs'
 
@@ -134,4 +135,26 @@ test('the missing-scope check sends the scopeless token only through GH_TOKEN, a
   const error = await checkMissingScope({ env, makeExec: echo }).catch((caught) => caught)
   assert.match(error.message, /the scopeless token appears in the error/)
   assert.ok(!error.message.includes(SCOPELESS))
+})
+
+// Criterion 2: discover against a repository with a Project.
+
+const ITERATIONS = { completed: [{ id: 'IT_0', title: 'Sprint 1', startDate: '2026-11-02', duration: 14 }], iterations: [{ id: 'IT_1', title: 'Sprint 2', startDate: '2026-11-16', duration: 14 }] }
+
+test('the discover check reads the repository and its Project, writes nothing and prints counts only', async () => {
+  const github = fakeGithubIssues({ project: { title: `${MARKER} checks`, iterations: ITERATIONS } })
+  const lines = []
+  const { asserted } = await checkDiscover({ env: { ...GITHUB }, makeExec: liveGhExec({ github, ghes: null }), write: (line) => lines.push(line) })
+  assert.ok(asserted.some((line) => /Status options/.test(line)))
+  assert.deepEqual(github.mutations, [])
+  assert.equal(lines.length, 1)
+  assert.match(lines[0], /^issue types \d+, issue fields \d+, Project fields \d+ \(iteration \d+\), Status options \d+, capabilities \d+$/)
+})
+
+test('the discover check fails on a Project with no iteration field, and on a Status field with no option', async () => {
+  const fields = projectReply().data.repositoryOwner.projectV2.fields.nodes.filter((field) => field.dataType !== 'ITERATION')
+  const noIteration = fakeGithubIssues({ project: { title: `${MARKER} checks`, fields } })
+  await assert.rejects(checkDiscover({ env: { ...GITHUB }, makeExec: liveGhExec({ github: noIteration, ghes: null }) }), /the Project acme\/7 has no iteration field/)
+  const noStatus = fakeGithubIssues({ project: { title: `${MARKER} checks`, iterations: ITERATIONS, statusOptions: [] } })
+  await assert.rejects(checkDiscover({ env: { ...GITHUB }, makeExec: liveGhExec({ github: noStatus, ghes: null }) }), /the Project acme\/7 has no Status option/)
 })

@@ -14,6 +14,7 @@ import { isMutation, operationName } from '../graphql.mjs'
 import { createGithubClient, HOST_NAME } from './client.mjs'
 import { needsVersionCheck, parseProject, parseRepo } from './discovery.mjs'
 import { DRAFT_DOCUMENTS } from './draft-issues.mjs'
+import { createGithubTracker } from './tracker.mjs'
 
 /** The prefix a throwaway Project's title must start with, and the title of each draft a check adds. */
 export const MARKER = 'pmkit-live'
@@ -226,4 +227,37 @@ export async function checkMissingScope({ env, makeExec }) {
   if (texts.includes(token)) fail('the scopeless token appears in the error the client built')
   expectError(error, { code: 'AUTH', nextStep: 'gh auth refresh -s project' })
   return { asserted: ['a token without the project scope answers AUTH with the next step "gh auth refresh -s project"'] }
+}
+
+// Criterion 2: discover against a github.com repository with a Project.
+
+/** A tracker of the target with its discovery cache in a temporary PMKIT_HOME. gh keeps the user's HOME, so it keeps its login. */
+async function withTracker({ env, makeExec, host, repo, project, mappings = {}, allow = {} }, use) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-home-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
+  try {
+    const config = { root, pmkit: { tracker: { system: 'github', scope: { host, repo, project } }, git_host: { system: 'none' }, mappings } }
+    const tracker = createGithubTracker(config, { env: { ...env, PMKIT_HOME: home }, exec: guardExec(makeExec(env), allow) })
+    return await use(tracker, config)
+  } finally {
+    for (const dir of [home, root]) fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** discover reads the repository and its Project: issue types, issue fields, Project fields with an iteration field, Status options. */
+export async function checkDiscover({ env, makeExec, write = () => {} }) {
+  const { repo, project } = liveTargets(env).github
+  return withTracker({ env, makeExec, host: 'github.com', repo, project }, async (tracker) => {
+    const view = await tracker.discover({ refresh: true })
+    if (view.repo.toLowerCase() !== repo.toLowerCase()) fail(`discover read ${view.repo}, not ${repo}`)
+    if (`${view.project?.owner}/${view.project?.number}`.toLowerCase() !== project.toLowerCase()) fail(`discover read no Project ${project}`)
+    for (const key of ['issueTypes', 'issueFields', 'projectFields', 'labels', 'members']) if (!Array.isArray(view[key])) fail(`discover returned no ${key} list`)
+    const iterations = view.projectFields.filter((field) => field.dataType === 'ITERATION')
+    if (iterations.length === 0) fail(`the Project ${project} has no iteration field; add one, as the runbook says`)
+    if (view.statusOptions.length === 0) fail(`the Project ${project} has no Status option`)
+    const { capabilities } = await tracker.capabilities()
+    if (!Array.isArray(capabilities) || capabilities.length === 0) fail('capabilities built no manifest')
+    write(`issue types ${view.issueTypes.length}, issue fields ${view.issueFields.length}, Project fields ${view.projectFields.length} (iteration ${iterations.length}), Status options ${view.statusOptions.length}, capabilities ${capabilities.length}`)
+    return { asserted: ['discover read the repository and the Project', 'the Project has an iteration field and Status options', 'capabilities built the manifest'] }
+  })
 }
