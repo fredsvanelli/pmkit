@@ -383,11 +383,11 @@ test('a failure of the readme mutation without dates names only the readme step'
   await assert.rejects(projects.createDeliverable({ title: 'Launch', description: 'Plan' }, 'octocat'), { code: 'UPSTREAM', nextStep: 'Set the readme of the Project on GitHub' })
 })
 
-test('deliverableProgress skips a pull request item and a draft item of the Project', async () => {
+test('deliverableProgress reads an epic Project that holds a draft issue and a pull request, and counts only its issues', async () => {
   const { fake, projects } = await epicSetup()
   fake.seed({ number: 1, epics: ['acme/12'], item: { status: 'Done' } })
-  fake.seedProjectItem('acme/12', { kind: 'PULL_REQUEST' })
-  fake.seedProjectItem('acme/12', { kind: 'DRAFT_ISSUE', title: 'Idea' })
+  fake.seedProjectItem('acme/12', { type: 'PULL_REQUEST', title: 'Fix the index' })
+  fake.seedDraft({ project: 'PVT_E12', title: 'Idea' })
   const progress = await projects.deliverableProgress('acme/12')
   assert.equal(progress.total, 1)
   assert.equal(progress.done, 1)
