@@ -1,0 +1,86 @@
+// The live checks of the GitHub adapter (scripts/lib/github/live-checks.mjs) against the stateful fake GitHub. Nothing here
+// reaches GitHub: every check runs over an injected exec.
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { fakeGithubIssues } from '../../fake-github-issues.mjs'
+import { createGithubClient } from './client.mjs'
+import { guardExec, LIVE_DOCUMENTS, liveTargets, MARKER, preflightProject, skipReasons } from './live-checks.mjs'
+
+const GITHUB = { PMKIT_LIVE: '1', PMKIT_LIVE_GITHUB_REPO: 'acme/widgets', PMKIT_LIVE_GITHUB_PROJECT: 'acme/7' }
+const GHES = { PMKIT_LIVE_GHES_HOST: 'ghes.example.com', PMKIT_LIVE_GHES_REPO: 'acme/widgets', PMKIT_LIVE_GHES_PROJECT: 'acme/7' }
+const SCOPELESS = `ghp_${'S'.repeat(36)}`
+
+const clientOf = (fake, options = {}) => createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {}, ...options })
+
+test('without PMKIT_LIVE=1 every group is skipped with one reason, whatever else is set', () => {
+  for (const env of [{}, { ...GITHUB, ...GHES, PMKIT_LIVE: undefined, PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN: SCOPELESS }, { ...GITHUB, PMKIT_LIVE: 'yes' }]) {
+    assert.deepEqual(Object.values(skipReasons(env)), Array(5).fill('set PMKIT_LIVE=1 to run the live check'))
+  }
+})
+
+test('each group names the first variable it lacks', () => {
+  const reasons = skipReasons({ PMKIT_LIVE: '1' })
+  assert.equal(reasons.errors, false)
+  assert.equal(reasons.scope, 'set PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN to a classic token without the project scope to check the missing-scope error')
+  assert.equal(reasons.discover, 'set PMKIT_LIVE_GITHUB_REPO to owner/name of a github.com repository')
+  assert.equal(reasons.openCycle, reasons.discover)
+  assert.equal(reasons.ghes, 'no GHES host configured: set PMKIT_LIVE_GHES_HOST, PMKIT_LIVE_GHES_REPO and PMKIT_LIVE_GHES_PROJECT to convert a draft on GHES')
+  const noProject = skipReasons({ PMKIT_LIVE: '1', PMKIT_LIVE_GITHUB_REPO: 'acme/widgets' })
+  assert.equal(noProject.discover, `set PMKIT_LIVE_GITHUB_PROJECT to owner/number of a throwaway Project whose title starts with ${MARKER}`)
+  assert.equal(skipReasons({ PMKIT_LIVE: '1', PMKIT_LIVE_GHES_HOST: 'ghes.example.com' }).ghes, 'set PMKIT_LIVE_GHES_REPO to owner/name of a throwaway repository on the GHES host')
+  assert.equal(skipReasons({ PMKIT_LIVE: '1', PMKIT_LIVE_GHES_HOST: 'ghes.example.com', PMKIT_LIVE_GHES_REPO: 'acme/w' }).ghes, `set PMKIT_LIVE_GHES_PROJECT to owner/number of a throwaway Project on the GHES host whose title starts with ${MARKER}`)
+  assert.deepEqual(skipReasons({ ...GITHUB, ...GHES, PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN: SCOPELESS }), { errors: false, scope: false, discover: false, openCycle: false, ghes: false })
+})
+
+test('a malformed variable is a skip reason that names it, never a request', () => {
+  assert.equal(skipReasons({ ...GITHUB, PMKIT_LIVE_GITHUB_REPO: 'acme' }).discover, 'PMKIT_LIVE_GITHUB_REPO must be owner/name, such as acme/widgets')
+  assert.equal(skipReasons({ ...GITHUB, PMKIT_LIVE_GITHUB_PROJECT: 'acme/x' }).openCycle, 'PMKIT_LIVE_GITHUB_PROJECT must be owner/number, such as acme/7')
+  assert.equal(skipReasons({ ...GITHUB, ...GHES, PMKIT_LIVE_GHES_HOST: 'https://ghes.example.com' }).ghes, 'PMKIT_LIVE_GHES_HOST must be a host name, such as github.example.com')
+  assert.equal(skipReasons({ ...GITHUB, ...GHES, PMKIT_LIVE_GHES_HOST: 'github.com' }).ghes, 'PMKIT_LIVE_GHES_HOST must name a GitHub Enterprise Server host, not github.com or GHE.com')
+  assert.equal(skipReasons({ ...GITHUB, PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN: ' ' }).scope, 'set PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN to a classic token without the project scope to check the missing-scope error')
+})
+
+test('liveTargets reads the checked values', () => {
+  assert.deepEqual(liveTargets({ ...GITHUB, ...GHES, PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN: SCOPELESS }), {
+    github: { repo: 'acme/widgets', project: 'acme/7', scopeless: SCOPELESS },
+    ghes: { host: 'ghes.example.com', repo: 'acme/widgets', project: 'acme/7' },
+  })
+  assert.deepEqual(liveTargets({ PMKIT_LIVE_GITHUB_REPO: 'acme' }).github, { repo: null, project: null, scopeless: null })
+})
+
+test('the guard refuses a mutation it does not allow, one whose check fails, and a REST write, before gh runs', async () => {
+  const fake = fakeGithubIssues({ project: { title: `${MARKER} checks` } })
+  const runs = []
+  const exec = (cmd, args, options) => { runs.push(args); return fake.exec(cmd, args, options) }
+  const guarded = guardExec(exec, { PmkitLiveAddDraft: (variables) => variables.input?.projectId === 'PVT_1' })
+  const client = clientOf({ exec: guarded })
+  await assert.rejects(client.request('mutation PmkitDeleteIssue($input: DeleteIssueInput!) { deleteIssue(input: $input) { repository { id } } }', { input: { issueId: 'I_1' } }), /the live check refused PmkitDeleteIssue/)
+  await assert.rejects(client.request(LIVE_DOCUMENTS.ADD_DRAFT, { input: { projectId: 'PVT_9', title: 'x' } }), /the live check refused PmkitLiveAddDraft/)
+  await assert.rejects(client.rest('POST', 'repos/acme/widgets/milestones', { title: 'x' }), /the live check refused POST repos\/acme\/widgets\/milestones/)
+  assert.deepEqual(runs, [])
+  const added = await client.request(LIVE_DOCUMENTS.ADD_DRAFT, { input: { projectId: 'PVT_1', title: 'x' } })
+  assert.match(added.addProjectV2DraftIssue.projectItem.id, /^PVTI_/)
+  assert.equal((await client.request(LIVE_DOCUMENTS.VIEWER)).viewer.login, 'octocat')
+  assert.equal(runs.length, 2)
+})
+
+test('the preflight accepts an empty Project whose title starts with the marker, and returns its id', async () => {
+  const fake = fakeGithubIssues({ project: { title: `${MARKER} checks` } })
+  assert.deepEqual(await preflightProject(clientOf(fake), 'acme/7', 'PMKIT_LIVE_GITHUB_PROJECT'), { id: 'PVT_1', title: `${MARKER} checks` })
+})
+
+test('the preflight refuses a missing Project, one without the marker and one with an item, and writes nothing', async () => {
+  const cases = [
+    [fakeGithubIssues({ project: { title: `${MARKER} checks` } }), 'acme/9', /GitHub has no Project acme\/9, or the gh account cannot see it/],
+    [fakeGithubIssues({ project: { title: 'Roadmap' } }), 'acme/7', /the title of the Project acme\/7 does not start with pmkit-live/],
+    [(() => { const fake = fakeGithubIssues({ project: { title: `${MARKER} checks` } }); fake.seedDraft({ title: 'left over' }); return fake })(), 'acme/7', /the Project acme\/7 holds 1 item; empty it/],
+  ]
+  for (const [fake, project, message] of cases) {
+    const before = fake.mutations.length
+    const error = await preflightProject(clientOf(fake), project, 'PMKIT_LIVE_GITHUB_PROJECT').catch((caught) => caught)
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.match(error.message, message)
+    assert.match(error.nextStep, /PMKIT_LIVE_GITHUB_PROJECT/)
+    assert.equal(fake.mutations.length, before)
+  }
+})

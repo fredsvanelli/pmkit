@@ -920,7 +920,7 @@ function build(state) {
 
   const discussions = discussionRoutes(state, { stamp, register, requireRepository, refuseWithData, unknownNode, connection, page })
   const userByLogin = (name) => state.users.find((user) => user.login === name) ?? null
-  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf })
+  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf, projectValue })
 
   /** Answers one operation: { data } or { errors }, as GitHub's JSON body. query may be omitted to skip the schema check. */
   function handle(name, variables = {}, query) {
