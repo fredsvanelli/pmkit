@@ -198,10 +198,8 @@ test('convert without a Project is refused, and the list text covers the empty a
 test('convert names a pull request or a redacted item as not a draft', async () => {
   const { fake, ops } = setup()
   fake.seedDraft({ title: 'Offline mode' })
-  const pull = fake.seedDraft({ title: 'A pull request' }).item
-  const hidden = fake.seedDraft({ title: 'Hidden' }).item
-  fake.state.items.find((item) => item.id === pull).type = 'PULL_REQUEST'
-  fake.state.items.find((item) => item.id === hidden).type = 'REDACTED'
+  const pull = fake.seedProjectItem('acme/7', { type: 'PULL_REQUEST', title: 'A pull request' }).id
+  const hidden = fake.seedProjectItem('acme/7', { type: 'REDACTED' }).id
   await rejectsWith(ops.convert([pull], { dryRun: true }), 'INVALID_INPUT', `item ${pull} is a pull request, not a draft`)
   await rejectsWith(ops.convert([hidden], { dryRun: true }), 'INVALID_INPUT', `item ${hidden} is an item the gh account cannot see, not a draft`)
 })

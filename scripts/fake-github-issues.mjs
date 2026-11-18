@@ -177,7 +177,20 @@ export function fakeGithubIssuesFrom(json) {
   state.milestones ??= []
   state.statusUpdates ??= []
   state.counters = { iteration: 0, milestone: 0, statusUpdate: 0, ...state.counters }
+  for (const item of state.items ?? []) upgradeItem(item, state)
   return build(state)
+}
+
+/** Gives an item saved before PMK-343 its type: the PMK-88 kind and title, or the PMK-91 draft record, or an issue. */
+function upgradeItem(item, state) {
+  const { kind, title } = item
+  delete item.kind
+  delete item.title
+  if (item.type) return
+  if (item.draft) item.type = 'DRAFT_ISSUE'
+  else if (kind === 'PULL_REQUEST') Object.assign(item, { type: 'PULL_REQUEST', pullRequest: { title } })
+  else if (kind === 'DRAFT_ISSUE') Object.assign(item, { type: 'DRAFT_ISSUE', draft: { title, body: '', assignees: [], creator: state.viewer, createdAt: state.clock, updatedAt: state.clock } })
+  else item.type = 'ISSUE'
 }
 
 function build(state) {
@@ -408,6 +421,8 @@ function build(state) {
     const before = statusName(item)
     if (value === null) delete item.values[field.id]
     else item.values[field.id] = value
+    // A draft or a pull request item takes the value too, and has no issue timeline to record it in.
+    if (item.type !== 'ISSUE') return
     const record = issueById(item.issueId)
     if (field.name === 'Status' && features.statusEvents && before !== statusName(item)) {
       event(record, 'ProjectV2ItemStatusChangedEvent', { previousStatus: before, status: statusName(item), project: { id: item.projectId } }, at)
@@ -436,7 +451,7 @@ function build(state) {
     const found = state.items.find((item) => item.projectId === project.id && item.issueId === record.id)
     if (found) return found
     state.counters.item += 1
-    const item = { id: `PVTI_${state.counters.item}`, projectId: project.id, issueId: record.id, isArchived: false, values: {} }
+    const item = { id: `PVTI_${state.counters.item}`, projectId: project.id, type: 'ISSUE', issueId: record.id, isArchived: false, values: {} }
     state.items.push(item)
     return item
   }
@@ -448,8 +463,19 @@ function build(state) {
     return rest
   }
 
-  /** What a Project item that is no issue answers as content: a pull request matches no Issue fragment, a draft is a DraftIssue. */
-  const contentOfOtherItem = (item) => (item.kind === 'DRAFT_ISSUE' ? { __typename: 'DraftIssue', title: item.title } : { __typename: 'PullRequest' })
+  /**
+   * The content of a Project item, by its type, as GitHub's ProjectV2ItemContent union answers it: the issue node, a DraftIssue, a
+   * PullRequest with its title, or null for a REDACTED item. Each read decides whether __typename stays (withTypename).
+   */
+  function contentOf(item, vars = {}) {
+    if (item.type === 'DRAFT_ISSUE') {
+      const { title, body, createdAt, updatedAt, creator, assignees } = item.draft
+      return { __typename: 'DraftIssue', title, body, createdAt, updatedAt, creator: creator === null ? null : { login: creator }, assignees: { nodes: assignees.map((login) => ({ login })) } }
+    }
+    if (item.type === 'PULL_REQUEST') return { __typename: 'PullRequest', title: item.pullRequest.title }
+    if (item.type === 'REDACTED') return null
+    return issueNode(issueById(item.issueId), vars)
+  }
 
   function addStatusUpdate(project, { status, body = null, startDate = null, targetDate = null, createdAt, creator = state.viewer }) {
     if (!UPDATE_STATUSES.includes(status)) unprocessable(`${status} is not a valid status for a Project update`)
@@ -512,7 +538,11 @@ function build(state) {
     },
     PmkitEpicItems(vars, _name, query) {
       const project = projectById(vars.project)
-      const items = state.items.filter((item) => item.projectId === project.id).map((item) => ({ ...itemNode(item, vars), status: projectValue(item, 'Status'), content: withTypename(item.kind ? contentOfOtherItem(item) : issueNode(issueById(item.issueId), vars), /\bcontent\s*\{\s*__typename\b/.test(query ?? '')) }))
+      const typed = /\bcontent\s*\{\s*__typename\b/.test(query ?? '')
+      const items = state.items.filter((item) => item.projectId === project.id).map((item) => {
+        const content = contentOf(item, vars)
+        return { ...itemNode(item, vars), status: projectValue(item, 'Status'), content: content && withTypename(content, typed) }
+      })
       return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
     },
     // Issues by node id, in the order asked, null for an id that is no issue: the batched read of the epic progress.
@@ -877,7 +907,7 @@ function build(state) {
 
   const discussions = discussionRoutes(state, { stamp, register, requireRepository, refuseWithData, unknownNode, connection, page })
   const userByLogin = (name) => state.users.find((user) => user.login === name) ?? null
-  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues })
+  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf })
 
   /** Answers one operation: { data } or { errors }, as GitHub's JSON body. query may be omitted to skip the schema check. */
   function handle(name, variables = {}, query) {
@@ -1017,13 +1047,20 @@ function build(state) {
     }
   }
 
-  /** Adds an item that is no issue to an epic Project ('owner/number'): { kind: 'PULL_REQUEST' | 'DRAFT_ISSUE', title }. Returns { id }. */
-  function seedProjectItem(epic, { kind, title = 'Item' }) {
-    const [owner, number] = epic.split('/')
-    const project = state.projects.find((candidate) => sameName(candidate.owner, owner) && candidate.number === Number(number))
-    if (!project) throw new Error(`fake GitHub: seed names an unknown epic ${epic}`)
+  /**
+   * Adds a pull request or a redacted item to any Project of the fake ('owner/number'): { type: 'PULL_REQUEST' | 'REDACTED', title }.
+   * A draft comes from seedDraft and an issue from seed, so each kind of content has one way in. Returns { id }.
+   */
+  function seedProjectItem(ref, { type, title = 'Item' }) {
+    if (type === 'DRAFT_ISSUE') throw new Error('fake GitHub: seedProjectItem makes no draft issue; use seedDraft({ project })')
+    if (type === 'ISSUE') throw new Error('fake GitHub: seedProjectItem makes no issue item; use seed({ item }) or seed({ epics })')
+    if (type !== 'PULL_REQUEST' && type !== 'REDACTED') throw new Error(`fake GitHub: seedProjectItem takes PULL_REQUEST or REDACTED, not ${type}`)
+    const [owner, number] = ref.split('/')
+    const project = [...allProjects(), ...state.extraProjects].find((candidate) => sameName(candidate.owner, owner) && candidate.number === Number(number))
+    if (!project) throw new Error(`fake GitHub: seedProjectItem names an unknown Project ${ref}`)
     state.counters.item += 1
-    const item = { id: `PVTI_${state.counters.item}`, projectId: project.id, issueId: null, kind, title, isArchived: false, values: {} }
+    const item = { id: `PVTI_${state.counters.item}`, projectId: project.id, type, issueId: null, isArchived: false, values: {} }
+    if (type === 'PULL_REQUEST') item.pullRequest = { title }
     state.items.push(item)
     return { id: item.id }
   }
