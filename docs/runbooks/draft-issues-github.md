@@ -1,6 +1,6 @@
 # Runbook: draft issues on GitHub Issues
 
-The flow of `/pmkit:github:draft-issues` on a repository whose tracker is GitHub Issues: list the draft issues of the Project, preview the conversion, convert the chosen drafts, and set the pmkit fields of the new issues. Then an archived draft, another target repository and a setup with no Project. `scripts/runbook-draft-issues-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
+The flow of `/pmkit:github:draft-issues` on a repository whose tracker is GitHub Issues: list the draft issues of the Project, preview the conversion, convert the chosen drafts, and set the pmkit fields of the new issues. Then an archived draft, another target repository, a linked Project past the first 100 and a setup with no Project. `scripts/runbook-draft-issues-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
 
 ## Before you start
 
@@ -12,6 +12,7 @@ The flow of `/pmkit:github:draft-issues` on a repository whose tracker is GitHub
   - `PVTI_3`, `Dark theme`, with a one-line body.
   - `PVTI_4`, `Docs: a getting started page`, with no body.
 - The repository `acme/docs` exists on the same host and has issues turned on.
+- 120 more Projects, `acme/101` to `acme/220`, are linked to `acme/widgets`. The last one, `acme/220`, holds one draft, `PVTI_5`, `Plan the public API`.
 
 ## Review and convert
 
@@ -74,7 +75,15 @@ The flow of `/pmkit:github:draft-issues` on a repository whose tracker is GitHub
 
    Expect `target: { "repo": "acme/docs", "tracked": false }` and the warning `acme/docs is not tracker.scope.repo (acme/widgets), so pmkit will not track the new issues`. The command skips the field step for such issues.
 
-8. Set `tracker.scope.project: none` in `.pmkit/config.yaml` and list again:
+8. List the drafts of a linked Project past the first 100:
+
+   ```
+   node scripts/pmkit.mjs github draft-issues list --project acme/220 --json
+   ```
+
+   Expect `available: true` and one draft, `PVTI_5`, `Plan the public API`. pmkit pages through every Project linked to the repository before it accepts `--project`, so the 121st one counts as linked.
+
+9. Set `tracker.scope.project: none` in `.pmkit/config.yaml` and list again:
 
    ```
    node scripts/pmkit.mjs github draft-issues list --json

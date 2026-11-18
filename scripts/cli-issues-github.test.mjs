@@ -128,6 +128,25 @@ test('a cut metric events read on GHES 3.20 prints the cut warning and the Statu
   }
 })
 
+// Twenty items of other Projects before an issue's own items, so the configured Project's item comes after GitHub's first 20 (PMK-337).
+const itemsBefore = (fake, issueId) => fake.state.items.unshift(...Array.from({ length: 20 }, (_, index) => ({ id: `PVTI_${issueId}_X${index}`, projectId: `PVT_X${index}`, issueId, isArchived: false, values: {} })))
+
+test('issues list --blocked and events read the configured Project item of an issue in more than 20 Projects', async () => {
+  const { cli, fake } = githubRepo()
+  fake.seed({ number: 1, title: 'Blocker', item: { status: 'Done' } })
+  fake.seed({ number: 2, title: 'Waiting', blockedBy: [1] })
+  fake.seed({ number: 3, title: 'Reopened', item: { status: 'In Review' } })
+  itemsBefore(fake, 'I_1')
+  itemsBefore(fake, 'I_3')
+  fake.handle('PmkitCloseIssue', { input: { issueId: 'I_3', stateReason: 'COMPLETED' } })
+  fake.handle('PmkitReopenIssue', { input: { issueId: 'I_3' } })
+  assert.deepEqual(dataOf(await cli(['issues', 'list', '--blocked', '--json'])).issues.map((issue) => issue.id), [])
+  const events = dataOf(await cli(['events', '--json']))
+  const list = Array.isArray(events) ? events : events.events
+  const reopened = list.filter((event) => event.issue === '3' && event.op === 'move' && event.from === null && event.to !== 'Closed')
+  assert.deepEqual(reopened.map((event) => event.to), ['In Review'])
+})
+
 // issues branch on GitHub (decision 6): GitHub creates the linked branch on origin at the head there of the branch it starts from,
 // so a local start that lacks commits of origin/<base> would make the push of pr open non-fast-forward.
 const git = (cwd, ...args) => {

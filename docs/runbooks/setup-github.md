@@ -17,7 +17,7 @@ The flow of `/pmkit:setup` when the user picks GitHub Issues: "GitHub first run"
    node scripts/pmkit.mjs init --tracker github --git-host github --dry-run --json
    ```
 
-   Expect `host` and `repo` from the origin remote, a note that says so, `project: null`, and one question, `tracker.scope.project`, whose `candidates` are the linked Projects as `owner/number` with their `titles`. Nothing is written. On GHES below 3.19 the command fails with `NOT_SUPPORTED` and names the version found and 3.19. When the token lacks the `project` scope, the question has no candidates, recommends `none` and carries a `note` with `gh auth refresh -s project`.
+   Expect `host` and `repo` from the origin remote, a note that says so, `project: null`, and one question, `tracker.scope.project`, whose `candidates` are the linked Projects as `owner/number` with their `titles`. pmkit pages through every linked Project, so a repository with more than 20 lists them all. Nothing is written. On GHES below 3.19 the command fails with `NOT_SUPPORTED` and names the version found and 3.19. When the token lacks the `project` scope, the question has no candidates, recommends `none` and carries a `note` with `gh auth refresh -s project`.
 
 2. Pick the Project and read it:
 

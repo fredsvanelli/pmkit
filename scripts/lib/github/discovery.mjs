@@ -57,8 +57,11 @@ export const projectQuery = ({ issueFields }) => {
     `... on ProjectV2SingleSelectField { id name dataType${flag} options { id name } } ... on ProjectV2MultiSelectField { id name dataType${flag} } } ${PAGE} } } } } }`
 }
 
+const LINKED_PAGE = 100
+// A repository GitHub answers without lists no Projects, as before the read paged.
+const NO_PROJECTS = { nodes: [], pageInfo: { hasNextPage: false } }
 export const LINKED_PROJECTS_QUERY =
-  'query PmkitLinkedProjects($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { projectsV2(first: 20) { nodes { number title owner { ... on Organization { login } ... on User { login } } } } } }'
+  'query PmkitLinkedProjects($owner: String!, $name: String!, $first: Int!, $after: String) { repository(owner: $owner, name: $name) { projectsV2(first: $first, after: $after) { nodes { number title owner { ... on Organization { login } ... on User { login } } } pageInfo { hasNextPage endCursor } } } }'
 
 /** True for a GitHub Enterprise Server host: any host but github.com and GHE.com (*.ghe.com). */
 export function needsVersionCheck(host) {
@@ -234,10 +237,13 @@ function repositoryLists(data, repository, named = 0) {
   }
 }
 
-/** The Projects linked to the repository, as [{ id: owner/number, title }]. An AUTH error propagates, so setup can show its step. */
+/**
+ * The Projects linked to the repository, as [{ id: owner/number, title }], read 100 a page up to the client's 10-page cap. An AUTH
+ * error propagates, so setup can show its step.
+ */
 export async function fetchLinkedProjects(client, repo) {
-  const data = await client.request(LINKED_PROJECTS_QUERY, parseRepo(repo) ?? {})
-  return (data?.repository?.projectsV2?.nodes ?? []).filter((node) => node?.owner?.login).map((node) => ({ id: `${node.owner.login}/${node.number}`, title: node.title }))
+  const { nodes } = await client.paginate(LINKED_PROJECTS_QUERY, parseRepo(repo) ?? {}, { select: (data) => data?.repository?.projectsV2 ?? NO_PROJECTS, pageSize: LINKED_PAGE })
+  return nodes.filter((node) => node?.owner?.login).map((node) => ({ id: `${node.owner.login}/${node.number}`, title: node.title }))
 }
 
 const STATUS_FIELD = 'Status'

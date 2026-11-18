@@ -12,15 +12,15 @@ import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
 import { itemOf, toIssue, toIssueWithWarnings } from './issues.mjs'
 import { epicOf, readMilestoneNodes } from './projects.mjs'
-import { docsOf, sender } from './requests.mjs'
+import { completeProjectItems, docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
 const PAGE_SIZE = 100
-// The nested connections of the issue fragment that may have more pages than the fragment reads.
-const NESTED = ['labels', 'subIssues', 'blockedBy', 'blocking', 'relatesTo', 'projectItems']
-/** The field variables a further page of a nested connection reads: all of them for projectItems, the Status for blockedBy. */
+// The nested connections of the issue fragment that may have more pages than the fragment reads. completeProjectItems reads the
+// rest of projectItems, the issue's and each blocker's.
+const NESTED = ['labels', 'subIssues', 'blockedBy', 'blocking', 'relatesTo']
+/** The field variables a further page of a nested connection reads: the Status for blockedBy. */
 function moreVariables(field, context) {
-  if (field === 'projectItems') return context.fieldVariables
   return field === 'blockedBy' && context.projectFields.status ? { fStatus: context.fieldVariables.fStatus } : {}
 }
 const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
@@ -39,6 +39,9 @@ export function issueOperations({ client, config, getContext, now = () => new Da
       const { nodes } = await client.paginate(docs.MORE(field), variables, { select: (data) => data.node[field], pageSize: PAGE_SIZE })
       node[field] = { nodes, pageInfo: { hasNextPage: false } }
     }
+    // The fragment reads the issue's items with archived ones, and a blocker's items without them.
+    await completeProjectItems(client, context, node, { archived: true })
+    for (const blocker of node.blockedBy?.nodes ?? []) await completeProjectItems(client, context, blocker, { archived: false })
     return node
   }
 

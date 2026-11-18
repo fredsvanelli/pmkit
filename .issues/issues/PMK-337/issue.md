@@ -2,12 +2,14 @@
 id: PMK-337
 title: Page through Project items and linked Projects past the first 20
 type: bug
-status: backlog
+status: in_review
 priority: low
+assignee: fred
 parent: EPC-8
 milestone: github-issues
+branch: pmk-337-page-through-project-items-and-linked
 created: 2026-11-17T01:21:31.037Z
-updated: 2026-11-17T23:13:16Z
+updated: 2026-11-18T01:33:33Z
 ---
 
 ## Description
@@ -22,6 +24,6 @@ An issue in more than 20 Projects can get the wrong Status or miss metric events
 
 ## Acceptance criteria
 
-- [ ] Both `projectItems` reads page through every Project item, or find the configured Project's item directly
-- [ ] `fetchLinkedProjects` pages through every linked Project
-- [ ] Tests cover more than 20 Project items and more than 20 linked Projects
+- [x] Both `projectItems` reads page through every Project item, or find the configured Project's item directly
+- [x] `fetchLinkedProjects` pages through every linked Project
+- [x] Tests cover more than 20 Project items and more than 20 linked Projects

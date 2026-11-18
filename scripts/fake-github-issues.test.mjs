@@ -76,6 +76,17 @@ test('PmkitIssues pages by first and after, and filters by assignee, labels, typ
   assert.deepEqual(await numbers({ since: b.updatedAt }), [2, 3])
 })
 
+test('a blocker lists its first 20 Project items, unarchived, with the page info', () => {
+  const fake = fakeGithubIssues()
+  fake.seed({ number: 1, title: 'Blocker', item: { status: 'Done', archived: true } })
+  fake.seed({ number: 2, title: 'Waiting', blockedBy: [1] })
+  fake.state.items.push(...Array.from({ length: 25 }, (_, index) => ({ id: `PVTI_X${index}`, projectId: `PVT_X${index}`, issueId: 'I_1', isArchived: false, values: {} })))
+  const items = fake.handle('PmkitIssue', { owner: 'acme', name: 'widgets', number: 2 }).data.repository.issue.blockedBy.nodes[0].projectItems
+  assert.equal(items.nodes.length, 20)
+  assert.equal(items.nodes.some((node) => node.isArchived), false)
+  assert.deepEqual(items.pageInfo, { hasNextPage: true, endCursor: '19' })
+})
+
 test('a blocker reads on both issues, with the Status of the blocker, and records events on both', async () => {
   const { docs, client, create, read } = setup()
   await create({ title: 'Blocked' })

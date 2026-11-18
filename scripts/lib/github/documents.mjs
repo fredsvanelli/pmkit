@@ -36,7 +36,7 @@ const FIELD_ALIASES = [['status', 'status', 'fStatus'], ['priority', 'fPriority'
 const fieldAliases = (projectFields) => FIELD_ALIASES.filter(([key]) => projectFields?.[key])
 const fieldVariables = (projectFields) => fieldAliases(projectFields).map(([, , variable]) => `$${variable}: String!`)
 const fieldSelections = (projectFields) => fieldAliases(projectFields).map(([, alias, variable]) => `${alias}: fieldValueByName(name: $${variable}) ${PROJECT_VALUE}`).join(' ')
-const statusSelection = (projectFields) => (projectFields?.status ? `projectItems(first: 20) { nodes { project { id } status: fieldValueByName(name: $fStatus) ${PROJECT_VALUE} } }` : '')
+const statusSelection = (projectFields) => (projectFields?.status ? `projectItems(first: 20) { nodes { project { id } status: fieldValueByName(name: $fStatus) ${PROJECT_VALUE} } ${PAGE} }` : '')
 
 const declare = (...variables) => variables.flat().filter(Boolean).join(', ')
 
@@ -71,7 +71,7 @@ function timelineNodes(features) {
 export function issueDocuments(features, projectFields = {}) {
   const vars = fieldVariables(projectFields)
   // The Status of each item, archived ones included as in the issue fragment, for the open issues a ReopenedEvent names.
-  const metricStatus = projectFields?.status ? `projectItems(first: 20, includeArchived: true) { nodes { project { id } status: fieldValueByName(name: $fStatus) ${PROJECT_VALUE} } }` : ''
+  const metricStatus = projectFields?.status ? `projectItems(first: 20, includeArchived: true) { nodes { project { id } status: fieldValueByName(name: $fStatus) ${PROJECT_VALUE} } ${PAGE} }` : ''
   const ITEM_SELECTION = `id isArchived project { id number owner { ... on Organization { login } ... on User { login } } } ${fieldSelections(projectFields)}`
   const fragment = `fragment PmkitIssueFields on Issue {
   id number title body state stateReason createdAt updatedAt url
