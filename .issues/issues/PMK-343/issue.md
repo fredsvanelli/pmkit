@@ -2,14 +2,14 @@
 id: PMK-343
 title: "Unify the fake GitHub's models of non-issue Project items"
 type: chore
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-8
 milestone: github-issues
 branch: pmk-343-unify-the-fake-github-s-models-of-non
 created: 2026-11-18T00:15:22.751Z
-updated: 2026-11-18T01:42:42Z
+updated: 2026-11-18T02:07:29Z
 ---
 
 ## Description
@@ -18,5 +18,5 @@ Found while working PMK-88 (PR #318) and PMK-91 (PR #317). The fake GitHub model
 
 ## Acceptance criteria
 
-- [ ] The fake GitHub has one model of Project item content (issue, pull request, draft issue)
-- [ ] A test puts a draft issue in an epic Project and reads the epic
+- [x] The fake GitHub has one model of Project item content (issue, pull request, draft issue)
+- [x] A test puts a draft issue in an epic Project and reads the epic
