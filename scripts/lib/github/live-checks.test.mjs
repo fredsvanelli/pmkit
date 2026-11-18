@@ -4,7 +4,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fakeGithubIssues } from '../../fake-github-issues.mjs'
 import { createGithubClient } from './client.mjs'
-import { guardExec, LIVE_DOCUMENTS, liveTargets, MARKER, preflightProject, skipReasons } from './live-checks.mjs'
+import { liveGhExec } from '../../fake-gh-live.mjs'
+import {
+  checkMissingScope, checkNoLogin, checkNotFound, checkRateHeaders, checkRejectedToken, guardExec, LIVE_DOCUMENTS, liveTargets, MARKER,
+  preflightProject, skipReasons,
+} from './live-checks.mjs'
 
 const GITHUB = { PMKIT_LIVE: '1', PMKIT_LIVE_GITHUB_REPO: 'acme/widgets', PMKIT_LIVE_GITHUB_PROJECT: 'acme/7' }
 const GHES = { PMKIT_LIVE_GHES_HOST: 'ghes.example.com', PMKIT_LIVE_GHES_REPO: 'acme/widgets', PMKIT_LIVE_GHES_PROJECT: 'acme/7' }
@@ -83,4 +87,51 @@ test('the preflight refuses a missing Project, one without the marker and one wi
     assert.match(error.nextStep, /PMKIT_LIVE_GITHUB_PROJECT/)
     assert.equal(fake.mutations.length, before)
   }
+})
+
+// Criterion 1: the error shapes.
+
+const errorRun = (extra = {}) => {
+  const github = fakeGithubIssues({ project: { title: `${MARKER} checks` } })
+  return { github, env: { PATH: process.env.PATH, ...GITHUB, PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN: SCOPELESS, ...extra }, makeExec: liveGhExec({ github, ghes: null }, { scopelessToken: SCOPELESS }) }
+}
+
+test('each error shape check passes against a gh that answers as GitHub does, and writes nothing', async () => {
+  const { github, env, makeExec } = errorRun({ GH_TOKEN: `ghp_${'U'.repeat(36)}` })
+  for (const check of [checkNoLogin, checkRejectedToken, checkNotFound, checkRateHeaders, checkMissingScope]) {
+    const { asserted } = await check({ env, makeExec })
+    assert.ok(asserted.length > 0, check.name)
+  }
+  assert.deepEqual(github.mutations, [])
+})
+
+test('the no-login check fails when gh answers as logged in, and the rejected-token check when GitHub accepts the token', async () => {
+  const { github, env } = errorRun()
+  const loggedIn = () => (cmd, args, options) => github.exec(cmd, args, options)
+  await assert.rejects(checkNoLogin({ env, makeExec: loggedIn }), /expected AUTH "GitHub CLI is not logged in"/)
+  await assert.rejects(checkRejectedToken({ env, makeExec: loggedIn }), /expected AUTH "GitHub rejected the token of the gh login"/)
+})
+
+test('the not-found check fails on an answer that is not NOT_FOUND, and the rate check on an answer without the rate headers', async () => {
+  const { env } = errorRun()
+  const upstream = () => () => ({ status: 1, stdout: 'HTTP/2.0 200 OK\r\n\r\n{"errors":[{"type":"INTERNAL","message":"boom"}]}', stderr: 'gh: boom' })
+  await assert.rejects(checkNotFound({ env, makeExec: upstream }), /expected NOT_FOUND, got UPSTREAM/)
+  const bare = () => () => ({ status: 0, stdout: 'HTTP/2.0 200 OK\r\n\r\n{"data":{"viewer":{"login":"octocat"}}}', stderr: '' })
+  await assert.rejects(checkRateHeaders({ env, makeExec: bare }), /GitHub sent no rate-limit headers/)
+})
+
+test('the missing-scope check sends the scopeless token only through GH_TOKEN, and the token is in no output', async () => {
+  const { env } = errorRun()
+  const seen = []
+  const fakeExec = liveGhExec({ github: fakeGithubIssues(), ghes: null }, { scopelessToken: SCOPELESS })
+  const makeExec = (childEnv) => (cmd, args, options) => { seen.push({ args, token: childEnv.GH_TOKEN }); return fakeExec(childEnv)(cmd, args, options) }
+  const { asserted } = await checkMissingScope({ env, makeExec })
+  assert.deepEqual(seen.map((call) => call.token), [SCOPELESS])
+  assert.ok(seen.every((call) => !call.args.join(' ').includes(SCOPELESS)))
+  assert.ok(!JSON.stringify(asserted).includes(SCOPELESS))
+  // A refusal whose text echoes the token fails without printing it.
+  const echo = () => () => ({ status: 1, stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify({ errors: [{ type: 'INSUFFICIENT_SCOPES', message: `token ${SCOPELESS} has the following scopes: ['repo']` }] })}`, stderr: '' })
+  const error = await checkMissingScope({ env, makeExec: echo }).catch((caught) => caught)
+  assert.match(error.message, /the scopeless token appears in the error/)
+  assert.ok(!error.message.includes(SCOPELESS))
 })

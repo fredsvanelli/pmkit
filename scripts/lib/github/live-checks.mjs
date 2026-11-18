@@ -4,10 +4,16 @@
 // scripts/lib/github/client-live.mjs, the opt-in node --test entry, drives it against the real gh.
 // See docs/specs/2026-11-18-pmk-335-github-live-checks-design.md and docs/runbooks/live-checks-github.md.
 
+import { AssertionError } from 'node:assert'
+import { randomBytes } from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
 import { isMutation, operationName } from '../graphql.mjs'
-import { HOST_NAME } from './client.mjs'
+import { createGithubClient, HOST_NAME } from './client.mjs'
 import { needsVersionCheck, parseProject, parseRepo } from './discovery.mjs'
+import { DRAFT_DOCUMENTS } from './draft-issues.mjs'
 
 /** The prefix a throwaway Project's title must start with, and the title of each draft a check adds. */
 export const MARKER = 'pmkit-live'
@@ -139,4 +145,85 @@ export async function preflightProject(client, value, variable) {
   const count = node.items?.totalCount ?? 0
   if (count > 0) throw refuse(`the Project ${value} holds ${plural(count, 'item')}; empty it, or name another Project`, `Delete its items on GitHub, or name an empty throwaway Project in ${variable}`)
   return { id: node.id, title: node.title }
+}
+
+// Criterion 1: the error shapes of the client against github.com. Each check builds its own environment for gh, sends one read
+// and writes nothing.
+
+const TOKEN_VARIABLES = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
+const withoutTokens = (env) => Object.fromEntries(Object.entries(env).filter(([name]) => !TOKEN_VARIABLES.includes(name)))
+const fail = (message) => { throw new AssertionError({ message }) }
+
+/** A github.com client over makeExec(env), behind a guard that allows no write. */
+const githubClient = (env, makeExec) => createGithubClient({ env, host: 'github.com', exec: guardExec(makeExec(env)), retries: 0 })
+
+/** The error a promise rejects with, or null when it resolves. */
+async function rejection(promise) {
+  try {
+    await promise
+  } catch (error) {
+    return error
+  }
+  return null
+}
+
+/** Fails unless error has the code, and the message and next step when given. */
+function expectError(error, { code, message, nextStep }) {
+  const matches = error?.code === code && (message === undefined || error.message === message) && (nextStep === undefined || error.nextStep === nextStep)
+  if (matches) return
+  const wanted = `${code}${message === undefined ? '' : ` "${message}"`}${nextStep === undefined ? '' : ` with the next step "${nextStep}"`}`
+  const got = error ? `${error.code ?? error.name} "${error.message}"${error.nextStep ? ` with the next step "${error.nextStep}"` : ''}` : 'an answer with no error'
+  fail(`expected ${wanted}, got ${got}`)
+}
+
+/** gh with no token and a config folder with no login answers AUTH with the step gh auth login. */
+export async function checkNoLogin({ env, makeExec }) {
+  const config = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-gh-'))
+  try {
+    const child = { ...withoutTokens(env), GH_CONFIG_DIR: config }
+    expectError(await rejection(githubClient(child, makeExec).request(LIVE_DOCUMENTS.VIEWER)), { code: 'AUTH', message: 'GitHub CLI is not logged in', nextStep: 'gh auth login' })
+    return { asserted: ['gh with no login answers AUTH "GitHub CLI is not logged in" with the next step "gh auth login"'] }
+  } finally {
+    fs.rmSync(config, { recursive: true, force: true })
+  }
+}
+
+/** A token GitHub does not know answers AUTH: GitHub refuses it with HTTP 401. */
+export async function checkRejectedToken({ env, makeExec }) {
+  const error = await rejection(githubClient({ ...withoutTokens(env), GH_TOKEN: BAD_TOKEN }, makeExec).request(LIVE_DOCUMENTS.VIEWER))
+  expectError(error, { code: 'AUTH', message: 'GitHub rejected the token of the gh login' })
+  if (error.details?.github?.status !== 401) fail(`expected HTTP 401 in the error details, got ${error.details?.github?.status}`)
+  return { asserted: ['a token GitHub does not know answers AUTH "GitHub rejected the token of the gh login" (HTTP 401)'] }
+}
+
+/** A repository whose owner cannot exist answers NOT_FOUND, with GitHub's NOT_FOUND type in the details. */
+export async function checkNotFound({ env, makeExec, random = () => randomBytes(4).toString('hex') }) {
+  const owner = `${MARKER}-no-such-owner-${random()}`
+  const error = await rejection(githubClient(env, makeExec).request(DRAFT_DOCUMENTS.TARGET, { owner, name: 'x' }))
+  expectError(error, { code: 'NOT_FOUND' })
+  const type = error.details?.github?.errors?.[0]?.type
+  if (type !== 'NOT_FOUND') fail(`expected the GitHub error type NOT_FOUND in the details, got ${type}`)
+  return { asserted: ['a repository whose owner does not exist answers NOT_FOUND, type NOT_FOUND'] }
+}
+
+/** One read fills the GraphQL rate bucket from GitHub's headers: limit, remaining and used as numbers, the resource and the reset time. */
+export async function checkRateHeaders({ env, makeExec }) {
+  const client = githubClient(env, makeExec)
+  await client.request(LIVE_DOCUMENTS.VIEWER)
+  const rate = client.rateLimit()
+  if (!rate) fail('GitHub sent no rate-limit headers')
+  for (const key of ['limit', 'remaining', 'used']) if (typeof rate[key] !== 'number') fail(`the rate limit has no number ${key}: ${JSON.stringify(rate)}`)
+  if (rate.resource !== 'graphql') fail(`expected the rate-limit resource graphql, got ${rate.resource}`)
+  if (Number.isNaN(Date.parse(rate.resetAt ?? ''))) fail(`expected an ISO reset time, got ${rate.resetAt}`)
+  return { asserted: [`the rate limit reads ${rate.remaining} of ${rate.limit} left on ${rate.resource}, reset at ${rate.resetAt}`] }
+}
+
+/** A classic token without the project scope answers AUTH with the step gh auth refresh -s project, and the token is in no text. */
+export async function checkMissingScope({ env, makeExec }) {
+  const token = liveTargets(env).github.scopeless
+  const error = await rejection(githubClient({ ...withoutTokens(env), GH_TOKEN: token }, makeExec).request(LIVE_DOCUMENTS.SCOPE))
+  const texts = [error?.message, error?.nextStep, JSON.stringify(error?.details ?? null)].join('\n')
+  if (texts.includes(token)) fail('the scopeless token appears in the error the client built')
+  expectError(error, { code: 'AUTH', nextStep: 'gh auth refresh -s project' })
+  return { asserted: ['a token without the project scope answers AUTH with the next step "gh auth refresh -s project"'] }
 }
