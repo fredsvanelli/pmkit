@@ -49,7 +49,7 @@ test('triage, delegation, time tracking and the rest are absent with their hints
   assert.deepEqual(entryOf(entries, 'native_triage'), { id: 'native_triage', path: 'absent', enableHint: 'GitHub has no triage; map a Status option to triage in .pmkit/config.yaml' })
   assert.deepEqual(entryOf(entries, 'agent_delegation'), { id: 'agent_delegation', path: 'absent', enableHint: 'The GitHub adapter does not delegate to agents yet' })
   assert.deepEqual(entryOf(entries, 'time_tracking'), { id: 'time_tracking', path: 'absent', enableHint: 'GitHub has no time tracking' })
-  assert.deepEqual(entryOf(entries, 'cycles'), { id: 'cycles', path: 'absent', enableHint: 'The GitHub adapter does not serve cycles yet (EPC-8)' })
+  assert.deepEqual(entryOf(entries, 'releases'), { id: 'releases', path: 'absent', enableHint: 'The GitHub adapter does not serve releases yet (EPC-8)' })
 })
 
 test('every capability the manifest claims has a command that serves it', () => {
@@ -75,5 +75,33 @@ test('without a Project, a triage label makes native_triage derived', () => {
 })
 
 test('with a Project, the Project-only entries keep their hint', () => {
-  for (const id of PROJECT_ONLY) assert.doesNotMatch(entryOf(buildGithubCapabilities(RAW, pmkit({})), id).enableHint, /Needs a GitHub Project/)
+  for (const id of PROJECT_ONLY) assert.doesNotMatch(entryOf(buildGithubCapabilities(RAW, pmkit({})), id).enableHint ?? '', /Needs a GitHub Project/)
+})
+
+const SPRINT_FIELD = { id: 'PF_9', name: 'Sprint', dataType: 'ITERATION', options: [], issueField: false }
+const WITH_SPRINT = { ...RAW, project: { ...RAW.project, fields: [...RAW.project.fields, SPRINT_FIELD] } }
+const WITH_SPRINT_GHES = { ...GHES, project: WITH_SPRINT.project }
+const sprint = { sprint: 'project:Sprint' }
+
+test('with a Project and an iteration field, cycles are native and capacity is derived from the local file', () => {
+  const entries = buildGithubCapabilities(WITH_SPRINT, pmkit(sprint))
+  assert.deepEqual(entryOf(entries, 'cycles'), { id: 'cycles', path: 'native', detail: { field: 'Sprint', open: true, close: false, schedule: 'project', history: false } })
+  assert.deepEqual(entryOf(entries, 'capacity'), { id: 'capacity', path: 'derived', detail: { source: 'local', file: '.pmkit/capacity.yaml' } })
+  assert.deepEqual(unservedCapabilities(entries, SERVED_BY), [])
+})
+
+test('on GHES an iteration has no id, so cycles cannot be opened', () => {
+  assert.equal(entryOf(buildGithubCapabilities(WITH_SPRINT_GHES, pmkit(sprint)), 'cycles').detail.open, false)
+})
+
+test('without an iteration mapping, cycles and capacity are absent with their hints', () => {
+  const entries = buildGithubCapabilities(WITH_SPRINT, pmkit({}))
+  assert.deepEqual(entryOf(entries, 'cycles'), { id: 'cycles', path: 'absent', enableHint: 'Map an iteration field of the Project with /pmkit:setup' })
+  assert.deepEqual(entryOf(entries, 'capacity'), { id: 'capacity', path: 'absent', enableHint: 'Capacity needs cycles' })
+})
+
+test('with a Project, deliverables and status updates are native', () => {
+  const entries = buildGithubCapabilities(RAW, pmkit({}))
+  assert.deepEqual(entryOf(entries, 'deliverables'), { id: 'deliverables', path: 'native', detail: { entity: 'project', derived: ['deliverableProgress'], milestones: 'repository' } })
+  assert.deepEqual(entryOf(entries, 'status_update'), { id: 'status_update', path: 'native', detail: { entity: 'project status update' } })
 })

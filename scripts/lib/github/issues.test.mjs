@@ -218,3 +218,68 @@ test('type from a type label without issue types', () => {
   assert.equal(toIssue(labelled(['bug'], { issueType: { name: 'Bug' } }), typed).type, 'bug')
   assert.equal(toIssue(labelled(['bug']), typed).type, undefined, 'with issue types a label is no type')
 })
+
+const SPRINT_FIELD = { id: 'F5', name: 'Sprint', dataType: 'ITERATION', options: [], issueField: null }
+const sprintRaw = () => {
+  const base = raw()
+  return { ...base, project: { ...base.project, fields: [...base.project.fields, SPRINT_FIELD] } }
+}
+const sprintMap = { fields: { priority: 'project:Priority', estimate: 'issue:Estimate', target_date: 'project:Due', sprint: 'project:Sprint' } }
+const iteration = (startDate) => ({ __typename: 'ProjectV2ItemFieldIterationValue', iterationId: 'IT_a', title: 'Sprint 1', startDate, duration: 14 })
+const epicItem = (id, number) => ({ id: `IT_${id}`, isArchived: false, project: { id, number, owner: { login: 'acme' } } })
+const epicContext = () => makeContext(raw(), pmkit(), { epics: new Map([['E12', 'acme/12'], ['E9', 'acme/9']]) })
+
+test('the sprint role is set only for a mapped iteration field of the scope Project', () => {
+  const mapped = makeContext(sprintRaw(), pmkit(sprintMap))
+  assert.equal(mapped.projectFields.sprint, true)
+  assert.equal(mapped.fieldVariables.fSprint, 'Sprint')
+  assert.equal(mapped.field('sprint').field.id, 'F5')
+  for (const context of [makeContext(sprintRaw(), pmkit()), makeContext(raw(), pmkit(sprintMap)), makeContext(sprintRaw(), pmkit({ fields: { sprint: 'project:Size' } })), makeContext(sprintRaw(), pmkit({ fields: { sprint: 'issue:Sprint' } }))]) {
+    assert.equal('sprint' in context.projectFields, false)
+    assert.equal('fSprint' in context.fieldVariables, false)
+    assert.equal(context.field('sprint'), null)
+  }
+})
+
+test('a context has no epics unless the caller passes them', () => {
+  assert.deepEqual([...ctx().epics], [])
+  assert.deepEqual([...epicContext().epics], [['E12', 'acme/12'], ['E9', 'acme/9']])
+})
+
+test('toIssue reads the sprint from the start date of the iteration value of the item', () => {
+  const c = makeContext(sprintRaw(), pmkit(sprintMap))
+  assert.equal(toIssue(withItem(item({ fSprint: iteration('2026-11-16') })), c).sprint, '2026-11-16')
+  assert.equal('sprint' in toIssue(withItem(item()), c), false)
+  assert.equal('sprint' in toIssue(withItem(item({ fSprint: null })), c), false)
+  assert.equal('sprint' in toIssue(node(), c), false)
+  assert.equal('sprint' in toIssue(withItem(item({ fSprint: iteration('2026-11-16') })), ctx()), false)
+})
+
+test('toIssue reads the milestone title', () => {
+  assert.equal(toIssue(node({ milestone: { id: 'M1', number: 3, title: 'v1.0' } }), ctx()).milestone, 'v1.0')
+  assert.equal('milestone' in toIssue(node({ milestone: null }), ctx()), false)
+  assert.equal('milestone' in toIssue(node(), ctx()), false)
+})
+
+test('toIssue reads the epic of the lowest Project number among the items in linked epic Projects', () => {
+  assert.equal(toIssue(node({ projectItems: { nodes: [epicItem('E12', 12), epicItem('E9', 9)] } }), epicContext()).parent, 'acme/9')
+  assert.equal(toIssue(node({ projectItems: { nodes: [epicItem('E9', 9), epicItem('E12', 12)] } }), epicContext()).parent, 'acme/9')
+})
+
+test('toIssue skips an archived epic item, as the epic progress does', () => {
+  const archived = { ...epicItem('E9', 9), isArchived: true }
+  assert.equal(toIssue(node({ projectItems: { nodes: [archived, epicItem('E12', 12)] } }), epicContext()).parent, 'acme/12')
+  assert.equal('parent' in toIssue(node({ projectItems: { nodes: [archived] } }), epicContext()), false)
+})
+
+test('toIssue prefers the parent issue to an epic', () => {
+  const parent = { id: 'I9', number: 9, repository }
+  assert.equal(toIssue(node({ parent, projectItems: { nodes: [epicItem('E12', 12)] } }), epicContext()).parent, '9')
+})
+
+test('toIssue ignores items in Projects that are not linked epics, and the scope Project', () => {
+  const c = epicContext()
+  assert.equal('parent' in toIssue(node({ projectItems: { nodes: [epicItem('OTHER', 3), item()] } }), c), false)
+  assert.equal(toIssue(node({ projectItems: { nodes: [epicItem('OTHER', 3), epicItem('E12', 12)] } }), c).parent, 'acme/12')
+  assert.equal('parent' in toIssue(node({ projectItems: { nodes: [epicItem('E12', 12)] } }), ctx()), false)
+})

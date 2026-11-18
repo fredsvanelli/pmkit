@@ -3,18 +3,25 @@
 // document by its operation name. Unit tests inject `exec`; the E2E fake gh reaches it through answerGh and fixture.issues.
 // Its behavior follows the schema facts of docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md.
 
-import { answerGhWith, linkedReply, projectReply, repoReply, withNamedLabels } from './fake-github-api.mjs'
+import { answerGhWith, projectReply, repoReply, withNamedLabels } from './fake-github-api.mjs'
 import { hostFeatures } from './lib/github/documents.mjs'
 import { discussionRoutes, initDiscussions } from './fake-github-discussions.mjs'
 import { draftRoutes, initDrafts } from './fake-github-drafts.mjs'
 
-const STATE_VERSION = 1
+const STATE_VERSION = 2
 const DEFAULT_USERS = [{ id: 'U_1', login: 'octocat', name: 'The Octocat' }, { id: 'U_2', login: 'hubot', name: 'Hubot' }]
 const DEFAULT_OID = 'c0ffee0000000000000000000000000000000000'
 // The page size of each nested connection of the issue fragment.
 const NESTED = { assignees: 10, labels: 50, subIssues: 50, blockedBy: 50, blocking: 50, relatesTo: 50, linkedBranches: 5, projectItems: 20, issueFieldValues: 20 }
 // Alias and variable of each Project field the fragment may select with fieldValueByName.
-const ALIASES = [['status', 'fStatus'], ['fPriority', 'fPriority'], ['fEstimate', 'fEstimate'], ['fDue', 'fDue']]
+const ALIASES = [['status', 'fStatus'], ['fPriority', 'fPriority'], ['fEstimate', 'fEstimate'], ['fDue', 'fDue'], ['fSprint', 'fSprint']]
+const STATUS_OPTIONS = ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done']
+const UPDATE_STATUSES = ['INACTIVE', 'ON_TRACK', 'AT_RISK', 'OFF_TRACK', 'COMPLETE']
+const DAY = 86400000
+const dayOf = (date) => Date.parse(`${date}T00:00:00Z`)
+const dateAfter = (date, days) => new Date(dayOf(date) + days * DAY).toISOString().slice(0, 10)
+/** The GitHub weekday of a date, 1 for Monday to 7 for Sunday. */
+const weekdayOf = (date) => ((new Date(dayOf(date)).getUTCDay() + 6) % 7) + 1
 
 /** A reply thrown inside a handler: GitHub's answer to a refused call. */
 class Refusal extends Error {
@@ -37,7 +44,7 @@ export const TIMELINE_TYPENAMES = {
   BLOCKED_BY_ADDED_EVENT: 'BlockedByAddedEvent', BLOCKED_BY_REMOVED_EVENT: 'BlockedByRemovedEvent', BLOCKING_ADDED_EVENT: 'BlockingAddedEvent',
   BLOCKING_REMOVED_EVENT: 'BlockingRemovedEvent', PARENT_ISSUE_ADDED_EVENT: 'ParentIssueAddedEvent', PARENT_ISSUE_REMOVED_EVENT: 'ParentIssueRemovedEvent',
   SUB_ISSUE_ADDED_EVENT: 'SubIssueAddedEvent', SUB_ISSUE_REMOVED_EVENT: 'SubIssueRemovedEvent', MARKED_AS_DUPLICATE_EVENT: 'MarkedAsDuplicateEvent',
-  UNMARKED_AS_DUPLICATE_EVENT: 'UnmarkedAsDuplicateEvent', PROJECT_V2_ITEM_STATUS_CHANGED_EVENT: 'ProjectV2ItemStatusChangedEvent',
+  UNMARKED_AS_DUPLICATE_EVENT: 'UnmarkedAsDuplicateEvent', MILESTONED_EVENT: 'MilestonedEvent', DEMILESTONED_EVENT: 'DemilestonedEvent', PROJECT_V2_ITEM_STATUS_CHANGED_EVENT: 'ProjectV2ItemStatusChangedEvent',
 }
 const typenamesOf = (itemTypes) => new Set(itemTypes.map((itemType) => TIMELINE_TYPENAMES[itemType]))
 
@@ -58,6 +65,9 @@ function initialState({
   repo = 'acme/widgets',
   repositoryId = 'R_1',
   project = {},
+  epics = [],
+  milestones = [],
+  ownerId = 'O_1',
   issueFields,
   issueTypes,
   labels = ['bug', 'documentation'],
@@ -67,32 +77,75 @@ function initialState({
   now = '2026-11-16T12:00:00.000Z',
 } = {}) {
   const defaults = repoReply().data.repository
-  return {
+  const state = {
     version: STATE_VERSION,
     host,
     ghesVersion,
     repo,
     viewer,
     repositories: [{ nameWithOwner: repo, id: repositoryId, next: 1, branches: { ...branches } }],
+    ownerId,
     project: projectOf(project, repo),
+    projects: epics.map((epic) => epicOf(epic, repo)),
+    milestones: [],
+    statusUpdates: [],
     issueFields: structuredClone(issueFields ?? defaults.issueFields.nodes),
     issueTypes: structuredClone(issueTypes ?? defaults.issueTypes.nodes),
     labels: labels.map((label, index) => (typeof label === 'string' ? { id: `LA_${index + 1}`, name: label } : { ...label })),
     users: structuredClone(users),
     clock: new Date(now).toISOString(),
-    counters: { comment: 0, item: 0, event: 0 },
+    counters: { comment: 0, item: 0, event: 0, iteration: 0, milestone: 0, statusUpdate: 0 },
     issues: [],
     items: [],
     failures: {},
   }
+  for (const entry of milestones) addMilestone(state, repo, entry)
+  return state
+}
+
+/** The Status field of a Project the fake builds itself: its ids start with the Project id. */
+const statusFieldOf = (projectId) => ({
+  __typename: 'ProjectV2SingleSelectField', id: `${projectId}_F1`, name: 'Status', dataType: 'SINGLE_SELECT', isIssueField: false,
+  options: STATUS_OPTIONS.map((name, index) => ({ id: `${projectId}_S${index}`, name })),
+})
+
+/** An epic Project of the options. repo is the repository it links to unless linked is false. */
+function epicOf({ id, owner = 'acme', number, title = `Epic ${number}`, closed = false, readme = null, shortDescription = null, linked = true }, repo) {
+  const projectId = id ?? `PVT_${owner}_${number}`
+  return { id: projectId, owner, number, title, closed, readme, shortDescription, linkedRepo: linked ? repo : null, fields: [statusFieldOf(projectId)] }
+}
+
+/** Adds a milestone of a repository: numbers continue after the highest one of that repository. */
+function addMilestone(state, repo, { title, number, description = null, dueOn = null, state: milestoneState = 'OPEN' }) {
+  const mine = state.milestones.filter((entry) => entry.repo === repo)
+  const chosen = number ?? Math.max(0, ...mine.map((entry) => entry.number)) + 1
+  state.counters.milestone += 1
+  const milestone = { id: `MI_${state.counters.milestone}`, repo, number: chosen, title, description, dueOn, state: milestoneState }
+  state.milestones.push(milestone)
+  return milestone
 }
 
 /** The Project of the options: null for none, else its id, owner, number, title and fields. */
 function projectOf(project, repo) {
   if (project === null) return null
-  const { id = 'PVT_1', owner = repo.split('/')[0], number = 7, title = 'Roadmap', statusOptions, fields } = project
-  const nodes = fields ?? projectReply({ number, title, status: statusOptions }).data.repositoryOwner.projectV2.fields.nodes
-  return { id, owner, number, title, fields: structuredClone(nodes) }
+  const { id = 'PVT_1', owner = repo.split('/')[0], number = 7, title = 'Roadmap', statusOptions, fields, iterations } = project
+  const nodes = structuredClone(fields ?? projectReply({ number, title, status: statusOptions }).data.repositoryOwner.projectV2.fields.nodes)
+  if (iterations) {
+    // The default fields already hold a Sprint field without configuration: the option replaces it and keeps its id.
+    const at = nodes.findIndex((field) => field.name === (iterations.fieldName ?? 'Sprint'))
+    const field = iterationFieldOf(iterations)
+    if (at >= 0) nodes.splice(at, 1, { ...field, id: nodes[at].id })
+    else nodes.push(field)
+  }
+  return { id, owner, number, title, closed: false, readme: null, shortDescription: null, linkedRepo: repo, fields: nodes }
+}
+
+/** The Project field of an iteration option: { fieldName = 'Sprint', duration = 14, startDay, iterations, completed }. */
+function iterationFieldOf({ fieldName = 'Sprint', duration = 14, startDay, iterations = [], completed = [] }) {
+  return {
+    __typename: 'ProjectV2IterationField', id: 'PF_ITER', name: fieldName, dataType: 'ITERATION', isIssueField: false,
+    configuration: { duration, startDay: startDay ?? weekdayOf((completed[0] ?? iterations[0])?.startDate ?? '2026-11-16'), iterations: structuredClone(iterations), completedIterations: structuredClone(completed) },
+  }
 }
 
 /**
@@ -100,6 +153,9 @@ function projectOf(project, repo) {
  * project { id: 'PVT_1', owner, number: 7, title: 'Roadmap', statusOptions, fields } (null for none), issueFields and
  * issueTypes (repoReply's), labels ['bug', 'documentation'], users (octocat, hubot), viewer 'octocat',
  * branches { main: <oid> } (the scope repository's branch heads; seedBranch adds more, in any repository), now '2026-11-16T12:00:00.000Z' (the clock start).
+ * PMK-88 options: project.iterations { fieldName: 'Sprint', duration: 14, startDay, iterations: [{ id, title, startDate, duration }], completed } adds an
+ * iteration field to the scope Project, epics [{ id, owner, number, title, closed, readme, shortDescription, linked: true }] adds epic Projects
+ * (state.projects, each with a Status field), milestones [{ title, number, description, dueOn, state }] and ownerId 'O_1'.
  */
 export function fakeGithubIssues(options = {}) {
   const state = initialState(options)
@@ -112,8 +168,16 @@ export function fakeGithubIssues(options = {}) {
 
 /** Rebuilds a fake from fake.toJSON(); its clock continues from the saved time. */
 export function fakeGithubIssuesFrom(json) {
-  if (json?.version !== STATE_VERSION) throw new Error('fakeGithubIssuesFrom needs the toJSON() of a fake GitHub')
-  return build(structuredClone(json))
+  if (json?.version !== STATE_VERSION && json?.version !== 1) throw new Error('fakeGithubIssuesFrom needs the toJSON() of a fake GitHub')
+  const state = structuredClone(json)
+  // A version 1 state lacks the epics, milestones and status updates of version 2.
+  state.version = STATE_VERSION
+  state.ownerId ??= 'O_1'
+  state.projects ??= []
+  state.milestones ??= []
+  state.statusUpdates ??= []
+  state.counters = { iteration: 0, milestone: 0, statusUpdate: 0, ...state.counters }
+  return build(state)
 }
 
 function build(state) {
@@ -139,10 +203,14 @@ function build(state) {
   const labelById = (id) => state.labels.find((label) => label.id === id) ?? unknownNode(id)
   const typeById = (id) => state.issueTypes.find((type) => type.id === id) ?? unknownNode(id)
   const viewerUser = () => state.users.find((user) => user.login === state.viewer) ?? { id: 'U_0', login: state.viewer, name: null }
-  const projectById = (id) => (state.project?.id === id ? state.project : unknownNode(id))
+  const allProjects = () => [state.project, ...state.projects].filter(Boolean)
+  const projectById = (id) => allProjects().find((project) => project.id === id) ?? unknownNode(id)
+  const milestoneById = (id) => state.milestones.find((milestone) => milestone.id === id) ?? unknownNode(id)
   const itemById = (id) => state.items.find((item) => item.id === id) ?? unknownNode(id)
   const itemsOf = (issueId) => state.items.filter((item) => item.issueId === issueId)
-  const projectField = (id) => state.project.fields.find((field) => field.id === id) ?? unknownNode(id)
+  const projectField = (id) => allProjects().flatMap((project) => project.fields).find((field) => field.id === id) ?? unknownNode(id)
+  const iterationsOf = (field) => [...(field.configuration?.iterations ?? []), ...(field.configuration?.completedIterations ?? [])]
+  const projectOfItem = (item) => allProjects().find((project) => project.id === item.projectId)
   const issueField = (id) => state.issueFields.find((field) => field.id === id) ?? unknownNode(id)
 
   // Nodes.
@@ -152,10 +220,13 @@ function build(state) {
   const blockingOf = (record) => state.issues.filter((other) => other.blockedByIds.includes(record.id))
 
   function projectValue(item, fieldName) {
-    if (!state.project || item.projectId !== state.project.id) return null
-    const field = state.project.fields.find((candidate) => candidate.name === fieldName)
+    const field = projectOfItem(item)?.fields.find((candidate) => candidate.name === fieldName)
     const value = field && item.values[field.id]
     if (!value) return null
+    if (field.dataType === 'ITERATION') {
+      const iteration = iterationsOf(field).find((candidate) => candidate.id === value.iterationId)
+      return iteration ? { __typename: 'ProjectV2ItemFieldIterationValue', iterationId: iteration.id, title: iteration.title, startDate: iteration.startDate, duration: iteration.duration } : null
+    }
     if (field.dataType === 'SINGLE_SELECT') {
       const option = field.options.find((candidate) => candidate.id === value.optionId)
       return { __typename: 'ProjectV2ItemFieldSingleSelectValue', name: option?.name ?? null, optionId: value.optionId }
@@ -166,7 +237,8 @@ function build(state) {
   }
 
   function itemNode(item, vars) {
-    const node = { id: item.id, isArchived: item.isArchived, project: { id: item.projectId } }
+    const project = projectOfItem(item)
+    const node = { id: item.id, isArchived: item.isArchived, project: { id: item.projectId, number: project?.number ?? null, owner: { login: project?.owner ?? null } } }
     for (const [alias, variable] of ALIASES) if (typeof vars[variable] === 'string') node[alias] = projectValue(item, vars[variable])
     return node
   }
@@ -203,6 +275,7 @@ function build(state) {
     const lists = listsOf(record, vars)
     const nested = (name) => connection(lists[name], NESTED[name])
     const type = record.issueTypeId ? state.issueTypes.find((candidate) => candidate.id === record.issueTypeId) : null
+    const milestone = record.milestoneId ? state.milestones.find((candidate) => candidate.id === record.milestoneId) : null
     const node = {
       __typename: 'Issue',
       id: record.id, number: record.number, title: record.title, body: record.body, state: record.state, stateReason: record.stateReason,
@@ -212,6 +285,7 @@ function build(state) {
       issueType: type ? { id: type.id, name: type.name } : null,
       assignees: nested('assignees'),
       labels: nested('labels'),
+      milestone: milestone ? { id: milestone.id, number: milestone.number, title: milestone.title } : null,
       parent: refById(record.parentId),
       subIssues: nested('subIssues'),
       blockedBy: nested('blockedBy'),
@@ -245,7 +319,7 @@ function build(state) {
     const at = createdAt ?? stamp()
     const record = {
       id, repo: entry.nameWithOwner, number: chosen, title, body, state: 'OPEN', stateReason: null, createdAt: at, updatedAt: updatedAt ?? at, author,
-      issueTypeId: null, assigneeIds: [], labelIds: [], parentId: null, subIssueIds: [], blockedByIds: [], duplicateOfId: null, relatesToIds: [],
+      issueTypeId: null, milestoneId: null, assigneeIds: [], labelIds: [], parentId: null, subIssueIds: [], blockedByIds: [], duplicateOfId: null, relatesToIds: [],
       linkedBranches: [], fieldValues: {}, timeline: [],
     }
     state.issues.push(record)
@@ -274,6 +348,15 @@ function build(state) {
     else if (!after) event(record, 'IssueTypeRemovedEvent', { issueType: { name: before.name } }, at)
     else event(record, 'IssueTypeChangedEvent', { prevIssueType: { name: before.name }, issueType: { name: after.name } }, at)
     record.issueTypeId = after?.id ?? null
+  }
+
+  function setMilestone(record, milestoneId, at) {
+    const before = record.milestoneId ? milestoneById(record.milestoneId) : null
+    const after = milestoneId ? milestoneById(milestoneId) : null
+    if (before?.id === after?.id) return
+    if (before) event(record, 'DemilestonedEvent', { milestoneTitle: before.title }, at)
+    if (after) event(record, 'MilestonedEvent', { milestoneTitle: after.title }, at)
+    record.milestoneId = after?.id ?? null
   }
 
   function attach(parent, child, at) {
@@ -337,6 +420,10 @@ function build(state) {
       if (!field.options.some((option) => option.id === optionId)) unprocessable(`The single select option Id does not belong to the field ${field.name}`)
       return { optionId }
     }
+    if (field.dataType === 'ITERATION') {
+      if (!iterationsOf(field).some((iteration) => iteration.id === value?.iterationId)) unprocessable(`The iteration Id does not belong to the field ${field.name}`)
+      return { iterationId: value.iterationId }
+    }
     if (field.dataType === 'NUMBER' && typeof value?.number === 'number') return { number: value.number }
     if (field.dataType === 'DATE' && typeof value?.date === 'string') return { date: value.date }
     return unprocessable(`The value does not fit the field ${field.name}`)
@@ -353,6 +440,24 @@ function build(state) {
     return item
   }
 
+  /** GitHub answers __typename only when the document selects it at that level, so a node drops it otherwise. */
+  const withTypename = (node, selected) => {
+    if (selected) return node
+    const { __typename: _dropped, ...rest } = node
+    return rest
+  }
+
+  /** What a Project item that is no issue answers as content: a pull request matches no Issue fragment, a draft is a DraftIssue. */
+  const contentOfOtherItem = (item) => (item.kind === 'DRAFT_ISSUE' ? { __typename: 'DraftIssue', title: item.title } : { __typename: 'PullRequest' })
+
+  function addStatusUpdate(project, { status, body = null, startDate = null, targetDate = null, createdAt, creator = state.viewer }) {
+    if (!UPDATE_STATUSES.includes(status)) unprocessable(`${status} is not a valid status for a Project update`)
+    state.counters.statusUpdate += 1
+    const update = { id: `PVTSU_${state.counters.statusUpdate}`, projectId: project.id, status, body, startDate, targetDate, createdAt, creator }
+    state.statusUpdates.push(update)
+    return update
+  }
+
   const ids = (record) => ({ id: record.id, number: record.number })
 
   // Queries. Each takes the variables and returns the data, or throws a Refusal.
@@ -366,6 +471,7 @@ function build(state) {
       const reply = repoReply({ owner: login, name: repoName, types: state.issueTypes, fields: features.issueFields ? state.issueFields : null, labels: [] }).data
       reply.viewer = { id: viewer.id, login: viewer.login, name: viewer.name }
       Object.assign(reply.repository, { id: entry.id, labels: page(state.labels), assignableUsers: page(state.users) })
+      reply.repository.owner.id = state.ownerId
       return withNamedLabels({ data: reply }, vars).data
     },
     PmkitProject({ owner, number }) {
@@ -377,7 +483,52 @@ function build(state) {
       Object.assign(reply.repositoryOwner.projectV2, { id: project.id, url: `https://${state.host}/orgs/${project.owner}/projects/${project.number}` })
       return reply
     },
-    PmkitLinkedProjects: () => linkedReply(drafts.linked()).data,
+    // The scope Project, then the linked epic Projects of the repository, paged by first and after.
+    PmkitLinkedProjects(vars) {
+      const linked = state.projects.filter((project) => project.linkedRepo && (!vars.owner || sameName(project.linkedRepo, `${vars.owner}/${vars.name}`)))
+      // The extra Projects of --project (scripts/fake-github-drafts.mjs) that are linked, after them (PMK-91).
+      const extra = state.extraProjects.filter((project) => project.linked)
+      return { repository: { projectsV2: connection([state.project, ...linked, ...extra].filter(Boolean).map(projectNode), vars.first, vars.after) } }
+    },
+    PmkitEpic(vars) {
+      const project = allProjects().find((candidate) => sameName(candidate.owner, vars.owner ?? '') && candidate.number === vars.number)
+      if (!project) refuseWithData({ repositoryOwner: { projectV2: null } }, ['repositoryOwner', 'projectV2'], `Could not resolve to a ProjectV2 with the number ${vars.number}.`)
+      return { repositoryOwner: { projectV2: { ...projectNode(project), statusUpdates: statusUpdatesOf(project, vars.statusFirst, vars.statusAfter) } } }
+    },
+    // Projects by node id, in the order asked, each with its latest status update: the one read of epic list. An unknown id is null with a NOT_FOUND error, as GitHub answers.
+    PmkitEpics(vars, _name, query) {
+      const typed = /\bnodes\(ids: \$ids\)\s*\{\s*__typename\b/.test(query ?? '')
+      const ids = vars.ids ?? []
+      const nodes = ids.map((id) => {
+        const project = allProjects().find((candidate) => candidate.id === id)
+        return project ? withTypename({ __typename: 'ProjectV2', ...projectNode(project), statusUpdates: statusUpdatesOf(project, 1) }, typed) : null
+      })
+      const missing = ids.map((id, index) => [id, index]).filter(([, index]) => nodes[index] === null)
+      if (missing.length) throw new Refusal({ data: { nodes }, errors: missing.map(([id, index]) => ({ type: 'NOT_FOUND', path: ['nodes', index], message: `Could not resolve to a node with the global id of '${id}'` })) })
+      return { nodes }
+    },
+    PmkitEpicItems(vars, _name, query) {
+      const project = projectById(vars.project)
+      const items = state.items.filter((item) => item.projectId === project.id).map((item) => ({ ...itemNode(item, vars), status: projectValue(item, 'Status'), content: withTypename(item.kind ? contentOfOtherItem(item) : issueNode(issueById(item.issueId), vars), /\bcontent\s*\{\s*__typename\b/.test(query ?? '')) }))
+      return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
+    },
+    // Issues by node id, in the order asked, null for an id that is no issue: the batched read of the epic progress.
+    PmkitIssueNodes(vars, _name, query) {
+      const typed = /\bnodes\(ids: \$ids\)\s*\{\s*__typename\b/.test(query ?? '')
+      return { nodes: (vars.ids ?? []).map((id) => { const record = state.issues.find((candidate) => candidate.id === id); return record ? withTypename(issueNode(record, vars), typed) : null }) }
+    },
+    PmkitStatusUpdates(vars) {
+      return { node: { __typename: 'ProjectV2', statusUpdates: statusUpdatesOf(projectById(vars.project), vars.first, vars.after) } }
+    },
+    PmkitIterationField(vars) {
+      const field = projectById(vars.project).fields.find((candidate) => candidate.name === vars.field && candidate.dataType === 'ITERATION')
+      return { node: { __typename: 'ProjectV2', field: field ?? null } }
+    },
+    PmkitMilestones(vars) {
+      const entry = requireRepository(vars)
+      const listed = state.milestones.filter((milestone) => sameName(milestone.repo, entry.nameWithOwner)).map(({ id, number, title, description, dueOn, state: milestoneState }) => ({ id, number, title, description, dueOn, state: milestoneState }))
+      return { repository: { milestones: connection(listed, vars.first, vars.after) } }
+    },
     PmkitIssue(vars) {
       const entry = requireRepository(vars)
       const record = issueByNumber(entry.nameWithOwner, vars.number)
@@ -386,7 +537,8 @@ function build(state) {
     },
     PmkitIssues(vars) {
       const entry = requireRepository(vars)
-      const { states, assignee, labels, type, since } = vars.filterBy ?? {}
+      const { states, assignee, labels, type, since, milestoneNumber } = vars.filterBy ?? {}
+      const milestoneOf = (record) => (record.milestoneId ? milestoneById(record.milestoneId) : null)
       const labelNames = (record) => record.labelIds.map((id) => labelById(id).name)
       const listed = state.issues
         .filter((record) => sameName(record.repo, entry.nameWithOwner))
@@ -395,6 +547,7 @@ function build(state) {
         .filter((record) => !labels?.length || labelNames(record).some((label) => labels.includes(label)))
         .filter((record) => !type || (record.issueTypeId && typeById(record.issueTypeId).name === type))
         .filter((record) => !since || record.updatedAt >= since)
+        .filter((record) => milestoneNumber === undefined || milestoneNumber === null || (milestoneNumber === 'none' ? !record.milestoneId : milestoneOf(record)?.number === Number(milestoneNumber)))
         .sort(vars.orderBy?.field === 'UPDATED_AT' && vars.orderBy.direction === 'DESC'
           ? (a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.number - a.number
           : (a, b) => a.createdAt.localeCompare(b.createdAt) || a.number - b.number)
@@ -440,6 +593,19 @@ function build(state) {
     },
   }
 
+  const projectNode = (project) => ({
+    id: project.id, number: project.number, title: project.title, closed: project.closed ?? false,
+    url: `https://${state.host}/orgs/${project.owner}/projects/${project.number}`,
+    shortDescription: project.shortDescription ?? null, readme: project.readme ?? null, owner: { login: project.owner },
+  })
+
+  /** The status updates of a Project, newest first: later creation wins a tie. */
+  function statusUpdatesOf(project, first, after) {
+    const mine = state.statusUpdates.filter((update) => update.projectId === project.id)
+    const sorted = mine.map((update, index) => [update, index]).sort(([a, i], [b, j]) => b.createdAt.localeCompare(a.createdAt) || j - i).map(([update]) => update)
+    return connection(sorted.map(({ id, status, body, startDate, targetDate, createdAt, creator }) => ({ id, status, body, startDate, targetDate, createdAt, creator: { login: creator } })), first, after)
+  }
+
   function refuseWithData(data, path, message) {
     throw new Refusal({ data, errors: [{ type: 'NOT_FOUND', path, message }] })
   }
@@ -458,10 +624,12 @@ function build(state) {
       ;(input.assigneeIds ?? []).forEach(userById)
       ;(input.labelIds ?? []).forEach(labelById)
       if (input.issueTypeId) typeById(input.issueTypeId)
+      if (input.milestoneId) milestoneById(input.milestoneId)
       const record = newIssue(entry, { title: input.title, body: input.body ?? '', createdAt: at })
       setLabels(record, input.labelIds ?? [], at)
       setAssignees(record, input.assigneeIds ?? [], at)
       setType(record, input.issueTypeId ?? null, at)
+      if (input.milestoneId) setMilestone(record, input.milestoneId, at)
       if (parent) attach(parent, record, at)
       return record
     }),
@@ -470,6 +638,7 @@ function build(state) {
       ;(input.assigneeIds ?? []).forEach(userById)
       ;(input.labelIds ?? []).forEach(labelById)
       if (input.issueTypeId) typeById(input.issueTypeId)
+      if (input.milestoneId) milestoneById(input.milestoneId)
       if (typeof input.title === 'string' && input.title !== record.title) {
         event(record, 'RenamedTitleEvent', { previousTitle: record.title, currentTitle: input.title }, at)
         record.title = input.title
@@ -478,6 +647,7 @@ function build(state) {
       if (Array.isArray(input.labelIds)) setLabels(record, input.labelIds, at)
       if (Array.isArray(input.assigneeIds)) setAssignees(record, input.assigneeIds, at)
       if (Object.hasOwn(input, 'issueTypeId')) setType(record, input.issueTypeId, at)
+      if (Object.hasOwn(input, 'milestoneId')) setMilestone(record, input.milestoneId, at)
       if (input.state === 'CLOSED') close(record, 'COMPLETED', null, at)
       if (input.state === 'OPEN') reopen(record, at)
       touch(at, record)
@@ -525,6 +695,54 @@ function build(state) {
       const item = itemById(input.itemId)
       item.isArchived = true
       return { archiveProjectV2Item: { item: { id: item.id } } }
+    },
+    PmkitUpdateIterations: (input) => {
+      const field = projectField(input.fieldId)
+      if (field.dataType !== 'ITERATION') unprocessable(`The field ${field.name} is not an iteration field`)
+      const sent = input.iterationConfiguration?.iterations ?? []
+      if (!features.iterationIds && sent.some((iteration) => Object.hasOwn(iteration, 'id'))) {
+        throw new Refusal({ errors: [{ message: "InputObject 'ProjectV2Iteration' doesn't accept argument 'id'" }] })
+      }
+      const duration = input.iterationConfiguration?.duration ?? field.configuration?.duration ?? 14
+      const startDate = input.iterationConfiguration?.startDate
+      const kept = sent.map((iteration) => ({ id: iteration.id ?? `ITER_${++state.counters.iteration}`, title: iteration.title, startDate: iteration.startDate, duration: iteration.duration ?? duration }))
+      // An iteration that has ended by the fake clock is completed.
+      const today = state.clock.slice(0, 10)
+      const done = (iteration) => dateAfter(iteration.startDate, iteration.duration) <= today
+      const byStart = (a, b) => a.startDate.localeCompare(b.startDate)
+      field.configuration = {
+        duration, startDay: startDate ? weekdayOf(startDate) : field.configuration?.startDay ?? 1,
+        iterations: kept.filter((iteration) => !done(iteration)).sort(byStart), completedIterations: kept.filter(done).sort(byStart),
+      }
+      const alive = new Set(kept.map((iteration) => iteration.id))
+      for (const item of state.items) if (item.values[field.id] && !alive.has(item.values[field.id].iterationId)) delete item.values[field.id]
+      return { updateProjectV2Field: { projectV2Field: { id: field.id, configuration: field.configuration } } }
+    },
+    PmkitCreateProject: (input) => {
+      if (input.ownerId !== state.ownerId) unknownNode(input.ownerId)
+      if (typeof input.title !== 'string' || input.title.trim() === '') unprocessable("Title can't be blank")
+      const entry = input.repositoryId ? repositoryById(input.repositoryId) : null
+      const owner = (entry ?? repositoryOf(...state.repo.split('/'))).nameWithOwner.split('/')[0]
+      const number = Math.max(0, ...allProjects().map((project) => project.number)) + 1
+      const project = epicOf({ id: `PVT_${owner}_${number}`, owner, number, title: input.title, linked: Boolean(entry) }, entry?.nameWithOwner ?? state.repo)
+      state.projects.push(project)
+      return { createProjectV2: { projectV2: { id: project.id, number: project.number } } }
+    },
+    PmkitUpdateProjectReadme: (input) => {
+      const project = projectById(input.projectId)
+      if (typeof input.readme === 'string') project.readme = input.readme
+      return { updateProjectV2: { projectV2: { id: project.id } } }
+    },
+    PmkitCreateStatusUpdate: (input, at) => {
+      const project = projectById(input.projectId)
+      return { createProjectV2StatusUpdate: { statusUpdate: { id: addStatusUpdate(project, { ...input, createdAt: at }).id } } }
+    },
+    PmkitDeleteProjectItem: (input) => {
+      const project = projectById(input.projectId)
+      const item = itemById(input.itemId)
+      if (item.projectId !== project.id) unknownNode(input.itemId)
+      state.items = state.items.filter((other) => other.id !== item.id)
+      return { deleteProjectV2Item: { deletedItemId: item.id } }
     },
     PmkitDeleteIssue: (input) => {
       const record = issueById(input.issueId)
@@ -643,6 +861,8 @@ function build(state) {
       [features.issueFields, /\bissueFields\s*\(/, "Field 'issueFields' doesn't exist on type 'Repository'"],
       [features.issueFields, /\bisIssueField\b/, "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'"],
       [features.statusEvents, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
+      // ProjectV2Owner is an interface with id, projectV2 and projectsV2 only: a login needs an inline fragment on Organization or User.
+      [false, /\bowner\s*\{\s*login\b/, "Field 'login' doesn't exist on type 'ProjectV2Owner'"],
     ]
     const found = checks.find(([present, pattern]) => !present && pattern.test(query ?? ''))
     if (found) return found[2]
@@ -669,7 +889,7 @@ function build(state) {
     if (state.failures[name]?.length === 0) delete state.failures[name]
     if (failure) return structuredClone(failure)
     try {
-      const data = mutationRoute ? mutationRoute(vars.input ?? {}, stamp(), vars) : queryRoute(vars, name)
+      const data = mutationRoute ? mutationRoute(vars.input ?? {}, stamp(), vars) : queryRoute(vars, name, query)
       return structuredClone({ data })
     } catch (error) {
       if (error instanceof Refusal) return structuredClone(error.reply)
@@ -680,7 +900,22 @@ function build(state) {
   /** gh's answer to `gh api ... graphql --input -` (and `gh api meta` on GHES) from this fake. */
   function exec(cmd, args, { input } = {}) {
     const fixture = { meta: state.ghesVersion ? { installed_version: state.ghesVersion } : null }
-    return answerGhWith(args, input, fixture, (name, body) => handle(name, body.variables ?? {}, body.query))
+    return answerGhWith(args, input, fixture, (name, body) => handle(name, body.variables ?? {}, body.query), rest)
+  }
+
+  /** The REST calls of the fake: POST repos/<owner>/<name>/milestones. Returns { status, body }, or null for another call. */
+  function rest(method, path, body) {
+    const match = method === 'POST' ? /^\/?repos\/([^/]+)\/([^/]+)\/milestones$/.exec(path ?? '') : null
+    if (!match) return null
+    mutations.push({ name: 'RestCreateMilestone', path, input: structuredClone(body), variables: structuredClone(body) })
+    const entry = repositoryOf(match[1], match[2])
+    if (!entry) return { status: 404, body: { message: 'Not Found' } }
+    if (typeof body?.title !== 'string' || body.title.trim() === '') return { status: 422, body: { message: 'Validation Failed', errors: [{ resource: 'Milestone', code: 'missing_field', field: 'title' }] } }
+    if (state.milestones.some((milestone) => sameName(milestone.repo, entry.nameWithOwner) && sameName(milestone.title, body.title))) {
+      return { status: 422, body: { message: 'Validation Failed', errors: [{ resource: 'Milestone', code: 'already_exists', field: 'title' }] } }
+    }
+    const milestone = addMilestone(state, entry.nameWithOwner, { title: body.title, description: body.description ?? null, dueOn: body.due_on ?? null })
+    return { status: 201, body: { number: milestone.number, title: milestone.title, node_id: milestone.id, due_on: milestone.dueOn, state: 'open', description: milestone.description } }
   }
 
   /** Makes the next call of the operation answer reply, as a failure GitHub returned. */
@@ -720,7 +955,7 @@ function build(state) {
     register(repo).branches[name] = oid
   }
 
-  function seed({ repo = state.repo, number, title = 'Seeded issue', body = '', state: issueState = 'OPEN', stateReason = null, author = state.viewer, type, assignees = [], labels = [], createdAt, updatedAt, branches = [], parent, blockedBy = [], duplicateOf, item, fields = {} } = {}) {
+  function seed({ repo = state.repo, number, title = 'Seeded issue', body = '', state: issueState = 'OPEN', stateReason = null, author = state.viewer, type, assignees = [], labels = [], createdAt, updatedAt, branches = [], parent, blockedBy = [], duplicateOf, item, fields = {}, milestone, epics = [] } = {}) {
     const entry = register(repo)
     const record = newIssue(entry, { number, title, body, author, createdAt, updatedAt })
     Object.assign(record, { state: issueState, stateReason })
@@ -739,25 +974,62 @@ function build(state) {
       const field = byName(state.issueFields, name, 'issue field')
       record.fieldValues[field.id] = field.dataType === 'SINGLE_SELECT' ? { optionId: byName(field.options, value, 'option').id } : { value }
     }
+    if (milestone !== undefined) {
+      const found = state.milestones.find((candidate) => candidate.title === milestone && sameName(candidate.repo, entry.nameWithOwner))
+      if (!found) throw new Error(`fake GitHub: seed names an unknown milestone ${milestone}`)
+      record.milestoneId = found.id
+    }
     if (item) seedItem(record, item)
+    for (const epic of epics) seedEpicItem(record, epic)
     return { id: record.id, number: record.number }
   }
 
   function seedItem(record, { status, archived = false, values = {} }) {
     if (!state.project) throw new Error('fake GitHub: seed has an item but the fake has no Project')
-    const item = addItem(state.project.id, record.id)
-    item.isArchived = archived
-    setItemValues(item, state.project.fields, { ...values, ...(status === undefined ? {} : { Status: status }) })
+    writeSeedValues(addItem(state.project.id, record.id), state.project, { archived, values: { ...values, ...(status === undefined ? {} : { Status: status }) } })
   }
 
-  /** Sets the seeded field values of an item: { <Project field name>: option name, number or date }. */
+  /** Adds the issue to an epic Project: epic is 'owner/number' or { project: 'owner/number', status, archived, values }. */
+  function seedEpicItem(record, epic) {
+    const { project: ref, ...rest } = typeof epic === 'string' ? { project: epic } : epic
+    const [owner, number] = ref.split('/')
+    const project = state.projects.find((candidate) => sameName(candidate.owner, owner) && candidate.number === Number(number))
+    if (!project) throw new Error(`fake GitHub: seed names an unknown epic ${ref}`)
+    const { status, ...more } = rest
+    writeSeedValues(addItem(project.id, record.id), project, { ...more, values: { ...more.values, ...(status === undefined ? {} : { Status: status }) } })
+  }
+
+  function writeSeedValues(item, project, { archived = false, values = {} }) {
+    item.isArchived = archived
+    setItemValues(item, project.fields, values)
+  }
+
+  /** Sets the seeded field values of an item: { <Project field name>: option name, iteration start date, number or date }. */
   function setItemValues(item, fields, values) {
     for (const [name, value] of Object.entries(values)) {
       const field = byName(fields, name, 'Project field')
       if (field.dataType === 'SINGLE_SELECT') item.values[field.id] = { optionId: byName(field.options, value, 'option').id }
+      else if (field.dataType === 'ITERATION') item.values[field.id] = { iterationId: iterationsOf(field).find((iteration) => iteration.startDate === value)?.id ?? (() => { throw new Error(`fake GitHub: seed names an unknown iteration starting ${value}`) })() }
       else item.values[field.id] = field.dataType === 'NUMBER' ? { number: value } : { date: value }
     }
   }
 
-  return { state, exec, handle, mutations, reads, seed, seedBranch, seedDiscussion: discussions.seedDiscussion, seedDraft: drafts.seedDraft, seedRepository: drafts.seedRepository, failNext, features, toJSON: () => structuredClone(state) }
+  /** Adds an item that is no issue to an epic Project ('owner/number'): { kind: 'PULL_REQUEST' | 'DRAFT_ISSUE', title }. Returns { id }. */
+  function seedProjectItem(epic, { kind, title = 'Item' }) {
+    const [owner, number] = epic.split('/')
+    const project = state.projects.find((candidate) => sameName(candidate.owner, owner) && candidate.number === Number(number))
+    if (!project) throw new Error(`fake GitHub: seed names an unknown epic ${epic}`)
+    state.counters.item += 1
+    const item = { id: `PVTI_${state.counters.item}`, projectId: project.id, issueId: null, kind, title, isArchived: false, values: {} }
+    state.items.push(item)
+    return { id: item.id }
+  }
+
+  /** Adds a status update to an epic Project by its id: { status, body, startDate, targetDate, createdAt, creator }. Returns { id }. */
+  function seedStatusUpdate(epicId, update) {
+    const project = projectById(epicId)
+    return { id: addStatusUpdate(project, { ...update, createdAt: update.createdAt ?? stamp() }).id }
+  }
+
+  return { state, exec, handle, rest, mutations, reads, seed, seedBranch, seedProjectItem, seedStatusUpdate, seedDiscussion: discussions.seedDiscussion, seedDraft: drafts.seedDraft, seedRepository: drafts.seedRepository, failNext, features, toJSON: () => structuredClone(state) }
 }

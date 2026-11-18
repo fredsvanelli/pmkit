@@ -360,7 +360,7 @@ test('validatePmkitConfig checks tracker.scope, tracker.scope.workspace and mapp
     [{ status: { 'in-review': 'In Review' } }, 'mappings.status.in-review: in-review is not a category or blocked'],
     [{ status: { in_review: '' } }, 'mappings.status.in_review must be a status name'],
     [{ fields: 'x' }, 'mappings.fields must be a map from a field role to a field name or native'],
-    [{ fields: { points: 'Story points' } }, 'mappings.fields.points: points is not a field role, use one of estimate, priority, target_date, start_date, assignee, acceptance_criteria, time_spent'],
+    [{ fields: { points: 'Story points' } }, 'mappings.fields.points: points is not a field role, use one of estimate, priority, target_date, start_date, assignee, acceptance_criteria, time_spent, sprint'],
     [{ fields: { estimate: 7 } }, 'mappings.fields.estimate must be a field name or native'],
     [{ types: 'Bug' }, 'mappings.types must be a map from an issue type to a label name'],
     [{ types: ['Bug'] }, 'mappings.types must be a map from an issue type to a label name'],

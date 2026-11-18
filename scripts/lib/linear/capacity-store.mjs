@@ -14,7 +14,9 @@ const VERSION = 1
 const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 const notValid = (why) => new PmkitError('INVALID_INPUT', `${CAPACITY_FILE} is not valid: ${why}`, 'Fix or delete the file')
 const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-const byNumber = (a, b) => Number(a) - Number(b)
+// Linear cycle ids are numbers, so they sort as numbers. Any other id (a GitHub sprint id is a date) sorts as text.
+const isCount = (id) => /^\d+$/.test(id)
+const byNumber = (a, b) => (isCount(a) && isCount(b) ? Number(a) - Number(b) : byText(a, b))
 
 /** The entry of one cycle as { capacity, daysOff }, checking the shape of what the file holds. */
 function checkEntry(entry, where) {
@@ -67,7 +69,7 @@ function parseFile(content) {
 const isEmptyEntry = (entry) => Object.keys(entry.capacity).length === 0 && Object.keys(entry.daysOff).length === 0 && Object.keys(entry.capacityBase ?? {}).length === 0
 const sortedMap = (map) => Object.fromEntries(Object.entries(map).sort(([a], [b]) => byText(a, b)))
 
-/** The text of the file for { team: { cycleId: entry } }: fixed key order, cycle ids in numeric order, empty entries left out. */
+/** The text of the file for { team: { cycleId: entry } }: fixed key order, cycle ids in numeric order (text order for ids that are not numbers), empty entries left out. */
 function serialize(teams) {
   const cycles = {}
   for (const team of Object.keys(teams).sort(byText)) {

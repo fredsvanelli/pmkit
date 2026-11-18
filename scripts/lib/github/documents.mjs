@@ -3,20 +3,21 @@
 import { compareVersions, hasIssueFields, needsVersionCheck } from './discovery.mjs'
 
 /**
- * Which parts of the schema the host has: { issueFields, relatesTo, statusEvents }. github.com and GHE.com have all of them.
+ * Which parts of the schema the host has: { issueFields, relatesTo, statusEvents, iterationIds }. github.com and GHE.com have all of them.
  * GHES has issue fields and Status events from 3.21 and never has relatesTo.
  */
 export function hostFeatures({ host, ghesVersion }) {
-  if (!needsVersionCheck(host) || ghesVersion === null || ghesVersion === undefined) return { issueFields: true, relatesTo: true, statusEvents: true }
+  if (!needsVersionCheck(host)) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true }
+  if (ghesVersion === null || ghesVersion === undefined) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: false }
   const recent = hasIssueFields(ghesVersion) && compareVersions(ghesVersion, '3.21') >= 0
-  return { issueFields: recent, relatesTo: false, statusEvents: recent }
+  return { issueFields: recent, relatesTo: false, statusEvents: recent, iterationIds: false }
 }
 
 const ITEM_TYPE_NAMES = [
   'ISSUE_COMMENT', 'RENAMED_TITLE_EVENT', 'ASSIGNED_EVENT', 'UNASSIGNED_EVENT', 'LABELED_EVENT', 'UNLABELED_EVENT', 'CLOSED_EVENT', 'REOPENED_EVENT',
   'ISSUE_TYPE_ADDED_EVENT', 'ISSUE_TYPE_CHANGED_EVENT', 'ISSUE_TYPE_REMOVED_EVENT', 'BLOCKED_BY_ADDED_EVENT', 'BLOCKED_BY_REMOVED_EVENT',
   'BLOCKING_ADDED_EVENT', 'BLOCKING_REMOVED_EVENT', 'PARENT_ISSUE_ADDED_EVENT', 'PARENT_ISSUE_REMOVED_EVENT', 'SUB_ISSUE_ADDED_EVENT',
-  'SUB_ISSUE_REMOVED_EVENT', 'MARKED_AS_DUPLICATE_EVENT', 'UNMARKED_AS_DUPLICATE_EVENT',
+  'SUB_ISSUE_REMOVED_EVENT', 'MARKED_AS_DUPLICATE_EVENT', 'UNMARKED_AS_DUPLICATE_EVENT', 'MILESTONED_EVENT', 'DEMILESTONED_EVENT',
 ]
 
 /** The timeline item types of the history table; the Status change event only where the host has it. */
@@ -26,12 +27,12 @@ const REPO = 'repository { nameWithOwner }'
 const REF = `id number state stateReason ${REPO}`
 const PAGE = 'pageInfo { hasNextPage endCursor }'
 
-const PROJECT_VALUE = '{ __typename ... on ProjectV2ItemFieldSingleSelectValue { name optionId } ... on ProjectV2ItemFieldNumberValue { number } ... on ProjectV2ItemFieldDateValue { date } }'
+const PROJECT_VALUE = '{ __typename ... on ProjectV2ItemFieldSingleSelectValue { name optionId } ... on ProjectV2ItemFieldNumberValue { number } ... on ProjectV2ItemFieldDateValue { date } ... on ProjectV2ItemFieldIterationValue { iterationId title startDate duration } }'
 const ISSUE_FIELD_FIELD = 'field { ... on IssueFieldSingleSelect { id name } ... on IssueFieldNumber { id name } ... on IssueFieldDate { id name } }'
 const ISSUE_FIELD_VALUES = `issueFieldValues(first: 20) { nodes { __typename ... on IssueFieldSingleSelectValue { optionId name ${ISSUE_FIELD_FIELD} } ... on IssueFieldNumberValue { value ${ISSUE_FIELD_FIELD} } ... on IssueFieldDateValue { value ${ISSUE_FIELD_FIELD} } } ${PAGE} }`
 
 // Variable and alias of each configured Project field. Values reach the document through variables, never literals.
-const FIELD_ALIASES = [['status', 'status', 'fStatus'], ['priority', 'fPriority', 'fPriority'], ['estimate', 'fEstimate', 'fEstimate'], ['due', 'fDue', 'fDue']]
+const FIELD_ALIASES = [['status', 'status', 'fStatus'], ['priority', 'fPriority', 'fPriority'], ['estimate', 'fEstimate', 'fEstimate'], ['due', 'fDue', 'fDue'], ['sprint', 'fSprint', 'fSprint']]
 const fieldAliases = (projectFields) => FIELD_ALIASES.filter(([key]) => projectFields?.[key])
 const fieldVariables = (projectFields) => fieldAliases(projectFields).map(([, , variable]) => `$${variable}: String!`)
 const fieldSelections = (projectFields) => fieldAliases(projectFields).map(([, alias, variable]) => `${alias}: fieldValueByName(name: $${variable}) ${PROJECT_VALUE}`).join(' ')
@@ -59,6 +60,7 @@ function timelineNodes(features) {
     ...['SubIssueAddedEvent', 'SubIssueRemovedEvent'].map((name) => EVENT(name, NAMED_ISSUE('subIssue'))),
     ...['MarkedAsDuplicateEvent', 'UnmarkedAsDuplicateEvent'].map((name) => EVENT(name, `canonical { ... on Issue { ${ISSUE_LINK} } }`)),
     ...['IssueTypeAddedEvent', 'IssueTypeRemovedEvent'].map((name) => EVENT(name, 'issueType { name }')),
+    ...['MilestonedEvent', 'DemilestonedEvent'].map((name) => EVENT(name, 'milestoneTitle')),
     EVENT('IssueTypeChangedEvent', 'prevIssueType { name } issueType { name }'),
   ]
   if (features.statusEvents) items.push(EVENT('ProjectV2ItemStatusChangedEvent', 'previousStatus status project { id }'))
@@ -70,7 +72,7 @@ export function issueDocuments(features, projectFields = {}) {
   const vars = fieldVariables(projectFields)
   // The Status of each item, archived ones included as in the issue fragment, for the open issues a ReopenedEvent names.
   const metricStatus = projectFields?.status ? `projectItems(first: 20, includeArchived: true) { nodes { project { id } status: fieldValueByName(name: $fStatus) ${PROJECT_VALUE} } }` : ''
-  const ITEM_SELECTION = `id isArchived project { id } ${fieldSelections(projectFields)}`
+  const ITEM_SELECTION = `id isArchived project { id number owner { ... on Organization { login } ... on User { login } } } ${fieldSelections(projectFields)}`
   const fragment = `fragment PmkitIssueFields on Issue {
   id number title body state stateReason createdAt updatedAt url
   ${REPO}
@@ -78,6 +80,7 @@ export function issueDocuments(features, projectFields = {}) {
   issueType { id name }
   assignees(first: 10) { nodes { id login } }
   labels(first: 50) { nodes { id name } pageInfo { hasNextPage } }
+  milestone { id number title }
   parent { ${REF} }
   subIssues(first: 50) { nodes { ${REF} } pageInfo { hasNextPage } }
   blockedBy(first: 50) { nodes { ${REF} ${statusSelection(projectFields)} } pageInfo { hasNextPage } }
@@ -161,6 +164,7 @@ ${fragment}`,
     CLEAR_PROJECT_FIELD: simple('PmkitClearProjectField', 'ClearProjectV2ItemFieldValueInput', 'clearProjectV2ItemFieldValue(input: $input) { projectV2Item { id } }'),
     ADD_LABELS: simple('PmkitAddLabels', 'AddLabelsToLabelableInput', 'addLabelsToLabelable(input: $input) { clientMutationId }'),
     REMOVE_LABELS: simple('PmkitRemoveLabels', 'RemoveLabelsFromLabelableInput', 'removeLabelsFromLabelable(input: $input) { clientMutationId }'),
+    DELETE_PROJECT_ITEM: simple('PmkitDeleteProjectItem', 'DeleteProjectV2ItemInput', 'deleteProjectV2Item(input: $input) { deletedItemId }'),
     ARCHIVE_ITEM: simple('PmkitArchiveItem', 'ArchiveProjectV2ItemInput', 'archiveProjectV2Item(input: $input) { item { id } }'),
     DELETE_ISSUE: simple('PmkitDeleteIssue', 'DeleteIssueInput', 'deleteIssue(input: $input) { repository { id } }'),
     ADD_BLOCKED_BY: simple('PmkitAddBlockedBy', 'AddBlockedByInput', `addBlockedBy(input: $input) { issue ${ids} blockingIssue ${ids} }`),

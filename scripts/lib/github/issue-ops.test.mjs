@@ -6,6 +6,7 @@ import { createGithubClient } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
+import { epicProjects } from './project-ops.mjs'
 
 const PMKIT = {
   tracker: { system: 'github', scope: { host: 'github.com', repo: 'acme/widgets', project: 'acme/7' } },
@@ -137,11 +138,11 @@ test('an empty categories list and limit 0 send no request', async () => {
   assert.deepEqual(fake.reads, [])
 })
 
-test('a bad filter fails with INVALID_INPUT, sprint with NOT_SUPPORTED', async () => {
+test('a bad filter fails with INVALID_INPUT, a sprint that is not a date too', async () => {
   const { ops } = await setup()
   await assert.rejects(ops.searchIssues({ assignee: 'stranger' }), { code: 'INVALID_INPUT' })
   await assert.rejects(ops.searchIssues({ types: ['epic'] }), { code: 'INVALID_INPUT' })
-  await assert.rejects(ops.searchIssues({ sprint: '3' }), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(ops.searchIssues({ sprint: '3' }), { code: 'INVALID_INPUT', message: 'sprint "3" is not current, none or a start date' })
 })
 
 test('a search completes the nested pages of each node that needs it', async () => {
@@ -637,4 +638,73 @@ test('archive without a Project names the repository and the move', async () => 
     message: 'acme/widgets has no Project, and GitHub has no archive for an issue outside one',
     nextStep: 'Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup',
   })
+})
+
+test('updateIssue clears the sprint of an item and sets another one', async () => {
+  const pmkit = { ...WRITE_PMKIT, mappings: { ...WRITE_PMKIT.mappings, fields: { ...WRITE_PMKIT.mappings.fields, sprint: 'project:Sprint' } } }
+  const { fake, ops } = await writeSetup({ pmkit, project: { fields: WRITE_FIELDS, iterations: { iterations: [{ id: 'IT_a', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 }] } } })
+  fake.seed({ number: 1, item: { values: { Sprint: '2026-11-16' } } })
+  assert.equal((await ops.getIssue('1')).sprint, '2026-11-16')
+  const result = await ops.updateIssue('1', { sprint: null }, ME)
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitClearProjectField'])
+  assert.equal(result.after.sprint, undefined)
+  const set = await ops.updateIssue('1', { sprint: '2026-11-16' }, ME)
+  assert.equal(set.after.sprint, '2026-11-16')
+})
+
+// The milestone of an issue, through the real planning, the client and the fake.
+const withMilestones = () => setup({ milestones: [{ title: 'v1.0' }, { title: 'v2.0' }] })
+
+test('createIssue and updateIssue with a milestone title send milestoneId, and null clears it', async () => {
+  const { fake, ops } = await withMilestones()
+  const created = await ops.createIssue({ title: 'A', milestone: 'v1.0' }, 'octocat')
+  assert.equal(created.after.milestone, 'v1.0')
+  assert.equal(fake.mutations.find((call) => call.name === 'PmkitCreateIssue').input.milestoneId, 'MI_1')
+  const moved = await ops.updateIssue('1', { milestone: 'v2.0' }, 'octocat')
+  assert.equal(moved.after.milestone, 'v2.0')
+  const cleared = await ops.updateIssue('1', { milestone: null }, 'octocat')
+  assert.equal(cleared.after.milestone, undefined)
+})
+
+test('an unknown milestone title is INVALID_INPUT with the create step and no mutation, and one run reads the milestones once', async () => {
+  const { fake, ops } = await withMilestones()
+  await assert.rejects(ops.createIssue({ title: 'A', milestone: 'v9' }, 'octocat'), (error) => error.code === 'INVALID_INPUT' && error.nextStep === 'pmkit milestone create v9')
+  assert.deepEqual(fake.mutations, [])
+  await ops.createIssue({ title: 'A', milestone: 'v1.0' }, 'octocat')
+  await ops.createIssue({ title: 'B', milestone: 'v2.0' }, 'octocat')
+  await ops.searchIssues({ milestone: 'v1.0' })
+  assert.equal(fake.reads.filter((call) => call.name === 'PmkitMilestones').length, 1)
+})
+
+test('searchIssues by milestone sends milestoneNumber, none finds issues without one, and an unknown title finds nothing', async () => {
+  const { fake, ops } = await withMilestones()
+  fake.seed({ title: 'In one', milestone: 'v1.0' })
+  fake.seed({ title: 'In two', milestone: 'v2.0' })
+  fake.seed({ title: 'Free' })
+  assert.deepEqual((await ops.searchIssues({ milestone: 'v1.0' })).issues.map((issue) => issue.title), ['In one'])
+  assert.deepEqual((await ops.searchIssues({ milestone: 'none' })).issues.map((issue) => issue.title), ['Free'])
+  fake.reads.splice(0)
+  assert.deepEqual((await ops.searchIssues({ milestone: 'nope' })).issues, [])
+  assert.equal(fake.reads.filter((call) => call.name === 'PmkitIssues').length, 0)
+})
+
+test('createIssue with an epic parent sends no parentIssueId, adds the item to the epic after the create, and reads the epic back', async () => {
+  const fake = fakeGithubIssues({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12, title: 'Epic twelve', linked: true }] })
+  const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'acme/7', exec: fake.exec, users: true })
+  const context = makeContext(raw, PMKIT, { epics: await epicProjects(client, PMKIT.tracker.scope) })
+  const ops = issueOperations({ client, config: { pmkit: PMKIT }, getContext: async () => context })
+  fake.mutations.splice(0)
+  const dry = await ops.createIssue({ title: 'Child', parent: 'acme/12' }, ME, { dryRun: true })
+  assert.deepEqual(fake.mutations, [])
+  assert.equal(dry.after.parent, 'acme/12')
+  const result = await ops.createIssue({ title: 'Child', parent: 'ACME/12' }, ME)
+  assert.equal(fake.mutations[0].name, 'PmkitCreateIssue')
+  assert.equal(fake.mutations[0].input.parentIssueId, undefined)
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitCreateIssue', 'PmkitAddProjectItem', 'PmkitAddProjectItem'])
+  assert.equal(fake.mutations[2].input.projectId, 'PVT_E12')
+  assert.equal(result.after.parent, 'acme/12')
+  fake.mutations.splice(0)
+  await assert.rejects(ops.createIssue({ title: 'Orphan', parent: 'acme/99' }, ME), { code: 'INVALID_INPUT', message: 'parent acme/99 is not an existing issue or epic' })
+  assert.deepEqual(fake.mutations, [])
 })

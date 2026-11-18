@@ -3,7 +3,7 @@ import test from 'node:test'
 import { fakeGhExec, projectReply, repoReply, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
-import { brokenGithubMappings, labelOf, parseFieldSource, parseLabelValue, proposeGithubSetup, proposeProject } from './mappings.mjs'
+import { brokenGithubMappings, iterationFieldOf, labelOf, parseFieldSource, parseLabelValue, proposeGithubSetup, proposeProject } from './mappings.mjs'
 
 const TYPES = ['feature', 'bug', 'task', 'chore']
 
@@ -247,4 +247,77 @@ test('without issue types, type questions offer the labels no status took', asyn
   const answered = proposeGithubSetup(raw, {}, { status: { triage: 'none', backlog: 'none', in_progress: 'Doing', in_review: 'none' }, types: { feature: 'enhancement', bug: 'label:bug', task: 'none', chore: 'none' } }, TYPES)
   assert.deepEqual(answered.values.types, { feature: 'label:enhancement', bug: 'label:bug' })
   invalid(() => proposeGithubSetup(raw, {}, { status: { in_progress: 'Doing' }, types: { bug: 'Doing' } }, TYPES), /bug=Doing is not a free label of acme\/widgets/)
+})
+
+const ITERATION_FIELD = {
+  __typename: 'ProjectV2IterationField', id: 'PF_4', name: 'Sprint', dataType: 'ITERATION', isIssueField: false,
+  configuration: { duration: 14, startDay: 1, iterations: [{ id: 'IT_a', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 }], completedIterations: [] },
+}
+const projectWith = (...extra) => {
+  const nodes = projectReply().data.repositoryOwner.projectV2.fields.nodes.filter((node) => node.dataType !== 'ITERATION')
+  return projectReply({ extra: [...nodes, ...extra] })
+}
+const sprintFixture = (...extra) => standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectWith(...extra) } })
+
+test('sprint: setup offers the Project iteration fields only and recommends Sprint', async () => {
+  const raw = await rawOf(sprintFixture(ITERATION_FIELD, { ...ITERATION_FIELD, id: 'PF_9', name: 'Cycle' }))
+  const question = questionAt(proposeGithubSetup(raw, {}, {}, TYPES), 'mappings.fields.sprint')
+  assert.deepEqual(question, { path: 'mappings.fields.sprint', flag: '--field sprint=<value>', candidates: ['project:Sprint', 'project:Cycle'], recommended: 'project:Sprint', none: 'No field holds the sprint' })
+  assert.ok(!question.candidates.some((value) => value.startsWith('issue:')))
+})
+
+test('sprint: one matching iteration field is applied, and no iteration field applies none', async () => {
+  const one = proposeGithubSetup(await rawOf(sprintFixture(ITERATION_FIELD)), {}, {}, TYPES)
+  assert.ok(one.applied.some((item) => item.path === 'mappings.fields.sprint' && item.value === 'project:Sprint'))
+  assert.equal(one.values.fields.sprint, 'project:Sprint')
+  const none = proposeGithubSetup(await rawOf(sprintFixture()), {}, {}, TYPES)
+  assert.equal(none.values.fields.sprint, 'none')
+  assert.equal(questionAt(none, 'mappings.fields.sprint'), undefined)
+})
+
+test('sprint: tracker.scope.project none asks no sprint question and sets none', async () => {
+  const result = proposeGithubSetup(await rawOf(standardFixture(), 'none'), {}, {}, TYPES)
+  assert.equal(questionAt(result, 'mappings.fields.sprint'), undefined)
+  assert.equal(result.values.fields.sprint, 'none')
+})
+
+test('sprint: tracker.scope.project none turns a held sprint field and a --field answer into none, with no question', async () => {
+  const raw = await rawOf(standardFixture(), 'none')
+  const held = proposeGithubSetup(raw, { fields: { sprint: 'project:Sprint' } }, {}, TYPES)
+  assert.equal(questionAt(held, 'mappings.fields.sprint'), undefined)
+  assert.equal(held.values.fields.sprint, 'none')
+  const answered = proposeGithubSetup(raw, {}, { fields: { sprint: 'project:Sprint' } }, TYPES)
+  assert.equal(answered.values.fields.sprint, 'none')
+})
+
+test('sprint: an answer must be an iteration field of the Project', async () => {
+  const raw = await rawOf(sprintFixture(ITERATION_FIELD))
+  invalid(() => proposeGithubSetup(raw, {}, { fields: { sprint: 'issue:Sprint' } }, TYPES), /sprint=issue:Sprint.*project:Sprint/)
+  invalid(() => proposeGithubSetup(raw, {}, { fields: { sprint: 'project:Due' } }, TYPES), /sprint=project:Due/)
+  assert.equal(proposeGithubSetup(raw, {}, { fields: { sprint: 'project:Sprint' } }, TYPES).values.fields.sprint, 'project:Sprint')
+})
+
+test('sprint: issue:Sprint is a broken mapping, and so is a Project field the Project lost', async () => {
+  const raw = await rawOf(sprintFixture(ITERATION_FIELD))
+  assert.deepEqual(brokenGithubMappings(raw, { mappings: { fields: { sprint: 'issue:Sprint' } } }), [{ path: 'mappings.fields.sprint', value: 'issue:Sprint', problem: 'mappings.fields.sprint must name a Project iteration field' }])
+  assert.deepEqual(brokenGithubMappings(raw, { mappings: { fields: { sprint: 'project:Sprint' } } }), [])
+  assert.equal(brokenGithubMappings(raw, { mappings: { fields: { sprint: 'project:Due' } } }).length, 1)
+  const lost = await rawOf(sprintFixture())
+  assert.deepEqual(brokenGithubMappings(lost, { mappings: { fields: { sprint: 'project:Sprint' } } }), [{ path: 'mappings.fields.sprint', value: 'project:Sprint', problem: 'mappings.fields.sprint names Project field Sprint, which acme/7 no longer has' }])
+  const asked = proposeGithubSetup(lost, { fields: { sprint: 'project:Sprint' } }, {}, TYPES)
+  assert.ok(questionAt(asked, 'mappings.fields.sprint').broken)
+})
+
+test('iterationFieldOf returns the iteration field the sprint mapping names, with its configuration', async () => {
+  const raw = await rawOf(sprintFixture(ITERATION_FIELD))
+  const field = iterationFieldOf(raw, { mappings: { fields: { sprint: 'project:Sprint' } } })
+  assert.equal(field.id, 'PF_4')
+  assert.equal(field.configuration.duration, 14)
+  assert.deepEqual(field.configuration.iterations, [{ id: 'IT_a', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 }])
+  assert.deepEqual(field.configuration.completedIterations, [])
+  assert.equal(iterationFieldOf(raw, { mappings: { fields: { sprint: 'none' } } }), null)
+  assert.equal(iterationFieldOf(raw, { mappings: { fields: { sprint: 'project:Due' } } }), null)
+  assert.equal(iterationFieldOf(raw, { mappings: { fields: { sprint: 'issue:Sprint' } } }), null)
+  assert.equal(iterationFieldOf(raw, {}), null)
+  assert.equal(iterationFieldOf(await rawOf(standardFixture(), 'none'), { mappings: { fields: { sprint: 'project:Sprint' } } }), null)
 })

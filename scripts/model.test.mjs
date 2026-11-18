@@ -32,7 +32,7 @@ test('the constants match the common model', () => {
 })
 
 test('FIELD_ROLES and STATUS_MAPPING_KEYS list the field roles and the status mapping keys', () => {
-  assert.deepEqual(FIELD_ROLES, ['estimate', 'priority', 'target_date', 'start_date', 'assignee', 'acceptance_criteria', 'time_spent'])
+  assert.deepEqual(FIELD_ROLES, ['estimate', 'priority', 'target_date', 'start_date', 'assignee', 'acceptance_criteria', 'time_spent', 'sprint'])
   assert.deepEqual(STATUS_MAPPING_KEYS, [...CATEGORIES, 'blocked'])
 })
 

@@ -278,6 +278,23 @@ test('answerGh with fixture.issues answers from the fake and writes the new stat
   assert.equal(JSON.parse(call('query PmkitRepo { x }', REPO).stdout.split('\r\n\r\n')[1]).data.viewer.name, 'The Octocat')
 })
 
+test('answerGh with fixture.issues routes POST milestones to the fake and writes the state back; a fixture without issues does not know it', () => {
+  const fixture = standardFixture({ issues: fakeGithubIssues({ milestones: [{ title: 'v1.0' }] }).toJSON() })
+  const post = (body) => answerGh(['api', '--hostname', 'github.com', '--method', 'POST', 'repos/acme/widgets/milestones', '--include', '--input', '-'], JSON.stringify(body), fixture)
+  const created = post({ title: 'v2.0', due_on: '2026-12-31T00:00:00Z' })
+  assert.equal(created.status, 0)
+  assert.match(created.stdout, /^HTTP\/2\.0 201 Created\r\n/)
+  assert.equal(restBody(created).number, 2)
+  assert.deepEqual(fixture.issues.milestones.map((milestone) => milestone.title), ['v1.0', 'v2.0'])
+  const taken = post({ title: 'v2.0' })
+  assert.equal(taken.status, 1)
+  assert.match(taken.stdout, /^HTTP\/2\.0 422 /)
+  assert.equal(fixture.issues.milestones.length, 2)
+  const bare = answerGh(['api', '--method', 'POST', 'repos/acme/widgets/milestones', '--input', '-'], '{"title":"x"}', standardFixture())
+  assert.equal(bare.status, 1)
+  assert.match(bare.stderr, /unknown api call/)
+})
+
 test('itemTypes filters keep every item type of ITEM_TYPES, the Status change event included', async () => {
   const { fake, docs, client, create } = setup()
   const all = ITEM_TYPES(hostFeatures({ host: 'github.com' }))
@@ -342,4 +359,273 @@ test('fake GitHub with Discussions off answers hasDiscussionsEnabled false and f
   const fake = fakeGithubIssues({ discussionsEnabled: false })
   assert.equal(fake.handle('PmkitDiscussions', { owner: 'acme', name: 'widgets', first: 10 }).data.repository.hasDiscussionsEnabled, false)
   assert.equal(fake.handle('PmkitDiscussion', { owner: 'acme', name: 'widgets', number: 1, comments: 1, replies: 1 }).errors[0].type, 'NOT_FOUND')
+})
+
+// PMK-88: iterations, epic Projects, status updates and milestones.
+const ITERATIONS = {
+  duration: 14,
+  iterations: [{ id: 'IT_a', title: 'Iteration 2', startDate: '2026-11-16', duration: 14 }, { id: 'IT_b', title: 'Iteration 3', startDate: '2026-11-30', duration: 14 }],
+  completed: [{ id: 'IT_0', title: 'Iteration 1', startDate: '2026-11-02', duration: 14 }],
+}
+const EPICS = [
+  { id: 'PVT_E12', owner: 'acme', number: 12, title: 'Epic twelve', readme: 'Goal', shortDescription: 'short' },
+  { id: 'PVT_E13', owner: 'acme', number: 13, title: 'Epic thirteen', linked: false },
+]
+const SPRINT_VARS = { fStatus: 'Status', fSprint: 'Sprint' }
+const data = (reply) => {
+  assert.equal(reply.errors, undefined, JSON.stringify(reply.errors))
+  return reply.data
+}
+const postMilestone = (fake, body, host = 'github.com') => fake.exec('gh', ['api', '--hostname', host, '--method', 'POST', 'repos/acme/widgets/milestones', '--include', '--input', '-'], { input: JSON.stringify(body) })
+const restBody = (answer) => JSON.parse(answer.stdout.split('\r\n\r\n')[1])
+
+test('PmkitIterationField answers the configuration of the iteration field with completed iterations', () => {
+  const fake = fakeGithubIssues({ project: { iterations: ITERATIONS } })
+  const { node } = data(fake.handle('PmkitIterationField', { project: 'PVT_1', field: 'Sprint' }))
+  assert.equal(node.field.__typename, 'ProjectV2IterationField')
+  assert.equal(node.field.configuration.duration, 14)
+  assert.equal(node.field.configuration.startDay, 1)
+  assert.deepEqual(node.field.configuration.iterations.map((entry) => entry.id), ['IT_a', 'IT_b'])
+  assert.deepEqual(node.field.configuration.completedIterations, ITERATIONS.completed)
+  assert.equal(data(fake.handle('PmkitIterationField', { project: 'PVT_1', field: 'Nope' })).node.field, null)
+})
+
+test('PmkitUpdateIterations replaces the configuration: an id is kept, none gets a new id, a gone iteration loses its items', () => {
+  const fake = fakeGithubIssues({ project: { iterations: ITERATIONS } })
+  const a = fake.seed({ item: { values: { Sprint: '2026-11-16' } } })
+  const b = fake.seed({ item: { values: { Sprint: '2026-11-30' } } })
+  const field = data(fake.handle('PmkitIterationField', { project: 'PVT_1', field: 'Sprint' })).node.field
+  const reply = data(fake.handle('PmkitUpdateIterations', { input: { fieldId: field.id, iterationConfiguration: {
+    startDate: '2026-11-02', duration: 14,
+    iterations: [{ id: 'IT_0', title: 'Iteration 1', startDate: '2026-11-02', duration: 14 }, { id: 'IT_a', title: 'Iteration 2', startDate: '2026-11-16', duration: 14 }, { title: 'Iteration 4', startDate: '2026-12-14', duration: 14 }],
+  } } }))
+  const config = reply.updateProjectV2Field.projectV2Field.configuration
+  assert.equal(reply.updateProjectV2Field.projectV2Field.id, field.id)
+  assert.deepEqual(config.completedIterations.map((entry) => entry.id), ['IT_0'])
+  assert.equal(config.iterations.length, 2)
+  assert.equal(config.iterations[0].id, 'IT_a')
+  assert.ok(config.iterations[1].id && config.iterations[1].id !== 'IT_b')
+  const read = (id) => data(fake.handle('PmkitIssue', { ...REPO, number: id, ...SPRINT_VARS })).repository.issue.projectItems.nodes[0].fSprint
+  assert.equal(read(a.number).iterationId, 'IT_a')
+  assert.equal(read(b.number), null)
+})
+
+test('on a GHES fake an iteration with an id answers the validation error', () => {
+  const fake = fakeGithubIssues({ host: 'ghe.example.com', ghesVersion: '3.15', project: { iterations: ITERATIONS } })
+  const field = data(fake.handle('PmkitIterationField', { project: 'PVT_1', field: 'Sprint' })).node.field
+  const withId = fake.handle('PmkitUpdateIterations', { input: { fieldId: field.id, iterationConfiguration: { startDate: '2026-11-16', duration: 14, iterations: [{ id: 'IT_a', title: 'x', startDate: '2026-11-16', duration: 14 }] } } })
+  assert.deepEqual(withId, { errors: [{ message: "InputObject 'ProjectV2Iteration' doesn't accept argument 'id'" }] })
+  const without = fake.handle('PmkitUpdateIterations', { input: { fieldId: field.id, iterationConfiguration: { startDate: '2026-11-16', duration: 14, iterations: [{ title: 'x', startDate: '2026-11-16', duration: 14 }] } } })
+  assert.equal(data(without).updateProjectV2Field.projectV2Field.configuration.iterations.length, 1)
+})
+
+test('an item reads its sprint as ProjectV2ItemFieldIterationValue and updateProjectV2ItemFieldValue takes { iterationId }', () => {
+  const fake = fakeGithubIssues({ project: { iterations: ITERATIONS } })
+  const issue = fake.seed({ item: {} })
+  const item = fake.state.items[0]
+  const field = fake.state.project.fields.find((entry) => entry.name === 'Sprint')
+  data(fake.handle('PmkitSetProjectField', { input: { projectId: 'PVT_1', itemId: item.id, fieldId: field.id, value: { iterationId: 'IT_b' } } }))
+  const read = () => data(fake.handle('PmkitIssue', { ...REPO, number: issue.number, ...SPRINT_VARS })).repository.issue.projectItems.nodes[0]
+  assert.deepEqual(read().fSprint, { __typename: 'ProjectV2ItemFieldIterationValue', iterationId: 'IT_b', title: 'Iteration 3', startDate: '2026-11-30', duration: 14 })
+  assert.deepEqual(read().project, { id: 'PVT_1', number: 7, owner: { login: 'acme' } })
+  const bad = fake.handle('PmkitSetProjectField', { input: { projectId: 'PVT_1', itemId: item.id, fieldId: field.id, value: { iterationId: 'IT_zzz' } } })
+  assert.ok(bad.errors)
+})
+
+test('PmkitLinkedProjects pages the scope Project and the linked epics; without epics it lists the scope Project only', () => {
+  const plain = fakeGithubIssues()
+  assert.deepEqual(data(plain.handle('PmkitLinkedProjects', REPO)).repository.projectsV2.nodes.map((node) => [node.number, node.title, node.owner.login]), [[7, 'Roadmap', 'acme']])
+  const fake = fakeGithubIssues({ epics: EPICS })
+  const all = data(fake.handle('PmkitLinkedProjects', REPO)).repository.projectsV2
+  assert.deepEqual(all.nodes.map((node) => node.number), [7, 12])
+  assert.deepEqual(Object.keys(all.nodes[1]).sort(), ['closed', 'id', 'number', 'owner', 'readme', 'shortDescription', 'title', 'url'])
+  assert.equal(all.nodes[1].readme, 'Goal')
+  const first = data(fake.handle('PmkitLinkedProjects', { ...REPO, first: 1 })).repository.projectsV2
+  assert.equal(first.pageInfo.hasNextPage, true)
+  const second = data(fake.handle('PmkitLinkedProjects', { ...REPO, first: 1, after: first.pageInfo.endCursor })).repository.projectsV2
+  assert.deepEqual(second.nodes.map((node) => node.number), [12])
+})
+
+test('PmkitEpic answers the Project with its status updates newest first, and NOT_FOUND for an unknown number', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  fake.seedStatusUpdate('PVT_E12', { status: 'ON_TRACK', body: 'old', createdAt: '2026-11-01T00:00:00Z' })
+  fake.seedStatusUpdate('PVT_E12', { status: 'AT_RISK', body: 'new', startDate: '2026-11-01', targetDate: '2026-12-01', createdAt: '2026-11-10T00:00:00Z', creator: 'hubot' })
+  const project = data(fake.handle('PmkitEpic', { owner: 'acme', number: 12 })).repositoryOwner.projectV2
+  assert.deepEqual([project.id, project.number, project.closed, project.readme, project.shortDescription, project.owner.login], ['PVT_E12', 12, false, 'Goal', 'short', 'acme'])
+  assert.deepEqual(project.statusUpdates.nodes.map((node) => [node.body, node.status, node.creator.login]), [['new', 'AT_RISK', 'hubot'], ['old', 'ON_TRACK', 'octocat']])
+  assert.deepEqual(project.statusUpdates.nodes[0].startDate, '2026-11-01')
+  const missing = fake.handle('PmkitEpic', { owner: 'acme', number: 99 })
+  assert.equal(missing.errors[0].type, 'NOT_FOUND')
+})
+
+test('PmkitEpics answers Projects by node id with their latest status update, and NOT_FOUND with null for an unknown id', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  fake.seedStatusUpdate('PVT_E12', { status: 'ON_TRACK', body: 'old', createdAt: '2026-11-01T00:00:00Z' })
+  fake.seedStatusUpdate('PVT_E12', { status: 'AT_RISK', body: 'new', createdAt: '2026-11-10T00:00:00Z' })
+  const query = 'query PmkitEpics($ids: [ID!]!) { nodes(ids: $ids) { __typename ... on ProjectV2 { id } } }'
+  const nodes = data(fake.handle('PmkitEpics', { ids: ['PVT_E12', 'PVT_1'] }, query)).nodes
+  assert.deepEqual(nodes.map((node) => [node.__typename, node.id, node.number]), [['ProjectV2', 'PVT_E12', 12], ['ProjectV2', 'PVT_1', 7]])
+  assert.deepEqual(nodes[0].statusUpdates.nodes.map((node) => node.body), ['new'])
+  const missing = fake.handle('PmkitEpics', { ids: ['PVT_E12', 'nope'] }, query)
+  assert.equal(missing.errors[0].type, 'NOT_FOUND')
+  assert.deepEqual(missing.errors[0].path, ['nodes', 1])
+  assert.equal(missing.data.nodes[1], null)
+})
+
+test('PmkitStatusUpdates pages newest first', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  for (const day of ['01', '02', '03']) fake.seedStatusUpdate('PVT_E12', { status: 'ON_TRACK', body: `day ${day}`, createdAt: `2026-11-${day}T00:00:00Z` })
+  const one = data(fake.handle('PmkitStatusUpdates', { project: 'PVT_E12', first: 2 })).node.statusUpdates
+  assert.deepEqual(one.nodes.map((node) => node.body), ['day 03', 'day 02'])
+  const two = data(fake.handle('PmkitStatusUpdates', { project: 'PVT_E12', first: 2, after: one.pageInfo.endCursor })).node.statusUpdates
+  assert.deepEqual(two.nodes.map((node) => node.body), ['day 01'])
+  assert.equal(two.pageInfo.hasNextPage, false)
+})
+
+test('PmkitEpicItems lists the issues of an epic Project with their Status, archived ones included', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  const a = fake.seed({ title: 'In epic', epics: [{ project: 'acme/12', status: 'Todo' }] })
+  fake.seed({ title: 'Archived', epics: ['acme/12'] })
+  fake.seed({ title: 'Elsewhere', epics: ['acme/13'] })
+  fake.state.items.find((item) => item.issueId === 'I_2').isArchived = true
+  const items = data(fake.handle('PmkitEpicItems', { project: 'PVT_E12', ...SPRINT_VARS })).node.items
+  assert.deepEqual(items.nodes.map((node) => [node.content.number, node.isArchived]), [[1, false], [2, true]])
+  assert.equal(items.nodes[0].content.id, a.id)
+  assert.equal(items.nodes[0].status.name, 'Todo')
+  assert.equal(items.nodes[0].content.repository.nameWithOwner, 'acme/widgets')
+  assert.deepEqual(items.nodes[0].content.projectItems.nodes.map((node) => node.project.number), [12])
+  assert.equal(items.pageInfo.hasNextPage, false)
+  const paged = data(fake.handle('PmkitEpicItems', { project: 'PVT_E12', first: 1 })).node.items
+  assert.equal(paged.pageInfo.hasNextPage, true)
+})
+
+test('PmkitCreateProject numbers after the highest number, links the repository and answers id and number', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  const created = data(fake.handle('PmkitCreateProject', { input: { ownerId: 'O_1', title: 'New epic', repositoryId: 'R_1' } })).createProjectV2.projectV2
+  assert.equal(created.number, 14)
+  const linked = data(fake.handle('PmkitLinkedProjects', REPO)).repository.projectsV2.nodes
+  assert.deepEqual(linked.map((node) => node.number), [7, 12, 14])
+  assert.equal(linked[2].owner.login, 'acme')
+  const unlinked = data(fake.handle('PmkitCreateProject', { input: { ownerId: 'O_1', title: 'Loose' } })).createProjectV2.projectV2
+  assert.equal(unlinked.number, 15)
+  assert.equal(data(fake.handle('PmkitLinkedProjects', REPO)).repository.projectsV2.nodes.length, 3)
+  assert.equal(data(fake.handle('PmkitEpic', { owner: 'acme', number: 14 })).repositoryOwner.projectV2.id, created.id)
+  assert.ok(fake.handle('PmkitCreateProject', { input: { ownerId: 'O_9', title: 'x' } }).errors)
+})
+
+test('PmkitUpdateProjectReadme sets the readme', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  assert.deepEqual(data(fake.handle('PmkitUpdateProjectReadme', { input: { projectId: 'PVT_E12', readme: 'New goal' } })), { updateProjectV2: { projectV2: { id: 'PVT_E12' } } })
+  assert.equal(data(fake.handle('PmkitEpic', { owner: 'acme', number: 12 })).repositoryOwner.projectV2.readme, 'New goal')
+})
+
+test('PmkitCreateStatusUpdate stores the update with the viewer and the fake clock', () => {
+  const fake = fakeGithubIssues({ epics: EPICS, now: '2026-11-16T10:00:00.000Z' })
+  const reply = data(fake.handle('PmkitCreateStatusUpdate', { input: { projectId: 'PVT_E12', status: 'OFF_TRACK', body: 'late', startDate: '2026-11-01', targetDate: '2026-12-01' } }))
+  assert.ok(reply.createProjectV2StatusUpdate.statusUpdate.id)
+  const [update] = data(fake.handle('PmkitStatusUpdates', { project: 'PVT_E12' })).node.statusUpdates.nodes
+  assert.deepEqual([update.status, update.body, update.startDate, update.targetDate, update.creator.login, update.createdAt], ['OFF_TRACK', 'late', '2026-11-01', '2026-12-01', 'octocat', '2026-11-16T10:00:01.000Z'])
+  assert.ok(fake.handle('PmkitCreateStatusUpdate', { input: { projectId: 'PVT_E12', status: 'WEIRD' } }).errors)
+})
+
+test('PmkitDeleteProjectItem removes the item from a Project of the fake', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  fake.seed({ epics: ['acme/12'] })
+  const item = fake.state.items[0]
+  assert.deepEqual(data(fake.handle('PmkitDeleteProjectItem', { input: { projectId: 'PVT_E12', itemId: item.id } })), { deleteProjectV2Item: { deletedItemId: item.id } })
+  assert.equal(data(fake.handle('PmkitEpicItems', { project: 'PVT_E12' })).node.items.nodes.length, 0)
+})
+
+test('addProjectV2ItemById and updateProjectV2ItemFieldValue work on an epic Project', () => {
+  const fake = fakeGithubIssues({ epics: EPICS })
+  fake.seed({})
+  const item = data(fake.handle('PmkitAddProjectItem', { input: { projectId: 'PVT_E12', contentId: 'I_1' } })).addProjectV2ItemById.item
+  const status = fake.state.projects[0].fields.find((field) => field.name === 'Status')
+  data(fake.handle('PmkitSetProjectField', { input: { projectId: 'PVT_E12', itemId: item.id, fieldId: status.id, value: { singleSelectOptionId: status.options[1].id } } }))
+  assert.equal(data(fake.handle('PmkitEpicItems', { project: 'PVT_E12' })).node.items.nodes[0].status.name, status.options[1].name)
+})
+
+test('milestones: PmkitMilestones lists them, createIssue and updateIssue set milestoneId (null clears) and filterBy.milestoneNumber filters', async () => {
+  const { fake, docs, client, create, read } = setup({ milestones: [{ title: 'v1.0', number: 3, description: 'First', dueOn: '2026-12-01T00:00:00Z' }, { title: 'v0.9', state: 'CLOSED' }] })
+  const listed = data(fake.handle('PmkitMilestones', REPO)).repository.milestones
+  assert.deepEqual(listed.nodes.map((node) => [node.number, node.title, node.description, node.dueOn, node.state]), [[3, 'v1.0', 'First', '2026-12-01T00:00:00Z', 'OPEN'], [4, 'v0.9', null, null, 'CLOSED']])
+  const id = listed.nodes[0].id
+  await create({ title: 'with', milestoneId: id })
+  await create({ title: 'without' })
+  assert.deepEqual((await read(1)).milestone, { id, number: 3, title: 'v1.0' })
+  assert.equal((await read(2)).milestone, null)
+  const numbers = async (milestoneNumber) => (await client.request(docs.ISSUES, { ...REPO, first: 10, filterBy: { milestoneNumber }, ...VARS })).repository.issues.nodes.map((node) => node.number)
+  assert.deepEqual(await numbers('3'), [1])
+  assert.deepEqual(await numbers('none'), [2])
+  await client.request(docs.UPDATE_ISSUE, { input: { id: 'I_2', milestoneId: id }, ...VARS })
+  assert.deepEqual(await numbers('3'), [1, 2])
+  await client.request(docs.UPDATE_ISSUE, { input: { id: 'I_1', milestoneId: null }, ...VARS })
+  assert.deepEqual(await numbers('none'), [1])
+  const events = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10 })).node.timelineItems.nodes.map((node) => [node.__typename, node.milestoneTitle])
+  assert.deepEqual(events, [['MilestonedEvent', 'v1.0'], ['DemilestonedEvent', 'v1.0']])
+})
+
+test('seed milestone by title and sprint by start date', () => {
+  const fake = fakeGithubIssues({ milestones: [{ title: 'v1.0' }], project: { iterations: ITERATIONS } })
+  fake.seed({ milestone: 'v1.0', item: { values: { Sprint: '2026-11-16' } } })
+  const issue = data(fake.handle('PmkitIssue', { ...REPO, number: 1, ...SPRINT_VARS })).repository.issue
+  assert.equal(issue.milestone.title, 'v1.0')
+  assert.equal(issue.projectItems.nodes[0].fSprint.title, 'Iteration 2')
+  assert.throws(() => fake.seed({ milestone: 'nope' }), /unknown milestone/)
+})
+
+test('REST POST milestones answers like gh --include: 201 with the milestone, 422 for a taken title', () => {
+  const fake = fakeGithubIssues({ milestones: [{ title: 'v1.0' }] })
+  const created = postMilestone(fake, { title: 'v2.0', due_on: '2026-12-31T00:00:00Z', description: 'Second' })
+  assert.equal(created.status, 0)
+  assert.match(created.stdout, /^HTTP\/2\.0 201 Created\r\n/)
+  assert.deepEqual(restBody(created), { number: 2, title: 'v2.0', node_id: restBody(created).node_id, due_on: '2026-12-31T00:00:00Z', state: 'open', description: 'Second' })
+  assert.ok(restBody(created).node_id)
+  assert.deepEqual(data(fake.handle('PmkitMilestones', REPO)).repository.milestones.nodes.map((node) => node.title), ['v1.0', 'v2.0'])
+  const taken = postMilestone(fake, { title: 'v1.0', due_on: '2026-12-31T00:00:00Z' })
+  assert.equal(taken.status, 1)
+  assert.match(taken.stdout, /^HTTP\/2\.0 422 /)
+  assert.deepEqual(restBody(taken), { message: 'Validation Failed', errors: [{ resource: 'Milestone', code: 'already_exists', field: 'title' }] })
+  assert.match(taken.stderr, /422/)
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['RestCreateMilestone', 'RestCreateMilestone'])
+  assert.equal(fake.exec('gh', ['api', '--method', 'GET', 'repos/acme/widgets/labels'], {}).status, 1)
+})
+
+test('fakeGithubIssuesFrom accepts a version 1 JSON and fills the new keys empty', () => {
+  const json = JSON.parse(JSON.stringify(fakeGithubIssues().toJSON()))
+  for (const key of ['projects', 'milestones', 'statusUpdates', 'ownerId']) delete json[key]
+  json.version = 1
+  json.counters = { comment: 0, item: 0, event: 0 }
+  const restored = fakeGithubIssuesFrom(json)
+  assert.equal(restored.toJSON().version, 2)
+  assert.deepEqual(data(restored.handle('PmkitMilestones', REPO)).repository.milestones.nodes, [])
+  assert.equal(data(restored.handle('PmkitLinkedProjects', REPO)).repository.projectsV2.nodes.length, 1)
+  assert.equal(data(restored.handle('PmkitCreateProject', { input: { ownerId: 'O_1', title: 'x' } })).createProjectV2.projectV2.number, 8)
+  assert.throws(() => fakeGithubIssuesFrom({ version: 3 }), /needs the toJSON/)
+})
+
+test('the fake refuses a Project owner selected as owner { login }, as GitHub does for ProjectV2Owner', async () => {
+  const { client } = setup({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
+  const bad = 'query PmkitEpic($owner: String!, $number: Int!) { repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) { id owner { login } } } } }'
+  await assert.rejects(client.request(bad, { owner: 'acme', number: 12 }), /Field 'login' doesn't exist on type 'ProjectV2Owner'/)
+  const good = bad.replace('owner { login }', 'owner { ... on Organization { login } ... on User { login } }')
+  assert.equal((await client.request(good, { owner: 'acme', number: 12 })).repositoryOwner.projectV2.owner.login, 'acme')
+})
+
+test('an epic Project can hold a pull request item and a draft item, and PmkitEpicItems answers their content', async () => {
+  const { fake, client } = setup({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
+  fake.seedProjectItem('acme/12', { kind: 'PULL_REQUEST' })
+  fake.seedProjectItem('acme/12', { kind: 'DRAFT_ISSUE', title: 'Idea' })
+  const query = 'query PmkitEpicItems($project: ID!, $first: Int!, $after: String) { node(id: $project) { ... on ProjectV2 { items(first: $first, after: $after) { nodes { id content { __typename } } } } } }'
+  const { nodes } = await client.paginate(query, { project: 'PVT_E12' }, { select: (data) => data.node.items })
+  assert.deepEqual(nodes.map((node) => node.content.__typename), ['PullRequest', 'DraftIssue'])
+})
+
+test('PmkitIssueNodes answers issues by node id in order, with null for an unknown id', async () => {
+  const { fake, client } = setup()
+  const one = fake.seed({ number: 1 })
+  const two = fake.seed({ number: 2 })
+  const query = 'query PmkitIssueNodes($ids: [ID!]!) { nodes(ids: $ids) { ... on Issue { id number } } }'
+  const { nodes } = await client.request(query, { ids: [two.id, 'nope', one.id] })
+  assert.deepEqual(nodes.map((node) => node?.number ?? null), [2, null, 1])
 })

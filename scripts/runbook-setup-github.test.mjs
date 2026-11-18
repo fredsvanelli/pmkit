@@ -64,7 +64,7 @@ const INIT = ['init', '--tracker', 'github', '--git-host', 'github']
 const ANSWERS = [
   '--project', 'acme/7',
   ...['backlog=Backlog', 'todo=Todo', 'in_progress=In Progress', 'in_review=In Review', 'done=Done', 'canceled=none', 'blocked=none'].flatMap((item) => ['--status', item]),
-  ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date'].flatMap((item) => ['--field', item]),
+  ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date', 'sprint=project:Sprint'].flatMap((item) => ['--field', item]),
   ...['feature=Feature', 'bug=Bug', 'task=Task', 'chore=none'].flatMap((item) => ['--type-label', item]),
 ]
 
@@ -115,7 +115,7 @@ test('runbook: first run, check, and an update with nothing changed', () => {
   assert.equal(discovered.statuses.find((item) => item.name === 'In Review').category, 'in_review')
   const capabilities = json(pmkit(root, fake, ['capabilities', '--json']))
   assert.equal(capabilities.tracker, 'github')
-  assert.deepEqual(capabilities.capabilities.filter((entry) => entry.path !== 'absent').map((entry) => [entry.id, entry.path]), [['estimation', 'native'], ['multilevel_hierarchy', 'native'], ['dependencies', 'native'], ['native_metrics', 'derived'], ['linked_code', 'derived']])
+  assert.deepEqual(capabilities.capabilities.filter((entry) => entry.path !== 'absent').map((entry) => [entry.id, entry.path]), [['cycles', 'native'], ['estimation', 'native'], ['multilevel_hierarchy', 'native'], ['dependencies', 'native'], ['deliverables', 'native'], ['status_update', 'native'], ['capacity', 'derived'], ['native_metrics', 'derived'], ['linked_code', 'derived']])
 
   // Step 6: nothing changed.
   const again = json(pmkit(root, fake, ['init', '--update', '--dry-run', '--json']))
@@ -131,7 +131,7 @@ test('runbook: first run, check, and an update with nothing changed', () => {
   }
 })
 
-test('runbook: a renamed Status option is asked again on update (step 7)', () => {
+test('runbook: a renamed Status option is asked again on update (step 8)', () => {
   const root = repository()
   const fake = fakeGhOnPath(standardFixture())
   json(pmkit(root, fake, [...INIT, ...ANSWERS, '--json']))
@@ -141,6 +141,29 @@ test('runbook: a renamed Status option is asked again on update (step 7)', () =>
   assert.deepEqual(broken.questions.map((q) => q.path), ['mappings.status.in_review'])
   json(pmkit(root, fake, ['init', '--update', '--status', 'in_review=Reviewing', '--json']))
   assert.match(fs.readFileSync(path.join(root, '.pmkit', 'config.yaml'), 'utf8'), /in_review: Reviewing/)
+})
+
+test('runbook: the sprint field is offered, written and asked again when the Project loses it (steps 2, 4 and 7)', () => {
+  const root = repository()
+  const iteration = { __typename: 'ProjectV2IterationField', id: 'PF_4', name: 'Sprint', dataType: 'ITERATION', isIssueField: false, configuration: { duration: 14, startDay: 1, iterations: [], completedIterations: [] } }
+  const withIteration = (...extra) => {
+    const nodes = projectReply().data.repositoryOwner.projectV2.fields.nodes.filter((node) => node.dataType !== 'ITERATION')
+    return standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ extra: [...nodes, ...extra] }) } })
+  }
+  const fake = fakeGhOnPath(withIteration(iteration, { ...iteration, id: 'PF_9', name: 'Cycle' }))
+  const asked = json(pmkit(root, fake, [...INIT, '--project', 'acme/7', '--dry-run', '--json']))
+  const sprint = asked.questions.find((q) => q.path === 'mappings.fields.sprint')
+  assert.deepEqual(sprint.candidates, ['project:Sprint', 'project:Cycle'])
+  assert.equal(sprint.recommended, 'project:Sprint')
+  json(pmkit(root, fake, [...INIT, ...ANSWERS, '--json']))
+  assert.match(fs.readFileSync(path.join(root, '.pmkit', 'config.yaml'), 'utf8'), /sprint: project:Sprint/)
+  assert.deepEqual(json(pmkit(root, fake, ['validate', '--json'])).problems.filter((problem) => problem.path === '.pmkit/config.yaml'), [])
+  fs.writeFileSync(fake.fixtureFile, JSON.stringify(withIteration()))
+  const broken = json(pmkit(root, fake, ['init', '--update', '--dry-run', '--json']))
+  assert.deepEqual(broken.broken.map((item) => item.path), ['mappings.fields.sprint'])
+  assert.deepEqual(broken.questions.map((q) => q.path), ['mappings.fields.sprint'])
+  json(pmkit(root, fake, ['init', '--update', '--field', 'sprint=none', '--json']))
+  assert.match(fs.readFileSync(path.join(root, '.pmkit', 'config.yaml'), 'utf8'), /sprint: none/)
 })
 
 test('runbook: without the project scope the Project question offers none with the step (step 1)', () => {
@@ -164,7 +187,7 @@ test('runbook: GHES below 3.19 stops setup with NOT_SUPPORTED (step 1)', () => {
   assert.equal(fs.existsSync(path.join(root, '.pmkit', 'config.yaml')), false)
 })
 
-test('runbook: setup without a Project maps status and type labels (steps 8 to 10)', () => {
+test('runbook: setup without a Project maps status and type labels (steps 9 to 11)', () => {
   const root = repository()
   const fixture = standardFixture()
   fixture.graphql.PmkitRepo = repoReply({ labels: ['bug', 'documentation', 'Backlog', 'In progress', 'In review'], types: [] })

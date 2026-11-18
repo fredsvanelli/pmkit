@@ -27,7 +27,7 @@ const ISSUE_FIELD_NODES = 'nodes { __typename ... on IssueFieldDate { id name da
  */
 export const repoQuery = ({ issueFields, named = 0 }) => {
   const aliases = Array.from({ length: named }, (_, index) => `l${index}`)
-  return `query PmkitRepo($owner: String!, $name: String!${aliases.map((alias) => `, $${alias}: String!`).join('')}) { viewer { id login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { login __typename } ` +
+  return `query PmkitRepo($owner: String!, $name: String!${aliases.map((alias) => `, $${alias}: String!`).join('')}) { viewer { id login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { id login __typename } ` +
     `issueTypes(first: ${FIRST}) { nodes { id name description isEnabled } ${PAGE} } ` +
     (issueFields ? `issueFields(first: ${FIRST}) { ${ISSUE_FIELD_NODES} ${PAGE} } ` : '') +
     `labels(first: ${LABELS_FIRST}) { nodes { id name } ${PAGE} } ` +
@@ -53,7 +53,7 @@ export function mappedLabelNames(pmkit, extra = []) {
 export const projectQuery = ({ issueFields }) => {
   const flag = issueFields ? ' isIssueField' : ''
   return 'query PmkitProject($owner: String!, $number: Int!) { repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) { id number title url ' +
-    `fields(first: ${FIRST}) { nodes { __typename ... on ProjectV2Field { id name dataType${flag} } ... on ProjectV2IterationField { id name dataType${flag} } ` +
+    `fields(first: ${FIRST}) { nodes { __typename ... on ProjectV2Field { id name dataType${flag} } ... on ProjectV2IterationField { id name dataType${flag} configuration { duration startDay iterations { id title startDate duration } completedIterations { id title startDate duration } } } ` +
     `... on ProjectV2SingleSelectField { id name dataType${flag} options { id name } } ... on ProjectV2MultiSelectField { id name dataType${flag} } } ${PAGE} } } } } }`
 }
 
@@ -135,6 +135,14 @@ export function parseRepo(value) {
 }
 
 const option = (node) => ({ id: node.id, name: node.name })
+const iteration = (node) => ({ id: node.id, title: node.title, startDate: node.startDate, duration: node.duration })
+// A cache entry or an answer with no configuration reads as no iterations.
+const configurationOf = (node) => ({
+  duration: node?.duration ?? null,
+  startDay: node?.startDay ?? null,
+  iterations: (node?.iterations ?? []).map(iteration),
+  completedIterations: (node?.completedIterations ?? []).map(iteration),
+})
 const field = (node) => ({ id: node.id, name: node.name, dataType: node.dataType, options: (node.options ?? []).map(option) })
 
 /** True when the schema of this host has issue fields: github.com, GHE.com and GHES 3.21 or later. */
@@ -157,7 +165,7 @@ export async function fetchProject(client, project, { issueFields = true } = {})
       number: node.number,
       title: node.title,
       url: node.url,
-      fields: (node.fields?.nodes ?? []).filter((item) => item?.name).map((item) => ({ ...field(item), issueField: item.isIssueField === true })),
+      fields: (node.fields?.nodes ?? []).filter((item) => item?.name).map((item) => ({ ...field(item), issueField: item.isIssueField === true, ...(item.dataType === 'ITERATION' ? { configuration: configurationOf(item.configuration) } : {}) })),
     },
   }
 }
@@ -190,6 +198,7 @@ export async function fetchDiscovery(client, { host, repo, project, exec, users 
     host,
     repo: repository.nameWithOwner,
     repositoryId: repository.id,
+    ownerId: repository.owner?.id ?? null,
     ghesVersion,
     features,
     ...repositoryLists(data, repository, labels.length),

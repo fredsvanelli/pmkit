@@ -11,6 +11,7 @@ import { CATEGORIES } from '../model.mjs'
 import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
 import { itemOf, toIssue, toIssueWithWarnings } from './issues.mjs'
+import { epicOf, readMilestoneNodes } from './projects.mjs'
 import { docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
@@ -26,9 +27,9 @@ const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 
 /**
  * The issue operations over a GitHub client. getContext({ refresh }) returns the context of makeContext; the tracker
- * passes one over its discovery memo, and refresh rereads GitHub. The writes read config.pmkit for pmkit's default branch.
+ * passes one over its discovery memo, and refresh rereads GitHub. `now` is the clock a sprint named `current` reads. The writes read config.pmkit for pmkit's default branch.
  */
-export function issueOperations({ client, config, getContext }) {
+export function issueOperations({ client, config, getContext, now = () => new Date() }) {
   /** Reads every page of each nested connection GitHub cut, so the node lists are complete before mapping. */
   async function completeNested(node, context) {
     const docs = docsOf(context)
@@ -67,12 +68,17 @@ export function issueOperations({ client, config, getContext }) {
 
   /** Narrows on GitHub with filterBy, then runs the client steps, pmkit's order and the limit. */
   async function searchIssues(filter = {}) {
-    const context = await getContext()
-    const viewer = context.raw.viewer?.login ?? null
-    const members = [...new Set([viewer, ...(context.raw.users ?? []).map((user) => user.login)].filter(Boolean))]
-    // Any sprint passes the check here, so translateFilter answers NOT_SUPPORTED for it.
-    checkFilter(filter, { types: Object.keys(context.pmkit?.mappings?.types ?? {}), members, sprintExists: () => true })
-    const translated = translateFilter(filter, context, viewer)
+    const held = await getContext()
+    const viewer = held.raw.viewer?.login ?? null
+    const members = [...new Set([viewer, ...(held.raw.users ?? []).map((user) => user.login)].filter(Boolean))]
+    // The shared check does not know the milestone key, which only GitHub filters by, so the adapter checks that key and passes on the rest.
+    // Any sprint passes the shared check, because translateFilter checks it against the iterations.
+    const shared = filter !== null && typeof filter === 'object' && !Array.isArray(filter) ? Object.fromEntries(Object.entries(filter).filter(([key]) => key !== 'milestone')) : filter
+    if (filter?.milestone !== undefined && typeof filter.milestone !== 'string') throw invalid('milestone must be a string', 'pmkit milestone list')
+    checkFilter(shared, { types: Object.keys(held.pmkit?.mappings?.types ?? {}), members, sprintExists: () => true })
+    // A sprint the cached discovery cannot place, such as --sprint current with no active iteration, refreshes it once. The rest of
+    // the search then reads with the context the filter was translated against.
+    const { value: translated, context } = await withRefresh(async (current) => translateFilter(filter, current, viewer, { today: now().toISOString().slice(0, 10), milestones: needed(filter.milestone) ? await milestonesOf(current) : [] }))
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const [owner, name] = context.repo.split('/')
     const variables = { owner, name, ...translated.variables, orderBy: { field: 'CREATED_AT', direction: 'ASC' }, ...context.fieldVariables }
@@ -139,6 +145,15 @@ export function issueOperations({ client, config, getContext }) {
       return { value: await build(fresh), context: fresh }
     }
   }
+
+  // The milestones of the scope repository, read once per context. A run holds one context, so a run reads them at most once.
+  const milestoneReads = new WeakMap()
+  const milestonesOf = (context) => {
+    if (!milestoneReads.has(context)) milestoneReads.set(context, readMilestoneNodes(client, context.repo))
+    return milestoneReads.get(context)
+  }
+  /** The milestones a write or a filter resolves titles against: read only when the input names a title other than none. */
+  const needed = (title) => typeof title === 'string' && title !== 'none'
 
   const send = sender(client)
   const afterOf = async (id) => (await readNode(id)).issue
@@ -218,11 +233,14 @@ export function issueOperations({ client, config, getContext }) {
     }
   }
 
-  async function createIssue(input, actor, { dryRun = false } = {}) {
+  async function createIssue(request, actor, { dryRun = false } = {}) {
     await requireActor(actor)
+    const epic = epicOf(await getContext(), request?.parent)
+    // An epic parent is no sub-issue link: the create leaves it out, and a step after the create adds the issue to the epic Project.
+    const input = epic ? { ...request, parent: undefined } : request
     const parentNode = await parentNodeOf(input?.parent)
-    const { value: plan, context } = await withRefresh((current) => planWrite(input ?? {}, { mode: 'create', context: current, parentNode }))
-    if (dryRun) return { before: null, after: plan.after }
+    const { value: plan, context } = await withRefresh(async (current) => planWrite(input ?? {}, { mode: 'create', context: current, parentNode, milestones: needed(input?.milestone) ? await milestonesOf(current) : [], now: now().toISOString() }))
+    if (dryRun) return { before: null, after: epic ? { ...plan.after, parent: epic.id } : plan.after }
     const node = (await send(context, 'CREATE_ISSUE', plan.input, true)).createIssue.issue
     const id = issueIdOf(node, context.repo)
     const item = { id: null }
@@ -230,6 +248,7 @@ export function issueOperations({ client, config, getContext }) {
       ...(context.project ? [addItemStep(id, node.id, item, context)] : []),
       ...plan.fields.map((write) => fieldStep(write, id, node.id, item, context)),
       ...plan.move.map((op) => moveStep(op, id, node.id, item, context)),
+      ...(epic ? [{ done: `added ${id} to epic ${epic.id}`, doing: `adding it to epic ${epic.id}`, run: () => send(context, 'ADD_PROJECT_ITEM', { projectId: epic.projectId, contentId: node.id }) }] : []),
     ]
     await runSteps(id, steps, { created: true })
     return { before: null, after: await afterOf(id) }
@@ -270,7 +289,7 @@ export function issueOperations({ client, config, getContext }) {
   async function updateIssue(id, patch, actor, { dryRun = false, base } = {}) {
     await writable(id, actor)
     const { node, issue: before } = await readNode(id)
-    const { value: plan, context } = await withRefresh((current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current }))
+    const { value: plan, context } = await withRefresh(async (current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current, milestones: needed(patch?.milestone) ? await milestonesOf(current) : [], now: now().toISOString() }))
     const branch = await planBranch(plan.branch, before, base, context)
     const notes = branch?.note ? [branch.note] : []
     const linked = branch ? { linked: { branch: branch.name, base: branch.start } } : {}
@@ -362,5 +381,5 @@ export function issueOperations({ client, config, getContext }) {
     return result
   }
 
-  return { getIssue, searchIssues, readNode, requireActor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue }
+  return { getIssue, searchIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, runSteps }
 }

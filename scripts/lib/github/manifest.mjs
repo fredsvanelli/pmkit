@@ -3,7 +3,8 @@
 
 import { CAPABILITIES } from '../capabilities.mjs'
 import { estimateOf } from './discovery.mjs'
-import { fieldOf, labelOf, parseLabelValue } from './mappings.mjs'
+import { CAPACITY_FILE } from '../linear/capacity-store.mjs'
+import { fieldOf, iterationFieldOf, labelOf, parseLabelValue } from './mappings.mjs'
 
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const unservedHint = (id) => `The GitHub adapter does not serve ${id} yet (EPC-8)`
@@ -32,6 +33,7 @@ export function buildGithubCapabilities(raw, pmkit = {}) {
     time_tracking: { path: 'absent', enableHint: 'GitHub has no time tracking' },
   }
   if (raw.project === null) Object.assign(answers, withoutProject(raw, pmkit))
+  else Object.assign(answers, withProject(raw, pmkit))
   return CAPABILITIES.map((id) => ({ id, ...(answers[id] ?? { path: 'absent', enableHint: unservedHint(id) }) }))
 }
 
@@ -45,5 +47,23 @@ function withoutProject(raw, pmkit) {
   return {
     ...Object.fromEntries(PROJECT_ONLY.map((id) => [id, { path: 'absent', enableHint: NEEDS_PROJECT }])),
     native_triage: triage && labelOf(raw, triage) ? { path: 'derived', detail: { source: 'label' } } : { path: 'absent', enableHint: 'Map a triage label with /pmkit:setup' },
+  }
+}
+
+/**
+ * The four Project-only entries of a repository with a Project. Cycles are the mapped iteration field: open is true where
+ * GitHub gives iterations an id (github.com, GHE.com), close is false because an iteration ends on its end date.
+ * Capacity is the local file of the cycles. Epics are linked Projects, so deliverables and status updates are native.
+ */
+function withProject(raw, pmkit) {
+  const field = iterationFieldOf(raw, pmkit)
+  const cycles = field
+    ? { path: 'native', detail: { field: field.name, open: raw.features?.iterationIds === true, close: false, schedule: 'project', history: false } }
+    : { path: 'absent', enableHint: 'Map an iteration field of the Project with /pmkit:setup' }
+  return {
+    cycles,
+    capacity: field ? { path: 'derived', detail: { source: 'local', file: CAPACITY_FILE } } : { path: 'absent', enableHint: 'Capacity needs cycles' },
+    deliverables: { path: 'native', detail: { entity: 'project', derived: ['deliverableProgress'], milestones: 'repository' } },
+    status_update: { path: 'native', detail: { entity: 'project status update' } },
   }
 }

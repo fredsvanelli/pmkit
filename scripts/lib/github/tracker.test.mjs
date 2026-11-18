@@ -65,14 +65,14 @@ test('capabilities builds the manifest from the discovery and the mappings', asy
   assert.equal(manifest.tracker, 'github')
   assert.equal(manifest.gitHost, 'github')
   assert.deepEqual(manifest.capabilities.map((entry) => entry.id), CAPABILITIES)
-  assert.deepEqual(manifest.capabilities.filter((entry) => entry.path !== 'absent').map((entry) => entry.id), ['estimation', 'multilevel_hierarchy', 'dependencies', 'native_metrics', 'linked_code'])
+  assert.deepEqual(manifest.capabilities.filter((entry) => entry.path !== 'absent').map((entry) => entry.id), ['estimation', 'multilevel_hierarchy', 'dependencies', 'deliverables', 'status_update', 'native_metrics', 'linked_code'])
   assert.deepEqual(manifest.capabilities.find((entry) => entry.id === 'estimation').detail, { unit: 'points', scale: [] })
   assert.deepEqual(manifest.repo, 'acme/widgets')
 })
 
 test('a stub answers NOT_SUPPORTED once the mapping check passes', async () => {
   const { tracker, calls } = await trackerOf()
-  await assert.rejects(tracker.listCycles(), (error) => error.code === 'NOT_SUPPORTED' && error.message === 'the GitHub adapter does not implement listCycles yet')
+  await assert.rejects(tracker.listReleases(), (error) => error.code === 'NOT_SUPPORTED' && error.message === 'the GitHub adapter does not implement listReleases yet')
   assert.ok(calls.length > 0)
   assert.ok(calls.every((call) => !String(call.input).includes('mutation')))
 })
@@ -237,4 +237,64 @@ test('capabilities without a Project warns about the capabilities a Project give
   assert.ok(manifest.warnings.includes('tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent'))
   const withProject = await (await trackerOf()).tracker.capabilities()
   assert.ok(!withProject.warnings.some((warning) => warning.includes('tracker.scope.project is none')))
+})
+
+const withEpics = (fakeOptions = {}) => fakeGithubIssues({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12, title: 'Epic twelve', linked: true }, { id: 'PVT_E9', owner: 'acme', number: 9, title: 'Epic nine', linked: true }], ...fakeOptions })
+
+test('getIssue reads the epic Project of an issue as its parent, and the linked Projects once per run', async () => {
+  const fake = withEpics()
+  fake.seed({ number: 1, epics: ['acme/12', 'acme/9'] })
+  fake.seed({ number: 2 })
+  const tracker = githubTracker(issuesContext(), fake)
+  assert.equal((await tracker.getIssue('1')).parent, 'acme/9')
+  assert.equal('parent' in (await tracker.getIssue('2')), false)
+  assert.equal(readsOf(fake, 'PmkitLinkedProjects'), 1)
+})
+
+test('getIssue does not read the linked Projects without a scope Project', async () => {
+  const fake = withEpics()
+  fake.seed({ number: 1 })
+  const tracker = createGithubTracker({ root: issuesContext().root, pmkit: pmkit({ ...SCOPE, project: 'none' }, {}) }, { env: issuesContext().env, exec: fake.exec })
+  assert.equal('parent' in (await tracker.getIssue('1')), false)
+  assert.equal(readsOf(fake, 'PmkitLinkedProjects'), 0)
+})
+
+test('a failed read of the linked Projects fails getIssue and the next call retries it', async () => {
+  const fake = withEpics()
+  fake.seed({ number: 1, epics: ['acme/12'] })
+  const tracker = githubTracker(issuesContext(), fake)
+  await tracker.discover()
+  const before = readsOf(fake, 'PmkitLinkedProjects')
+  fake.failNext('PmkitLinkedProjects')
+  await assert.rejects(tracker.getIssue('1'), { code: 'UPSTREAM' })
+  assert.equal((await tracker.getIssue('1')).parent, 'acme/12')
+  assert.equal(readsOf(fake, 'PmkitLinkedProjects'), before + 2)
+})
+
+const WIRED = [
+  'listCycles', 'currentCycle', 'cycleIssues', 'openCycle', 'closeCycle', 'moveToCycle', 'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
+  'listDeliverables', 'getDeliverable', 'deliverableProgress', 'createDeliverable', 'publishStatusUpdate', 'listStatusUpdates',
+  'listMilestones', 'getMilestone', 'createMilestone',
+]
+
+test('the cycle, epic and milestone operations are not stubs, and each runs through the mapping check', async () => {
+  const fake = fakeGithubIssues({ project: { statusOptions: ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done'] } })
+  const working = githubTracker(issuesContext(), fake)
+  for (const operation of WIRED) {
+    await working[operation]('x', {}, 'octocat').catch((error) => assert.doesNotMatch(error.message, /does not implement/, operation))
+  }
+  const broken = githubTracker(issuesContext(), fake, { status: { ...STATUS, done: 'Gone' } })
+  for (const operation of WIRED) {
+    await assert.rejects(broken[operation]('x', {}, 'octocat'), { code: 'NOT_CONFIGURED' }, operation)
+  }
+})
+
+test('capabilities shows the epic paging warning once the epics were read', async () => {
+  const many = Array.from({ length: 205 }, (_, at) => ({ id: `PVT_M${at}`, owner: 'acme', number: 100 + at }))
+  const fake = fakeGithubIssues({ project: { statusOptions: ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done'] }, epics: many })
+  const tracker = githubTracker(issuesContext(), fake)
+  const paging = (warnings) => warnings.filter((line) => line === 'acme/widgets has more than 200 linked Projects, so pmkit read the first 200 as epics')
+  assert.deepEqual(paging((await tracker.capabilities()).warnings), [])
+  assert.equal((await tracker.listDeliverables()).length, 199)
+  assert.equal(paging((await tracker.capabilities()).warnings).length, 1)
 })

@@ -63,12 +63,38 @@ test('planWrite refuses a missing title, an unknown key, an owned key and a line
   assert.throws(create({ title: 'A', status: 'Nope' }), { code: 'INVALID_INPUT' })
 })
 
-test('planWrite refuses sprint, milestone and release values, and passes null', async () => {
+test('planWrite refuses release values, and passes null', async () => {
   const { context } = await contextOf()
-  for (const key of ['sprint', 'milestone', 'release']) {
-    assert.throws(() => planWrite({ title: 'A', [key]: 'x' }, { mode: 'create', before: null, context }), { code: 'NOT_SUPPORTED' })
-    assert.doesNotThrow(() => planWrite({ title: 'A', [key]: null }, { mode: 'create', before: null, context }))
-  }
+  assert.throws(() => planWrite({ title: 'A', release: 'x' }, { mode: 'create', before: null, context }), { code: 'NOT_SUPPORTED' })
+  assert.doesNotThrow(() => planWrite({ title: 'A', release: null }, { mode: 'create', before: null, context }))
+})
+
+const MILESTONES = [{ id: 'MI_1', number: 1, title: 'v1.0' }, { id: 'MI_2', number: 2, title: 'v2.0' }]
+
+test('planWrite sets milestoneId from the title, and shows the milestone in the after', async () => {
+  const { context } = await contextOf()
+  const plan = planWrite({ title: 'A', milestone: 'v1.0' }, { mode: 'create', before: null, context, milestones: MILESTONES })
+  assert.equal(plan.input.milestoneId, 'MI_1')
+  assert.equal(plan.after.milestone, 'v1.0')
+})
+
+test('planWrite on update sends milestoneId only when the milestone changes, and null clears it', async () => {
+  const { fake, context } = await contextOf({ milestones: [{ title: 'v1.0' }, { title: 'v2.0' }] })
+  fake.seed({ title: 'Has one', milestone: 'v1.0' })
+  const before = nodeOf(fake, context, 1)
+  const update = (patch) => planWrite(patch, { mode: 'update', before, context, milestones: MILESTONES })
+  assert.deepEqual(update({ milestone: 'v1.0' }).input, {})
+  assert.deepEqual(update({ milestone: 'v2.0' }).input, { milestoneId: 'MI_2' })
+  const cleared = update({ milestone: null })
+  assert.deepEqual(cleared.input, { milestoneId: null })
+  assert.equal(cleared.after.milestone, undefined)
+})
+
+test('planWrite refuses an unknown milestone title with the create step, and a create with null sends no milestoneId', async () => {
+  const { context } = await contextOf()
+  assert.throws(() => planWrite({ title: 'A', milestone: 'v9' }, { mode: 'create', before: null, context, milestones: MILESTONES }),
+    (error) => error.code === 'INVALID_INPUT' && error.message === 'milestone v9 does not exist' && error.nextStep === 'pmkit milestone create v9')
+  assert.equal('milestoneId' in planWrite({ title: 'A', milestone: null }, { mode: 'create', before: null, context, milestones: MILESTONES }).input, false)
 })
 
 test('planWrite refuses a field role mapped none with NOT_SUPPORTED and /pmkit:setup', async () => {
@@ -252,4 +278,46 @@ test('a labels patch keeps the status and type labels and refuses them', async (
   assert.deepEqual(labelIdsNamed(context, planWrite({ labels: null }, { mode: 'update', before, context }).input.labelIds).sort(), ['Doing', 'bug'])
   assert.throws(() => planWrite({ labels: ['doing'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label doing holds a status; use pmkit issues move' })
   assert.throws(() => planWrite({ labels: ['bug'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label bug holds a type; use --type' })
+})
+
+const ITERATIONS = [
+  { id: 'IT_1', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 },
+  { id: 'IT_2', title: 'Sprint 2', startDate: '2026-11-30', duration: 14 },
+]
+const SPRINT_PMKIT = { ...PMKIT, mappings: { ...PMKIT.mappings, fields: { ...PMKIT.mappings.fields, sprint: 'project:Sprint' } } }
+const sprintContext = () => contextOf({ pmkit: SPRINT_PMKIT, project: { fields: PROJECT_FIELDS, iterations: { iterations: ITERATIONS } } })
+const NOW = '2026-11-17T09:00:00.000Z'
+
+test('planWrite writes the iteration of a start date on create and shows it', async () => {
+  const { context } = await sprintContext()
+  const plan = planWrite({ title: 'A', sprint: '2026-11-16' }, { mode: 'create', before: null, context })
+  assert.deepEqual(plan.fields.map((item) => [item.role, item.value, item.write]), [['sprint', '2026-11-16', { iterationId: 'IT_1' }]])
+  assert.equal(plan.after.sprint, '2026-11-16')
+})
+
+test('planWrite resolves current to the active iteration by the clock it gets', async () => {
+  const { context } = await sprintContext()
+  const plan = planWrite({ title: 'A', sprint: 'current' }, { mode: 'create', before: null, context, now: NOW })
+  assert.deepEqual(plan.fields[0].write, { iterationId: 'IT_1' })
+  assert.equal(plan.after.sprint, '2026-11-16')
+  assert.throws(() => planWrite({ title: 'A', sprint: 'current' }, { mode: 'create', before: null, context, now: '2026-10-01T00:00:00.000Z' }), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+})
+
+test('planWrite marks an unknown start date as stale and rejects a value that is not a date', async () => {
+  const { context } = await sprintContext()
+  assert.throws(() => planWrite({ title: 'A', sprint: '2027-01-04' }, { mode: 'create', before: null, context }), (error) =>
+    error.code === 'INVALID_INPUT' && error.details?.stale === true && error.message === 'sprint 2027-01-04 is not an iteration of the field Sprint')
+  assert.throws(() => planWrite({ title: 'A', sprint: 'soon' }, { mode: 'create', before: null, context }), { code: 'INVALID_INPUT', message: 'sprint must be current or a start date as YYYY-MM-DD' })
+})
+
+test('planWrite clears the sprint of an item with null and keeps an unchanged one', async () => {
+  const { fake, context } = await sprintContext()
+  fake.seed({ item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+  const before = nodeOf(fake, context, 1)
+  const cleared = planWrite({ sprint: null }, { mode: 'update', before, context })
+  assert.deepEqual(cleared.fields.map((item) => [item.role, item.write]), [['sprint', null]])
+  assert.equal('sprint' in cleared.after, false)
+  assert.deepEqual(planWrite({ sprint: '2026-11-16' }, { mode: 'update', before, context }).fields, [])
+  assert.deepEqual(planWrite({ sprint: 'current' }, { mode: 'update', before, context, now: NOW }).fields, [])
+  assert.equal(planWrite({ sprint: '2026-11-30' }, { mode: 'update', before, context }).after.sprint, '2026-11-30')
 })
