@@ -355,3 +355,56 @@ test('a path or an ID from data or the user reaches the shell between single quo
   assert.match(stage('Stage 0'), /[Ll]ater calls use the `id` that `epic get` returned/)
   assert.match(stage('Stage 2'), /new name[^.]*same rule as the slug/)
 })
+
+// PMK-347: Stage 4 drafts the description of a new epic.
+
+test('Stage 4 drafts the epic description in the template', () => {
+  const step = stage('Stage 4')
+  for (const heading of ['### Purpose', '### Scope (in)', '### Out of scope', '### Documents']) {
+    assert.ok(step.includes(heading), `Stage 4 lacks ${heading}`)
+  }
+})
+
+test('the epic description cites the stored refined PRD and the ADRs', () => {
+  const step = stage('Stage 4')
+  assert.match(step, /stored path of Stage 3b/)
+  assert.ok(step.includes('.issues/docs/specs/<slug>-prd.md'), 'Stage 4 lacks the tracker document path from the repository root')
+  assert.match(step, /every ADR of Stage 3 and of the Resume step/)
+  assert.match(step, /[Aa] declined ADR is not listed/)
+})
+
+test('the epic approval shows the full description', () => {
+  assert.match(stage('Stage 4'), /full description[^.]*whatever `write_policy\.confirm` says/)
+})
+
+test('Stage 4 skips the spec sub-step of import step 7', () => {
+  const step = stage('Stage 4')
+  assert.match(step, /7\.2/)
+  assert.match(step, /7\.3/)
+  assert.match(step, /skips? (sub-step |step )?7\.1/)
+  assert.doesNotMatch(step, /steps 6 and 7 of/)
+})
+
+test('Stage 5 cites the new milestone sub-step', () => {
+  const step = stage('Stage 5')
+  assert.match(step, /step 7\.3/)
+  assert.doesNotMatch(step, /step 7\.2/)
+})
+
+test('a failed readme stops at import step 7.2 and continues with the epic ID', () => {
+  const step = stage('Stage 4')
+  assert.match(step, /`UPSTREAM`[^.]*step 7\.2/)
+  assert.ok(step.includes('/pmkit:spec:from-prd specs/<slug>-prd.md <epic-id>'), 'Stage 4 lacks the continue command with the epic ID')
+  assert.match(step, /drafts no new description/)
+})
+
+test('an existing epic gets no description', () => {
+  const step = stage('Stage 4')
+  assert.match(step, /With an `epic-id`, or an epic matched on a resume,[^.]*no description/)
+})
+
+test('the confirmation point and the output name the description', () => {
+  const points = section('Confirmation points').split('\n')
+  assert.match(points.find((line) => line.startsWith('- Stage 4:')) ?? '', /full description/)
+  assert.match(section('Output'), /description/)
+})

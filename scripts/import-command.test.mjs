@@ -94,3 +94,12 @@ test('the step 10 confirmation point is gone and step 5 covers the spec', () => 
   assert.doesNotMatch(points, /Step 10/)
   assert.match(points, /- Step 5:[^\n]*spec/)
 })
+
+test('a GitHub readme that fails after the create stops with the epic ID and the drafted description', () => {
+  const block = step(7)
+  assert.match(block, /`UPSTREAM`/)
+  assert.match(block, /new epic ID/)
+  assert.match(block, /has no description/)
+  assert.match(block, /show the drafted description[^.]*readme by hand/)
+  assert.match(block, /`epic update`[^.]*PMK-348/)
+})
