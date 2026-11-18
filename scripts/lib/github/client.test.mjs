@@ -196,6 +196,33 @@ test("a fine-grained PAT's not accessible error is AUTH with the token step", as
   assert.equal(error.nextStep, 'Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project -h github.acme.com')
 })
 
+test('a PAT refusal names the permissions the caller gives, with no gh auth refresh', async () => {
+  const body = { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }
+  const step = 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login'
+  for (const host of [undefined, 'github.acme.com']) {
+    const { client } = setup([answer({ body })], { host })
+    const error = await failure(client.request(QUERY, {}, { permissions: 'Discussions' }))
+    assert.equal(error.code, 'AUTH')
+    assert.equal(error.message, 'GitHub refused the personal access token: Resource not accessible by personal access token')
+    assert.equal(error.nextStep, step)
+  }
+})
+
+test('options without permissions keep the Projects and Issues step', async () => {
+  const body = { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }
+  const { client } = setup([answer({ body })])
+  const error = await failure(client.request(QUERY, {}, {}))
+  assert.equal(error.nextStep, 'Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project')
+})
+
+test('request refuses permissions that are not a non-empty string before any call', async () => {
+  const { client, calls } = setup([answer()])
+  for (const permissions of ['', '  ', 7, null]) {
+    await assert.rejects(client.request(QUERY, {}, { permissions }), TypeError)
+  }
+  assert.equal(calls.length, 0)
+})
+
 test('a SAML refusal is AUTH with the single sign-on step', async () => {
   const body = { errors: [{ type: 'FORBIDDEN', message: 'Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.' }] }
   const { client } = setup([answer({ body })])
@@ -509,4 +536,105 @@ test('unreadable rate headers read as null, and a limit at 0 with no reset time 
   assert.deepEqual(client.rateLimit(), { limit: null, remaining: 0, used: null, resource: null, resetAt: null })
   await client.request(QUERY)
   assert.equal(calls.length, 2)
+})
+
+// The REST call
+
+const REST_PATH = 'repos/acme/widgets/milestones'
+const restAnswer = (status, body, exit) => answer({ status, body, exit: exit ?? (status < 300 ? 0 : 1) })
+
+test('rest POST runs gh api with the method, the path and the body on stdin, and returns the parsed body', async () => {
+  const { client, calls } = setup([restAnswer(201, { number: 3, title: 'v1' })], { host: 'github.acme.com' })
+  const data = await client.rest('POST', REST_PATH, { title: 'v1' })
+  assert.deepEqual(data, { number: 3, title: 'v1' })
+  assert.deepEqual(calls[0].args, ['api', '--hostname', 'github.acme.com', '--method', 'POST', REST_PATH, '--include', '--input', '-'])
+  assert.deepEqual(JSON.parse(calls[0].input), { title: 'v1' })
+})
+
+test('rest sends no --input when there is no body', async () => {
+  const { client, calls } = setup([restAnswer(200, { ok: true })])
+  await client.rest('GET', 'repos/acme/widgets')
+  assert.deepEqual(calls[0].args, ['api', '--method', 'GET', 'repos/acme/widgets', '--include'])
+  assert.equal(calls[0].input, undefined)
+})
+
+test('rest maps 401 to AUTH', async () => {
+  const { client } = setup([restAnswer(401, { message: 'Bad credentials' })])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.equal(error.code, 'AUTH')
+})
+
+test('rest maps a taken milestone title to CONFLICT', async () => {
+  const body = { message: 'Validation Failed', errors: [{ resource: 'Milestone', code: 'already_exists', field: 'title' }] }
+  const { client } = setup([restAnswer(422, body)])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.equal(error.code, 'CONFLICT')
+  assert.equal(error.message, 'GitHub already has a milestone titled v1')
+})
+
+test('rest maps other 4xx answers to UPSTREAM with the message of GitHub', async () => {
+  const { client } = setup([restAnswer(422, { message: 'Validation Failed', errors: [{ code: 'invalid', field: 'due_on' }] })])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1', due_on: 'x' }))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.match(error.message, /Validation Failed/)
+})
+
+test('rest write is never retried: a timeout or 5xx is the unconfirmed-mutation error', async () => {
+  const timeout = setup([spawnError('ETIMEDOUT')])
+  const first = await failure(timeout.client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.equal(first.code, 'UPSTREAM')
+  assert.match(first.message, /did not confirm the change/)
+  assert.equal(timeout.calls.length, 1)
+  const server = setup([restAnswer(502, { message: 'Bad Gateway' })])
+  const second = await failure(server.client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.match(second.message, /did not confirm the change/)
+  assert.equal(server.calls.length, 1)
+})
+
+test('rest write with an unreadable answer is unconfirmed', async () => {
+  const { client } = setup([restAnswer(200, 'not json', 0)])
+  const error = await failure(client.rest('POST', REST_PATH, { title: 'v1' }))
+  assert.match(error.message, /did not confirm the change/)
+})
+
+test('rest GET is retried like a query', async () => {
+  const { client, calls } = setup([spawnError('ETIMEDOUT'), restAnswer(200, { ok: 1 })])
+  assert.deepEqual(await client.rest('GET', 'repos/acme/widgets'), { ok: 1 })
+  assert.equal(calls.length, 2)
+})
+
+// Rate limits are kept per resource
+
+const limited = (resource) => ({ 'x-ratelimit-limit': 5000, 'x-ratelimit-remaining': 0, 'x-ratelimit-reset': Math.floor(Date.now() / 1000) + 3600, 'x-ratelimit-resource': resource })
+
+test('a REST answer at remaining 0 does not stop the next GraphQL call', async () => {
+  const rest = answer({ status: 200, body: { ok: 1 }, headers: limited('core') })
+  const { client, calls } = setup([rest, answer()])
+  await client.rest('GET', 'repos/acme/widgets')
+  assert.deepEqual(await client.request(QUERY), { ok: true })
+  assert.equal(calls.length, 2)
+  assert.equal(client.rateLimit(), null)
+})
+
+test('a REST answer at remaining 0 blocks the next REST call with no request', async () => {
+  const { client, calls } = setup([answer({ status: 200, body: { ok: 1 }, headers: limited('core') })])
+  await client.rest('GET', 'repos/acme/widgets')
+  const error = await failure(client.rest('GET', 'repos/acme/widgets'))
+  assert.equal(error.code, 'RATE_LIMITED')
+  assert.equal(calls.length, 1)
+})
+
+test('a GraphQL answer at remaining 0 does not stop a REST call, and rateLimit reports the GraphQL bucket', async () => {
+  const { client, calls } = setup([answer({ headers: limited('graphql') }), restAnswer(200, { ok: 1 })])
+  await client.request(QUERY)
+  assert.deepEqual(await client.rest('GET', 'repos/acme/widgets'), { ok: 1 })
+  assert.equal(calls.length, 2)
+  assert.equal(client.rateLimit().resource, 'graphql')
+})
+
+test('rest names a too-large answer by its own command', async () => {
+  const { client } = setup([spawnError('ENOBUFS')])
+  const error = await failure(client.rest('GET', 'repos/acme/widgets'))
+  assert.match(error.message, /^gh api output is too large/)
+  assert.doesNotMatch(error.nextStep, /nodes per page/)
 })

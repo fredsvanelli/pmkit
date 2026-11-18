@@ -1,0 +1,11 @@
+{"at":"2026-11-17T01:21:31Z","by":"fred","op":"create","to":{"id":"PMK-337","title":"Page through Project items past the first 20 in the GitHub adapter","type":"bug","status":"backlog","priority":"low","labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-11-17T01:21:31.037Z","updated":"2026-11-17T01:21:31Z"}}
+{"at":"2026-11-17T23:13:16Z","by":"fred","op":"update","field":"title","from":"Page through Project items past the first 20 in the GitHub adapter","to":"Page through Project items and linked Projects past the first 20"}
+{"at":"2026-11-17T23:13:16Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-17T23:13:16Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-18T00:59:54Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-18T00:59:54Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-18T00:59:54Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-337-page-through-project-items-and-linked"}
+{"at":"2026-11-18T01:33:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-18T01:33:33Z","by":"fred","op":"comment","to":"2026-11-18T01-33-33Z-fred.md"}
+{"at":"2026-11-18T01:33:33Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-18T20:50:01Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

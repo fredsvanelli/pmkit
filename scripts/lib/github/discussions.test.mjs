@@ -191,3 +191,24 @@ test('the GitHub tracker refuses the discussion calls before any read when the s
   }
   assert.equal(fake.reads.length, 0)
 })
+
+test('list, get and comment refused for a fine-grained PAT name the Discussions permission', async () => {
+  const refused = { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }
+  const expected = {
+    code: 'AUTH',
+    message: 'GitHub refused the personal access token: Resource not accessible by personal access token',
+    nextStep: 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login',
+  }
+  const calls = [
+    ['PmkitDiscussions', (ops) => ops.list()],
+    ['PmkitDiscussionCategories', (ops) => ops.list({ category: 'Ideas' })],
+    ['PmkitDiscussion', (ops) => ops.get('1')],
+    ['PmkitDiscussion', (ops) => ops.comment('1', 'Tracked in #4', { dryRun: true })],
+    ['PmkitAddDiscussionComment', (ops) => ops.comment('1', 'Tracked in #4')],
+  ]
+  for (const [operation, call] of calls) {
+    const { fake, ops } = seeded()
+    fake.failNext(operation, refused)
+    await assert.rejects(call(ops), expected, operation)
+  }
+})

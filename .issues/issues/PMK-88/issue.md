@@ -2,14 +2,16 @@
 id: PMK-88
 title: "Map iterations, milestones and project status updates"
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 5
+assignee: fred
 parent: EPC-8
 blocked_by: [PMK-87]
 milestone: github-issues
+branch: pmk-88-map-iterations-milestones-and-project
 created: 2026-10-25T19:13:23Z
-updated: 2026-10-25T19:13:27Z
+updated: 2026-11-18T00:51:26Z
 ---
 
 ## Description
@@ -18,5 +20,5 @@ Source: Unified model, Capabilities (`cycles`: Conditional, iteration field; `de
 
 ## Acceptance criteria
 
-- [ ] The iteration field maps to sprints when the project has one
-- [ ] Projects or milestones map to epics, with status updates
+- [x] The iteration field maps to sprints when the project has one
+- [x] Projects or milestones map to epics, with status updates

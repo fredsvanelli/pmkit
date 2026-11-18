@@ -77,5 +77,5 @@ test('two view files whose names differ only in case are a view problem on the l
   writeView(root, 'mine.yaml', 'filter:\n  blocked: true\n')
   const result = validateRepo(root)
   assert.deepEqual(brief(result), ['view .issues/views/mine.yaml'])
-  assert.equal(result.problems[0].message, 'view name "mine" differs from "Mine" only in case')
+  assert.equal(result.problems.find((p) => p.path === '.issues/views/mine.yaml').message, 'view name "mine" differs from "Mine" only in case')
 })

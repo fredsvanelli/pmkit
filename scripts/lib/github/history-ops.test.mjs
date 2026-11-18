@@ -161,6 +161,19 @@ test('metricEvents over 25 issues sends one issue read and two timeline reads an
   assert.equal(events.warnings, undefined)
 })
 
+test('metricEvents names the Status of a reopened issue whose configured item comes after 20 others', async () => {
+  const { fake, history, clear } = await setup()
+  fake.seed({ title: 'Popular', item: { status: 'In Review' } })
+  fake.state.items.unshift(...Array.from({ length: 20 }, (_, index) => ({ id: `PVTI_X${index}`, projectId: `PVT_X${index}`, issueId: 'I_1', isArchived: false, values: {} })))
+  fake.handle('PmkitCloseIssue', { input: { issueId: 'I_1', stateReason: 'COMPLETED' } })
+  fake.handle('PmkitReopenIssue', { input: { issueId: 'I_1' } })
+  clear()
+  const events = await history.metricEvents()
+  const reopened = events.filter((event) => event.op === 'move' && event.from === null && event.to !== 'Closed')
+  assert.deepEqual(reopened.map((event) => event.to), ['In Review'])
+  assert.ok(names(fake.reads).includes('PmkitIssueMore_projectItems'))
+})
+
 test('metricEvents filters by since and until and reads the issues updated since since', async () => {
   const { fake, ops, history, clear } = await setup()
   const a = (await ops.createIssue({ title: 'A' }, ME)).after.id

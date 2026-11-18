@@ -52,6 +52,7 @@ import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
+import { convertText as draftConvertText, listText as draftListText } from './lib/github/draft-issues.mjs'
 import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
@@ -908,7 +909,7 @@ async function flowInputs(ctx, tracker, statuses) {
 // A command reaches the tracker through ctx.tracker(), which holds only the contract operations. `local: true` marks the commands
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
 // `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear(feature).
-// `github: true` does the same for GitHub-only features (discussions): they use ctx.github(feature).
+// `github: true` does the same for GitHub-only features (discussions, draft issues): they use ctx.github(feature).
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear or github writes only .pmkit/config.yaml and returns what setup must ask',
@@ -1172,7 +1173,13 @@ export const COMMANDS = [
   },
   {
     name: 'issues parent', summary: 'sets the parent', usage: '<id> <parent|none>', write: true, args: ['id', 'parent'], flags: [],
-    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).setParent(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
+    run: async (ctx) => {
+      const none = ctx.args[1] === 'none'
+      const result = issueWrite(ctx, await (await ctx.tracker()).setParent(ctx.args[0], none ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun }))
+      // GitHub removes the parent issue first, and an epic item then still reads as the parent.
+      const left = result.data.after.parent
+      return none && left !== undefined ? { ...result, notes: [`${result.data.after.id} still belongs to epic ${left}; run pmkit issues parent ${result.data.after.id} none again to remove it`] } : result
+    },
   },
   {
     name: 'issues bulk', summary: 'applies one change to every issue a filter or a saved view returns; --dry-run is the full preview and prints a digest, the real run needs it as --expect', write: true, args: ['change', 'value?'],
@@ -1308,7 +1315,8 @@ export const COMMANDS = [
     run: async (ctx) => {
       const sprints = await (await ctx.tracker()).listCycles({ state: ctx.opt('state') })
       const text = sprints.length === 0 ? 'no sprints' : table(['ID', 'State', 'Start', 'End', 'Name'], sprints.map((s) => [s.id, s.state, s.start, s.end, s.name]))
-      return { data: sprints, text }
+      // GitHub hangs the warnings of two iterations on one start date on the list, outside its JSON.
+      return { data: sprints, text, warnings: Array.isArray(sprints.warnings) ? sprints.warnings : [] }
     },
   },
   {
@@ -1417,12 +1425,13 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'epic create', summary: 'creates an epic', usage: '(--title t | --title-file f) [--start d] [--target d] [--goal id]', write: true, flags: ['title', 'title-file', 'start', 'target', 'goal'],
+    name: 'epic create', summary: 'creates an epic', usage: '(--title t | --title-file f) [--start d] [--target d] [--goal id] [--description-file f]', write: true, flags: ['title', 'title-file', 'start', 'target', 'goal', 'description-file'],
     run: async (ctx) => {
       const title = lineFromFlag(ctx.opt, 'title')
       if (title === undefined) throw usageError('epic create needs --title or --title-file', 'pmkit epic create --title-file title.txt')
       const input = { title }
       for (const key of ['start', 'target', 'goal']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      if (ctx.opt('description-file') !== undefined) input.description = readInput(ctx.opt('description-file'))
       const result = await (await ctx.tracker()).createDeliverable(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
     },
@@ -1848,7 +1857,7 @@ export const COMMANDS = [
       const updates = await (await ctx.tracker()).listStatusUpdates(ctx.args[0])
       const text = updates.length === 0
         ? 'no status updates'
-        : updates.map((u) => [`${u.at}  ${u.health}  ${u.author}`, u.body].join('\n')).join('\n\n')
+        : updates.map((u) => [`${u.at}  ${u.health ?? '-'}  ${u.author}`, u.body].join('\n')).join('\n\n')
       return { data: updates, text }
     },
   },
@@ -2581,6 +2590,23 @@ export const COMMANDS = [
       if (ctx.opt('body-file') === undefined) throw usageError('github discussions comment needs --body-file', 'Pass a file, or - for stdin')
       const result = await (await ctx.github('discussions')).comment(ctx.args[0], readInput(ctx.opt('body-file')), { dryRun: ctx.dryRun })
       return { data: result, text: discussionCommentText(result, ctx.dryRun) }
+    },
+  },
+  // GitHub draft issues (PMK-91): list the drafts of a Project and convert the chosen ones, for /pmkit:github:draft-issues.
+  {
+    name: 'github draft-issues list', summary: 'the unarchived draft issues of the Project, in board order, with their field values; says so when no Project is set',
+    usage: '[--project owner/number] [--limit n]', github: true, flags: ['project', 'limit'],
+    run: async (ctx) => {
+      const result = await (await ctx.github('draftIssues')).list({ project: ctx.opt('project'), limit: ctx.opt('limit') })
+      return { data: result, text: draftListText(result), warnings: result.warnings }
+    },
+  },
+  {
+    name: 'github draft-issues convert', summary: 'converts draft issues into issues of the repository, keeping their Project item; --dry-run previews every draft',
+    usage: '<item...> [--project owner/number] [--repo owner/name]', write: true, dryRun: true, github: true, rest: 'item', flags: ['project', 'repo'],
+    run: async (ctx) => {
+      const result = await (await ctx.github('draftIssues')).convert(ctx.args, { project: ctx.opt('project'), repo: ctx.opt('repo'), dryRun: ctx.dryRun })
+      return { data: result, text: draftConvertText(result, ctx.dryRun), warnings: result.warnings }
     },
   },
   {

@@ -141,9 +141,11 @@ export function discussionOperations({ client, scope }) {
   const [owner, name] = scope.repo.split('/')
   const where = { owner, name }
   const off = (extra) => ({ available: false, reason: 'disabled', enableHint: ENABLE_HINT, repo: scope.repo, ...extra })
+  // A fine-grained PAT needs the Discussions permission for these calls, so a PAT refusal names it (PMK-341).
+  const request = (document, variables) => client.request(document, variables, { permissions: 'Discussions' })
 
   async function categoryId(category) {
-    const { repository } = await client.request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
+    const { repository } = await request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
     if (!repository.hasDiscussionsEnabled) return { enabled: false }
     const categories = repository.discussionCategories.nodes
     const found = categories.find((candidate) => candidate.name.toLowerCase() === category.toLowerCase())
@@ -160,7 +162,7 @@ export function discussionOperations({ client, scope }) {
       if (!found.enabled) return off({ discussions: [], hasMore: false })
       variables.categoryId = found.id
     }
-    const { repository } = await client.request(DISCUSSION_DOCUMENTS.LIST, variables)
+    const { repository } = await request(DISCUSSION_DOCUMENTS.LIST, variables)
     if (!repository.hasDiscussionsEnabled) return off({ discussions: [], hasMore: false })
     return { available: true, repo: scope.repo, discussions: repository.discussions.nodes.map(summaryView), hasMore: repository.discussions.pageInfo.hasNextPage }
   }
@@ -171,14 +173,14 @@ export function discussionOperations({ client, scope }) {
    */
   async function read(number, size = { comments: READ_COMMENTS, replies: READ_REPLIES }) {
     try {
-      const data = await client.request(DISCUSSION_DOCUMENTS.GET, { ...where, number, ...size })
+      const data = await request(DISCUSSION_DOCUMENTS.GET, { ...where, number, ...size })
       if (!data.repository.hasDiscussionsEnabled) return { enabled: false }
       if (data.repository.discussion) return { enabled: true, viewer: data.viewer?.login ?? null, node: data.repository.discussion }
     } catch (error) {
       if (error?.code !== 'NOT_FOUND') throw error
     }
     // GitHub hides the discussions of a repository with Discussions off, so a miss asks which case it is.
-    const { repository } = await client.request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
+    const { repository } = await request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
     if (!repository.hasDiscussionsEnabled) return { enabled: false }
     throw new PmkitError('NOT_FOUND', `GitHub has no discussion #${number} in ${scope.repo}`, 'pmkit github discussions list')
   }
@@ -198,7 +200,7 @@ export function discussionOperations({ client, scope }) {
     if (!found.enabled) throw new PmkitError('NOT_SUPPORTED', `${scope.repo} has Discussions turned off`, ENABLE_HINT)
     const result = { discussion: number, title: found.node.title, url: null, body: text, author: found.viewer }
     if (dryRun) return result
-    const data = await client.request(DISCUSSION_DOCUMENTS.COMMENT, { input: { discussionId: found.node.id, body: text } })
+    const data = await request(DISCUSSION_DOCUMENTS.COMMENT, { input: { discussionId: found.node.id, body: text } })
     return { ...result, url: data.addDiscussionComment.comment.url }
   }
 

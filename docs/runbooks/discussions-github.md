@@ -1,6 +1,6 @@
 # Runbook: discussions on GitHub Issues
 
-The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub Issues: list the discussions, read one, create an issue from it, and comment back on the discussion. Then a missing discussion and a repository with Discussions turned off. `scripts/runbook-discussions-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
+The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub Issues: list the discussions, read one, create an issue from it, and comment back on the discussion. Then a missing discussion, a repository with Discussions turned off, and a fine-grained PAT without the Discussions permission. `scripts/runbook-discussions-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
 
 ## Before you start
 
@@ -87,6 +87,14 @@ The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub 
    ```
 
    The list answers `available: false`, `reason: "disabled"` and `enableHint: "Turn on Discussions in the repository settings on GitHub"`. The comment exits with code 2 and `NOT_SUPPORTED`, `acme/widgets has Discussions turned off`.
+
+9. Turn Discussions back on, and give `gh` a fine-grained PAT through `GH_TOKEN` that lacks the Discussions permission. Read discussion 1:
+
+   ```
+   node scripts/pmkit.mjs github discussions get 1 --json
+   ```
+
+   The command exits with code 2 and `AUTH`, `GitHub refused the personal access token: Resource not accessible by personal access token`, with the next step `Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login`. The other GitHub calls keep the step that names Projects and Issues.
 
 ## What the fake `gh` checks
 

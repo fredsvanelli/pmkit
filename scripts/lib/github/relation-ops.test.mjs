@@ -6,6 +6,7 @@ import { createGithubClient } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
+import { epicProjects } from './project-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
 
 const PMKIT = {
@@ -14,11 +15,11 @@ const PMKIT = {
 }
 const ME = 'octocat'
 
-async function setup({ host = 'github.com', ghesVersion = null } = {}) {
-  const fake = fakeGithubIssues({ host, ghesVersion })
+async function setup({ host = 'github.com', ghesVersion = null, epics = [] } = {}) {
+  const fake = fakeGithubIssues({ host, ghesVersion, epics })
   const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
   const raw = await fetchDiscovery(client, { host, repo: 'acme/widgets', project: 'acme/7', exec: fake.exec, users: true })
-  const context = makeContext(raw, PMKIT)
+  const context = makeContext(raw, PMKIT, { epics: await epicProjects(client, PMKIT.tracker.scope) })
   const getContext = async () => context
   const ops = issueOperations({ client, config: { pmkit: PMKIT }, getContext })
   const relations = relationOperations({ client, ops, getContext })
@@ -175,4 +176,146 @@ test('setParent rejects itself, a loop and a missing parent', async () => {
   await assert.rejects(relations.setParent('1', '3', ME), { code: 'INVALID_INPUT', message: 'parent loop: 1 → 3 → 2 → 1' })
   await assert.rejects(relations.setParent('1', '99', ME), { code: 'INVALID_INPUT', message: 'parent 99 is not an existing issue' })
   assert.deepEqual(fake.mutations, [])
+})
+
+// The parent rule: an epic is a linked Project, and an issue is in it through its item.
+const EPICS = [
+  { id: 'PVT_E12', owner: 'acme', number: 12, title: 'Epic twelve', linked: true },
+  { id: 'PVT_E9', owner: 'acme', number: 9, title: 'Epic nine', linked: true },
+  { id: 'PVT_E30', owner: 'acme', number: 30, title: 'Not linked', linked: false },
+]
+const epicSetup = () => setup({ epics: EPICS })
+const calls = (fake) => fake.mutations.map((call) => [call.name, call.input])
+
+test('setParent to an epic adds the item to the epic Project, and the issue reads it as its parent', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1 })
+  clear()
+  const dry = await relations.setParent('1', 'acme/12', ME, { dryRun: true })
+  assert.deepEqual(fake.mutations, [])
+  assert.equal(dry.after.parent, 'acme/12')
+  const result = await relations.setParent('1', 'ACME/12', ME)
+  assert.deepEqual(calls(fake), [['PmkitAddProjectItem', { projectId: 'PVT_E12', contentId: 'I_1' }]])
+  assert.equal(result.before.parent, undefined)
+  assert.equal(result.after.parent, 'acme/12')
+  const again = await relations.setParent('1', 'acme/12', ME)
+  assert.equal(fake.mutations.length, 1)
+  assert.deepEqual(again.after, again.before)
+})
+
+test('setParent to an epic removes the sub-issue link first, and the issue then reads the epic (a sub-issue in an epic reads its parent issue)', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1 })
+  fake.seed({ number: 2, parent: 1, epics: ['acme/12'] })
+  clear()
+  const before = await relations.setParent('2', '1', ME)
+  assert.equal(before.after.parent, '1')
+  assert.equal(fake.mutations.length, 0)
+  const result = await relations.setParent('2', 'acme/12', ME)
+  assert.equal(result.before.parent, '1')
+  assert.deepEqual(calls(fake), [['PmkitRemoveSubIssue', { issueId: 'I_1', subIssueId: 'I_2' }]])
+  assert.equal(result.after.parent, 'acme/12')
+})
+
+test('setParent to an epic deletes the items in the other epics and never the scope Project item', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/9'], item: { status: 'Todo' } })
+  clear()
+  const result = await relations.setParent('1', 'acme/12', ME)
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitAddProjectItem', 'PmkitDeleteProjectItem'])
+  assert.equal(fake.mutations[1].input.projectId, 'PVT_E9')
+  assert.equal(result.after.parent, 'acme/12')
+  assert.equal(result.after.status.name, 'Todo')
+})
+
+test('setParent to an epic keeps a one-epic issue with no change, and drops a second epic', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/12'] })
+  fake.seed({ number: 2, epics: ['acme/9', 'acme/12'] })
+  clear()
+  const same = await relations.setParent('1', 'acme/12', ME)
+  assert.deepEqual(fake.mutations, [])
+  assert.deepEqual(same.after, same.before)
+  const result = await relations.setParent('2', 'acme/12', ME)
+  assert.deepEqual(calls(fake).map(([name]) => name), ['PmkitDeleteProjectItem'])
+  assert.equal(fake.mutations[0].input.projectId, 'PVT_E9')
+  assert.equal(result.after.parent, 'acme/12')
+})
+
+test('setParent to an unknown epic is INVALID_INPUT and sends nothing', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1 })
+  clear()
+  for (const id of ['acme/99', 'acme/30']) {
+    await assert.rejects(relations.setParent('1', id, ME), { code: 'INVALID_INPUT', message: `parent ${id} is not an existing issue or epic` })
+  }
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('setParent null removes the parent issue when there is one, else the epic items, and never the scope item', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1 })
+  fake.seed({ number: 2, parent: 1, epics: ['acme/12'], item: { status: 'Todo' } })
+  fake.seed({ number: 3, epics: ['acme/12', 'acme/9'], item: { status: 'Todo' } })
+  clear()
+  const dry = await relations.setParent('3', null, ME, { dryRun: true })
+  assert.deepEqual(fake.mutations, [])
+  assert.equal(dry.after.parent, undefined)
+  const first = await relations.setParent('2', null, ME)
+  assert.deepEqual(calls(fake), [['PmkitRemoveSubIssue', { issueId: 'I_1', subIssueId: 'I_2' }]])
+  assert.equal(first.after.parent, 'acme/12')
+  clear()
+  const second = await relations.setParent('3', null, ME)
+  assert.deepEqual(fake.mutations.map((call) => [call.name, call.input.projectId]), [['PmkitDeleteProjectItem', 'PVT_E12'], ['PmkitDeleteProjectItem', 'PVT_E9']])
+  assert.equal(second.after.parent, undefined)
+  assert.equal(second.after.status.name, 'Todo')
+  clear()
+  const none = await relations.setParent('3', null, ME)
+  assert.deepEqual(fake.mutations, [])
+  assert.deepEqual(none.after, none.before)
+})
+
+test('setParent null on an issue whose only epic item is archived has no parent to remove and writes nothing', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: [{ project: 'acme/12', archived: true }] })
+  clear()
+  const result = await relations.setParent('1', null, ME)
+  assert.deepEqual(fake.mutations, [])
+  assert.equal(result.before.parent, undefined)
+  assert.deepEqual(result.after, result.before)
+})
+
+test('setParent to an epic where the issue item is archived is INVALID_INPUT and sends nothing, dry run or not', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: [{ project: 'acme/12', archived: true }, 'acme/9'] })
+  clear()
+  const refusal = { code: 'INVALID_INPUT', message: '1 is archived in epic acme/12', nextStep: 'Restore the item from the archived items of the Project on GitHub' }
+  await assert.rejects(relations.setParent('1', 'acme/12', ME, { dryRun: true }), refusal)
+  await assert.rejects(relations.setParent('1', 'acme/12', ME), refusal)
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('setParent null previews the epic that remains after the parent issue goes, as the real run reads it', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1 })
+  fake.seed({ number: 2, parent: 1, epics: ['acme/12', 'acme/9'], item: { status: 'Todo' } })
+  clear()
+  const dry = await relations.setParent('2', null, ME, { dryRun: true })
+  assert.deepEqual(fake.mutations, [])
+  const real = await relations.setParent('2', null, ME)
+  assert.equal(real.after.parent, 'acme/9')
+  assert.equal(dry.after.parent, real.after.parent)
+})
+
+test('setParent to an epic names the add that was done when the delete of the other epic item fails', async () => {
+  const { fake, relations, clear } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/9'] })
+  clear()
+  fake.failNext('PmkitDeleteProjectItem')
+  await assert.rejects(relations.setParent('1', 'acme/12', ME), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /^GitHub added 1 to epic acme\/12, but removing it from epic acme\/9 failed/)
+    return true
+  })
+  assert.deepEqual(fake.mutations.map((call) => call.name), ['PmkitAddProjectItem', 'PmkitDeleteProjectItem'])
 })

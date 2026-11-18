@@ -33,6 +33,14 @@ test('the issue itself is a create event at createdAt by its author', () => {
   assert.deepEqual(toEvents(node(), [], context), [{ at: CREATED, by: 'octocat', op: 'create', to: { id: '1', title: 'Now' } }])
 })
 
+test('a milestoned and a demilestoned event are update events on milestone with the titles', () => {
+  const events = toEvents(node(), [item('MilestonedEvent', 5, { milestoneTitle: 'v1.0' }), item('DemilestonedEvent', 6, { milestoneTitle: 'v1.0' })], context).slice(1)
+  assert.deepEqual(events, [
+    { at: at(5), by: 'octocat', op: 'update', field: 'milestone', from: null, to: 'v1.0' },
+    { at: at(6), by: 'octocat', op: 'update', field: 'milestone', from: 'v1.0', to: null },
+  ])
+})
+
 test('the create event carries the title before the first rename', () => {
   const events = toEvents(node(), [item('RenamedTitleEvent', 5, { previousTitle: 'First', currentTitle: 'Now' })], context)
   assert.deepEqual(events[0].to, { id: '1', title: 'First' })

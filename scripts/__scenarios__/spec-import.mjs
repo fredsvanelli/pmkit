@@ -1,6 +1,8 @@
 // /pmkit:spec:import .issues/docs/specs/overview.md on the no-sprints fixture, without an epic ID, so the command
 // proposes a new epic. The spec has no phases, so the tree has no milestones, no milestone is created and no call
 // passes --milestone. Step 2 still lists the milestones that exist (the fixture has v1.0).
+// The spec is already under the docs/ folder, so step 3 checks no storage path and step 7.1 stores nothing; the
+// description of the new epic cites it as .issues/docs/specs/overview.md.
 // It has no acceptance criteria either: every issue is marked "needs criteria", and since `needs-criteria` is not
 // in the tracker's labels, no create passes --label. The user approves the tree in step 5:
 //   new epic  Webhook delivery platform
@@ -10,7 +12,10 @@
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
-const epic = ['epic', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-webhook-delivery-platform.md')]
+const epic = [
+  'epic', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-webhook-delivery-platform.md'),
+  '--description-file', path.join(import.meta.dirname, '_inputs', 'description-webhook-delivery-platform.md'),
+]
 const retry = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-retry-failed-deliveries-with-backoff.md'), '--type', 'feature', '--estimate', '3']
 const park = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-park-exhausted-deliveries-in-a-dead-lett.md'), '--type', 'feature', '--estimate', '5']
 const replay = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-replay-a-parked-delivery.md'), '--type', 'task', '--estimate', '2']
@@ -31,8 +36,8 @@ export default {
     { step: '6', dryRun: epic },
     { step: '6', dryRun: retry },
     { step: '6', dryRun: park },
-    // Step 7.1: the epic; step 7.2 has no new milestone. Step 8: the issues under the epic, then the sub-issue under its parent.
-    { step: '7.1', write: epic, save: 'epic' },
+    // Step 7.1 stores nothing, 7.2 creates the epic, and 7.3 has no new milestone. Step 8: the issues under the epic, then the sub-issue under its parent.
+    { step: '7.2', write: epic, save: 'epic' },
     { step: '8', write: (saved) => [...retry, '--parent', saved.epic.after.id], save: 'retry' },
     { step: '8', write: (saved) => [...park, '--parent', saved.epic.after.id], save: 'park' },
     { step: '8', write: (saved) => [...replay, '--parent', saved.park.after.id], save: 'replay' },
@@ -42,13 +47,13 @@ export default {
   skip: {
     '2 epic get': 'no epic ID is given, so the command proposes a new epic',
     '2 issues list': 'no epic ID is given, so there are no existing issues to list',
+    '3 docs create': 'the spec is already under the docs/ folder, so step 3 checks no storage path',
     '6 milestone create': 'the spec has no phases, so the tree has no new milestone to check',
-    '7.2 milestone create': 'the spec has no phases, so the tree has no new milestone to create',
-    '10 docs create': 'the spec is already under the docs/ folder, so step 10 stores nothing',
+    '7.1 docs create': 'the spec is already under the docs/ folder, so step 7.1 stores nothing',
+    '7.3 milestone create': 'the spec has no phases, so the tree has no new milestone to create',
   },
   notHit: {
     'Step 6': 'every dry run passes, so no value needs correcting',
-    'Step 10': 'the spec is already under the docs/ folder',
   },
   expect(repo, saved) {
     assert.match(saved.spec.body, /dead-letter queue/)
@@ -56,6 +61,8 @@ export default {
     assert.deepEqual(saved.milestones.map((milestone) => milestone.id), ['v1.0'], 'step 2 lists the milestone the fixture has')
     const epicId = saved.epic.after.id
     assert.equal(repo.epic(epicId).title, 'Webhook delivery platform')
+    // repo.epic() reads the frontmatter only, and the description is the body of epic.md.
+    assert.match(repo.file(`.issues/epics/${epicId}/epic.md`), /- Spec: \.issues\/docs\/specs\/overview\.md/, 'the epic description cites the spec')
     for (const name of ['retry', 'park']) assert.equal(repo.issue(saved[name].after.id).parent, epicId)
     assert.equal(repo.issue(saved.replay.after.id).parent, saved.park.after.id)
     assert.deepEqual(repo.issue(saved.park.after.id).blocked_by, [saved.retry.after.id])

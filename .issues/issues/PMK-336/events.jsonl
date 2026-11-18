@@ -1,0 +1,5 @@
+{"at":"2026-11-16T19:46:40Z","by":"fred","op":"create","to":{"id":"PMK-336","title":"Split the three complex functions in the GitHub setup code","type":"chore","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-16T19:46:40.891Z","updated":"2026-11-16T19:46:40Z"}}
+{"at":"2026-11-17T01:21:40Z","by":"fred","op":"update","field":"title","from":"Split the three complex functions in the GitHub setup code","to":"Split the complex functions in the GitHub adapter and setup code"}
+{"at":"2026-11-17T01:21:40Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-17T01:21:40Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-17T21:22:17Z","by":"fred","op":"update","field":"description"}

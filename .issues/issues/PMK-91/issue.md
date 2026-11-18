@@ -2,14 +2,16 @@
 id: PMK-91
 title: Add the github-draft-issues command
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 3
+assignee: fred
 parent: EPC-8
 blocked_by: [PMK-87]
 milestone: github-issues
+branch: pmk-91-add-the-github-draft-issues-command
 created: 2026-10-25T19:13:23Z
-updated: 2026-10-25T19:13:27Z
+updated: 2026-11-18T00:51:27Z
 ---
 
 ## Description
@@ -18,5 +20,5 @@ Source: Unified model, System-specific skills (`github-draft-issues`: "Reviews a
 
 ## Acceptance criteria
 
-- [ ] Lists the draft issues of a project
-- [ ] Converts the chosen ones into issues after a full preview
+- [x] Lists the draft issues of a project
+- [x] Converts the chosen ones into issues after a full preview

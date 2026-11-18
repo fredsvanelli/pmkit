@@ -7,10 +7,11 @@ priority: low
 estimate: 2
 assignee: fred
 parent: EPC-8
+related: [PMK-333, PMK-334]
 milestone: github-issues
 branch: pmk-84-decide-github-issues-authentication-and
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-16T18:01:33Z
+updated: 2026-11-16T18:34:25Z
 ---
 
 ## Description

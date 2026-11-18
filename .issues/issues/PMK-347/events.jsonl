@@ -1,0 +1,6 @@
+{"at":"2026-11-18T01:40:58Z","by":"fred","op":"create","to":{"id":"PMK-347","title":"Gravar a descrição do épico no epic create e preenchê-la no from-prd e no import","type":"feature","status":"backlog","priority":"medium","estimate":5,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-18T01:40:58.620Z","updated":"2026-11-18T01:40:58Z"}}
+{"at":"2026-11-18T03:34:41Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-347-epic-description"}
+{"at":"2026-11-18T03:34:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-18T03:35:31Z","by":"fred","op":"comment","to":"2026-11-18T03-35-31Z-fred.md"}
+{"at":"2026-11-18T03:35:31Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_review"}
+{"at":"2026-11-18T20:50:04Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

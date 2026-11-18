@@ -189,6 +189,60 @@ test('epic create, issues parent and epic progress', () => {
   assert.match(run(root, ['epic', 'list']).stdout, new RegExp(`${epic.id}\\s+\\| E`))
 })
 
+function descriptionFile(content) {
+  const file = path.join(tempDir('pmkit-epic-description-'), 'description.md')
+  fs.writeFileSync(file, content)
+  return file
+}
+
+test('epic create --description-file writes the description, and epic get shows it', () => {
+  const root = makeRepo('basic')
+  const file = descriptionFile('### Purpose\n\nFinance builds the monthly report by hand.\n')
+  const { after } = json(root, ['epic', 'create', '--title', 'E', '--description-file', file])
+  assert.equal(after.description, '### Purpose\n\nFinance builds the monthly report by hand.')
+  assert.match(run(root, ['epic', 'get', after.id]).stdout, /Finance builds the monthly report by hand\./)
+  const written = fs.readFileSync(path.join(root, '.issues', 'epics', after.id, 'epic.md'), 'utf8')
+  assert.ok(written.endsWith('Finance builds the monthly report by hand.\n'), written)
+})
+
+test('the epic create dry run shows the description and writes nothing', () => {
+  const root = makeRepo('basic')
+  const file = descriptionFile('### Purpose\n\nFinance builds the monthly report by hand.\n')
+  const before = hashTree(root)
+  const { after } = json(root, ['epic', 'create', '--title', 'E', '--description-file', file, '--dry-run'])
+  assert.equal(after.description, '### Purpose\n\nFinance builds the monthly report by hand.')
+  assert.equal(hashTree(root), before)
+})
+
+test('epic create --description-file keeps shell characters and headings as text', () => {
+  const root = makeRepo('basic')
+  const text = 'Run `make` and $(whoami)\n## Notes\nkept'
+  const { after } = json(root, ['epic', 'create', '--title', 'E', '--description-file', descriptionFile(text)])
+  assert.equal(json(root, ['epic', 'get', after.id]).description, text)
+})
+
+test('an empty description file creates the epic with no description', () => {
+  const root = makeRepo('basic')
+  const result = run(root, ['epic', 'create', '--title', 'E', '--description-file', descriptionFile(''), '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(JSON.parse(result.stdout).after.description, '')
+})
+
+test('the epic description file is read like issues create reads it', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['epic', 'create', '--title', 'E', '--description-file', descriptionFile('\uFEFFLine one\r\nLine two')])
+  assert.equal(after.description, 'Line one\nLine two')
+})
+
+test('a missing epic description file writes no epic', () => {
+  const root = makeRepo('basic')
+  const count = json(root, ['epic', 'list']).length
+  const result = run(root, ['epic', 'create', '--title', 'E', '--description-file', path.join(tempDir('pmkit-epic-description-'), 'nope.md'), '--json'])
+  assert.notEqual(result.status, 0)
+  assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  assert.equal(json(root, ['epic', 'list']).length, count)
+})
+
 const TEAM_EPIC_MAP = `EPC-2M9D  Reliable webhooks and billing export  in_progress
 critical path: ISS-5N1R → ISS-2X6D (11 points)
 
@@ -1619,6 +1673,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'linear customers link': ['--customer', 'acme', '--issue', 'ACME-1'],
     'linear triage set': ['--off'],
     'github discussions comment': ['1', '--body-file', input('comment.md')],
+    'github draft-issues convert': ['PVTI_1'],
     migrate: [],
     'local-migrate export': ['--workspace', 'acme', '--team', 'ACME'],
     'local-migrate import': ['--workspace', 'acme', '--team', 'ACME'],
@@ -1749,6 +1804,7 @@ test('every read goes on with one warning', () => {
     'linear triage suggestions': [],
     'github discussions list': [],
     'github discussions get': ['1'],
+    'github draft-issues list': [],
     'local-migrate status': [],
     render: ['board'],
   }

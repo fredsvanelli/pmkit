@@ -153,8 +153,8 @@ test('the linear commands are the triage and customers commands and stay out of 
   assert.ok(MIRRORED.every((command) => !command.linear))
 })
 
-test('the github commands are the discussions commands and stay out of the mirror', () => {
-  assert.deepEqual(COMMANDS.filter((command) => command.github).map((command) => command.name), ['github discussions list', 'github discussions get', 'github discussions comment'])
+test('the github commands are the discussions and draft-issues commands and stay out of the mirror', () => {
+  assert.deepEqual(COMMANDS.filter((command) => command.github).map((command) => command.name), ['github discussions list', 'github discussions get', 'github discussions comment', 'github draft-issues list', 'github draft-issues convert'])
   assert.ok(MIRRORED.every((command) => !command.github))
 })
 

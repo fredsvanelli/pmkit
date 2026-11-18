@@ -17,7 +17,7 @@ The flow of `/pmkit:setup` when the user picks GitHub Issues: "GitHub first run"
    node scripts/pmkit.mjs init --tracker github --git-host github --dry-run --json
    ```
 
-   Expect `host` and `repo` from the origin remote, a note that says so, `project: null`, and one question, `tracker.scope.project`, whose `candidates` are the linked Projects as `owner/number` with their `titles`. Nothing is written. On GHES below 3.19 the command fails with `NOT_SUPPORTED` and names the version found and 3.19. When the token lacks the `project` scope, the question has no candidates, recommends `none` and carries a `note` with `gh auth refresh -s project`.
+   Expect `host` and `repo` from the origin remote, a note that says so, `project: null`, and one question, `tracker.scope.project`, whose `candidates` are the linked Projects as `owner/number` with their `titles`. pmkit pages through every linked Project, so a repository with more than 20 lists them all. Nothing is written. On GHES below 3.19 the command fails with `NOT_SUPPORTED` and names the version found and 3.19. When the token lacks the `project` scope, the question has no candidates, recommends `none` and carries a `note` with `gh auth refresh -s project`.
 
 2. Pick the Project and read it:
 
@@ -25,7 +25,7 @@ The flow of `/pmkit:setup` when the user picks GitHub Issues: "GitHub first run"
    node scripts/pmkit.mjs init --tracker github --git-host github --project acme/7 --dry-run --json
    ```
 
-   Expect `project: { id: "acme/7", title }` and one question per Status category: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `canceled` and `blocked`. `todo`, `in_progress` and `done` have `required: true`. Each recommends the option whose name matches. Then a question for each field role that has more than one candidate, and one per pmkit type, each recommending the issue type with the same name.
+   Expect `project: { id: "acme/7", title }` and one question per Status category: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `canceled` and `blocked`. `todo`, `in_progress` and `done` have `required: true`. Each recommends the option whose name matches. Then a question for each field role that has more than one candidate, and one per pmkit type, each recommending the issue type with the same name. The `sprint` role is a field role too: setup offers only the Project's iteration fields as `project:<name>`, recommends `Sprint` or `iteration` by name, applies the one that matches when it is the only one, and applies `none` when the Project has no iteration field. With `tracker.scope.project: none`, `sprint` is `none` and setup asks nothing.
 
 3. Answer every question and preview the file:
 
@@ -33,7 +33,7 @@ The flow of `/pmkit:setup` when the user picks GitHub Issues: "GitHub first run"
    node scripts/pmkit.mjs init --tracker github --git-host github --project acme/7 \
      --status backlog=Backlog --status todo=Todo --status "in_progress=In Progress" --status "in_review=In Review" \
      --status done=Done --status canceled=none --status blocked=none \
-     --field priority=issue:Priority --field estimate=issue:Effort --field "start_date=issue:Start date" --field "target_date=issue:Target date" \
+     --field priority=issue:Priority --field estimate=issue:Effort --field "start_date=issue:Start date" --field "target_date=issue:Target date" --field sprint=project:Sprint \
      --type-label feature=Feature --type-label bug=Bug --type-label task=Task --type-label chore=none --dry-run --json
    ```
 
@@ -49,19 +49,21 @@ The flow of `/pmkit:setup` when the user picks GitHub Issues: "GitHub first run"
    node scripts/pmkit.mjs capabilities --json
    ```
 
-   `validate` finds no problem in `.pmkit/config.yaml`. `discover` returns `issueTypes`, `issueFields`, `projectFields`, `statusOptions` and `statuses` with the mapped categories. `capabilities` returns `tracker: github`, with `estimation` `native` because `mappings.fields.estimate` names a field, `multilevel_hierarchy` (sub-issues) and `dependencies` `native`, `native_metrics` and `linked_code` `derived`, and every other capability `absent`. Without an estimate field, `estimation` is `absent` too.
+   `validate` finds no problem in `.pmkit/config.yaml`, which now holds `mappings.fields.sprint: project:Sprint`. `discover` returns `issueTypes`, `issueFields`, `projectFields`, `statusOptions` and `statuses` with the mapped categories. `capabilities` returns `tracker: github`, with `estimation` `native` because `mappings.fields.estimate` names a field, `multilevel_hierarchy` (sub-issues) and `dependencies` `native`, `deliverables` and `status_update` `native` (the Project is set), `cycles` `native` (`sprint=project:Sprint` is mapped), and `capacity`, `native_metrics` and `linked_code` `derived`. Every other capability is `absent`. Without an estimate field, `estimation` is `absent` too.
 
 ## Existing config
 
 6. Run `node scripts/pmkit.mjs init --update --dry-run --json`. With nothing changed on GitHub, expect `questions: []` and the file `keep`.
 
-7. When a Status option was renamed on GitHub, the same command lists the old mapping in `broken` and asks that category again, with the renamed option recommended when its name matches. Answer it with `init --update --status <category>=<option>`, which changes only that line.
+7. When the Project loses its iteration field, or `mappings.fields.sprint` names an issue field, the same command lists `mappings.fields.sprint` in `broken` (`mappings.fields.sprint must name a Project iteration field` for an issue field) and asks it again. Answer it with `init --update --field sprint=project:<name>` or `--field sprint=none`.
+
+8. When a Status option was renamed on GitHub, the same command lists the old mapping in `broken` and asks that category again, with the renamed option recommended when its name matches. Answer it with `init --update --status <category>=<option>`, which changes only that line.
 
 ## Without a Project
 
 A repository with no Project reads its statuses from labels, and a repository with no enabled issue type reads its types from labels. ADR 0009 records the rules.
 
-8. Pick no Project and read the questions:
+9. Pick no Project and read the questions:
 
    ```
    node scripts/pmkit.mjs init --tracker github --git-host github --project none --dry-run --json
@@ -69,7 +71,7 @@ A repository with no Project reads its statuses from labels, and a repository wi
 
    Expect `project: null`, no `PmkitProject` read, and one label question for each of `triage`, `backlog`, `in_progress` and `in_review`. Each offers the repository labels and recommends the label whose name matches, such as `In progress` for `in_progress`, or `none`. `todo`, `done` and `canceled` get no question: an open issue with no status label is `todo`, and a closed one is `done` or `canceled`. A repository with no enabled issue type also gets one label question per pmkit type.
 
-9. Answer with label names and write the file:
+10. Answer with label names and write the file:
 
    ```
    node scripts/pmkit.mjs init --tracker github --git-host github --project none \
@@ -80,7 +82,7 @@ A repository with no Project reads its statuses from labels, and a repository wi
 
    `.pmkit/config.yaml` holds `tracker.scope.project: none`, `mappings.status.in_progress: label:In progress` and the other labels in the same form, and `mappings.types.bug: label:bug`. `statuses` lists each status label with its category, then `Open`, `Closed` and `Closed as not planned`.
 
-10. Check the capabilities:
+11. Check the capabilities:
 
     ```
     node scripts/pmkit.mjs capabilities --json

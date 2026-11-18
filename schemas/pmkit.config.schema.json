@@ -115,7 +115,7 @@
           "description": "A field role to the tracker's field name, native for the tracker's own field, or none for no field. GitHub Issues names the source: issue:<name> for an issue field, project:<name> for a field of the Project.",
           "type": "object",
           "propertyNames": {
-            "enum": ["estimate", "priority", "target_date", "start_date", "assignee", "acceptance_criteria", "time_spent"]
+            "enum": ["estimate", "priority", "target_date", "start_date", "assignee", "acceptance_criteria", "time_spent", "sprint"]
           },
           "additionalProperties": {
             "title": "Field name",

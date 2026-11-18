@@ -87,7 +87,7 @@ function unconfirmed(reason, mutation, details) {
 }
 
 /** A gh run that printed no answer: no login, no connection, or a failure of gh itself. */
-function noAnswer(result, { mutation, host }) {
+function noAnswer(result, { mutation, host, tool = 'gh api graphql' }) {
   const stderr = result.stderr ?? ''
   const details = { github: { status: null, errors: [] } }
   if (stderr.includes('gh auth login')) {
@@ -97,7 +97,7 @@ function noAnswer(result, { mutation, host }) {
   if (/^error connecting to /i.test(line)) return unconfirmed(line, mutation, details)
   const detail = line || `exit status ${result.status}`
   if (mutation) return unconfirmed(detail, true, details)
-  return { error: new PmkitError('UPSTREAM', `gh api graphql failed: ${detail}`, 'Check the output of the same command in a terminal', details), retry: false }
+  return { error: new PmkitError('UPSTREAM', `${tool} failed: ${detail}`, 'Check the output of the same command in a terminal', details), retry: false }
 }
 
 /** The parts of an answer the error rows read: the reply, its errors, details, the first message and every text to search. */
@@ -124,14 +124,23 @@ function readReply(answer, stderr) {
 
 const isRateLimited = ({ types, texts }, status) => types.includes('RATE_LIMITED') || status === 429 || (status === 403 && /rate limit/i.test(texts))
 
+/**
+ * The next step of a fine-grained PAT refusal. permissions names what the call needs, such as 'Discussions', and needs no
+ * scope beyond the gh login's default; without it, the step names Projects and Issues and the project scope.
+ */
+function patStep(host, permissions) {
+  if (permissions) return `Give the token read and write access to ${permissions} in its GitHub settings, or unset GH_TOKEN to use the gh login`
+  return `Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project${hostStep(host)}`
+}
+
 /** The rows where GitHub refused the login, its token or its pace: AUTH or RATE_LIMITED, never retried. Null when none matches. */
-function refusal(read, { status, headers }, host) {
+function refusal(read, { status, headers }, host, permissions) {
   const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, read.details), retry: false })
   if (status === 401) return fail('AUTH', 'GitHub rejected the token of the gh login', `Run gh auth login${hostStep(host)}, or fix the token in GH_TOKEN or GH_ENTERPRISE_TOKEN`)
   const scopes = read.errors.find((error) => error?.type === 'INSUFFICIENT_SCOPES')
   if (scopes) return fail('AUTH', `The gh login lacks a scope this query needs: ${oneLine(scopes.message)}`, `gh auth refresh -s ${scopeOf(scopes.message)}${hostStep(host)}`)
   if (/not accessible by personal access token/i.test(read.texts)) {
-    return fail('AUTH', `GitHub refused the personal access token: ${read.message}`, `Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project${hostStep(host)}`)
+    return fail('AUTH', `GitHub refused the personal access token: ${read.message}`, patStep(host, permissions))
   }
   // GitHub's own wording, so a name that holds "SAML" in an echoed message does not match.
   if (/protected by organization SAML enforcement/i.test(read.texts)) {
@@ -169,12 +178,39 @@ function answerError(read, status, mutation) {
  * Reads one answer. Returns { data } on success, or { error, retry } where retry says whether a query may be sent again.
  * The rows follow the order of the spec's error table.
  */
-function classify(answer, stderr, { mutation, host }) {
+function classify(answer, stderr, { mutation, host, permissions }) {
+  const read = readReply(answer, stderr)
+  const refused = refusal(read, answer, host, permissions)
+  if (refused) return refused
+  if (answer.status >= 500) return unconfirmed(`HTTP ${answer.status}`, mutation, read.details)
+  return unreadable(read, answer.status, mutation) ?? answerError(read, answer.status, mutation) ?? { data: read.reply.data }
+}
+
+/**
+ * Reads the answer to a REST call. Returns { data } (the parsed body) or { error, retry }, like classify.
+ * A taken milestone title is CONFLICT; any other 4xx is UPSTREAM with the message of GitHub.
+ */
+function classifyRest(answer, stderr, { mutation, host, path, body }) {
   const read = readReply(answer, stderr)
   const refused = refusal(read, answer, host)
   if (refused) return refused
   if (answer.status >= 500) return unconfirmed(`HTTP ${answer.status}`, mutation, read.details)
-  return unreadable(read, answer.status, mutation) ?? answerError(read, answer.status, mutation) ?? { data: read.reply.data }
+  const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, read.details), retry: false })
+  if (answer.status >= 200 && answer.status < 300) {
+    if (answer.body.trim() === '') return { data: null }
+    try {
+      return { data: JSON.parse(answer.body) }
+    } catch {
+      // Falls through to the unreadable row.
+    }
+    if (mutation) return unconfirmed(`unreadable answer (HTTP ${answer.status})`, true, read.details)
+    return fail('UPSTREAM', `GitHub returned an unreadable answer (HTTP ${answer.status})`, 'Update the GitHub CLI and retry')
+  }
+  const taken = Array.isArray(read.reply?.errors) && read.reply.errors.some((error) => error?.code === 'already_exists')
+  if (taken && /\/milestones$/.test(path)) {
+    return fail('CONFLICT', `GitHub already has a milestone titled ${body?.title}`, 'Use another title, or reuse the existing milestone')
+  }
+  return fail('UPSTREAM', `GitHub answered with an error: ${read.message}`, "Check the request against GitHub's message")
 }
 
 export function createGithubClient({
@@ -192,47 +228,78 @@ export function createGithubClient({
   }
   const run = exec ?? defaultExec({ root, env })
   const args = ['api', ...(host ? ['--hostname', host] : []), 'graphql', '--include', '--input', '-']
-  let rate = null
+  // One bucket per GitHub rate-limit resource: REST answers count against core, GraphQL against graphql.
+  const rates = new Map()
 
-  /** Throws RATE_LIMITED, with no call, when the last answer said the limit is at 0 until a future time. */
-  function assertRoom() {
+  /** Throws RATE_LIMITED, with no call, when the last answer for this bucket said the limit is at 0 until a future time. */
+  function assertRoom(bucket) {
+    const rate = rates.get(bucket)
     if (rate?.remaining === 0 && rate.resetMs !== null && rate.resetMs > now()) {
       throw rateLimitError(`Wait until ${isoOf(rate.resetMs)} and retry`)
     }
   }
 
-  function attempt(query, variables, mutation) {
+  /** One gh run, read by classifier. The same row handles a gh failure, a timeout and a bad answer for GraphQL and REST. */
+  function attempt(ghArgs, input, mutation, classifier, tool, bucket) {
     let result
     try {
-      result = run('gh', args, { input: JSON.stringify({ query, variables }), timeout: timeoutMs })
+      result = run('gh', ghArgs, { ...(input === undefined ? {} : { input }), timeout: timeoutMs })
     } catch (error) {
       if (error?.code === 'ENOENT') throw new PmkitError('NOT_CONFIGURED', 'gh is not installed', INSTALL_STEP)
-      if (error?.code === 'ENOBUFS') throw new PmkitError('UPSTREAM', 'gh api graphql output is too large to read', 'Ask for fewer nodes per page')
+      if (error?.code === 'ENOBUFS') throw new PmkitError('UPSTREAM', `${tool} output is too large to read`, bucket === 'graphql' ? 'Ask for fewer nodes per page' : 'Ask for a smaller resource, or report the path that returned too much')
       if (error?.code === 'ETIMEDOUT') return unconfirmed(`timed out after ${timeoutMs / 1000} s`, mutation, { github: { status: null, errors: [] } })
       throw error
     }
     const answer = parseIncluded(result.stdout ?? '')
-    if (!answer) return noAnswer(result, { mutation, host })
-    rate = readRate(answer.headers) ?? rate
-    return classify(answer, result.stderr ?? '', { mutation, host })
+    if (!answer) return noAnswer(result, { mutation, host, tool })
+    const seen = readRate(answer.headers)
+    if (seen) rates.set(seen.resource ?? bucket, seen)
+    return classifier(answer, result.stderr ?? '')
   }
 
+  const attemptGraphql = (query, variables, mutation, permissions) =>
+    attempt(args, JSON.stringify({ query, variables }), mutation, (answer, stderr) => classify(answer, stderr, { mutation, host, permissions }), 'gh api graphql', 'graphql')
+
   // One logical call. A query is sent again after a timeout, no connection or HTTP 5xx; a mutation is sent once.
-  async function send(query, variables) {
-    const mutation = isMutation(query)
+  async function withRetries(mutation, bucket, once) {
     const attempts = mutation ? 1 : retries + 1
     for (let index = 0; ; index += 1) {
-      assertRoom()
-      const result = attempt(query, variables, mutation)
+      assertRoom(bucket)
+      const result = once()
       if (!result.error) return result.data
       if (!result.retry || index + 1 >= attempts) throw result.error
       await sleep(DELAYS[Math.min(index, DELAYS.length - 1)])
     }
   }
 
-  async function request(document, variables = {}) {
+  const send = (query, variables, permissions) => {
+    const mutation = isMutation(query)
+    return withRetries(mutation, 'graphql', () => attemptGraphql(query, variables, mutation, permissions))
+  }
+
+  /** One REST call. A method other than GET is a write: sent once, and an answer that is missing is unconfirmed. */
+  async function rest(method, path, body) {
+    if (typeof method !== 'string' || !/^[A-Z]+$/.test(method)) throw new TypeError('rest needs an HTTP method in capitals')
+    if (typeof path !== 'string' || path === '' || path.startsWith('-')) throw new TypeError('rest needs a path')
+    const mutation = method !== 'GET'
+    const ghArgs = ['api', ...(host ? ['--hostname', host] : []), '--method', method, path, '--include', ...(body === undefined ? [] : ['--input', '-'])]
+    const input = body === undefined ? undefined : JSON.stringify(body)
+    return withRetries(mutation, 'core', () =>
+      attempt(ghArgs, input, mutation, (answer, stderr) => classifyRest(answer, stderr, { mutation, host, path, body }), 'gh api', 'core'),
+    )
+  }
+
+  /**
+   * One GraphQL call. options.permissions, when given, names the fine-grained PAT permissions the call needs, such as
+   * 'Discussions', for the next step of a PAT refusal.
+   */
+  async function request(document, variables = {}, options = {}) {
     if (typeof document !== 'string' || document.trim() === '') throw new TypeError('request needs a GraphQL document')
-    return send(document, variables)
+    const { permissions } = options
+    if (permissions !== undefined && (typeof permissions !== 'string' || permissions.trim() === '')) {
+      throw new TypeError('request needs permissions as a non-empty string')
+    }
+    return send(document, variables, permissions)
   }
 
   const paginate = (document, variables = {}, options = {}) =>
@@ -242,9 +309,11 @@ export function createGithubClient({
     })
 
   function rateLimit() {
+    // The GraphQL bucket, as before REST existed.
+    const rate = rates.get('graphql')
     if (!rate) return null
     return { limit: rate.limit, remaining: rate.remaining, used: rate.used, resource: rate.resource, resetAt: isoOf(rate.resetMs) }
   }
 
-  return Object.freeze({ request, paginate, rateLimit })
+  return Object.freeze({ request, paginate, rest, rateLimit })
 }
