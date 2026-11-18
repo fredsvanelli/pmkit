@@ -124,14 +124,23 @@ function readReply(answer, stderr) {
 
 const isRateLimited = ({ types, texts }, status) => types.includes('RATE_LIMITED') || status === 429 || (status === 403 && /rate limit/i.test(texts))
 
+/**
+ * The next step of a fine-grained PAT refusal. permissions names what the call needs, such as 'Discussions', and needs no
+ * scope beyond the gh login's default; without it, the step names Projects and Issues and the project scope.
+ */
+function patStep(host, permissions) {
+  if (permissions) return `Give the token read and write access to ${permissions} in its GitHub settings, or unset GH_TOKEN to use the gh login`
+  return `Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project${hostStep(host)}`
+}
+
 /** The rows where GitHub refused the login, its token or its pace: AUTH or RATE_LIMITED, never retried. Null when none matches. */
-function refusal(read, { status, headers }, host) {
+function refusal(read, { status, headers }, host, permissions) {
   const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, read.details), retry: false })
   if (status === 401) return fail('AUTH', 'GitHub rejected the token of the gh login', `Run gh auth login${hostStep(host)}, or fix the token in GH_TOKEN or GH_ENTERPRISE_TOKEN`)
   const scopes = read.errors.find((error) => error?.type === 'INSUFFICIENT_SCOPES')
   if (scopes) return fail('AUTH', `The gh login lacks a scope this query needs: ${oneLine(scopes.message)}`, `gh auth refresh -s ${scopeOf(scopes.message)}${hostStep(host)}`)
   if (/not accessible by personal access token/i.test(read.texts)) {
-    return fail('AUTH', `GitHub refused the personal access token: ${read.message}`, `Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project${hostStep(host)}`)
+    return fail('AUTH', `GitHub refused the personal access token: ${read.message}`, patStep(host, permissions))
   }
   // GitHub's own wording, so a name that holds "SAML" in an echoed message does not match.
   if (/protected by organization SAML enforcement/i.test(read.texts)) {
@@ -169,9 +178,9 @@ function answerError(read, status, mutation) {
  * Reads one answer. Returns { data } on success, or { error, retry } where retry says whether a query may be sent again.
  * The rows follow the order of the spec's error table.
  */
-function classify(answer, stderr, { mutation, host }) {
+function classify(answer, stderr, { mutation, host, permissions }) {
   const read = readReply(answer, stderr)
-  const refused = refusal(read, answer, host)
+  const refused = refusal(read, answer, host, permissions)
   if (refused) return refused
   if (answer.status >= 500) return unconfirmed(`HTTP ${answer.status}`, mutation, read.details)
   return unreadable(read, answer.status, mutation) ?? answerError(read, answer.status, mutation) ?? { data: read.reply.data }
@@ -248,8 +257,8 @@ export function createGithubClient({
     return classifier(answer, result.stderr ?? '')
   }
 
-  const attemptGraphql = (query, variables, mutation) =>
-    attempt(args, JSON.stringify({ query, variables }), mutation, (answer, stderr) => classify(answer, stderr, { mutation, host }), 'gh api graphql', 'graphql')
+  const attemptGraphql = (query, variables, mutation, permissions) =>
+    attempt(args, JSON.stringify({ query, variables }), mutation, (answer, stderr) => classify(answer, stderr, { mutation, host, permissions }), 'gh api graphql', 'graphql')
 
   // One logical call. A query is sent again after a timeout, no connection or HTTP 5xx; a mutation is sent once.
   async function withRetries(mutation, bucket, once) {
@@ -263,9 +272,9 @@ export function createGithubClient({
     }
   }
 
-  const send = (query, variables) => {
+  const send = (query, variables, permissions) => {
     const mutation = isMutation(query)
-    return withRetries(mutation, 'graphql', () => attemptGraphql(query, variables, mutation))
+    return withRetries(mutation, 'graphql', () => attemptGraphql(query, variables, mutation, permissions))
   }
 
   /** One REST call. A method other than GET is a write: sent once, and an answer that is missing is unconfirmed. */
@@ -280,9 +289,17 @@ export function createGithubClient({
     )
   }
 
-  async function request(document, variables = {}) {
+  /**
+   * One GraphQL call. options.permissions, when given, names the fine-grained PAT permissions the call needs, such as
+   * 'Discussions', for the next step of a PAT refusal.
+   */
+  async function request(document, variables = {}, options = {}) {
     if (typeof document !== 'string' || document.trim() === '') throw new TypeError('request needs a GraphQL document')
-    return send(document, variables)
+    const { permissions } = options
+    if (permissions !== undefined && (typeof permissions !== 'string' || permissions.trim() === '')) {
+      throw new TypeError('request needs permissions as a non-empty string')
+    }
+    return send(document, variables, permissions)
   }
 
   const paginate = (document, variables = {}, options = {}) =>
