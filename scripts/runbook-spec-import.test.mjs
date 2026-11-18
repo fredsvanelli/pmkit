@@ -1,13 +1,17 @@
-// E2E test of docs/runbooks/spec-import.md: the real CLI, run as a subprocess, on a Local tracker.
+// E2E test of docs/runbooks/spec-import.md: the real CLI, run as a subprocess, on a Local tracker and on GitHub Issues.
 // The approval of /pmkit:spec:import cannot run in a test, so the test runs the step 3 dry run that checks the spec path, and
 // then the CLI calls the command makes after the step 5 approval, in the order of its steps: the step 6 dry runs, the spec write
-// of step 7.1, the epic with its description of step 7.2, the milestone of step 7.3, the issues of step 8 and the link of step 9.
+// of step 7.1, the epic with its description of step 7.2, the milestone of step 7.3, the issues of step 8 and the blocker link of step 9.
+// The GitHub case runs on a fake gh first on PATH (scripts/fake-gh-path.mjs over scripts/fake-github-issues.mjs), and the spec
+// goes to the repository file docs/specs/<name>.md, because the tracker cannot create documents.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { statefulGhOnPath } from './fake-gh-path.mjs'
+import { fakeGithubIssues } from './fake-github-issues.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { hashTree, makeRepo, tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -16,6 +20,8 @@ const CLI = path.join(SCRIPTS, 'pmkit.mjs')
 const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'spec-import.md')
 const SPEC_PATH = 'specs/bulk-export.md'
 const CITED_PATH = '.issues/docs/specs/bulk-export.md'
+// On GitHub and Linear the tracker cannot create documents, so the spec goes to this repository file.
+const REPO_SPEC_PATH = 'docs/specs/bulk-export.md'
 
 const SPEC = `# Bulk export
 
@@ -121,6 +127,10 @@ test('the runbook names every call the test runs', () => {
     'epic get <epic-id> --json',
     CITED_PATH,
     '### Purpose',
+    // The GitHub section.
+    `- Spec: ${REPO_SPEC_PATH}`,
+    'error.code: "NOT_SUPPORTED"',
+    'issues create --title-file tmp/title-1.txt --type feature --estimate 3 --parent <epic-id> --criteria-file tmp/criteria-1.txt --json',
   ]) {
     assert.ok(text.includes(call), call)
   }
@@ -165,4 +175,69 @@ test('a second import with the same spec name answers CONFLICT at step 3', () =>
   assert.equal(result.code, 2, `${result.stdout}\n${result.stderr}`)
   assert.equal(JSON.parse(result.stdout).error.code, 'CONFLICT')
   assert.equal(hashTree(tracker, ['.cache']), before)
+})
+
+// The GitHub case.
+
+const TOKEN = `ghp_${'Zx9Q'.repeat(9)}`
+const GITHUB_SETUP = [
+  'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'acme/7',
+  ...['backlog=Backlog', 'todo=Todo', 'in_progress=In Progress', 'in_review=In Review', 'done=Done', 'canceled=none', 'blocked=none'].flatMap((item) => ['--status', item]),
+  ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date'].flatMap((item) => ['--field', item]),
+  ...['feature=Feature', 'bug=Bug', 'task=Task', 'chore=none'].flatMap((item) => ['--type-label', item]),
+  '--json',
+]
+
+/** A git repository set up for GitHub Issues, with a fake gh first on PATH that keeps its state between CLI runs. */
+function githubRepo() {
+  const root = tempDir('pmkit-spec-import-github-')
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: root })
+  const fake = statefulGhOnPath({ meta: null, issues: fakeGithubIssues({}).toJSON() })
+  const env = { ...childEnv(), ...userStoreEnv().env, GH_TOKEN: TOKEN, PMKIT_NOW: '2026-11-17T12:00:00Z', PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
+  const run = (args) => {
+    const result = spawnSync(process.execPath, [CLI, ...args], { cwd: root, env, encoding: 'utf8' })
+    return { code: result.status, stdout: result.stdout, stderr: result.stderr }
+  }
+  json(run(GITHUB_SETUP))
+  return { root, run }
+}
+
+test('on GitHub the spec goes to the repository file docs/specs/<name>.md, which the epic description cites', () => {
+  const { root, run } = githubRepo()
+  const specFile = tempFile('spec.md', SPEC)
+  const epicTitle = tempFile('epic-title.txt', 'Bulk export')
+  const epicDescription = tempFile('epic-description.md', EPIC_DESCRIPTION.replace(CITED_PATH, REPO_SPEC_PATH))
+  const repoSpec = path.join(root, REPO_SPEC_PATH)
+
+  // Step 3: the tracker cannot create documents, and the dry run writes nothing.
+  const dry = run(['docs', 'create', SPEC_PATH, '--body-file', specFile, '--dry-run', '--json'])
+  assert.equal(dry.code, 2, `${dry.stdout}\n${dry.stderr}`)
+  assert.equal(JSON.parse(dry.stdout).error.code, 'NOT_SUPPORTED')
+  assert.ok(!fs.existsSync(repoSpec), 'the repository file is free')
+
+  // Step 6: the dry runs of the epic and of a top-level issue.
+  json(run(['epic', 'create', '--title-file', epicTitle, '--description-file', epicDescription, '--dry-run', '--json']))
+  json(run(['issues', 'create', '--title-file', tempFile('dry-title.txt', ISSUES[0].title), '--type', ISSUES[0].type, '--estimate', ISSUES[0].estimate, '--dry-run', '--json']))
+
+  // Step 7.1: the file tools write the spec to the repository file, after a second check that it is still absent. Step 7.2: the epic.
+  assert.ok(!fs.existsSync(repoSpec), 'the repository file is still free')
+  fs.mkdirSync(path.dirname(repoSpec), { recursive: true })
+  fs.copyFileSync(specFile, repoSpec)
+  const epic = json(run(['epic', 'create', '--title-file', epicTitle, '--description-file', epicDescription, '--json'])).after.id
+  assert.match(epic, /^acme\/\d+$/, 'the epic is a Project of acme')
+
+  // Step 8: an issue under the epic.
+  const issue = json(run([
+    'issues', 'create', '--title-file', tempFile('title-gh.txt', ISSUES[0].title), '--type', ISSUES[0].type, '--estimate', ISSUES[0].estimate,
+    '--parent', epic, '--criteria-file', tempFile('criteria-gh.txt', ISSUES[0].criteria), '--json',
+  ])).after.id
+
+  const { description } = json(run(['epic', 'get', epic, '--json']))
+  assert.ok(description.includes('### Purpose'), description)
+  assert.ok(description.includes(`- Spec: ${REPO_SPEC_PATH}`), description)
+  assert.ok(!description.includes(CITED_PATH), 'the description does not cite a tracker document')
+  assert.equal(fs.readFileSync(repoSpec, 'utf8'), SPEC, 'the cited path is the spec in the repository')
+  assert.ok(!fs.existsSync(path.join(root, CITED_PATH)), 'nothing is stored under .issues/docs/')
+  const { issues } = json(run(['issues', 'list', '--parent', epic, '--json']))
+  assert.deepEqual(issues.map((item) => item.id), [issue])
 })

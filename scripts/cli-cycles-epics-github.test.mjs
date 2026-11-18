@@ -151,6 +151,22 @@ test('epic create --description-file sets the readme of the Project', async () =
   assert.equal(dataOf(await cli(['epic', 'get', 'acme/13', '--json'])).description, 'Plan')
 })
 
+test('epic create --description-file stops with UPSTREAM when GitHub refuses the readme, and the epic exists', async () => {
+  const { root, fake, cli } = githubRepo()
+  fs.writeFileSync(path.join(root, 'description.md'), '### Purpose\n\nPlan\n')
+  fake.failNext('PmkitUpdateProjectReadme')
+  const result = await cli(['epic', 'create', '--title', 'Search', '--description-file', path.join(root, 'description.md'), '--json'])
+  assert.equal(result.code, 2, result.stdout + result.stderr)
+  const error = errorOf(result)
+  assert.equal(error.code, 'UPSTREAM')
+  // spec:import step 7.2 relies on these two strings: the first means the epic exists, the second that it has no description.
+  assert.ok(error.message.startsWith('GitHub created the Project acme/13'), error.message)
+  assert.match(error.message, /could not set its readme/)
+  const epic = dataOf(await cli(['epic', 'get', 'acme/13', '--json']))
+  assert.equal(epic.title, 'Search')
+  assert.ok(!epic.description, 'the epic has no description')
+})
+
 test('epic create --description-file --dry-run previews the description and sends no mutation', async () => {
   const { root, fake, cli } = githubRepo()
   fs.writeFileSync(path.join(root, 'description.md'), '### Purpose\n\nPlan')

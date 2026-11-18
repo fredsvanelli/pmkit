@@ -1,6 +1,6 @@
 # Runbook: import a spec
 
-The flow of `/pmkit:spec:import` (`commands/spec/import.md`) on a Local tracker: a pasted spec becomes a stored document, an epic whose description cites it, a milestone, two estimated issues with acceptance criteria and a blocker link. The tree and the approval need a person, so `scripts/runbook-spec-import.test.mjs` runs the step 3 dry run that checks the spec path, and then the CLI calls that the command makes after the approval of step 5, in the order of its steps. `npm test` checks this runbook.
+The flow of `/pmkit:spec:import` (`commands/spec/import.md`) on a Local tracker: a pasted spec becomes a stored document, an epic whose description cites it, a milestone, two estimated issues with acceptance criteria and a blocker link. The last section runs the same flow on GitHub Issues, where the spec goes to a repository file. The tree and the approval need a person, so `scripts/runbook-spec-import.test.mjs` runs the step 3 dry run that checks the spec path, and then the CLI calls that the command makes after the approval of step 5, in the order of its steps. `npm test` checks this runbook.
 
 ## Before you start
 
@@ -87,6 +87,33 @@ The flow of `/pmkit:spec:import` (`commands/spec/import.md`) on a Local tracker:
 
    Expect exit code 2 and `error.code: "CONFLICT"`. Nothing under `.issues/` changes. The command asks for another name and never overwrites the stored spec.
 
+## On GitHub Issues: the spec goes to a repository file
+
+8. On a repository set up with `/pmkit:setup` for GitHub Issues, the tracker cannot create documents. The step 3 dry run answers `NOT_SUPPORTED`:
+
+   ```
+   node scripts/pmkit.mjs docs create specs/bulk-export.md --body-file tmp/spec.md --dry-run --json
+   ```
+
+   Expect exit code 2 and `error.code: "NOT_SUPPORTED"`. The command then picks the repository file `docs/specs/bulk-export.md` and checks with the file tools that it does not exist yet. The Documents section of the description cites that path:
+
+   ```markdown
+   ### Documents
+
+   - Spec: docs/specs/bulk-export.md
+   ```
+
+9. After the approval, the command runs the step 6 dry runs of the epic and the top-level issue, the same calls as in the Local flow. In step 7.1 it checks again that `docs/specs/bulk-export.md` is absent and writes the spec there with the file tools. Then it creates the epic and the issues under it. GitHub has no milestone in this tree, so the issue has no `--milestone`:
+
+   ```
+   node scripts/pmkit.mjs epic create --title-file tmp/epic-title.txt --description-file tmp/epic-description.md --json
+   node scripts/pmkit.mjs issues create --title-file tmp/title-1.txt --type feature --estimate 3 --parent <epic-id> --criteria-file tmp/criteria-1.txt --json
+   ```
+
+   Expect the Project of the new epic in `after.id`, such as `acme/13`. `epic get <epic-id> --json` returns a `description` that contains `### Purpose` and the path `docs/specs/bulk-export.md`, the repository file that holds the spec. Nothing is written under `.issues/docs/`. The file has no commit until the user commits it.
+
 ## What the test checks
 
 The test runs every call above on a copy of the `basic` fixture, with the real CLI as a subprocess. It checks that the step 3 dry run writes nothing, that the stored spec reads back with the same body, and that the epic description contains `### Purpose` and the path `.issues/docs/specs/bulk-export.md`, which exists in the repository. It checks that every issue of the epic has an estimate, criteria and the milestone. It checks that a second dry run with the same spec name answers `CONFLICT` and changes nothing.
+
+The GitHub case runs on a repository set up for GitHub Issues, with a fake `gh` first on `PATH` (`scripts/fake-gh-path.mjs` over the stateful fake GitHub of `scripts/fake-github-issues.mjs`). It checks that the step 3 dry run answers `NOT_SUPPORTED`, that the spec is in `docs/specs/bulk-export.md` and nowhere under `.issues/docs/`, that the epic description cites `docs/specs/bulk-export.md`, and that the issue sits under the epic.

@@ -157,3 +157,37 @@ test('without storing, Documents cites the source path only for a file inside th
 test('a pasted spec with no title gets a storage name from the user', () => {
   assert.match(section('If something is missing'), /no title[^\n]*ask for a storage name[^\n]*same rule/)
 })
+
+// The review-work findings of PMK-347.
+
+test('a path or an epic ID from the user reaches the shell between single quotes', () => {
+  // Each pmkit.mjs call of the command file, up to its closing backtick.
+  const calls = [...text.matchAll(/pmkit\.mjs" ([^`]*)/g)].map((match) => match[1])
+  const reads = calls.filter((call) => call.startsWith('docs read '))
+  assert.equal(reads.length, 1, 'step 1 reads the spec')
+  assert.deepEqual(reads, ["docs read '<path>' --json"])
+  assert.ok(calls.includes("epic get '<epic-id>' --json"), 'the epic ID the user gives is quoted')
+  const bare = calls.flatMap((call) => [...call.replace(/'[^']*'/g, '').matchAll(/<(path|epic-id)>/g)].map((match) => match[0]))
+  assert.deepEqual(bare, [], 'no call holds the path or the epic ID bare')
+  assert.match(step(1), /`'\\''`/, 'step 1 says how to quote')
+  assert.match(step(2), /quoted as the path of step 1, because it comes from the user/)
+  assert.match(step(1), /The path comes from the user/)
+  assert.match(step(1), /Refuse a path with a newline/)
+  assert.match(step(2), /[Ll]ater calls use the `id` that `epic get` returned/)
+  assert.ok(step(2).includes('issues list --parent <id> --json'), 'issues list uses the returned id')
+})
+
+test('when from-prd follows step 7, its own stop rule names the continue command', () => {
+  assert.match(step(7), /When `\/pmkit:spec:from-prd` follows this step, its own stop rule names the continue command/)
+})
+
+test('the step 5 confirmation point says when step 5 asks only create or stop', () => {
+  const point = section('Confirmation points').split('\n').find((line) => line.startsWith('- Step 5:')) ?? ''
+  assert.match(point, /chose in step 3 to go on without storing[^.]*only[^.]*create everything or stop/)
+  assert.match(point, /without storing[^.]*second question[^.]*replaces the first/)
+})
+
+test('step 3 calls itself this step', () => {
+  assert.doesNotMatch(step(3), /step 3 runs no existence check/)
+  assert.match(step(3), /this step runs no existence check/)
+})
