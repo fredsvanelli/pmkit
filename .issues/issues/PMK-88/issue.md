@@ -2,7 +2,7 @@
 id: PMK-88
 title: "Map iterations, milestones and project status updates"
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-87]
 milestone: github-issues
 branch: pmk-88-map-iterations-milestones-and-project
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-17T23:17:17Z
+updated: 2026-11-18T00:51:26Z
 ---
 
 ## Description
