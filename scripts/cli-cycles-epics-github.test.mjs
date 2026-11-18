@@ -143,6 +143,14 @@ test('epic create, list and get work on linked Projects, with the dates of the P
   assert.equal(dataOf(await cli(['epic', 'get', 'acme/12', '--json'])).title, 'Epic twelve')
 })
 
+test('epic create --description-file sets the readme of the Project', async () => {
+  const { root, fake, cli } = githubRepo()
+  fs.writeFileSync(path.join(root, 'description.md'), 'Plan\n')
+  dataOf(await cli(['epic', 'create', '--title', 'Search', '--description-file', path.join(root, 'description.md'), '--json']))
+  assert.deepEqual(fake.mutations.filter((call) => call.name === 'PmkitUpdateProjectReadme').map((call) => call.input.readme), ['Plan'])
+  assert.equal(dataOf(await cli(['epic', 'get', 'acme/13', '--json'])).description, 'Plan')
+})
+
 test('epic create --goal answers NOT_SUPPORTED', async () => {
   const { cli } = githubRepo()
   const refused = errorOf(await cli(['epic', 'create', '--title', 'Search', '--goal', 'g1', '--json']))

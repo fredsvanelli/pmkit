@@ -1215,6 +1215,17 @@ test('epic create, progress, update-status and updates run over the fake', async
   assert.equal(JSON.parse(again.stdout).health, 'at_risk')
 })
 
+test('epic create --description-file sends the content to Linear', async () => {
+  const { fetch } = withProjects()
+  const context = setup({ edit: withTeam })
+  const file = path.join(tempDir(), 'description.md')
+  fs.writeFileSync(file, 'Plan\n')
+  const created = await cli(context, ['epic', 'create', '--title', 'Second', '--description-file', file, '--as', 'user-1', '--json'], fetch)
+  assert.equal(created.code, 0, created.stdout + created.stderr)
+  const call = fetch.calls.find((item) => operationName(item.body.query) === 'PmkitProjectCreate')
+  assert.equal(call.body.variables.input.content, 'Plan')
+})
+
 test('a milestone, a document and a milestone of an issue are readable', async () => {
   const { fetch } = withProjects()
   const context = setup({ edit: withTeam })

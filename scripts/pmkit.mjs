@@ -1425,12 +1425,13 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'epic create', summary: 'creates an epic', usage: '(--title t | --title-file f) [--start d] [--target d] [--goal id]', write: true, flags: ['title', 'title-file', 'start', 'target', 'goal'],
+    name: 'epic create', summary: 'creates an epic', usage: '(--title t | --title-file f) [--start d] [--target d] [--goal id] [--description-file f]', write: true, flags: ['title', 'title-file', 'start', 'target', 'goal', 'description-file'],
     run: async (ctx) => {
       const title = lineFromFlag(ctx.opt, 'title')
       if (title === undefined) throw usageError('epic create needs --title or --title-file', 'pmkit epic create --title-file title.txt')
       const input = { title }
       for (const key of ['start', 'target', 'goal']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      if (ctx.opt('description-file') !== undefined) input.description = readInput(ctx.opt('description-file'))
       const result = await (await ctx.tracker()).createDeliverable(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
     },
