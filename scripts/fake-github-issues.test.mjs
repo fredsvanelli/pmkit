@@ -690,3 +690,11 @@ test('PmkitIssueNodes answers issues by node id in order, with null for an unkno
   const { nodes } = await client.request(query, { ids: [two.id, 'nope', one.id] })
   assert.deepEqual(nodes.map((node) => node?.number ?? null), [2, null, 1])
 })
+
+test('the fake refuses projectV2 selected on RepositoryOwner without a ProjectV2Owner fragment, and the draft Project read uses one', async () => {
+  const { client } = setup()
+  const bad = 'query PmkitDraftProject($owner: String!, $number: Int!) { repositoryOwner(login: $owner) { projectV2(number: $number) { id title url } } }'
+  await assert.rejects(client.request(bad, { owner: 'acme', number: 7 }), /Field 'projectV2' doesn't exist on type 'RepositoryOwner'/)
+  const { DRAFT_DOCUMENTS } = await import('./lib/github/draft-issues.mjs')
+  assert.equal((await client.request(DRAFT_DOCUMENTS.PROJECT, { owner: 'acme', number: 7 })).repositoryOwner.projectV2.id, 'PVT_1')
+})

@@ -896,6 +896,8 @@ function build(state) {
       [features.statusEvents, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
       // ProjectV2Owner is an interface with id, projectV2 and projectsV2 only: a login needs an inline fragment on Organization or User.
       [false, /\bowner\s*\{\s*login\b/, "Field 'login' doesn't exist on type 'ProjectV2Owner'"],
+      // RepositoryOwner has no projectV2: the read needs an inline fragment on ProjectV2Owner (or Organization or User).
+      [false, /\brepositoryOwner\s*\([^)]*\)\s*\{\s*projectV2\b/, "Field 'projectV2' doesn't exist on type 'RepositoryOwner'"],
     ]
     const found = checks.find(([present, pattern]) => !present && pattern.test(query ?? ''))
     if (found) return found[2]
