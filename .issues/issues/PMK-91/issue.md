@@ -2,7 +2,7 @@
 id: PMK-91
 title: Add the github-draft-issues command
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-87]
 milestone: github-issues
 branch: pmk-91-add-the-github-draft-issues-command
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-17T22:55:09Z
+updated: 2026-11-18T00:51:27Z
 ---
 
 ## Description

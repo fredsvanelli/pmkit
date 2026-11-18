@@ -1,0 +1,7 @@
+{"at":"2026-11-16T18:34:34Z","by":"fred","op":"create","to":{"id":"PMK-335","title":"Add a live check of the GitHub GraphQL client against github.com","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-11-16T18:34:34.787Z","updated":"2026-11-16T18:34:34Z"}}
+{"at":"2026-11-16T19:46:41Z","by":"fred","op":"update","field":"title","from":"Add a live check of the GitHub GraphQL client against github.com","to":"Add live checks of the GitHub client and discovery against github.com"}
+{"at":"2026-11-16T19:46:41Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-16T19:46:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-17T23:13:16Z","by":"fred","op":"update","field":"title","from":"Add live checks of the GitHub client and discovery against github.com","to":"Add live checks of the GitHub adapter against github.com and GHES"}
+{"at":"2026-11-17T23:13:16Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-17T23:13:16Z","by":"fred","op":"update","field":"acceptance_criteria"}

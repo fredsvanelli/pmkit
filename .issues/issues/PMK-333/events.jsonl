@@ -1,0 +1,4 @@
+{"at":"2026-11-16T18:00:01Z","by":"fred","op":"create","to":{"id":"PMK-333","title":"Fix the npm test failures on WSL and case-sensitive file systems","type":"bug","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-16T18:00:01.438Z","updated":"2026-11-16T18:00:01Z"}}
+{"at":"2026-11-16T18:00:06Z","by":"fred","op":"link","field":"related","to":"PMK-84"}
+{"at":"2026-11-16T18:34:34Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-16T18:34:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
