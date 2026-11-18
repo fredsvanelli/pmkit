@@ -28,7 +28,8 @@ const SETUP = [
 ]
 
 /** The state the runbook's "Before you start" describes: a repository set up for GitHub, a Project with a Sprint field that holds
- * one iteration, and the epic Project acme/12 linked to the repository. Returns { root, fake, pmkit }. */
+ * one iteration, and the epic Project acme/12 linked to the repository, which holds issue 4, a draft issue and a pull request.
+ * Returns { root, fake, pmkit }. */
 function runbookRepo() {
   const root = tempDir('pmkit-runbook-cycles-github-')
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: root })
@@ -37,6 +38,10 @@ function runbookRepo() {
   state.seed({ number: 1, title: 'Index the catalog' })
   state.seed({ number: 2, title: 'Add the search box' })
   state.seed({ number: 3, title: 'Rank the results' })
+  // The sample epic holds the three kinds of Project item content (PMK-343): an issue, a draft issue and a pull request.
+  state.seed({ number: 4, title: 'Tune the ranking', epics: ['acme/12'] })
+  state.seedDraft({ project: 'PVT_acme_12', title: 'Try a fuzzy search' })
+  state.seedProjectItem('acme/12', { type: 'PULL_REQUEST', title: 'Cache the index' })
   const fake = statefulGhOnPath({ meta: null, issues: state.toJSON() })
   const env = { ...childEnv(), ...userStoreEnv().env, GH_TOKEN: TOKEN, PMKIT_NOW: '2026-11-17T12:00:00Z', PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
   const pmkit = (...args) => {
@@ -90,6 +95,8 @@ test('the runbook names the commands this test runs', () => {
     'epic list --json',
     'issues parent 3 acme/13 --json',
     'epic progress acme/13 --json',
+    'epic get acme/12 --json',
+    'epic progress acme/12 --json',
     'epic update-status acme/13 --health at_risk --body-file tmp/update-1.md --json',
     'epic update-status acme/13 --health on_track --body-file tmp/update-2.md --json',
     'epic updates acme/13 --json',
@@ -158,6 +165,10 @@ test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 14', (
   const progress = json(pmkit('epic', 'progress', 'acme/13', '--json'))
   assert.equal(progress.total, 1)
   assert.equal(progress.done, 0)
+  // The sample epic acme/12 holds a draft issue and a pull request besides issue 4, and its progress counts the issue only.
+  assert.equal(json(pmkit('epic', 'get', 'acme/12', '--json')).id, 'acme/12')
+  const sample = json(pmkit('epic', 'progress', 'acme/12', '--json'))
+  assert.deepEqual([sample.total, sample.done], [1, 0])
 
   // Step 9: publish two updates and list them, newest first. The third is the inactive update that epic create wrote to hold the dates,
   // and the dates stay on the epic after the new updates.
