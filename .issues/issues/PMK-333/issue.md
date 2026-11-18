@@ -2,12 +2,12 @@
 id: PMK-333
 title: Fix the npm test failures on WSL and case-sensitive file systems
 type: bug
-status: in_progress
+status: in_review
 assignee: fred
 related: [PMK-84]
 branch: pmk-333-fix-the-npm-test-failures-on-wsl-and
 created: 2026-11-16T18:00:01.438Z
-updated: 2026-11-18T01:00:10Z
+updated: 2026-11-18T01:38:50Z
 ---
 
 ## Description
@@ -20,6 +20,6 @@ Found while working PMK-84 (PR #308) and PMK-85 (PR #309). Four tests fail on a 
 
 ## Acceptance criteria
 
-- [ ] `npm test` passes on WSL with a Windows folder in `PATH`
-- [ ] The `cli-pr` tests pass when the checkout has a detached HEAD
-- [ ] The `validate-views` case test finds its problem by content, not by position
+- [x] `npm test` passes on WSL with a Windows folder in `PATH`
+- [x] The `cli-pr` tests pass when the checkout has a detached HEAD
+- [x] The `validate-views` case test finds its problem by content, not by position
