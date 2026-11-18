@@ -143,6 +143,38 @@ test('epic create, list and get work on linked Projects, with the dates of the P
   assert.equal(dataOf(await cli(['epic', 'get', 'acme/12', '--json'])).title, 'Epic twelve')
 })
 
+test('epic create --description-file sets the readme of the Project', async () => {
+  const { root, fake, cli } = githubRepo()
+  fs.writeFileSync(path.join(root, 'description.md'), 'Plan\n')
+  dataOf(await cli(['epic', 'create', '--title', 'Search', '--description-file', path.join(root, 'description.md'), '--json']))
+  assert.deepEqual(fake.mutations.filter((call) => call.name === 'PmkitUpdateProjectReadme').map((call) => call.input.readme), ['Plan'])
+  assert.equal(dataOf(await cli(['epic', 'get', 'acme/13', '--json'])).description, 'Plan')
+})
+
+test('epic create --description-file stops with UPSTREAM when GitHub refuses the readme, and the epic exists', async () => {
+  const { root, fake, cli } = githubRepo()
+  fs.writeFileSync(path.join(root, 'description.md'), '### Purpose\n\nPlan\n')
+  fake.failNext('PmkitUpdateProjectReadme')
+  const result = await cli(['epic', 'create', '--title', 'Search', '--description-file', path.join(root, 'description.md'), '--json'])
+  assert.equal(result.code, 2, result.stdout + result.stderr)
+  const error = errorOf(result)
+  assert.equal(error.code, 'UPSTREAM')
+  // spec:import step 7.2 relies on these two strings: the first means the epic exists, the second that it has no description.
+  assert.ok(error.message.startsWith('GitHub created the Project acme/13'), error.message)
+  assert.match(error.message, /could not set its readme/)
+  const epic = dataOf(await cli(['epic', 'get', 'acme/13', '--json']))
+  assert.equal(epic.title, 'Search')
+  assert.ok(!epic.description, 'the epic has no description')
+})
+
+test('epic create --description-file --dry-run previews the description and sends no mutation', async () => {
+  const { root, fake, cli } = githubRepo()
+  fs.writeFileSync(path.join(root, 'description.md'), '### Purpose\n\nPlan')
+  const preview = dataOf(await cli(['epic', 'create', '--title', 'Search', '--description-file', path.join(root, 'description.md'), '--dry-run', '--json']))
+  assert.equal(preview.after.description, '### Purpose\n\nPlan')
+  assert.deepEqual(fake.mutations.filter((call) => ['PmkitCreateProject', 'PmkitUpdateProjectReadme'].includes(call.name)), [])
+})
+
 test('epic create --goal answers NOT_SUPPORTED', async () => {
   const { cli } = githubRepo()
   const refused = errorOf(await cli(['epic', 'create', '--title', 'Search', '--goal', 'g1', '--json']))

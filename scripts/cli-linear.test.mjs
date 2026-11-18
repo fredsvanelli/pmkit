@@ -1215,6 +1215,28 @@ test('epic create, progress, update-status and updates run over the fake', async
   assert.equal(JSON.parse(again.stdout).health, 'at_risk')
 })
 
+test('epic create --description-file sends the content to Linear', async () => {
+  const { fetch } = withProjects()
+  const context = setup({ edit: withTeam })
+  const file = path.join(tempDir(), 'description.md')
+  fs.writeFileSync(file, 'Plan\n')
+  const created = await cli(context, ['epic', 'create', '--title', 'Second', '--description-file', file, '--as', 'user-1', '--json'], fetch)
+  assert.equal(created.code, 0, created.stdout + created.stderr)
+  const call = fetch.calls.find((item) => operationName(item.body.query) === 'PmkitProjectCreate')
+  assert.equal(call.body.variables.input.content, 'Plan')
+})
+
+test('epic create --description-file --dry-run previews the description and sends no create', async () => {
+  const { fetch } = withProjects()
+  const context = setup({ edit: withTeam })
+  const file = path.join(tempDir(), 'description.md')
+  fs.writeFileSync(file, '### Purpose\n\nPlan')
+  const result = await cli(context, ['epic', 'create', '--title', 'Second', '--description-file', file, '--dry-run', '--as', 'user-1', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.equal(JSON.parse(result.stdout).after.description, '### Purpose\n\nPlan')
+  assert.equal(fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitProjectCreate').length, 0)
+})
+
 test('a milestone, a document and a milestone of an issue are readable', async () => {
   const { fetch } = withProjects()
   const context = setup({ edit: withTeam })

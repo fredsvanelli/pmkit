@@ -11,6 +11,14 @@ The flow of `/pmkit:spec:from-prd` (`commands/spec/from-prd.md`) on a Local trac
   - `tmp/adr-title.txt`: `The export runs in the background`
   - `tmp/adr.md`: the ADR, whose context names `specs/bulk-export-prd.md`
   - `tmp/epic-title.txt`: `Bulk export`
+  - `tmp/epic-description.md`: the description of the new epic, in the template of Stage 4 of the command, with the sections `### Purpose`, `### Scope (in)`, `### Out of scope` and `### Documents`. Its Documents section cites the stored refined PRD and the ADR from the repository root:
+
+    ```markdown
+    ### Documents
+
+    - Refined PRD: .issues/docs/specs/bulk-export-prd.md
+    - ADR 0001: The export runs in the background (.issues/docs/adr/0001-the-export-runs-in-the-background.md)
+    ```
   - `tmp/milestone-name.txt`: `First export`
   - `tmp/title-1.txt`, `tmp/title-2.txt`, `tmp/title-3.txt`: `Queue the export`, `Build the CSV` and `Download the CSV`
   - `tmp/description-1.txt` to `tmp/description-3.txt`: the description of each issue
@@ -68,14 +76,14 @@ The flow of `/pmkit:spec:from-prd` (`commands/spec/from-prd.md`) on a Local trac
 
 ## Stage 4: epic and milestones
 
-5. After the PM approves the epic and its milestone, the command follows steps 6 and 7 of `commands/spec/import.md`. It runs the dry runs of step 6 before these writes. Then it writes:
+5. After the PM approves the epic, its description and its milestone, the command follows step 6 and sub-steps 7.2 and 7.3 of `commands/spec/import.md`. It skips sub-step 7.1, because Stage 3b already stored the refined PRD. It runs the dry runs of step 6 before these writes. Then it writes:
 
    ```
-   node scripts/pmkit.mjs epic create --title-file tmp/epic-title.txt --json
+   node scripts/pmkit.mjs epic create --title-file tmp/epic-title.txt --description-file tmp/epic-description.md --json
    node scripts/pmkit.mjs milestone create v1 --name-file tmp/milestone-name.txt --json
    ```
 
-   Expect the new epic ID in `after.id`, such as `EPC-M0GZ`, and the milestone `v1`.
+   Expect the new epic ID in `after.id`, such as `EPC-M0GZ`, and the milestone `v1`. Then `epic get <epic-id> --json` returns a `description` that contains `### Purpose` and the path `.issues/docs/specs/bulk-export-prd.md`. That path is a real file in the repository, so a reader on GitHub or Linear can follow it.
 
 ## Stage 5: issue tree
 
@@ -120,4 +128,4 @@ The flow of `/pmkit:spec:from-prd` (`commands/spec/from-prd.md`) on a Local trac
 
 ## What the test checks
 
-The test runs every call above on a copy of the `basic` fixture, with the real CLI as a subprocess. It checks that the Stage 2 dry run writes nothing, that the stored refined PRD reads back with the same body, that every issue of the epic has an estimate and criteria, and that the critical path follows the blocker links. It checks that a taken PRD path answers `CONFLICT` to the dry run and to the write, and leaves `.issues/docs/` unchanged. It checks that a resume finds the ADR through `docs list` and `docs read`.
+The test runs every call above on a copy of the `basic` fixture, with the real CLI as a subprocess. It checks that the Stage 2 dry run writes nothing and that the stored refined PRD reads back with the same body. It checks that the epic description contains `### Purpose` and the path `.issues/docs/specs/bulk-export-prd.md`, which exists in the repository. It checks that every issue of the epic has an estimate and criteria, and that the critical path follows the blocker links. It checks that a taken PRD path answers `CONFLICT` to the dry run and to the write, and leaves `.issues/docs/` unchanged. It checks that a resume finds the ADR through `docs list` and `docs read`.

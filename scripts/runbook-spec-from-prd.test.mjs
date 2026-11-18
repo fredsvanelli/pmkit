@@ -54,6 +54,26 @@ An analyst picks a month and downloads the CSV.
 None.
 `
 
+// The description of the new epic, in the template of Stage 4. It cites the stored refined PRD and the ADR from the repository root.
+const CITED_PATH = `.issues/docs/${PRD_PATH}`
+const epicDescription = (adrPath) => `### Purpose
+
+Finance analysts copy invoices one by one to build the monthly report.
+
+### Scope (in)
+
+- Export the invoices of one month as a CSV file
+
+### Out of scope
+
+- Scheduled exports
+
+### Documents
+
+- Refined PRD: ${CITED_PATH}
+- ADR 0001: The export runs in the background (${adrPath})
+`
+
 const ISSUES = [
   { title: 'Queue the export', type: 'feature', estimate: '3', criteria: '- An export request returns a job id\n' },
   { title: 'Build the CSV', type: 'feature', estimate: '5', criteria: '- The CSV has one row per invoice of the month\n' },
@@ -107,8 +127,10 @@ function runFlow() {
   // Stage 3b: the refined PRD, after the ADRs.
   json(pmkit(root, ['docs', 'create', PRD_PATH, '--body-file', prdFile, '--json']))
 
-  // Stage 4: the epic and its milestone.
-  const epic = json(pmkit(root, ['epic', 'create', '--title-file', tempFile('epic-title.txt', 'Bulk export'), '--json'])).after.id
+  // Stage 4: the epic with its description, and its milestone.
+  const adrPath = next.destination === 'repo' ? next.path : `.issues/docs/${next.docPath}`
+  const description = tempFile('epic-description.md', epicDescription(adrPath))
+  const epic = json(pmkit(root, ['epic', 'create', '--title-file', tempFile('epic-title.txt', 'Bulk export'), '--description-file', description, '--json'])).after.id
   json(pmkit(root, ['milestone', 'create', 'v1', '--name-file', tempFile('milestone-name.txt', 'First export'), '--json']))
 
   // Stage 5: the issues with estimates and criteria, then the blocker links of the tree.
@@ -121,13 +143,14 @@ function runFlow() {
   json(pmkit(root, ['issues', 'link', ids[0], ids[1], '--kind', 'blocks', '--json']))
   json(pmkit(root, ['issues', 'link', ids[1], ids[2], '--kind', 'blocks', '--json']))
 
-  return { root, epic, ids, next, prdFile }
+  return { root, epic, ids, next, prdFile, adrPath }
 }
 
 test('the runbook names the commands this test runs', () => {
   const text = fs.readFileSync(RUNBOOK, 'utf8')
   for (const command of [
-    'docs create specs/', 'docs next-adr --title-file', 'epic create --title-file', 'milestone create', 'issues create --title-file',
+    'docs create specs/', 'docs next-adr --title-file', 'epic create --title-file tmp/epic-title.txt --description-file tmp/epic-description.md --json',
+    'epic get <epic-id> --json', 'tmp/epic-description.md', 'milestone create', 'issues create --title-file',
     '--criteria-file', 'issues link', '--kind blocks', 'issues dependencies',
   ]) {
     assert.ok(text.includes(command), command)
@@ -135,10 +158,18 @@ test('the runbook names the commands this test runs', () => {
 })
 
 test('runbook: a refined PRD becomes an ADR, an epic, estimated issues with criteria, and a critical path', () => {
-  const { root, epic, ids } = runFlow()
+  const { root, epic, ids, adrPath } = runFlow()
 
   const stored = json(pmkit(root, ['docs', 'read', PRD_PATH, '--json']))
   assert.equal(stored.body, PRD)
+
+  // Stage 4: the epic description cites the stored refined PRD, which exists in the repository.
+  const { description } = json(pmkit(root, ['epic', 'get', epic, '--json']))
+  assert.ok(description.includes('### Purpose'), description)
+  assert.ok(description.includes(CITED_PATH), description)
+  assert.ok(fs.existsSync(path.join(root, CITED_PATH)), `${CITED_PATH} exists in the repository`)
+  assert.ok(description.includes(adrPath), description)
+  assert.ok(fs.existsSync(path.join(root, adrPath)), `${adrPath} exists in the repository`)
 
   const { issues } = json(pmkit(root, ['issues', 'list', '--parent', epic, '--json']))
   assert.deepEqual(issues.map((issue) => issue.id).sort(), [...ids].sort())
