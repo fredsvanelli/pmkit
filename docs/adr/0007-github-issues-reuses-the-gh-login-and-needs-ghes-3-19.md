@@ -41,3 +41,10 @@ Two statements above were wrong about `gh`, and PMK-85 checked both with gh 2.93
 
 - `gh api` never reads the git remote. It sends a call to the host of `--hostname`, else `GH_HOST`, else github.com. The Consequences line "`gh` takes it from the remote or `GH_HOST`" does not hold for `gh api`. PMK-86 stores the host in `tracker.scope.host`, which setup fills from the origin remote, and the client passes it as `--hostname` on every call.
 - `-h <host>` belongs on every `gh auth` step for any host but github.com, GHE.com (`*.ghe.com`) included, not only on GHES, because `gh auth` without `-h` acts on github.com.
+
+## Amendment, 2026-11-18 (PMK-335)
+
+PMK-335 validated every GraphQL document of the adapter against the schemas GitHub publishes in `github/docs` (`fpt` and GHES 3.19, 3.20, 3.21 and 3.22). Two statements above do not hold for GHES, and the user chose to amend the threshold. The minimum version stays 3.19.
+
+- Issue fields reach GHES in 3.22, not 3.21. The 3.21 schema has `Issue.issueFieldValues` and `setIssueFieldValue`, but no `Repository.issueFields` and no `IssueFieldMultiSelect`, so `discover` cannot list a repository's issue fields there. pmkit now asks for issue fields from 3.22, and setup offers only Project fields on 3.19 to 3.21. Status change events stay at 3.21.
+- No GHES schema, 3.22 included, has `isIssueField` on Project fields or the type `ProjectV2MultiSelectField`. The Project read sends both only on github.com and GHE.com.

@@ -4,6 +4,7 @@
 // Its behavior follows the schema facts of docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md.
 
 import { answerGhWith, projectReply, repoReply, withNamedLabels } from './fake-github-api.mjs'
+import { compareVersions, needsVersionCheck } from './lib/github/discovery.mjs'
 import { hostFeatures } from './lib/github/documents.mjs'
 import { discussionRoutes, initDiscussions } from './fake-github-discussions.mjs'
 import { draftRoutes, initDrafts } from './fake-github-drafts.mjs'
@@ -885,6 +886,9 @@ function build(state) {
   }
 
   /** The validation error GitHub gives a document that names a part of the schema the host lacks, or null. */
+  const ghes = needsVersionCheck(state.host)
+  const repositoryIssueFields = !ghes || state.ghesVersion === null || compareVersions(state.ghesVersion, '3.22') >= 0
+
   function schemaError(query, variables) {
     const checks = [
       [features.relatesTo, /\brelatesTo\s*\(/, "Field 'relatesTo' doesn't exist on type 'Issue'"],
@@ -892,8 +896,12 @@ function build(state) {
       [features.relatesTo, /\bremoveRelatesTo\s*\(/, "Field 'removeRelatesTo' doesn't exist on type 'Mutation'"],
       [features.issueFields, /\bissueFieldValues\s*\(/, "Field 'issueFieldValues' doesn't exist on type 'Issue'"],
       [features.issueFields, /\bsetIssueFieldValue\s*\(/, "Field 'setIssueFieldValue' doesn't exist on type 'Mutation'"],
-      [features.issueFields, /\bissueFields\s*\(/, "Field 'issueFields' doesn't exist on type 'Repository'"],
-      [features.issueFields, /\bisIssueField\b/, "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'"],
+      // The facts of the published schemas, kept apart from hostFeatures so a wrong threshold in the adapter fails here: no GHES
+      // schema (3.19 to 3.22) has isIssueField or ProjectV2MultiSelectField, and Repository.issueFields and IssueFieldMultiSelect start in 3.22.
+      [repositoryIssueFields, /\bissueFields\s*\(/, "Field 'issueFields' doesn't exist on type 'Repository'"],
+      [repositoryIssueFields, /\bIssueFieldMultiSelect\b/, "No such type IssueFieldMultiSelect, so it can't be a fragment condition"],
+      [!ghes, /\bisIssueField\b/, "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'"],
+      [!ghes, /\bProjectV2MultiSelectField\b/, "No such type ProjectV2MultiSelectField, so it can't be a fragment condition"],
       [features.statusEvents, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
       // ProjectV2Owner is an interface with id, projectV2 and projectsV2 only: a login needs an inline fragment on Organization or User.
       [false, /\bowner\s*\{\s*login\b/, "Field 'login' doesn't exist on type 'ProjectV2Owner'"],

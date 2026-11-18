@@ -4,13 +4,12 @@ import { compareVersions, hasIssueFields, needsVersionCheck } from './discovery.
 
 /**
  * Which parts of the schema the host has: { issueFields, relatesTo, statusEvents, iterationIds }. github.com and GHE.com have all of them.
- * GHES has issue fields and Status events from 3.21 and never has relatesTo.
+ * GHES has Status events from 3.21, issue fields from 3.22, and never relatesTo.
  */
 export function hostFeatures({ host, ghesVersion }) {
   if (!needsVersionCheck(host)) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true }
   if (ghesVersion === null || ghesVersion === undefined) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: false }
-  const recent = hasIssueFields(ghesVersion) && compareVersions(ghesVersion, '3.21') >= 0
-  return { issueFields: recent, relatesTo: false, statusEvents: recent, iterationIds: false }
+  return { issueFields: hasIssueFields(ghesVersion), relatesTo: false, statusEvents: compareVersions(ghesVersion, '3.21') >= 0, iterationIds: false }
 }
 
 const ITEM_TYPE_NAMES = [
