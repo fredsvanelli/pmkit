@@ -196,6 +196,33 @@ test("a fine-grained PAT's not accessible error is AUTH with the token step", as
   assert.equal(error.nextStep, 'Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project -h github.acme.com')
 })
 
+test('a PAT refusal names the permissions the caller gives, with no gh auth refresh', async () => {
+  const body = { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }
+  const step = 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login'
+  for (const host of [undefined, 'github.acme.com']) {
+    const { client } = setup([answer({ body })], { host })
+    const error = await failure(client.request(QUERY, {}, { permissions: 'Discussions' }))
+    assert.equal(error.code, 'AUTH')
+    assert.equal(error.message, 'GitHub refused the personal access token: Resource not accessible by personal access token')
+    assert.equal(error.nextStep, step)
+  }
+})
+
+test('options without permissions keep the Projects and Issues step', async () => {
+  const body = { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }
+  const { client } = setup([answer({ body })])
+  const error = await failure(client.request(QUERY, {}, {}))
+  assert.equal(error.nextStep, 'Give the token read and write access to Projects and Issues in its GitHub settings, or unset GH_TOKEN and run gh auth refresh -s project')
+})
+
+test('request refuses permissions that are not a non-empty string before any call', async () => {
+  const { client, calls } = setup([answer()])
+  for (const permissions of ['', '  ', 7, null]) {
+    await assert.rejects(client.request(QUERY, {}, { permissions }), TypeError)
+  }
+  assert.equal(calls.length, 0)
+})
+
 test('a SAML refusal is AUTH with the single sign-on step', async () => {
   const body = { errors: [{ type: 'FORBIDDEN', message: 'Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.' }] }
   const { client } = setup([answer({ body })])

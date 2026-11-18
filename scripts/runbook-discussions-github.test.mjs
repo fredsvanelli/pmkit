@@ -16,6 +16,7 @@ const CLI = path.join(SCRIPTS, 'pmkit.mjs')
 const TOKEN = `ghp_${'Qw7E'.repeat(9)}`
 const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'discussions-github.md')
 const URL_1 = 'https://github.com/acme/widgets/discussions/1'
+const PAT_STEP = 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login'
 
 const SETUP = [
   'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'acme/7',
@@ -78,12 +79,12 @@ const mutationNames = (fake) => statefulGhCalls(fake).map((call) => /mutation (\
 test('the runbook names the commands this test runs', () => {
   const text = fs.readFileSync(RUNBOOK, 'utf8')
   for (const args of Object.values(COMMANDS)) assert.ok(text.includes(`node scripts/pmkit.mjs ${args.join(' ')}`), args.join(' '))
-  for (const expected of ['Turn on Discussions in the repository settings on GitHub', 'GitHub has no discussion #9 in acme/widgets', 'acme/widgets has Discussions turned off', `From discussion #1: ${URL_1}`, 'Tracked in #3']) {
+  for (const expected of ['Turn on Discussions in the repository settings on GitHub', 'GitHub has no discussion #9 in acme/widgets', 'acme/widgets has Discussions turned off', `From discussion #1: ${URL_1}`, 'Tracked in #3', PAT_STEP]) {
     assert.ok(text.includes(expected), expected)
   }
 })
 
-test('runbook: list, read, create an issue from a discussion and comment back, steps 1 to 8', () => {
+test('runbook: list, read, create an issue from a discussion and comment back, steps 1 to 9', () => {
   const { fake, pmkit } = runbookRepo()
 
   // Step 1: newest activity first.
@@ -131,6 +132,13 @@ test('runbook: list, read, create an issue from a discussion and comment back, s
   const off = json(pmkit(COMMANDS.list))
   assert.deepEqual([off.available, off.reason, off.enableHint], [false, 'disabled', 'Turn on Discussions in the repository settings on GitHub'])
   assert.deepEqual(failure(pmkit(COMMANDS.commentDry)), { code: 'NOT_SUPPORTED', message: 'acme/widgets has Discussions turned off', nextStep: 'Turn on Discussions in the repository settings on GitHub' })
+
+  // Step 9: Discussions back on, and a fine-grained PAT without the Discussions permission. GitHub refuses the read once.
+  const pat = JSON.parse(fs.readFileSync(fake.fixtureFile, 'utf8'))
+  pat.issues.discussionsEnabled = true
+  pat.issues.failures = { PmkitDiscussion: [{ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }] }
+  fs.writeFileSync(fake.fixtureFile, JSON.stringify(pat))
+  assert.deepEqual(failure(pmkit(COMMANDS.get1)), { code: 'AUTH', message: 'GitHub refused the personal access token: Resource not accessible by personal access token', nextStep: PAT_STEP })
 
   // No call holds the token, and every call names the host.
   const made = statefulGhCalls(fake)

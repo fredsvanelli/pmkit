@@ -65,6 +65,8 @@ Answer: a GraphQL `FORBIDDEN` error whose message holds "not accessible by perso
 
 Why: a fine-grained PAT reaches `gh` only through `GH_TOKEN` or `GH_ENTERPRISE_TOKEN`. It has permissions, not scopes, so `gh auth refresh` cannot fix it.
 
+Note, 2026-11-17 (PMK-341): a caller can name the permissions its call needs with `client.request(document, variables, { permissions })`. Then the next step reads `Give the token read and write access to <permissions> in its GitHub settings, or unset GH_TOKEN to use the gh login`. The `github discussions` calls pass `Discussions`, and every other call keeps the step above. See `docs/specs/2026-11-17-pmk-341-discussions-pat-hint-design.md`.
+
 The user also accepted three related mappings:
 
 - `INSUFFICIENT_SCOPES` names the scopes the field needs. When none of them is `project` or `read:project`, the next step names the first one, as in `gh auth refresh -s read:org`. Otherwise it is `-s project`.
