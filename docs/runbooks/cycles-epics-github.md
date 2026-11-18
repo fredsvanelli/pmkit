@@ -6,8 +6,8 @@ The sprint, epic and milestone commands on a repository whose tracker is GitHub 
 
 - `/pmkit:setup` ran on this repository, as `docs/runbooks/setup-github.md` describes, with `sprint=project:Sprint` among the fields. `.pmkit/config.yaml` names the Project `acme/7` and maps the sprint role to its iteration field `Sprint`.
 - The Project `acme/7` has the iteration field `Sprint` with one iteration, `2026-11-16`, which lasts 14 days. Today is 2026-11-17, so that sprint is active.
-- The epic Project `acme/12` is linked to the repository, so the first epic that pmkit creates is `acme/13`.
-- The repository has the issues `1`, `2` and `3`.
+- The epic Project `acme/12` is linked to the repository, so the first epic that pmkit creates is `acme/13`. It holds issue `4`, the draft issue `Try a fuzzy search` and the pull request `Cache the index`.
+- The repository has the issues `1`, `2`, `3` and `4`.
 - `gh` is logged in to the host of the repository, with the `project` scope.
 - The title of the epic and the bodies of its updates go through files, as `skills/pmkit/references/conventions.md` requires. The steps write them in `tmp/` with the file tool:
   - `tmp/title-epic.txt`: `Search`
@@ -91,6 +91,15 @@ An epic on GitHub is a Project linked to the repository. Its id is `owner/number
    ```
 
    Expect `after.parent: "acme/13"`, then `total: 1` and `done: 0`. The issue becomes an item of the epic Project.
+
+   Then read the sample epic, whose Project holds a draft issue and a pull request besides issue 4:
+
+   ```
+   node scripts/pmkit.mjs epic get acme/12 --json
+   node scripts/pmkit.mjs epic progress acme/12 --json
+   ```
+
+   Expect the epic `acme/12`, then `total: 1` and `done: 0`. The progress counts issues only, so the draft issue and the pull request are left out.
 
 9. Publish two status updates and read them:
 

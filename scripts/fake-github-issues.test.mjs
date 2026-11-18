@@ -623,13 +623,63 @@ test('the fake refuses a Project owner selected as owner { login }, as GitHub do
   assert.equal((await client.request(good, { owner: 'acme', number: 12 })).repositoryOwner.projectV2.owner.login, 'acme')
 })
 
-test('an epic Project can hold a pull request item and a draft item, and PmkitEpicItems answers their content', async () => {
+test('an epic Project can hold a pull request, a draft issue and a redacted item, and PmkitEpicItems answers their content', async () => {
   const { fake, client } = setup({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
-  fake.seedProjectItem('acme/12', { kind: 'PULL_REQUEST' })
-  fake.seedProjectItem('acme/12', { kind: 'DRAFT_ISSUE', title: 'Idea' })
-  const query = 'query PmkitEpicItems($project: ID!, $first: Int!, $after: String) { node(id: $project) { ... on ProjectV2 { items(first: $first, after: $after) { nodes { id content { __typename } } } } } }'
+  fake.seedProjectItem('acme/12', { type: 'PULL_REQUEST', title: 'Fix the index' })
+  fake.seedDraft({ project: 'PVT_E12', title: 'Idea' })
+  fake.seedProjectItem('acme/12', { type: 'REDACTED' })
+  const query = 'query PmkitEpicItems($project: ID!, $first: Int!, $after: String) { node(id: $project) { ... on ProjectV2 { items(first: $first, after: $after) { nodes { id content { __typename ... on PullRequest { title } ... on DraftIssue { title } } } } } } }'
   const { nodes } = await client.paginate(query, { project: 'PVT_E12' }, { select: (data) => data.node.items })
-  assert.deepEqual(nodes.map((node) => node.content.__typename), ['PullRequest', 'DraftIssue'])
+  assert.deepEqual(nodes.map((node) => node.content && [node.content.__typename, node.content.title]), [['PullRequest', 'Fix the index'], ['DraftIssue', 'Idea'], null])
+})
+
+test('every Project item has the type GitHub gives it, and the draft reads see a draft in an epic Project', () => {
+  const fake = fakeGithubIssues({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
+  const issue = fake.seed({ number: 1, epics: ['acme/12'] })
+  const { item: draft } = fake.seedDraft({ project: 'PVT_E12', title: 'Idea' })
+  const { id: pull } = fake.seedProjectItem('acme/12', { type: 'PULL_REQUEST' })
+  const typeOf = (id) => fake.state.items.find((item) => item.id === id).type
+  assert.equal(fake.state.items.find((item) => item.issueId === issue.id).type, 'ISSUE')
+  assert.deepEqual([typeOf(draft), typeOf(pull)], ['DRAFT_ISSUE', 'PULL_REQUEST'])
+  const items = data(fake.handle('PmkitDraftItems', { project: 'PVT_E12', first: 10 })).node.items.nodes
+  assert.deepEqual(items.map((item) => [item.type, item.content?.__typename]), [['ISSUE', 'Issue'], ['DRAFT_ISSUE', 'DraftIssue'], ['PULL_REQUEST', 'PullRequest']])
+  assert.equal(items[1].content.title, 'Idea')
+  assert.equal(fake.state.items.some((item) => 'kind' in item), false)
+})
+
+test('seedProjectItem takes only a pull request or a redacted item, and names the helper for the others', () => {
+  const fake = fakeGithubIssues({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
+  assert.throws(() => fake.seedProjectItem('acme/12', { type: 'DRAFT_ISSUE' }), /seedDraft/)
+  assert.throws(() => fake.seedProjectItem('acme/12', { type: 'ISSUE' }), /seed\(/)
+  assert.throws(() => fake.seedProjectItem('acme/99', { type: 'PULL_REQUEST' }), /unknown Project acme\/99/)
+  const { id } = fake.seedProjectItem('acme/7', { type: 'REDACTED' })
+  assert.equal(fake.state.items.find((item) => item.id === id).projectId, 'PVT_1')
+})
+
+test('a field write on a draft item sets and clears the value, as GitHub does, with no issue event', () => {
+  const fake = fakeGithubIssues()
+  const { item } = fake.seedDraft({ title: 'Idea' })
+  const field = fake.state.project.fields.find((candidate) => candidate.name === 'Status')
+  const optionId = field.options[0].id
+  data(fake.handle('PmkitSetProjectField', { input: { projectId: 'PVT_1', itemId: item, fieldId: field.id, value: { singleSelectOptionId: optionId } } }))
+  assert.deepEqual(fake.state.items.find((candidate) => candidate.id === item).values[field.id], { optionId })
+  data(fake.handle('PmkitClearProjectField', { input: { projectId: 'PVT_1', itemId: item, fieldId: field.id } }))
+  assert.equal(fake.state.items.find((candidate) => candidate.id === item).values[field.id], undefined)
+})
+
+test('fakeGithubIssuesFrom fills the item type of a state saved before PMK-343', () => {
+  const fake = fakeGithubIssues({ epics: [{ id: 'PVT_E12', owner: 'acme', number: 12 }] })
+  fake.seed({ number: 1, epics: ['acme/12'] })
+  fake.seedDraft({ project: 'PVT_E12', title: 'Idea' })
+  const json = fake.toJSON()
+  for (const item of json.items) delete item.type
+  json.items.push({ id: 'PVTI_8', projectId: 'PVT_E12', issueId: null, kind: 'PULL_REQUEST', title: 'Old pull', isArchived: false, values: {} })
+  json.items.push({ id: 'PVTI_9', projectId: 'PVT_E12', issueId: null, kind: 'DRAFT_ISSUE', title: 'Old draft', isArchived: false, values: {} })
+  const restored = fakeGithubIssuesFrom(json)
+  const nodes = data(restored.handle('PmkitEpicItems', { project: 'PVT_E12', first: 10 }, 'content { __typename')).node.items.nodes
+  assert.deepEqual(restored.state.items.map((item) => item.type), ['ISSUE', 'DRAFT_ISSUE', 'PULL_REQUEST', 'DRAFT_ISSUE'])
+  assert.deepEqual(nodes.map((node) => [node.content.__typename, node.content.title]), [['Issue', 'Seeded issue'], ['DraftIssue', 'Idea'], ['PullRequest', 'Old pull'], ['DraftIssue', 'Old draft']])
+  assert.equal(restored.state.items.some((item) => 'kind' in item), false)
 })
 
 test('PmkitIssueNodes answers issues by node id in order, with null for an unknown id', async () => {

@@ -1,8 +1,9 @@
 // The draft issues of the stateful fake GitHub (scripts/fake-github-issues.mjs): the Project, item and target reads and the
-// conversion of scripts/lib/github/draft-issues.mjs, the extra Projects of --project, and seedDraft. A draft is an item with
-// issueId null and a draft record; converting it creates the issue and points the same item at it, as GitHub does. A test may
-// set item.type (PULL_REQUEST, REDACTED) to stand for an item the fake does not model.
-// See docs/specs/2026-11-17-pmk-91-github-draft-issues-design.md.
+// conversion of scripts/lib/github/draft-issues.mjs, the extra Projects of --project, and seedDraft. A draft is an item of type
+// DRAFT_ISSUE with issueId null and a draft record, in any Project of the fake; converting it creates the issue and turns the
+// same item into an ISSUE item, as GitHub does. The item model and its content are the fake's (contentOf); seedProjectItem
+// adds a pull request or a redacted item.
+// See docs/specs/2026-11-17-pmk-91-github-draft-issues-design.md and docs/specs/2026-11-17-pmk-343-fake-github-project-items-design.md.
 
 /** Adds the draft keys to a state, new or loaded from an older toJSON(). extraProjects: [{ id, owner, number, title, linked }]. */
 export function initDrafts(state, { extraProjects = [] } = {}) {
@@ -11,14 +12,14 @@ export function initDrafts(state, { extraProjects = [] } = {}) {
 
 /**
  * The draft routes over a fake's state. helpers: stamp, register, requireRepository, repositoryById, newIssue, refuseWithData,
- * unknownNode, unprocessable, connection, userByLogin and setItemValues, as the fake defines them.
+ * unknownNode, unprocessable, connection, userByLogin, setItemValues and contentOf, as the fake defines them.
  */
-export function draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues }) {
+export function draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf }) {
   const sameName = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
-  const projects = () => [...(state.project ? [state.project] : []), ...state.extraProjects]
+  // Every Project of the fake: the scope Project, the epic Projects and the extra Projects of --project.
+  const projects = () => [...(state.project ? [state.project] : []), ...state.projects, ...state.extraProjects]
   const projectOf = (id) => projects().find((project) => project.id === id) ?? null
   const urlOf = (project) => `https://${state.host}/orgs/${project.owner}/projects/${project.number}`
-  const login = (name) => (name === null ? null : { login: name })
 
   /** The field values of an item, as GitHub returns them: the Title first, then each set value of the Project's fields. */
   function fieldValues(item, title) {
@@ -36,16 +37,8 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
   }
 
   function itemView(item) {
-    if (item.draft) {
-      const draft = item.draft
-      const content = {
-        __typename: 'DraftIssue', title: draft.title, body: draft.body, createdAt: draft.createdAt, updatedAt: draft.updatedAt,
-        creator: login(draft.creator), assignees: { nodes: draft.assignees.map((name) => ({ login: name })) },
-      }
-      return { id: item.id, type: item.type ?? 'DRAFT_ISSUE', isArchived: item.isArchived, content, fieldValues: fieldValues(item, draft.title), project: { id: item.projectId } }
-    }
-    const issue = state.issues.find((record) => record.id === item.issueId)
-    return { id: item.id, type: item.type ?? 'ISSUE', isArchived: item.isArchived, content: { __typename: 'Issue' }, fieldValues: fieldValues(item, issue?.title ?? ''), project: { id: item.projectId } }
+    const content = contentOf(item)
+    return { id: item.id, type: item.type, isArchived: item.isArchived, content, fieldValues: fieldValues(item, content?.title ?? ''), project: { id: item.projectId } }
   }
 
   const queries = {
@@ -72,11 +65,12 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
   const mutations = {
     PmkitConvertDraftItem(input) {
       const item = state.items.find((candidate) => candidate.id === input.itemId) ?? unknownNode(input.itemId)
-      if (!item.draft) unprocessable('The item is not a draft issue')
+      if (item.type !== 'DRAFT_ISSUE') unprocessable('The item is not a draft issue')
       const entry = repositoryById(input.repositoryId)
       if (entry.hasIssuesEnabled === false) unprocessable('Issues are disabled for this repository')
       const record = newIssue(entry, { title: item.draft.title, body: item.draft.body, author: state.viewer })
       record.assigneeIds = item.draft.assignees.map((name) => userByLogin(name)?.id).filter(Boolean)
+      item.type = 'ISSUE'
       item.issueId = record.id
       delete item.draft
       const content = { __typename: 'Issue', id: record.id, number: record.number, url: `https://${state.host}/${record.repo}/issues/${record.number}`, repository: { nameWithOwner: record.repo } }
@@ -85,7 +79,7 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
   }
 
   /**
-   * Adds a draft item. Fields: project (a Project id, the main Project by default), title, body, assignees (logins), creator
+   * Adds a draft item. Fields: project (the id of any Project of the fake, the main Project by default), title, body, assignees (logins), creator
    * (a login, or null for a deleted account), archived, values ({ <Project field name>: option name, number or date }),
    * createdAt and updatedAt. Returns { item }.
    */
@@ -94,7 +88,7 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
     if (!found) throw new Error(`fake GitHub: seedDraft names an unknown Project ${project}`)
     const at = createdAt ?? stamp()
     state.counters.item += 1
-    const item = { id: `PVTI_${state.counters.item}`, projectId: found.id, issueId: null, isArchived: archived, values: {}, draft: { title, body, assignees: [...assignees], creator, createdAt: at, updatedAt: updatedAt ?? at } }
+    const item = { id: `PVTI_${state.counters.item}`, projectId: found.id, type: 'DRAFT_ISSUE', issueId: null, isArchived: archived, values: {}, draft: { title, body, assignees: [...assignees], creator, createdAt: at, updatedAt: updatedAt ?? at } }
     setItemValues(item, found.fields ?? [], values)
     state.items.push(item)
     return { item: item.id }
