@@ -12,7 +12,10 @@ import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
 import { isMutation, operationName } from '../graphql.mjs'
 import { createGithubClient, HOST_NAME } from './client.mjs'
-import { needsVersionCheck, parseProject, parseRepo } from './discovery.mjs'
+import { addDays } from '../local/sprints.mjs'
+import { ITERATION_FIELD_QUERY, iterationEnd, UPDATE_ITERATIONS } from './cycles.mjs'
+import { fetchProject, needsVersionCheck, parseProject, parseRepo } from './discovery.mjs'
+import { hostFeatures, issueDocuments } from './documents.mjs'
 import { DRAFT_DOCUMENTS } from './draft-issues.mjs'
 import { createGithubTracker } from './tracker.mjs'
 
@@ -232,12 +235,12 @@ export async function checkMissingScope({ env, makeExec }) {
 // Criterion 2: discover against a github.com repository with a Project.
 
 /** A tracker of the target with its discovery cache in a temporary PMKIT_HOME. gh keeps the user's HOME, so it keeps its login. */
-async function withTracker({ env, makeExec, host, repo, project, mappings = {}, allow = {} }, use) {
+async function withTracker({ env, makeExec, host, repo, project, mappings = {}, allow = {}, now = () => new Date() }, use) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-home-'))
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
   try {
     const config = { root, pmkit: { tracker: { system: 'github', scope: { host, repo, project } }, git_host: { system: 'none' }, mappings } }
-    const tracker = createGithubTracker(config, { env: { ...env, PMKIT_HOME: home }, exec: guardExec(makeExec(env), allow) })
+    const tracker = createGithubTracker(config, { env: { ...env, PMKIT_HOME: home }, exec: guardExec(makeExec(env), allow), now })
     return await use(tracker, config)
   } finally {
     for (const dir of [home, root]) fs.rmSync(dir, { recursive: true, force: true })
@@ -260,4 +263,110 @@ export async function checkDiscover({ env, makeExec, write = () => {} }) {
     write(`issue types ${view.issueTypes.length}, issue fields ${view.issueFields.length}, Project fields ${view.projectFields.length} (iteration ${iterations.length}), Status options ${view.statusOptions.length}, capabilities ${capabilities.length}`)
     return { asserted: ['discover read the repository and the Project', 'the Project has an iteration field and Status options', 'capabilities built the manifest'] }
   })
+}
+
+// Criterion 3: openCycle keeps the iteration of every item, on a throwaway Project of github.com.
+
+const MAX_ITEMS = 6
+const ITEM_PAGE = 100
+const byStart = (a, b) => a.startDate.localeCompare(b.startDate)
+const keepIteration = ({ id, title, startDate, duration }) => ({ id, title, startDate, duration })
+
+/** Runs every cleanup step, even after one fails, and returns the messages of the steps that failed. */
+async function cleanUp(steps) {
+  const failed = []
+  for (const [what, step] of steps) {
+    try {
+      await step()
+    } catch (error) {
+      failed.push(`${what}: ${error.message}`)
+    }
+  }
+  return failed
+}
+
+/** Runs body, then cleanup; a cleanup failure is reported with the body's own failure, or fails a body that passed. */
+async function withCleanup(body, cleanup, write) {
+  let result
+  let failure = null
+  try {
+    result = await body()
+  } catch (error) {
+    failure = error
+  }
+  const failed = await cleanup()
+  for (const line of failed) write(`cleanup failed, ${line}; see "Clean up after a stopped run" in docs/runbooks/live-checks-github.md`)
+  if (failure) throw failure
+  if (failed.length > 0) fail(`the check passed, but its cleanup failed: ${failed.join('; ')}`)
+  return result
+}
+
+/** The iteration id of each item of a Project in the field, as Map<item id, iteration id or null>. */
+async function itemIterations(client, projectId, field) {
+  const { nodes } = await client.paginate(LIVE_DOCUMENTS.ITEMS, { project: projectId, field }, { select: (data) => data.node.items, pageSize: ITEM_PAGE })
+  return new Map(nodes.map((node) => [node.id, node.fieldValueByName?.iterationId ?? null]))
+}
+
+/**
+ * Adds one draft per iteration (up to 6) to the throwaway Project, sets each draft's iteration, runs openCycle through the tracker,
+ * and reads every draft back: each must keep its iteration id. Afterwards it deletes the drafts and sends the original iterations
+ * back with their ids, which removes the one openCycle added.
+ */
+export async function checkOpenCycle({ env, makeExec, write = () => {}, now = () => new Date() }) {
+  const { repo, project: target } = liveTargets(env).github
+  const reader = createGithubClient({ env, host: 'github.com', exec: guardExec(makeExec(env)), retries: 0 })
+  const project = await preflightProject(reader, target, 'PMKIT_LIVE_GITHUB_PROJECT')
+  const fieldRead = (await fetchProject(reader, target)).project.fields.find((field) => field.dataType === 'ITERATION')
+  if (!fieldRead) fail(`the Project ${target} has no iteration field; add one, as the runbook says`)
+  const field = (await reader.request(ITERATION_FIELD_QUERY, { project: project.id, field: fieldRead.name }))?.node?.field
+  const kept = field?.configuration
+  const all = [...(kept?.completedIterations ?? []), ...(kept?.iterations ?? [])].map(keepIteration).sort(byStart)
+  if (all.length === 0) fail(`the iteration field ${fieldRead.name} of ${target} has no iteration; add one in the Project settings`)
+
+  const added = new Set()
+  const sameProject = (input) => input?.projectId === project.id
+  const allow = {
+    PmkitLiveAddDraft: ({ input }) => sameProject(input),
+    PmkitSetProjectField: ({ input }) => sameProject(input) && input.fieldId === field.id && added.has(input.itemId),
+    PmkitDeleteProjectItem: ({ input }) => sameProject(input) && added.has(input.itemId),
+    PmkitUpdateIterations: ({ input }) => input?.fieldId === field.id,
+  }
+  const writer = createGithubClient({ env, host: 'github.com', exec: guardExec(makeExec(env), allow), retries: 0 })
+  const docs = issueDocuments(hostFeatures({ host: 'github.com', ghesVersion: null }))
+  const expected = new Map()
+  let opened = false
+
+  const body = async () => {
+    for (const [index, iteration] of all.slice(0, MAX_ITEMS).entries()) {
+      const item = (await writer.request(LIVE_DOCUMENTS.ADD_DRAFT, { input: { projectId: project.id, title: `${MARKER} openCycle check ${index + 1}` } })).addProjectV2DraftIssue.projectItem.id
+      added.add(item)
+      await writer.request(docs.SET_PROJECT_FIELD, { input: { projectId: project.id, itemId: item, fieldId: field.id, value: { iterationId: iteration.id } } })
+      expected.set(item, iteration.id)
+    }
+    const start = addDays(all.map(iterationEnd).sort().at(-1), 1)
+    const sprint = await withTracker({ env, makeExec, host: 'github.com', repo, project: target, mappings: { fields: { sprint: `project:${fieldRead.name}` } }, allow, now }, async (tracker) => {
+      const viewer = (await tracker.discover()).viewer.id
+      opened = true
+      return (await tracker.openCycle({ start, name: `${MARKER} ${start}` }, viewer)).after
+    })
+    const read = await itemIterations(reader, project.id, fieldRead.name)
+    const lost = [...expected].filter(([item, iteration]) => read.get(item) !== iteration).map(([item]) => item)
+    if (lost.length > 0) fail(`openCycle cleared the iteration of ${lost.length} of ${expected.size} items: ${lost.join(', ')}`)
+    return { asserted: [`openCycle added the sprint ${sprint.id}`, `${expected.size} items kept their iteration`] }
+  }
+
+  const restore = async () => {
+    await writer.request(UPDATE_ITERATIONS, { input: { fieldId: field.id, iterationConfiguration: { startDate: all[0].startDate, duration: kept.duration, iterations: all } } })
+    const current = (await reader.request(ITERATION_FIELD_QUERY, { project: project.id, field: fieldRead.name })).node.field.configuration
+    const ids = [...current.completedIterations, ...current.iterations].map((iteration) => iteration.id).sort()
+    const wanted = all.map((iteration) => iteration.id).sort()
+    if (ids.join() !== wanted.join()) throw new Error(`the field holds the iterations ${ids.join(', ')}, not ${wanted.join(', ')}`)
+    write(`restored the ${all.length} iterations of the field ${fieldRead.name}`)
+  }
+
+  const cleanup = () => cleanUp([
+    ...[...added].map((item) => [`deleting the draft ${item}`, () => writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })]),
+    ...(opened ? [[`restoring the iterations of ${fieldRead.name}`, restore]] : []),
+  ])
+  return withCleanup(body, cleanup, write)
 }

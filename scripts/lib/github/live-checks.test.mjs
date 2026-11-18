@@ -7,7 +7,7 @@ import { createGithubClient } from './client.mjs'
 import { liveGhExec } from '../../fake-gh-live.mjs'
 import { projectReply } from '../../fake-github-api.mjs'
 import {
-  checkDiscover, checkMissingScope, checkNoLogin, checkNotFound, checkRateHeaders, checkRejectedToken, guardExec, LIVE_DOCUMENTS, liveTargets, MARKER,
+  checkDiscover, checkMissingScope, checkNoLogin, checkOpenCycle, checkNotFound, checkRateHeaders, checkRejectedToken, guardExec, LIVE_DOCUMENTS, liveTargets, MARKER,
   preflightProject, skipReasons,
 } from './live-checks.mjs'
 
@@ -157,4 +157,67 @@ test('the discover check fails on a Project with no iteration field, and on a St
   await assert.rejects(checkDiscover({ env: { ...GITHUB }, makeExec: liveGhExec({ github: noIteration, ghes: null }) }), /the Project acme\/7 has no iteration field/)
   const noStatus = fakeGithubIssues({ project: { title: `${MARKER} checks`, iterations: ITERATIONS, statusOptions: [] } })
   await assert.rejects(checkDiscover({ env: { ...GITHUB }, makeExec: liveGhExec({ github: noStatus, ghes: null }) }), /the Project acme\/7 has no Status option/)
+})
+
+// Criterion 3: openCycle keeps the iteration of every item.
+
+const NOW = () => new Date('2026-11-17T09:00:00.000Z')
+const cycleRun = () => {
+  const github = fakeGithubIssues({ project: { title: `${MARKER} checks`, iterations: ITERATIONS } })
+  return { github, env: { ...GITHUB }, makeExec: liveGhExec({ github, ghes: null }) }
+}
+const iterationIds = (github) => {
+  const field = github.state.project.fields.find((item) => item.dataType === 'ITERATION')
+  return [...field.configuration.completedIterations, ...field.configuration.iterations].map((item) => item.id).sort()
+}
+const projectItems = (github) => github.state.items.filter((item) => item.projectId === 'PVT_1')
+
+test('the openCycle check passes when GitHub keeps the ids, and leaves the Project empty with its iterations as they were', async () => {
+  const { github, env, makeExec } = cycleRun()
+  const lines = []
+  const { asserted } = await checkOpenCycle({ env, makeExec, write: (line) => lines.push(line), now: NOW })
+  assert.ok(asserted.some((line) => /2 items kept their iteration/.test(line)))
+  assert.deepEqual(github.mutations.map((call) => call.name), [
+    'PmkitLiveAddDraft', 'PmkitSetProjectField', 'PmkitLiveAddDraft', 'PmkitSetProjectField', 'PmkitUpdateIterations',
+    'PmkitDeleteProjectItem', 'PmkitDeleteProjectItem', 'PmkitUpdateIterations',
+  ])
+  const opened = github.mutations[4].input.iterationConfiguration.iterations
+  assert.deepEqual(opened.map((item) => [item.id ?? null, item.startDate]), [['IT_0', '2026-11-02'], ['IT_1', '2026-11-16'], [null, '2026-11-30']])
+  assert.equal(opened[2].title, `${MARKER} 2026-11-30`)
+  assert.deepEqual(projectItems(github), [])
+  assert.deepEqual(iterationIds(github), ['IT_0', 'IT_1'])
+  assert.ok(lines.some((line) => /restored the 2 iterations of the field Sprint/.test(line)))
+})
+
+test('the openCycle check fails, naming the items, when GitHub drops the ids, and still cleans up', async () => {
+  const { github, env } = cycleRun()
+  let stripped = false
+  const makeExec = (child) => (cmd, args, options = {}) => {
+    const body = options.input ? JSON.parse(options.input) : null
+    if (!stripped && /PmkitUpdateIterations/.test(body?.query ?? '')) {
+      stripped = true
+      for (const iteration of body.variables.input.iterationConfiguration.iterations) delete iteration.id
+      return liveGhExec({ github, ghes: null })(child)(cmd, args, { ...options, input: JSON.stringify(body) })
+    }
+    return liveGhExec({ github, ghes: null })(child)(cmd, args, options)
+  }
+  await assert.rejects(checkOpenCycle({ env, makeExec, now: NOW }), /openCycle cleared the iteration of 2 of 2 items: PVTI_1, PVTI_2/)
+  assert.deepEqual(projectItems(github), [])
+  assert.deepEqual(iterationIds(github), ['IT_0', 'IT_1'])
+})
+
+test('the openCycle check deletes its drafts when a write fails in the middle', async () => {
+  const { github, env, makeExec } = cycleRun()
+  github.failNext('PmkitSetProjectField')
+  await assert.rejects(checkOpenCycle({ env, makeExec, now: NOW }), /fake GitHub failed PmkitSetProjectField/)
+  assert.deepEqual(projectItems(github), [])
+  assert.ok(!github.mutations.some((call) => call.name === 'PmkitUpdateIterations'))
+})
+
+test('the openCycle check stops before any write on a Project that is not a throwaway one, or whose iteration field has no iteration', async () => {
+  const named = fakeGithubIssues({ project: { title: 'Roadmap', iterations: ITERATIONS } })
+  await assert.rejects(checkOpenCycle({ env: { ...GITHUB }, makeExec: liveGhExec({ github: named, ghes: null }), now: NOW }), /does not start with pmkit-live/)
+  const empty = fakeGithubIssues({ project: { title: `${MARKER} checks`, iterations: { iterations: [], completed: [] } } })
+  await assert.rejects(checkOpenCycle({ env: { ...GITHUB }, makeExec: liveGhExec({ github: empty, ghes: null }), now: NOW }), /the iteration field Sprint of acme\/7 has no iteration/)
+  assert.deepEqual([...named.mutations, ...empty.mutations], [])
 })
