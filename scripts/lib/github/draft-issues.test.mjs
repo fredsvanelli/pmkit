@@ -123,7 +123,7 @@ test('convert turns the drafts into issues in the scope repository', async () =>
   })
   const item = fake.state.items.find((candidate) => candidate.id === a)
   const issue = fake.state.issues.find((record) => record.id === item.issueId)
-  assert.deepEqual([issue.title, issue.body, issue.assigneeIds, item.draft, Object.keys(item.values).length], ['Offline mode', 'Work without a network.', ['U_2'], undefined, 1])
+  assert.deepEqual([issue.title, issue.body, issue.assigneeIds, item.type, item.draft, Object.keys(item.values).length], ['Offline mode', 'Work without a network.', ['U_2'], 'ISSUE', undefined, 1])
   assert.equal(convertText(result, false), 'converted 2 drafts into issues in acme/widgets: #1, #2')
   assert.deepEqual((await ops.list()).drafts, [])
 })
