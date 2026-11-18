@@ -6,8 +6,9 @@ status: backlog
 priority: medium
 estimate: 5
 parent: EPC-6
+branch: pmk-347-epic-description
 created: 2026-11-18T01:40:58.620Z
-updated: 2026-11-18T01:40:58Z
+updated: 2026-11-18T03:34:41Z
 ---
 
 ## Description
@@ -39,11 +40,11 @@ O `/pmkit:spec:from-prd` e o `/pmkit:spec:import` criam o épico só com o títu
 
 ## Acceptance criteria
 
-- [ ] `pmkit epic create --title-file t --description-file d` grava a descrição, e `pmkit epic get <id>` a mostra, no tracker local
-- [ ] O dry-run de `epic create` com `--description-file` mostra a descrição que seria gravada
-- [ ] No Linear e no GitHub, `epic create --description-file` envia a descrição ao tracker
-- [ ] Um épico novo criado pelo /pmkit:spec:from-prd tem uma descrição com o propósito, o que fica fora da v1 e o caminho do PRD refinado
-- [ ] A aprovação do épico no Stage 4 do from-prd mostra a descrição antes de gravar
-- [ ] Um épico novo criado pelo /pmkit:spec:import tem uma descrição tirada da spec, mostrada na aprovação da árvore
-- [ ] Com um epic-id existente, nenhum dos dois fluxos altera a descrição do épico
-- [ ] Os runbooks spec-from-prd e spec-import passam com a descrição do épico conferida
+- [x] `pmkit epic create --title-file t --description-file d` grava a descrição, e `pmkit epic get <id>` a mostra, no tracker local
+- [x] O dry-run de `epic create` com `--description-file` mostra a descrição que seria gravada
+- [x] No Linear e no GitHub, `epic create --description-file` envia a descrição ao tracker
+- [x] Um épico novo criado pelo /pmkit:spec:from-prd tem uma descrição com o propósito, o que fica fora da v1 e o caminho do PRD refinado
+- [x] A aprovação do épico no Stage 4 do from-prd mostra a descrição antes de gravar
+- [x] Um épico novo criado pelo /pmkit:spec:import tem uma descrição tirada da spec, mostrada na aprovação da árvore
+- [x] Com um epic-id existente, nenhum dos dois fluxos altera a descrição do épico
+- [x] Os runbooks spec-from-prd e spec-import passam com a descrição do épico conferida
