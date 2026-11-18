@@ -2,13 +2,13 @@
 id: PMK-347
 title: Gravar a descrição do épico no epic create e preenchê-la no from-prd e no import
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 5
 parent: EPC-6
 branch: pmk-347-epic-description
 created: 2026-11-18T01:40:58.620Z
-updated: 2026-11-18T03:35:31Z
+updated: 2026-11-18T20:50:04Z
 ---
 
 ## Description
