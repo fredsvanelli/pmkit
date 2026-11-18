@@ -265,8 +265,9 @@ function build(state) {
         const option = field.options.find((candidate) => candidate.id === value.optionId)
         return [{ __typename: 'IssueFieldSingleSelectValue', optionId: value.optionId, name: option?.name ?? null, field: ref }]
       }
-      const typename = field.dataType === 'NUMBER' ? 'IssueFieldNumberValue' : 'IssueFieldDateValue'
-      return [{ __typename: typename, value: value.value, field: ref }]
+      // pmkit aliases the two values, as GitHub refuses one `value` of two types in a selection.
+      if (field.dataType === 'NUMBER') return [{ __typename: 'IssueFieldNumberValue', numberValue: value.value, field: ref }]
+      return [{ __typename: 'IssueFieldDateValue', dateValue: value.value, field: ref }]
     })
   }
 
@@ -897,6 +898,8 @@ function build(state) {
       // ProjectV2Owner is an interface with id, projectV2 and projectsV2 only: a login needs an inline fragment on Organization or User.
       [false, /\bowner\s*\{\s*login\b/, "Field 'login' doesn't exist on type 'ProjectV2Owner'"],
       // RepositoryOwner has no projectV2: the read needs an inline fragment on ProjectV2Owner (or Organization or User).
+      // IssueFieldNumberValue.value is Float! and IssueFieldDateValue.value is String!, so one selection of both does not merge.
+      [false, /\bon IssueField(?:Number|Date)Value\s*\{\s*value\b/, "Field 'value' has a return_type conflict: `Float!` or `String!`?"],
       [false, /\brepositoryOwner\s*\([^)]*\)\s*\{\s*projectV2\b/, "Field 'projectV2' doesn't exist on type 'RepositoryOwner'"],
     ]
     const found = checks.find(([present, pattern]) => !present && pattern.test(query ?? ''))

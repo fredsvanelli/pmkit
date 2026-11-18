@@ -199,8 +199,8 @@ test('issue fields and relatesTo read and write on github.com', async () => {
   const one = await read(1)
   assert.deepEqual(one.issueFieldValues.nodes, [
     { __typename: 'IssueFieldSingleSelectValue', optionId: 'O2', name: 'P1', field: { id: 'IF_1', name: 'Priority' } },
-    { __typename: 'IssueFieldNumberValue', value: 5, field: { id: 'IF_2', name: 'Effort' } },
-    { __typename: 'IssueFieldDateValue', value: '2026-12-24', field: { id: 'IF_4', name: 'Target date' } },
+    { __typename: 'IssueFieldNumberValue', numberValue: 5, field: { id: 'IF_2', name: 'Effort' } },
+    { __typename: 'IssueFieldDateValue', dateValue: '2026-12-24', field: { id: 'IF_4', name: 'Target date' } },
   ])
   assert.deepEqual(one.relatesTo.nodes.map((node) => node.number), [2])
   assert.deepEqual((await read(2)).relatesTo.nodes.map((node) => node.number), [1])
@@ -697,4 +697,13 @@ test('the fake refuses projectV2 selected on RepositoryOwner without a ProjectV2
   await assert.rejects(client.request(bad, { owner: 'acme', number: 7 }), /Field 'projectV2' doesn't exist on type 'RepositoryOwner'/)
   const { DRAFT_DOCUMENTS } = await import('./lib/github/draft-issues.mjs')
   assert.equal((await client.request(DRAFT_DOCUMENTS.PROJECT, { owner: 'acme', number: 7 })).repositoryOwner.projectV2.id, 'PVT_1')
+})
+
+test('the fake refuses value selected on both the number and the date issue field values, as GitHub does for fields that do not merge', async () => {
+  const { docs, client, create } = setup()
+  await create({ title: 'A' })
+  const bad = docs.ISSUE.replace('numberValue: value', 'value').replace('dateValue: value', 'value')
+  assert.notEqual(bad, docs.ISSUE)
+  await assert.rejects(client.request(bad, { ...REPO, number: 1, ...VARS }), /Field 'value' has a return_type conflict/)
+  assert.equal((await client.request(docs.ISSUE, { ...REPO, number: 1, ...VARS })).repository.issue.number, 1)
 })

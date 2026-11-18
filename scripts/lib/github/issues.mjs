@@ -178,7 +178,7 @@ function priorityOf(node, context) {
 function estimateOf(node, context) {
   const value = rawValue('estimate', node, context)
   if (!value) return undefined
-  const found = value.number ?? value.value ?? value.name
+  const found = value.number ?? value.numberValue ?? value.name
   return found ?? undefined
 }
 
@@ -200,7 +200,7 @@ export function parentOf(node, context) {
 
 function dueOf(node, context) {
   const value = rawValue('due', node, context)
-  return value?.date ?? value?.value ?? undefined
+  return value?.date ?? value?.dateValue ?? undefined
 }
 
 /** The pmkit issue of a fragment-shaped node. Unset fields are absent keys. */

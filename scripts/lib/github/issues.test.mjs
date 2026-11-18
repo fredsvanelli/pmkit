@@ -100,7 +100,7 @@ test('priority rule', () => {
 test('toIssue reads priority, estimate and due from their sources', () => {
   const c = ctx()
   const n = withItem(item({ fPriority: sel('P1'), fDue: { __typename: 'ProjectV2ItemFieldDateValue', date: '2026-12-01' } }), {
-    issueFieldValues: { nodes: [{ __typename: 'IssueFieldNumberValue', value: 3, field: { id: 'IF1', name: 'Estimate' } }] },
+    issueFieldValues: { nodes: [{ __typename: 'IssueFieldNumberValue', numberValue: 3, field: { id: 'IF1', name: 'Estimate' } }] },
   })
   const issue = toIssue(n, c)
   assert.equal(issue.priority, 'high')
@@ -282,4 +282,11 @@ test('toIssue ignores items in Projects that are not linked epics, and the scope
   assert.equal('parent' in toIssue(node({ projectItems: { nodes: [epicItem('OTHER', 3), item()] } }), c), false)
   assert.equal(toIssue(node({ projectItems: { nodes: [epicItem('OTHER', 3), epicItem('E12', 12)] } }), c).parent, 'acme/12')
   assert.equal('parent' in toIssue(node({ projectItems: { nodes: [epicItem('E12', 12)] } }), ctx()), false)
+})
+
+test('toIssue reads an issue field date through its dateValue alias', () => {
+  const fields = [{ id: 'IF1', name: 'Estimate', dataType: 'NUMBER', options: [] }, { id: 'IF3', name: 'Target date', dataType: 'DATE', options: [] }]
+  const c = makeContext(raw({ issueFields: fields }), pmkit({ fields: { priority: 'project:Priority', estimate: 'issue:Estimate', target_date: 'issue:Target date' } }))
+  const issue = toIssue(node({ issueFieldValues: { nodes: [{ __typename: 'IssueFieldDateValue', dateValue: '2026-12-24', field: { id: 'IF3', name: 'Target date' } }] } }), c)
+  assert.equal(issue.due, '2026-12-24')
 })

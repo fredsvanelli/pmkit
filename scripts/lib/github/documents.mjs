@@ -29,7 +29,8 @@ const PAGE = 'pageInfo { hasNextPage endCursor }'
 
 const PROJECT_VALUE = '{ __typename ... on ProjectV2ItemFieldSingleSelectValue { name optionId } ... on ProjectV2ItemFieldNumberValue { number } ... on ProjectV2ItemFieldDateValue { date } ... on ProjectV2ItemFieldIterationValue { iterationId title startDate duration } }'
 const ISSUE_FIELD_FIELD = 'field { ... on IssueFieldSingleSelect { id name } ... on IssueFieldNumber { id name } ... on IssueFieldDate { id name } }'
-const ISSUE_FIELD_VALUES = `issueFieldValues(first: 20) { nodes { __typename ... on IssueFieldSingleSelectValue { optionId name ${ISSUE_FIELD_FIELD} } ... on IssueFieldNumberValue { value ${ISSUE_FIELD_FIELD} } ... on IssueFieldDateValue { value ${ISSUE_FIELD_FIELD} } } ${PAGE} }`
+// The number and date values are aliased: GitHub refuses one selection of `value` as Float! and String! (fields that do not merge).
+const ISSUE_FIELD_VALUES = `issueFieldValues(first: 20) { nodes { __typename ... on IssueFieldSingleSelectValue { optionId name ${ISSUE_FIELD_FIELD} } ... on IssueFieldNumberValue { numberValue: value ${ISSUE_FIELD_FIELD} } ... on IssueFieldDateValue { dateValue: value ${ISSUE_FIELD_FIELD} } } ${PAGE} }`
 
 // Variable and alias of each configured Project field. Values reach the document through variables, never literals.
 const FIELD_ALIASES = [['status', 'status', 'fStatus'], ['priority', 'fPriority', 'fPriority'], ['estimate', 'fEstimate', 'fEstimate'], ['due', 'fDue', 'fDue'], ['sprint', 'fSprint', 'fSprint']]
