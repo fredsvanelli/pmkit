@@ -2,12 +2,14 @@
 id: PMK-341
 title: Name the Discussions permission in the fine-grained PAT hint
 type: bug
-status: backlog
+status: in_progress
 priority: low
+assignee: fred
 parent: EPC-8
 milestone: github-issues
+branch: pmk-341-name-the-discussions-permission-in-the
 created: 2026-11-17T22:21:23.265Z
-updated: 2026-11-17T22:21:23Z
+updated: 2026-11-18T01:35:29Z
 ---
 
 ## Description

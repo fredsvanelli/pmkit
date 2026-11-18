@@ -1,1 +1,4 @@
 {"at":"2026-11-17T22:21:23Z","by":"fred","op":"create","to":{"id":"PMK-341","title":"Name the Discussions permission in the fine-grained PAT hint","type":"bug","status":"backlog","priority":"low","labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-11-17T22:21:23.265Z","updated":"2026-11-17T22:21:23Z"}}
+{"at":"2026-11-18T01:35:28Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-18T01:35:28Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-18T01:35:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-341-name-the-discussions-permission-in-the"}
