@@ -2,14 +2,14 @@
 id: PMK-343
 title: "Unify the fake GitHub's models of non-issue Project items"
 type: chore
-status: in_review
+status: done
 priority: low
 assignee: fred
 parent: EPC-8
 milestone: github-issues
 branch: pmk-343-unify-the-fake-github-s-models-of-non
 created: 2026-11-18T00:15:22.751Z
-updated: 2026-11-18T02:07:29Z
+updated: 2026-11-18T20:50:03Z
 ---
 
 ## Description

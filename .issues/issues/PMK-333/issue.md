@@ -2,12 +2,12 @@
 id: PMK-333
 title: Fix the npm test failures on WSL and case-sensitive file systems
 type: bug
-status: in_review
+status: done
 assignee: fred
 related: [PMK-84]
 branch: pmk-333-fix-the-npm-test-failures-on-wsl-and
 created: 2026-11-16T18:00:01.438Z
-updated: 2026-11-18T01:38:50Z
+updated: 2026-11-18T20:50:01Z
 ---
 
 ## Description
