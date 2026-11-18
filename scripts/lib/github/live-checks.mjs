@@ -438,7 +438,7 @@ export async function checkGhesConversion({ env, makeExec, write = () => {} }) {
   const cleanup = () => cleanUp([
     ...[...added].map((item) => [`removing the Project item ${item}`, () => writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })]),
     ...(created.id ? [[`removing issue #${created.number}`, removeIssue]] : []),
-    ...(!created.id && created.number ? [[`removing issue #${created.number}`, async () => { throw new Error(`pmkit could not read its id; delete ${created.url} by hand`) }]] : []),
+    ...(!created.id && created.number ? [[`removing issue #${created.number}`, async () => { throw new Error(`its id could not be read; delete ${created.url} by hand`) }]] : []),
   ])
   return withCleanup(body, cleanup, write)
 }

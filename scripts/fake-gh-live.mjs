@@ -9,7 +9,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { hostnameOf } from './fake-github-api.mjs'
 import { fakeGithubIssuesFrom } from './fake-github-issues.mjs'
 import { BAD_TOKEN } from './lib/github/live-checks.mjs'
-import { tempDir } from './test-helpers.mjs'
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
 const TOKEN_VARIABLES = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
@@ -44,11 +43,11 @@ export function answerLive(fakes, env, args, input, { scopelessToken = null } = 
 export const liveGhExec = (fakes, options = {}) => (env) => (cmd, args, { input } = {}) => answerLive(fakes, env, args, input, options)
 
 /**
- * Writes a fake gh first on PATH over a fixture { github, ghes, scopelessToken }, where github and ghes are the toJSON() of fake
- * GitHubs or null. The state is written back after each call. Returns { bin, fixtureFile }.
+ * Writes a fake gh into the folder bin, to put first on PATH, over a fixture { github, ghes, scopelessToken }, where github and ghes
+ * are the toJSON() of fake GitHubs or null. The state is written back after each call. Returns { bin, fixtureFile }.
+ * The gh script imports this module, so the module loads nothing that prints, such as node:test.
  */
-export function liveGhOnPath(fixture) {
-  const bin = tempDir('pmkit-fake-gh-live-')
+export function liveGhOnPath(fixture, bin) {
   const fixtureFile = path.join(bin, 'fixture.json')
   fs.writeFileSync(fixtureFile, JSON.stringify(fixture))
   const script = `#!/usr/bin/env node
