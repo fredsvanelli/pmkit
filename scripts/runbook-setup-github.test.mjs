@@ -70,7 +70,7 @@ const ANSWERS = [
 
 test('the runbook names the commands this test runs', () => {
   const text = fs.readFileSync(RUNBOOK, 'utf8')
-  for (const command of ['init --tracker github --git-host github --dry-run --json', '--project acme/7', 'validate --json', 'discover --json', 'capabilities --json', 'init --update --dry-run --json', 'init --tracker github --git-host github --project none --dry-run --json', '--type-label bug=bug']) {
+  for (const command of ['init --tracker github --git-host github --dry-run --json', '--project acme/7', 'init --tracker github --git-host github --project acme/7 --dry-run --json', 'validate --json', 'discover --json', 'capabilities --json', 'init --update --dry-run --json', 'init --tracker github --git-host github --project none --dry-run --json', '--type-label bug=bug']) {
     assert.ok(text.includes(command), command)
   }
 })
@@ -219,4 +219,18 @@ test('runbook: setup without a Project maps status and type labels (steps 9 to 1
   const manifest = json(pmkit(root, fake, ['capabilities', '--json']))
   assert.equal(manifest.capabilities.find((item) => item.id === 'deliverables').enableHint, 'Needs a GitHub Project: set tracker.scope.project with /pmkit:setup')
   assert.ok(manifest.warnings.includes('tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent'))
+})
+
+test('runbook: on GitHub Enterprise Server 3.21 setup reads the Project and offers Project fields only, and 3.22 adds the issue fields', async () => {
+  const { fakeGithubIssues } = await import('./fake-github-issues.mjs')
+  const { statefulGhOnPath } = await import('./fake-gh-path.mjs')
+  const fieldsOf = (version) => {
+    const fake = statefulGhOnPath({ meta: { installed_version: version }, issues: fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: version }).toJSON() })
+    const root = repository('git@ghes.example.com:acme/widgets.git')
+    const result = json(pmkit(root, fake, [...INIT, '--project', 'acme/7', '--dry-run', '--json']))
+    assert.equal(result.host, 'ghes.example.com')
+    return result.questions.find((q) => q.path === 'mappings.fields.target_date').candidates
+  }
+  assert.deepEqual(fieldsOf('3.21.0'), ['project:Due'])
+  assert.deepEqual(fieldsOf('3.22.0'), ['issue:Target date', 'issue:Start date', 'project:Due'])
 })

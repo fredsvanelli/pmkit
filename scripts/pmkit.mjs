@@ -4463,7 +4463,7 @@ async function resolveGithubProject(ctx, client, raw, held, repo) {
   let heldMissing = false
   if (wanted !== undefined && parseGithubProject(wanted)) {
     try {
-      const read = await fetchGithubProject(client, wanted, { issueFields: hasIssueFields(raw.ghesVersion) })
+      const read = await fetchGithubProject(client, wanted, { issueFields: hasIssueFields(raw.ghesVersion), ghes: raw.ghesVersion !== null })
       raw.project = read.project
       if (read.truncated) raw.truncated.push('Project fields')
     } catch (error) {

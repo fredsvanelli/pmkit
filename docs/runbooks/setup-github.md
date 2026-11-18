@@ -90,6 +90,16 @@ A repository with no Project reads its statuses from labels, and a repository wi
 
     Expect `cycles`, `capacity`, `deliverables` and `status_update` absent with the hint `Needs a GitHub Project: set tracker.scope.project with /pmkit:setup`, and the warning `tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent`.
 
+## On GitHub Enterprise Server
+
+12. On a GHES host, from 3.19, with a Project, read the questions:
+
+    ```
+    node scripts/pmkit.mjs init --tracker github --git-host github --project acme/7 --dry-run --json
+    ```
+
+    Expect `host` set to the GHES host and the Project's fields read: pmkit leaves out `isIssueField` and multi-select fields, which no GHES schema has. Before 3.22, GHES lists no issue fields on a repository, so each field question offers Project fields only, such as `candidates: ["project:Due"]` for `mappings.fields.target_date`. From 3.22 the issue fields come first, as on github.com: `["issue:Target date", "issue:Start date", "project:Due"]`.
+
 ## What the fake `gh` checks
 
 The test records every `gh` call and fails when an argument or the standard input holds the token in `GH_TOKEN`. Every call carries `--hostname <host>`.
