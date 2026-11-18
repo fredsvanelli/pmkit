@@ -103,3 +103,57 @@ test('a GitHub readme that fails after the create stops with the epic ID and the
   assert.match(block, /show the drafted description[^.]*readme by hand/)
   assert.match(block, /`epic update`[^.]*PMK-348/)
 })
+
+// The final review of PMK-347.
+
+test('on Linear and GitHub a spec read from docs/specs/ is already stored there', () => {
+  const block = step(3)
+  assert.match(block, /`NOT_SUPPORTED`[^]*repository file under `docs\/specs\/`[^.]*already stored/)
+  assert.match(block, /already stored[^]*Documents cites that path[^]*nothing is written in step 7\.1/)
+  assert.match(block, /no existence check/)
+  assert.match(step(5), /already stored[^]*two choices: create everything, or stop/)
+  const missing = section('If something is missing')
+  assert.match(missing, /`NOT_SUPPORTED`[^\n]*already stored/)
+})
+
+test('a CONFLICT in step 3 offers another name or not storing the spec', () => {
+  const conflict = step(3).split('\n').find((line) => line.includes('- `CONFLICT`')) ?? ''
+  assert.match(conflict, /another name/)
+  assert.match(conflict, /without storing the spec/)
+})
+
+test('a stop after the spec is stored names the continue command with the stored path', () => {
+  const block = step(7)
+  assert.ok(block.includes('/pmkit:spec:import <stored path> [<epic-id>]'), 'step 7 lacks the continue command')
+  assert.match(block, /stored path is `specs\/<name>\.md` on the local tracker/)
+  assert.match(block, /`docs\/specs\/<name>\.md` on Linear and GitHub/)
+  assert.match(block, /new epic ID when the epic exists/)
+  assert.match(block, /already stored[^.]*no second copy/)
+  assert.match(step(8), /stop as step 7 says/)
+  assert.match(step(1), /relative to the `docs\/` folder, such as `specs\/<name>\.md`/)
+})
+
+test('step 7.1 checks again that the repository file is absent just before it writes it', () => {
+  const block = step(7)
+  assert.match(block, /just before the write, check again with the file tools that `docs\/specs\/<name>\.md` is still absent/i)
+  assert.match(block, /When it exists, stop before the epic, as for `CONFLICT`/)
+})
+
+test('an UPSTREAM that starts with "GitHub created the Project" always lists the epic as created', () => {
+  const block = step(7)
+  assert.match(block, /starts with `GitHub created the Project`[^.]*the epic exists/)
+  assert.match(block, /`could not set its readme`[^.]*has no description/)
+  assert.match(block, /`--start` or `--target`[^.]*next step[^.]*status update/)
+})
+
+test('without storing, Documents cites the source path only for a file inside the repository', () => {
+  const block = step(5)
+  assert.match(block, /inside the repository[^.]*relative to the repository root/)
+  assert.match(block, /Otherwise[^.]*Documents section is left out/)
+  assert.doesNotMatch(block, /Ask once/)
+  assert.match(block, /replaces the first/)
+})
+
+test('a pasted spec with no title gets a storage name from the user', () => {
+  assert.match(section('If something is missing'), /no title[^\n]*ask for a storage name[^\n]*same rule/)
+})

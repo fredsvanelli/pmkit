@@ -143,7 +143,7 @@ function runFlow() {
   json(pmkit(root, ['issues', 'link', ids[0], ids[1], '--kind', 'blocks', '--json']))
   json(pmkit(root, ['issues', 'link', ids[1], ids[2], '--kind', 'blocks', '--json']))
 
-  return { root, epic, ids, next, prdFile }
+  return { root, epic, ids, next, prdFile, adrPath }
 }
 
 test('the runbook names the commands this test runs', () => {
@@ -158,7 +158,7 @@ test('the runbook names the commands this test runs', () => {
 })
 
 test('runbook: a refined PRD becomes an ADR, an epic, estimated issues with criteria, and a critical path', () => {
-  const { root, epic, ids } = runFlow()
+  const { root, epic, ids, adrPath } = runFlow()
 
   const stored = json(pmkit(root, ['docs', 'read', PRD_PATH, '--json']))
   assert.equal(stored.body, PRD)
@@ -168,6 +168,8 @@ test('runbook: a refined PRD becomes an ADR, an epic, estimated issues with crit
   assert.ok(description.includes('### Purpose'), description)
   assert.ok(description.includes(CITED_PATH), description)
   assert.ok(fs.existsSync(path.join(root, CITED_PATH)), `${CITED_PATH} exists in the repository`)
+  assert.ok(description.includes(adrPath), description)
+  assert.ok(fs.existsSync(path.join(root, adrPath)), `${adrPath} exists in the repository`)
 
   const { issues } = json(pmkit(root, ['issues', 'list', '--parent', epic, '--json']))
   assert.deepEqual(issues.map((issue) => issue.id).sort(), [...ids].sort())

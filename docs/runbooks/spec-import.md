@@ -1,6 +1,6 @@
 # Runbook: import a spec
 
-The flow of `/pmkit:spec:import` (`commands/spec/import.md`) on a Local tracker: a pasted spec becomes a stored document, an epic whose description cites it, a milestone, two estimated issues with acceptance criteria and a blocker link. The tree and the approval need a person, so `scripts/runbook-spec-import.test.mjs` runs the CLI calls that the command makes after the approval of step 5, in the order of its steps, and `npm test` checks this runbook.
+The flow of `/pmkit:spec:import` (`commands/spec/import.md`) on a Local tracker: a pasted spec becomes a stored document, an epic whose description cites it, a milestone, two estimated issues with acceptance criteria and a blocker link. The tree and the approval need a person, so `scripts/runbook-spec-import.test.mjs` runs the step 3 dry run that checks the spec path, and then the CLI calls that the command makes after the approval of step 5, in the order of its steps. `npm test` checks this runbook.
 
 ## Before you start
 

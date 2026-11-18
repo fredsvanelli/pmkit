@@ -151,6 +151,14 @@ test('epic create --description-file sets the readme of the Project', async () =
   assert.equal(dataOf(await cli(['epic', 'get', 'acme/13', '--json'])).description, 'Plan')
 })
 
+test('epic create --description-file --dry-run previews the description and sends no mutation', async () => {
+  const { root, fake, cli } = githubRepo()
+  fs.writeFileSync(path.join(root, 'description.md'), '### Purpose\n\nPlan')
+  const preview = dataOf(await cli(['epic', 'create', '--title', 'Search', '--description-file', path.join(root, 'description.md'), '--dry-run', '--json']))
+  assert.equal(preview.after.description, '### Purpose\n\nPlan')
+  assert.deepEqual(fake.mutations.filter((call) => ['PmkitCreateProject', 'PmkitUpdateProjectReadme'].includes(call.name)), [])
+})
+
 test('epic create --goal answers NOT_SUPPORTED', async () => {
   const { cli } = githubRepo()
   const refused = errorOf(await cli(['epic', 'create', '--title', 'Search', '--goal', 'g1', '--json']))

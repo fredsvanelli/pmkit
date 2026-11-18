@@ -1,7 +1,7 @@
 // E2E test of docs/runbooks/spec-import.md: the real CLI, run as a subprocess, on a Local tracker.
-// The approval of /pmkit:spec:import cannot run in a test, so the test runs the CLI calls the command makes after it, in the
-// order of its steps: the step 3 dry run that checks the spec path, the step 6 dry runs, the spec write of step 7.1, the epic
-// with its description of step 7.2, the milestone of step 7.3, the issues of step 8 and the links of step 9.
+// The approval of /pmkit:spec:import cannot run in a test, so the test runs the step 3 dry run that checks the spec path, and
+// then the CLI calls the command makes after the step 5 approval, in the order of its steps: the step 6 dry runs, the spec write
+// of step 7.1, the epic with its description of step 7.2, the milestone of step 7.3, the issues of step 8 and the link of step 9.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
@@ -73,7 +73,7 @@ function tempFile(name, text) {
   return file
 }
 
-/** Runs the CLI calls of the command after the step 5 approval, in order, on a fresh `basic` repository. */
+/** Runs the step 3 dry run, then the CLI calls of the command after the step 5 approval, in order, on a fresh `basic` repository. */
 function runFlow() {
   const root = makeRepo('basic')
   const specFile = tempFile('spec.md', SPEC)
@@ -126,7 +126,7 @@ test('the runbook names every call the test runs', () => {
   }
 })
 
-test('import stores the spec, then creates the epic with a description that cites it', () => {
+test('import stores the spec at the path that the epic description cites', () => {
   const { root, epic, ids } = runFlow()
 
   const stored = json(pmkit(root, ['docs', 'read', SPEC_PATH, '--json']))
@@ -135,6 +135,7 @@ test('import stores the spec, then creates the epic with a description that cite
   const { description } = json(pmkit(root, ['epic', 'get', epic, '--json']))
   assert.ok(description.includes('### Purpose'), description)
   assert.ok(description.includes(CITED_PATH), description)
+  // This proves that docs create wrote the cited path. The order of the writes is the order of runFlow, not something this checks.
   assert.ok(fs.existsSync(path.join(root, CITED_PATH)), 'the cited path is a real file in the repository')
 
   const { issues } = json(pmkit(root, ['issues', 'list', '--parent', epic, '--json']))
