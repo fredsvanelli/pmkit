@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { fakeGithubIssues } from '../../fake-github-issues.mjs'
 import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from '../../fake-github-api.mjs'
 import { createGithubClient } from './client.mjs'
 import { checkGhesVersion, discoveryView, fetchDiscovery, fetchLinkedProjects, mappedLabelNames, needsVersionCheck, parseProject, projectQuery, repoQuery } from './discovery.mjs'
@@ -138,6 +139,21 @@ test('fetchLinkedProjects lists the linked Projects, and AUTH propagates', async
   assert.deepEqual(await fetchLinkedProjects(ok.client, 'acme/widgets'), [{ id: 'acme/7', title: 'Roadmap' }, { id: 'octocat/2', title: 'Bugs' }])
   const denied = setup(standardFixture({ graphql: { PmkitLinkedProjects: SCOPE_ERROR } }), 'github.com')
   await rejectsWith(fetchLinkedProjects(denied.client, 'acme/widgets'), 'AUTH', /gh auth refresh -s project/)
+})
+
+test('fetchLinkedProjects lists nothing when GitHub answers without the repository', async () => {
+  const empty = setup(standardFixture({ graphql: { PmkitLinkedProjects: { data: { repository: null } } } }), 'github.com')
+  assert.deepEqual(await fetchLinkedProjects(empty.client, 'acme/widgets'), [])
+})
+
+test('fetchLinkedProjects pages through more than 100 linked Projects', async () => {
+  const fake = fakeGithubIssues({ epics: Array.from({ length: 150 }, (_, index) => ({ number: 100 + index })) })
+  const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  const linked = await fetchLinkedProjects(client, 'acme/widgets')
+  assert.equal(linked.length, 151)
+  assert.deepEqual([linked[0].id, linked.at(-1).id], ['acme/7', 'acme/249'])
+  const reads = fake.reads.filter((call) => call.name === 'PmkitLinkedProjects')
+  assert.deepEqual(reads.map((call) => [call.variables.first, call.variables.after]), [[100, null], [100, '99']])
 })
 
 async function rawOf(fixture = standardFixture(), project = 'acme/7') {

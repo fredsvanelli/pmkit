@@ -12,7 +12,7 @@ import { translateFilter } from './filter.mjs'
 import { compareGithubIds, issueIdOf, notFound, parseIssueId } from './ids.mjs'
 import { itemOf, toIssue, toIssueWithWarnings } from './issues.mjs'
 import { epicOf, readMilestoneNodes } from './projects.mjs'
-import { docsOf, sender } from './requests.mjs'
+import { completeProjectItems, docsOf, sender } from './requests.mjs'
 import { planMove, planWrite, projectName, requireAssignable } from './writes.mjs'
 
 const PAGE_SIZE = 100
@@ -39,6 +39,8 @@ export function issueOperations({ client, config, getContext, now = () => new Da
       const { nodes } = await client.paginate(docs.MORE(field), variables, { select: (data) => data.node[field], pageSize: PAGE_SIZE })
       node[field] = { nodes, pageInfo: { hasNextPage: false } }
     }
+    // A blocker's items leave archived ones out, so its reread does too.
+    for (const blocker of node.blockedBy?.nodes ?? []) await completeProjectItems(client, context, blocker, { archived: false })
     return node
   }
 

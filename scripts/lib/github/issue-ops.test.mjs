@@ -92,6 +92,29 @@ test('an issue in more than 20 Projects reads the configured Project item from a
   assert.deepEqual(more.variables, { id: 'I_1', fStatus: 'Status', first: 100, after: null })
 })
 
+// Twenty items of other Projects before the issue's own items, so the configured Project's item comes after the first 20.
+const itemsBefore = (fake, issueId) => fake.state.items.unshift(...Array.from({ length: 20 }, (_, index) => ({ id: `PVTI_${issueId}_X${index}`, projectId: `PVT_X${index}`, issueId, isArchived: false, values: {} })))
+
+test('a blocker in more than 20 Projects reads its Status from a further page', async () => {
+  const { fake, ops } = await setup()
+  fake.seed({ number: 1, title: 'Blocker', item: { status: 'Done' } })
+  fake.seed({ number: 2, title: 'Waiting', blockedBy: [1] })
+  itemsBefore(fake, 'I_1')
+  fake.reads.splice(0)
+  assert.deepEqual((await ops.searchIssues({ blocked: true })).issues.map((issue) => issue.id), [])
+  assert.deepEqual((await ops.searchIssues({ blocked: false })).issues.map((issue) => issue.id), ['1', '2'])
+  const more = fake.reads.filter((call) => call.name === 'PmkitIssueMore_projectItems').map((call) => call.variables.id)
+  assert.ok(more.filter((id) => id === 'I_1').length >= 2, 'the blocker is reread once as an issue and once as a blocker')
+})
+
+test('a blocker whose configured item is archived, past the first 20, still blocks', async () => {
+  const { fake, ops } = await setup()
+  fake.seed({ number: 1, title: 'Blocker', item: { status: 'Done', archived: true } })
+  fake.seed({ number: 2, title: 'Waiting', blockedBy: [1] })
+  itemsBefore(fake, 'I_1')
+  assert.deepEqual((await ops.searchIssues({ blocked: true, archived: true })).issues.map((issue) => issue.id), ['2'])
+})
+
 test('a search returns issues oldest first', async () => {
   const { fake, ops } = await setup()
   fake.seed({ number: 1, title: 'Newer', createdAt: '2026-03-01T00:00:00.000Z' })

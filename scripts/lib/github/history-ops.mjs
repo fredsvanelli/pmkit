@@ -5,7 +5,7 @@ import { PmkitError } from '../errors.mjs'
 import { ITEM_TYPES } from './documents.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
 import { toComment, toEvents } from './history.mjs'
-import { docsOf } from './requests.mjs'
+import { completeProjectItems, docsOf } from './requests.mjs'
 
 const PAGE = 100
 const BATCH = 20
@@ -106,6 +106,7 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
   async function metricEvents({ since, until } = {}) {
     const context = await getContext()
     const { nodes, hasMore } = await readIssues(context, since)
+    for (const node of nodes) await completeProjectItems(client, context, node, { archived: true })
     const timelines = await readTimelines(context, nodes, since)
     const last = until !== undefined && !until.includes('T') ? `${until}T23:59:59.999Z` : until
     const events = nodes

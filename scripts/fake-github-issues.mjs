@@ -264,7 +264,8 @@ function build(state) {
       assignees: record.assigneeIds.map(userById).map(({ id, login }) => ({ id, login })),
       labels: record.labelIds.map(labelById),
       subIssues: ids(record.subIssueIds).map(refOf),
-      blockedBy: ids(record.blockedByIds).map((other) => ({ ...refOf(other), projectItems: { nodes: itemsOf(other.id).map((item) => itemNode(item, vars)) } })),
+      // A blocker's items are read without includeArchived, so GitHub leaves its archived items out, 20 to a page.
+      blockedBy: ids(record.blockedByIds).map((other) => ({ ...refOf(other), projectItems: connection(itemsOf(other.id).filter((item) => !item.isArchived).map((item) => itemNode(item, vars)), NESTED.projectItems) })),
       blocking: blockingOf(record).map(refOf),
       relatesTo: ids(record.relatesToIds).map(refOf),
       projectItems: itemsOf(record.id).map((item) => itemNode(item, vars)),
@@ -484,11 +485,13 @@ function build(state) {
       return reply
     },
     // The scope Project, then the linked epic Projects of the repository, paged by first and after.
-    PmkitLinkedProjects(vars) {
+    PmkitLinkedProjects(vars, _name, query) {
       const linked = state.projects.filter((project) => project.linkedRepo && (!vars.owner || sameName(project.linkedRepo, `${vars.owner}/${vars.name}`)))
       // The extra Projects of --project (scripts/fake-github-drafts.mjs) that are linked, after them (PMK-91).
       const extra = state.extraProjects.filter((project) => project.linked)
-      return { repository: { projectsV2: connection([state.project, ...linked, ...extra].filter(Boolean).map(projectNode), vars.first, vars.after) } }
+      // A page size written in the document, as projectsV2(first: 20), binds as GitHub applies it.
+      const first = vars.first ?? (Number(/projectsV2\(first: (\d+)/.exec(query ?? '')?.[1]) || undefined)
+      return { repository: { projectsV2: connection([state.project, ...linked, ...extra].filter(Boolean).map(projectNode), first, vars.after) } }
     },
     PmkitEpic(vars) {
       const project = allProjects().find((candidate) => sameName(candidate.owner, vars.owner ?? '') && candidate.number === vars.number)

@@ -33,18 +33,21 @@ const COMMANDS = {
   update: ['issues', 'update', '1', '--type', 'feature', '--priority', 'high', '--label', 'bug', '--json'],
   wrong: ['github', 'draft-issues', 'convert', 'PVTI_2', '--dry-run', '--json'],
   otherRepo: ['github', 'draft-issues', 'convert', 'PVTI_4', '--repo', 'acme/docs', '--dry-run', '--json'],
+  farProject: ['github', 'draft-issues', 'list', '--project', 'acme/220', '--json'],
   noProject: ['github', 'draft-issues', 'list', '--json'],
 }
 
-/** The state "Before you start" describes: setup done, three drafts and one archived draft in the Project. Returns { fake, pmkit, root }. */
+/** The state "Before you start" describes: setup done, three drafts and one archived draft in the Project, and one draft in the 121st linked Project. Returns { fake, pmkit, root }. */
 function runbookRepo() {
   const root = tempDir('pmkit-runbook-draft-issues-github-')
   spawnSync('git', ['init', '-q'], { cwd: root })
-  const github = fakeGithubIssues()
+  // 120 more linked Projects, so --project acme/220 needs a second page of the linked Projects.
+  const github = fakeGithubIssues({ extraProjects: Array.from({ length: 120 }, (_, index) => ({ id: `PVT_${101 + index}`, owner: 'acme', number: 101 + index, title: `Team ${101 + index}` })) })
   github.seedDraft({ title: 'Add an offline mode', body: '### Context\n\nUsers asked to work without a network.\n\n### Acceptance criteria\n\n- The app opens without a network', assignees: ['hubot'], values: { Status: 'Todo' }, updatedAt: '2026-11-10T00:00:00Z' })
   github.seedDraft({ title: 'Old idea', archived: true })
   github.seedDraft({ title: 'Dark theme', body: 'A dark palette for the app.', updatedAt: '2026-11-12T00:00:00Z' })
   github.seedDraft({ title: 'Docs: a getting started page' })
+  github.seedDraft({ project: 'PVT_220', title: 'Plan the public API' })
   github.seedRepository('acme/docs')
   const fake = statefulGhOnPath({ meta: null, issues: github.toJSON() })
   const env = { ...childEnv(), ...userStoreEnv().env, GH_TOKEN: TOKEN, PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
@@ -75,7 +78,7 @@ test('the runbook names the commands this test runs', () => {
   }
 })
 
-test('runbook: list, preview, convert, set the fields, and the refusals, steps 1 to 8', () => {
+test('runbook: list, preview, convert, set the fields, and the refusals, steps 1 to 9', () => {
   const { fake, pmkit, root } = runbookRepo()
 
   // Step 1: the unarchived drafts in board order.
@@ -112,7 +115,11 @@ test('runbook: list, preview, convert, set the fields, and the refusals, steps 1
   const other = json(pmkit(COMMANDS.otherRepo))
   assert.deepEqual([other.target, other.warnings], [{ repo: 'acme/docs', tracked: false }, ['acme/docs is not tracker.scope.repo (acme/widgets), so pmkit will not track the new issues']])
 
-  // Step 8: no Project.
+  // Step 8: a linked Project past the first 100, accepted after a second page of the linked Projects.
+  const far = json(pmkit(COMMANDS.farProject))
+  assert.deepEqual([far.available, far.drafts.map((draft) => [draft.item, draft.title])], [true, [['PVTI_5', 'Plan the public API']]])
+
+  // Step 9: no Project.
   const configFile = path.join(root, '.pmkit', 'config.yaml')
   fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace('project: acme/7', 'project: none'))
   const off = json(pmkit(COMMANDS.noProject))
