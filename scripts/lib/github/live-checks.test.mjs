@@ -7,7 +7,7 @@ import { createGithubClient } from './client.mjs'
 import { liveGhExec } from '../../fake-gh-live.mjs'
 import { projectReply } from '../../fake-github-api.mjs'
 import {
-  checkDiscover, checkMissingScope, checkNoLogin, checkOpenCycle, checkNotFound, checkRateHeaders, checkRejectedToken, guardExec, LIVE_DOCUMENTS, liveTargets, MARKER,
+  checkDiscover, checkGhesConversion, checkMissingScope, checkNoLogin, checkOpenCycle, checkNotFound, checkRateHeaders, checkRejectedToken, guardExec, LIVE_DOCUMENTS, liveTargets, MARKER,
   preflightProject, skipReasons,
 } from './live-checks.mjs'
 
@@ -220,4 +220,49 @@ test('the openCycle check stops before any write on a Project that is not a thro
   const empty = fakeGithubIssues({ project: { title: `${MARKER} checks`, iterations: { iterations: [], completed: [] } } })
   await assert.rejects(checkOpenCycle({ env: { ...GITHUB }, makeExec: liveGhExec({ github: empty, ghes: null }), now: NOW }), /the iteration field Sprint of acme\/7 has no iteration/)
   assert.deepEqual([...named.mutations, ...empty.mutations], [])
+})
+
+// Criterion 4: converting a draft on GHES.
+
+const ghesRun = (version) => {
+  const ghes = fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: version, project: { title: `${MARKER} checks` } })
+  return { ghes, env: { PMKIT_LIVE: '1', ...GHES }, makeExec: liveGhExec({ github: null, ghes }) }
+}
+
+test('the GHES check converts one draft on 3.19, then removes the item and deletes the issue', async () => {
+  const { ghes, env, makeExec } = ghesRun('3.19.0')
+  const lines = []
+  const { asserted } = await checkGhesConversion({ env, makeExec, write: (line) => lines.push(line) })
+  assert.ok(asserted.some((line) => /converted the draft into issue #1/.test(line)))
+  assert.deepEqual(ghes.mutations.map((call) => call.name), ['PmkitLiveAddDraft', 'PmkitConvertDraftItem', 'PmkitDeleteProjectItem', 'PmkitDeleteIssue'])
+  assert.deepEqual([ghes.state.items, ghes.state.issues], [[], []])
+  assert.ok(lines.some((line) => /GitHub Enterprise Server 3\.19\.0/.test(line)))
+  assert.ok(!lines.some((line) => /is not 3\.19/.test(line)))
+})
+
+test('the GHES check closes the issue as not planned when GitHub refuses the delete, and prints its number and link', async () => {
+  const { ghes, env, makeExec } = ghesRun('3.19.0')
+  ghes.failNext('PmkitDeleteIssue', { errors: [{ type: 'FORBIDDEN', message: 'octocat does not have the correct permissions to execute `DeleteIssue`' }] })
+  const lines = []
+  await checkGhesConversion({ env, makeExec, write: (line) => lines.push(line) })
+  assert.deepEqual(ghes.state.issues.map((issue) => [issue.number, issue.state, issue.stateReason]), [[1, 'CLOSED', 'NOT_PLANNED']])
+  assert.deepEqual(ghes.state.items, [])
+  assert.ok(lines.some((line) => line.includes('closed issue #1 as not planned instead: https://ghes.example.com/acme/widgets/issues/1; delete it by hand')))
+})
+
+test('the GHES check stops before any write below 3.19, and notes a host that is not 3.19', async () => {
+  const old = ghesRun('3.18.2')
+  await assert.rejects(checkGhesConversion({ env: old.env, makeExec: old.makeExec }), /older than 3\.19/)
+  assert.deepEqual(old.ghes.mutations, [])
+  const newer = ghesRun('3.20.1')
+  const lines = []
+  await checkGhesConversion({ env: newer.env, makeExec: newer.makeExec, write: (line) => lines.push(line) })
+  assert.ok(lines.some((line) => line === 'GitHub Enterprise Server 3.20.1 is not 3.19, which the criterion names; the result holds for 3.20.1'))
+})
+
+test('the GHES check removes the draft when the conversion fails', async () => {
+  const { ghes, env, makeExec } = ghesRun('3.19.0')
+  ghes.failNext('PmkitConvertDraftItem')
+  await assert.rejects(checkGhesConversion({ env, makeExec }), /fake GitHub failed PmkitConvertDraftItem/)
+  assert.deepEqual([ghes.state.items, ghes.state.issues], [[], []])
 })

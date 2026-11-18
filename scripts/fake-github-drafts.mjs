@@ -74,6 +74,11 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
       const items = state.items.filter((item) => item.projectId === project).map((item) => ({ id: item.id, type: item.type, fieldValueByName: projectValue(item, field) }))
       return { node: { items: { totalCount: items.length, ...connection(items, first, after) } } }
     },
+    PmkitLiveIssue(vars) {
+      const entry = requireRepository(vars)
+      const found = state.issues.find((issue) => sameName(issue.repo, entry.nameWithOwner) && issue.number === vars.number)
+      return { repository: { issue: found ? { id: found.id } : null } }
+    },
     PmkitDraftTarget(vars) {
       const entry = requireRepository(vars)
       return { repository: { id: entry.id, nameWithOwner: entry.nameWithOwner, hasIssuesEnabled: entry.hasIssuesEnabled !== false } }

@@ -14,9 +14,9 @@ import { isMutation, operationName } from '../graphql.mjs'
 import { createGithubClient, HOST_NAME } from './client.mjs'
 import { addDays } from '../local/sprints.mjs'
 import { ITERATION_FIELD_QUERY, iterationEnd, UPDATE_ITERATIONS } from './cycles.mjs'
-import { fetchProject, needsVersionCheck, parseProject, parseRepo } from './discovery.mjs'
+import { checkGhesVersion, compareVersions, fetchProject, MINIMUM_GHES, needsVersionCheck, parseProject, parseRepo } from './discovery.mjs'
 import { hostFeatures, issueDocuments } from './documents.mjs'
-import { DRAFT_DOCUMENTS } from './draft-issues.mjs'
+import { DRAFT_DOCUMENTS, draftIssueOperations } from './draft-issues.mjs'
 import { createGithubTracker } from './tracker.mjs'
 
 /** The prefix a throwaway Project's title must start with, and the title of each draft a check adds. */
@@ -33,6 +33,9 @@ export const LIVE_DOCUMENTS = Object.freeze({
 }`,
   ADD_DRAFT: `mutation PmkitLiveAddDraft($input: AddProjectV2DraftIssueInput!) {
   addProjectV2DraftIssue(input: $input) { projectItem { id } }
+}`,
+  ISSUE: `query PmkitLiveIssue($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { issue(number: $number) { id } }
 }`,
   ITEMS: `query PmkitLiveItems($project: ID!, $field: String!, $first: Int!, $after: String) {
   node(id: $project) {
@@ -367,6 +370,75 @@ export async function checkOpenCycle({ env, makeExec, write = () => {}, now = ()
   const cleanup = () => cleanUp([
     ...[...added].map((item) => [`deleting the draft ${item}`, () => writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })]),
     ...(opened ? [[`restoring the iterations of ${fieldRead.name}`, restore]] : []),
+  ])
+  return withCleanup(body, cleanup, write)
+}
+
+// Criterion 4: converting a draft issue on GHES, through pmkit's draft operations.
+
+/** The version of a GHES host, with a note when it is not the 3.19 the criterion names. Below 3.19 it throws NOT_SUPPORTED. */
+async function ghesVersionOf({ exec, host, write }) {
+  const version = await checkGhesVersion({ exec, host })
+  write(`GitHub Enterprise Server ${version}`)
+  const minor = version.split('.').slice(0, 2).join('.')
+  if (compareVersions(minor, MINIMUM_GHES) !== 0) write(`GitHub Enterprise Server ${version} is not ${MINIMUM_GHES}, which the criterion names; the result holds for ${version}`)
+  return version
+}
+
+/**
+ * Adds one draft to the throwaway Project of the GHES host, converts it into an issue of the throwaway repository with
+ * draftIssueOperations (a dry run, then the real run), and checks that the item now holds an issue. Afterwards it removes the item
+ * and deletes the issue; when GitHub refuses the delete, it closes the issue as not planned and prints where it is.
+ */
+export async function checkGhesConversion({ env, makeExec, write = () => {} }) {
+  const { host, repo, project: target } = liveTargets(env).ghes
+  const version = await ghesVersionOf({ exec: guardExec(makeExec(env)), host, write })
+  const reader = createGithubClient({ env, host, exec: guardExec(makeExec(env)), retries: 0 })
+  const project = await preflightProject(reader, target, 'PMKIT_LIVE_GHES_PROJECT')
+  const added = new Set()
+  const created = { id: null, number: null, url: null }
+  const sameProject = (input) => input?.projectId === project.id
+  const allow = {
+    PmkitLiveAddDraft: ({ input }) => sameProject(input),
+    PmkitConvertDraftItem: ({ input }) => added.has(input?.itemId),
+    PmkitDeleteProjectItem: ({ input }) => sameProject(input) && added.has(input.itemId),
+    PmkitDeleteIssue: ({ input }) => created.id !== null && input?.issueId === created.id,
+    PmkitCloseIssue: ({ input }) => created.id !== null && input?.issueId === created.id && input.stateReason === 'NOT_PLANNED',
+  }
+  const writer = createGithubClient({ env, host, exec: guardExec(makeExec(env), allow), retries: 0 })
+  const docs = issueDocuments(hostFeatures({ host, ghesVersion: version }))
+
+  const body = async () => {
+    const item = (await writer.request(LIVE_DOCUMENTS.ADD_DRAFT, { input: { projectId: project.id, title: `${MARKER} conversion check`, body: 'Created by the pmkit live checks. Safe to delete.' } })).addProjectV2DraftIssue.projectItem.id
+    added.add(item)
+    const drafts = draftIssueOperations({ client: writer, scope: { host, repo, project: target } })
+    const preview = await drafts.convert([item], { dryRun: true })
+    if (preview.drafts.length !== 1 || preview.drafts[0].item !== item) fail(`the dry run did not list the draft ${item}`)
+    const [converted] = (await drafts.convert([item])).converted
+    Object.assign(created, { number: converted.number, url: converted.url })
+    const { owner, name } = parseRepo(repo)
+    created.id = (await reader.request(LIVE_DOCUMENTS.ISSUE, { owner, name, number: converted.number }))?.repository?.issue?.id ?? null
+    if (!created.id) fail(`GitHub has no issue #${converted.number} in ${repo} after the conversion`)
+    const node = (await reader.request(DRAFT_DOCUMENTS.ITEM, { id: item })).node
+    if (node?.type !== 'ISSUE') fail(`the item ${item} is ${node?.type ?? 'gone'} after the conversion, not ISSUE`)
+    write(`converted the draft into issue #${converted.number}: ${converted.url}`)
+    return { asserted: [`converted the draft into issue #${converted.number}, and the Project item now holds the issue`] }
+  }
+
+  const removeIssue = async () => {
+    try {
+      await writer.request(docs.DELETE_ISSUE, { input: { issueId: created.id } })
+      write(`deleted issue #${created.number}`)
+    } catch (error) {
+      await writer.request(docs.CLOSE_ISSUE, { input: { issueId: created.id, stateReason: 'NOT_PLANNED' } })
+      write(`GitHub refused to delete issue #${created.number} (${error.message}); closed issue #${created.number} as not planned instead: ${created.url}; delete it by hand`)
+    }
+  }
+
+  const cleanup = () => cleanUp([
+    ...[...added].map((item) => [`removing the Project item ${item}`, () => writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })]),
+    ...(created.id ? [[`removing issue #${created.number}`, removeIssue]] : []),
+    ...(!created.id && created.number ? [[`removing issue #${created.number}`, async () => { throw new Error(`pmkit could not read its id; delete ${created.url} by hand`) }]] : []),
   ])
   return withCleanup(body, cleanup, write)
 }
