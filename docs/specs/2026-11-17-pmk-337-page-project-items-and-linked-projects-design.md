@@ -49,15 +49,16 @@ One shared helper, `completeProjectItems(client, context, node, { archived })`, 
 
 ### The fake GitHub (criterion 3)
 
-`scripts/fake-github-issues.mjs` gives each blocker's `projectItems` a connection capped at 20 with `pageInfo`, as GitHub does. The issue's own `projectItems`, the metric read and `PmkitLinkedProjects` page already.
+`scripts/fake-github-issues.mjs` gives each blocker's `projectItems` a connection capped at 20 with `pageInfo`, without archived items, as GitHub does for a read without `includeArchived`. `PmkitLinkedProjects` applies a page size written in the document, such as the old `projectsV2(first: 20)`, so a test fails against the old query. The issue's own `projectItems` and the metric read page already. A blocker's `projectItems` and `PmkitLinkedProjects` answer the same way as before for 20 entries or fewer **(builder's call, found during the build)**.
 
 ## Tests
 
-- `scripts/lib/github/issue-ops.test.mjs` (or the closest existing test file): a blocker in 25 Projects whose configured item comes 25th reads blocked through `issues list --blocked` and `getIssue`; an issue whose blocker is in 25 Projects with the configured item archived reads unblocked.
-- `scripts/lib/github/history-ops.test.mjs`: a reopened issue in 25 Projects whose configured item comes last names its option in the `ReopenedEvent`.
-- `scripts/lib/github/discovery.test.mjs`: `fetchLinkedProjects` over a fake with 25 linked Projects returns all 25.
+- `scripts/lib/github/issue-ops.test.mjs`: a blocker whose configured item, in Done, comes after 20 other items does not block in `searchIssues({ blocked })`; with that item archived the blocker still blocks.
+- `scripts/lib/github/history-ops.test.mjs`: a reopened issue whose configured item comes after 20 other items names its option in the `ReopenedEvent`.
+- `scripts/lib/github/discovery.test.mjs`: `fetchLinkedProjects` over a fake with 151 linked Projects returns all of them in two reads of 100.
 - `scripts/fake-github-issues.test.mjs`: a blocker's `projectItems` stops at 20 with `hasNextPage: true`.
-- Runbooks: `docs/runbooks/issues-github.md` and `docs/runbooks/setup-github.md` gain no new step, since the flows do not change; their E2E tests run unchanged. `docs/runbooks/draft-issues-github.md` and its test gain a check that `--project` accepts a linked Project past the 20th, if the runbook test's fake can seed that many Projects **(builder's call)**.
+- `scripts/lib/github/discovery.test.mjs`: a repository answer with no `repository` still lists no Projects, as before the read paged.
+- Runbooks: `docs/runbooks/draft-issues-github.md` gains step 8, `github draft-issues list --project acme/220` with 120 extra linked Projects, so `--project` needs a second page of linked Projects; `scripts/runbook-draft-issues-github.test.mjs` runs it. `docs/runbooks/setup-github.md` says that the Project question lists every linked Project. The `issues-github` and `setup-github` flows keep their steps, and their E2E tests run unchanged.
 
 ## Out of scope
 
