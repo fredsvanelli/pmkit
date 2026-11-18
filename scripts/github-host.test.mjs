@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PmkitError } from './lib/errors.mjs'
 import { createGithubHost, defaultExec } from './lib/github/host.mjs'
+import { tempDir } from './test-helpers.mjs'
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 
@@ -232,9 +233,11 @@ test('postReview pins the review to the commit that was reviewed when it is give
   assert.equal(JSON.parse(calls[0].input).commit_id, 'abc123')
 })
 
+// A PATH folder without search permission turns ENOENT into EACCES, so the search runs in an empty folder only.
 test('the default exec throws ENOENT for a command that does not exist', () => {
+  const env = { ...process.env, PATH: tempDir('pmkit-empty-path-') }
   assert.throws(
-    () => defaultExec({ root: process.cwd(), env: process.env })('pmkit-no-such-command-xyz', []),
+    () => defaultExec({ root: process.cwd(), env })('pmkit-no-such-command-xyz', []),
     (e) => e.code === 'ENOENT',
   )
 })
