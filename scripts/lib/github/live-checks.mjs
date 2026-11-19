@@ -157,7 +157,8 @@ export async function preflightProject(client, value, variable) {
 // Criterion 1: the error shapes of the client against github.com. Each check builds its own environment for gh, sends one read
 // and writes nothing.
 
-const TOKEN_VARIABLES = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
+/** The variables gh reads a token from, before its stored login. */
+export const TOKEN_VARIABLES = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 const withoutTokens = (env) => Object.fromEntries(Object.entries(env).filter(([name]) => !TOKEN_VARIABLES.includes(name)))
 const fail = (message) => { throw new AssertionError({ message }) }
 

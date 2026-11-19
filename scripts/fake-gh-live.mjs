@@ -8,10 +8,9 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { hostnameOf } from './fake-github-api.mjs'
 import { fakeGithubIssuesFrom } from './fake-github-issues.mjs'
-import { BAD_TOKEN } from './lib/github/live-checks.mjs'
+import { BAD_TOKEN, TOKEN_VARIABLES } from './lib/github/live-checks.mjs'
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
-const TOKEN_VARIABLES = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 const LOGGED_OUT = 'To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.\n'
 const RATE = 'X-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 4998\r\nX-Ratelimit-Used: 2\r\nX-Ratelimit-Resource: graphql\r\nX-Ratelimit-Reset: 1795000000\r\n'
 const SCOPE_REPLY = {
@@ -20,17 +19,25 @@ const SCOPE_REPLY = {
 
 const head = (status, reason, extra = '') => `HTTP/2.0 ${status} ${reason}\r\nContent-Type: application/json; charset=utf-8\r\n${extra}\r\n`
 
-/** gh's answer for args and stdin under env: { status, stdout, stderr }. fakes is { github, ghes }, each a fake GitHub or null. */
-export function answerLive(fakes, env, args, input, { scopelessToken = null } = {}) {
+/** The answer gh gives for the token or login of env before any fake GitHub reads the call, or null when the call goes through. */
+function credentialAnswer(env, args, input, scopelessToken) {
   const token = TOKEN_VARIABLES.map((name) => env[name]).find((value) => typeof value === 'string' && value !== '')
   if (!token && env.GH_CONFIG_DIR && !fs.existsSync(path.join(env.GH_CONFIG_DIR, 'hosts.yml'))) return { status: 4, stdout: '', stderr: LOGGED_OUT }
-  const graphql = args.includes('graphql')
   if (token === BAD_TOKEN) {
     return { status: 1, stdout: `${head(401, 'Unauthorized')}{"message":"Bad credentials","documentation_url":"https://docs.github.com/graphql","status":"401"}`, stderr: 'gh: Bad credentials (HTTP 401)\n' }
   }
-  if (graphql && scopelessToken && token === scopelessToken && /projectsV2?\b/.test(JSON.parse(input ?? '{}').query ?? '')) {
+  const readsProjects = args.includes('graphql') && /projectsV2?\b/.test(JSON.parse(input ?? '{}').query ?? '')
+  if (scopelessToken && token === scopelessToken && readsProjects) {
     return { status: 1, stdout: `${head(200, 'OK', RATE)}${JSON.stringify(SCOPE_REPLY)}`, stderr: `gh: ${SCOPE_REPLY.errors[0].message}\n` }
   }
+  return null
+}
+
+/** gh's answer for args and stdin under env: { status, stdout, stderr }. fakes is { github, ghes }, each a fake GitHub or null. */
+export function answerLive(fakes, env, args, input, { scopelessToken = null } = {}) {
+  const refused = credentialAnswer(env, args, input, scopelessToken)
+  if (refused) return refused
+  const graphql = args.includes('graphql')
   const host = hostnameOf(args) ?? 'github.com'
   const fake = host === 'github.com' ? fakes.github : fakes.ghes
   if (!fake) return { status: 1, stdout: '', stderr: `error connecting to ${host}\n` }
