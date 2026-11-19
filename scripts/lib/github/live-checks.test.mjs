@@ -266,3 +266,10 @@ test('the GHES check removes the draft when the conversion fails', async () => {
   await assert.rejects(checkGhesConversion({ env, makeExec }), /fake GitHub failed PmkitConvertDraftItem/)
   assert.deepEqual([ghes.state.items, ghes.state.issues], [[], []])
 })
+
+test('the rate check fails on headers without the resource or the reset time', async () => {
+  const { env } = errorRun()
+  const answer = (headers) => () => () => ({ status: 0, stdout: `HTTP/2.0 200 OK\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 4999\r\nX-Ratelimit-Used: 1\r\n${headers}\r\n{"data":{"viewer":{"login":"octocat"}}}`, stderr: '' })
+  await assert.rejects(checkRateHeaders({ env, makeExec: answer('X-Ratelimit-Reset: 1795000000\r\n') }), /expected the rate-limit resource graphql, got null/)
+  await assert.rejects(checkRateHeaders({ env, makeExec: answer('X-Ratelimit-Resource: graphql\r\n') }), /expected an ISO reset time, got null/)
+})

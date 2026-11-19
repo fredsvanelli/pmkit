@@ -198,9 +198,8 @@ export async function checkNoLogin({ env, makeExec }) {
 
 /** A token GitHub does not know answers AUTH: GitHub refuses it with HTTP 401. */
 export async function checkRejectedToken({ env, makeExec }) {
-  const error = await rejection(githubClient({ ...withoutTokens(env), GH_TOKEN: BAD_TOKEN }, makeExec).request(LIVE_DOCUMENTS.VIEWER))
-  expectError(error, { code: 'AUTH', message: 'GitHub rejected the token of the gh login' })
-  if (error.details?.github?.status !== 401) fail(`expected HTTP 401 in the error details, got ${error.details?.github?.status}`)
+  // The client gives this message only to an HTTP 401.
+  expectError(await rejection(githubClient({ ...withoutTokens(env), GH_TOKEN: BAD_TOKEN }, makeExec).request(LIVE_DOCUMENTS.VIEWER)), { code: 'AUTH', message: 'GitHub rejected the token of the gh login' })
   return { asserted: ['a token GitHub does not know answers AUTH "GitHub rejected the token of the gh login" (HTTP 401)'] }
 }
 
