@@ -2,14 +2,14 @@
 id: PMK-335
 title: Add live checks of the GitHub adapter against github.com and GHES
 type: task
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-8
 milestone: github-issues
 branch: pmk-335-add-live-checks-of-the-github-adapter
 created: 2026-11-16T18:34:34.787Z
-updated: 2026-11-18T02:13:39Z
+updated: 2026-11-19T00:11:47Z
 ---
 
 ## Description
@@ -22,7 +22,7 @@ Found while working PMK-85 (PR #309), PMK-86 (PR #310), PMK-88 and PMK-91 (PR #3
 
 ## Acceptance criteria
 
-- [ ] A `PMKIT_LIVE` check runs the GitHub client against github.com and confirms the error shapes
-- [ ] A `PMKIT_LIVE` check runs `discover` against a github.com repository with a Project
-- [ ] A `PMKIT_LIVE` check confirms that `openCycle` keeps item iteration assignments on a throwaway Project
-- [ ] A `PMKIT_LIVE` check converts a draft issue on GHES 3.19, skipped with a note when no GHES host is configured
+- [x] A `PMKIT_LIVE` check runs the GitHub client against github.com and confirms the error shapes
+- [x] A `PMKIT_LIVE` check runs `discover` against a github.com repository with a Project
+- [x] A `PMKIT_LIVE` check confirms that `openCycle` keeps item iteration assignments on a throwaway Project
+- [x] A `PMKIT_LIVE` check converts a draft issue on GHES 3.19, skipped with a note when no GHES host is configured
