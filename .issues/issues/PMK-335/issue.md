@@ -6,10 +6,11 @@ status: in_review
 priority: low
 assignee: fred
 parent: EPC-8
+related: [PMK-349, PMK-350, PMK-351]
 milestone: github-issues
 branch: pmk-335-add-live-checks-of-the-github-adapter
 created: 2026-11-16T18:34:34.787Z
-updated: 2026-11-19T00:11:47Z
+updated: 2026-11-20T22:03:02Z
 ---
 
 ## Description
