@@ -212,8 +212,9 @@ Editors can check the config files against JSON Schemas. The schemas live in `sc
 ## Tests
 
     npm test
+    npm run lint
 
-Run it from the repository root. It needs Node 18 or later and installs nothing.
+Run them from the repository root. `npm test` needs Node 18 or later and installs nothing. `npm run lint` runs ESLint 10.15.0 through `npx`, so its first run downloads ESLint into the npm cache, and it needs Node 20.19 or later. Lint is not a dependency of the project (ADR 0003), and `npm test` does not run it.
 
 ## Local development
 
