@@ -11,7 +11,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 
 These answer `NOT_SUPPORTED`. Opening a sprint on GitHub Enterprise Server fails because the host cannot keep the ids of the iterations, so add the iteration in the Project settings. Closing a sprint fails because GitHub ends an iteration on its end date. A sprint has no goal, and `--goal` on `epic create` fails because a Project has no goal. Releases, `unarchive`, `restore` and comment threads also answer `NOT_SUPPORTED`.
 
-`docs/runbooks/cycles-epics-github.md` walks through the sprint, epic and milestone commands. With the GitHub git host (`git_host.system: github`), pmkit creates issue branches and opens, reads and syncs pull requests through the GitHub CLI (`gh`). Terms are defined in [CONTEXT.md](CONTEXT.md), and the decisions are in [docs/adr](docs/adr).
+`docs/runbooks/cycles-epics-github.md` walks through the sprint, epic and milestone commands. `docs/runbooks/live-checks-github.md` runs the opt-in `PMKIT_LIVE` checks of the adapter against a github.com repository and a GitHub Enterprise Server host you choose. With the GitHub git host (`git_host.system: github`), pmkit creates issue branches and opens, reads and syncs pull requests through the GitHub CLI (`gh`). Terms are defined in [CONTEXT.md](CONTEXT.md), and the decisions are in [docs/adr](docs/adr).
 
 ## Commands
 

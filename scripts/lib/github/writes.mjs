@@ -116,13 +116,13 @@ function selectWrite(role, value, field, project) {
 function numberWrite(value, field, project) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw invalid('estimate must be a number of 0 or more')
   if (project) return { write: { number: value }, shown: { __typename: 'ProjectV2ItemFieldNumberValue', number: value } }
-  return { write: { fieldId: field.id, numberValue: value }, shown: { __typename: 'IssueFieldNumberValue', value } }
+  return { write: { fieldId: field.id, numberValue: value }, shown: { __typename: 'IssueFieldNumberValue', numberValue: value } }
 }
 
 function dateWrite(value, field, project) {
   if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
   if (project) return { write: { date: value }, shown: { __typename: 'ProjectV2ItemFieldDateValue', date: value } }
-  return { write: { fieldId: field.id, dateValue: value }, shown: { __typename: 'IssueFieldDateValue', value } }
+  return { write: { fieldId: field.id, dateValue: value }, shown: { __typename: 'IssueFieldDateValue', dateValue: value } }
 }
 
 /** The iteration of a sprint value in a field's configuration: 'current' is the active one, else a start date. Null when the date has none. */

@@ -33,7 +33,8 @@ test('the metric issue read selects only what toEvents reads, and the Status var
 test('hostFeatures per host', () => {
   assert.deepEqual(GITHUB, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
   assert.deepEqual(hostFeatures({ host: 'acme.ghe.com', ghesVersion: null }), { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
-  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.21.0' }), { issueFields: true, relatesTo: false, statusEvents: true, iterationIds: false })
+  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.21.0' }), { issueFields: false, relatesTo: false, statusEvents: true, iterationIds: false })
+  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.22.0' }), { issueFields: true, relatesTo: false, statusEvents: true, iterationIds: false })
   assert.deepEqual(GHES, { issueFields: false, relatesTo: false, statusEvents: false, iterationIds: false })
 })
 

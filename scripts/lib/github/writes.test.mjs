@@ -47,6 +47,7 @@ test('planWrite builds the create input, the field writes and the after of a new
   assert.equal(plan.after.type, 'bug')
   assert.equal(plan.after.priority, 'high')
   assert.equal(plan.after.estimate, 3)
+  assert.deepEqual(plan.fields[1].shown, { __typename: 'IssueFieldNumberValue', numberValue: 3 })
   assert.deepEqual(plan.after.labels, ['bug'])
   assert.deepEqual(plan.after.acceptanceCriteria, [{ text: 'x', done: false }])
 })

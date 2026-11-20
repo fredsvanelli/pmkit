@@ -12,9 +12,9 @@ export function initDrafts(state, { extraProjects = [] } = {}) {
 
 /**
  * The draft routes over a fake's state. helpers: stamp, register, requireRepository, repositoryById, newIssue, refuseWithData,
- * unknownNode, unprocessable, connection, userByLogin, setItemValues and contentOf, as the fake defines them.
+ * unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf and projectValue, as the fake defines them.
  */
-export function draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf }) {
+export function draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf, projectValue }) {
   const sameName = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
   // Every Project of the fake: the scope Project, the epic Projects and the extra Projects of --project.
   const projects = () => [...(state.project ? [state.project] : []), ...state.projects, ...state.extraProjects]
@@ -56,6 +56,29 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
       const item = state.items.find((candidate) => candidate.id === id) ?? unknownNode(id)
       return { node: itemView(item) }
     },
+    // The reads of the live checks (scripts/lib/github/live-checks.mjs): the viewer, the viewer's Projects, a throwaway Project
+    // and the iteration of each of its items.
+    PmkitLiveViewer() {
+      return { viewer: { login: state.viewer } }
+    },
+    PmkitLiveScope() {
+      return { viewer: { projectsV2: { totalCount: projects().length } } }
+    },
+    PmkitLiveProject({ owner, number }) {
+      const project = projects().find((candidate) => sameName(candidate.owner, owner ?? '') && candidate.number === number)
+      if (!project) refuseWithData({ repositoryOwner: { projectV2: null } }, ['repositoryOwner', 'projectV2'], `Could not resolve to a ProjectV2 with the number ${number}.`)
+      return { repositoryOwner: { projectV2: { id: project.id, title: project.title, items: { totalCount: state.items.filter((item) => item.projectId === project.id).length } } } }
+    },
+    PmkitLiveItems({ project, field, first, after }) {
+      if (!projectOf(project)) unknownNode(project)
+      const items = state.items.filter((item) => item.projectId === project).map((item) => ({ id: item.id, type: item.type, fieldValueByName: projectValue(item, field) }))
+      return { node: { items: { totalCount: items.length, ...connection(items, first, after) } } }
+    },
+    PmkitLiveIssue(vars) {
+      const entry = requireRepository(vars)
+      const found = state.issues.find((issue) => sameName(issue.repo, entry.nameWithOwner) && issue.number === vars.number)
+      return { repository: { issue: found ? { id: found.id } : null } }
+    },
     PmkitDraftTarget(vars) {
       const entry = requireRepository(vars)
       return { repository: { id: entry.id, nameWithOwner: entry.nameWithOwner, hasIssuesEnabled: entry.hasIssuesEnabled !== false } }
@@ -63,6 +86,12 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
   }
 
   const mutations = {
+    // addProjectV2DraftIssue, which only the live checks send.
+    PmkitLiveAddDraft(input) {
+      const found = projectOf(input.projectId) ?? unknownNode(input.projectId)
+      if (typeof input.title !== 'string' || input.title.trim() === '') unprocessable('Title can\'t be blank')
+      return { addProjectV2DraftIssue: { projectItem: { id: seedDraft({ project: found.id, title: input.title, body: input.body ?? '' }).item } } }
+    },
     PmkitConvertDraftItem(input) {
       const item = state.items.find((candidate) => candidate.id === input.itemId) ?? unknownNode(input.itemId)
       if (item.type !== 'DRAFT_ISSUE') unprocessable('The item is not a draft issue')

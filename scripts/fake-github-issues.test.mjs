@@ -199,8 +199,8 @@ test('issue fields and relatesTo read and write on github.com', async () => {
   const one = await read(1)
   assert.deepEqual(one.issueFieldValues.nodes, [
     { __typename: 'IssueFieldSingleSelectValue', optionId: 'O2', name: 'P1', field: { id: 'IF_1', name: 'Priority' } },
-    { __typename: 'IssueFieldNumberValue', value: 5, field: { id: 'IF_2', name: 'Effort' } },
-    { __typename: 'IssueFieldDateValue', value: '2026-12-24', field: { id: 'IF_4', name: 'Target date' } },
+    { __typename: 'IssueFieldNumberValue', numberValue: 5, field: { id: 'IF_2', name: 'Effort' } },
+    { __typename: 'IssueFieldDateValue', dateValue: '2026-12-24', field: { id: 'IF_4', name: 'Target date' } },
   ])
   assert.deepEqual(one.relatesTo.nodes.map((node) => node.number), [2])
   assert.deepEqual((await read(2)).relatesTo.nodes.map((node) => node.number), [1])
@@ -689,4 +689,41 @@ test('PmkitIssueNodes answers issues by node id in order, with null for an unkno
   const query = 'query PmkitIssueNodes($ids: [ID!]!) { nodes(ids: $ids) { ... on Issue { id number } } }'
   const { nodes } = await client.request(query, { ids: [two.id, 'nope', one.id] })
   assert.deepEqual(nodes.map((node) => node?.number ?? null), [2, null, 1])
+})
+
+test('the fake refuses projectV2 selected on RepositoryOwner without a ProjectV2Owner fragment, and the draft Project read uses one', async () => {
+  const { client } = setup()
+  const bad = 'query PmkitDraftProject($owner: String!, $number: Int!) { repositoryOwner(login: $owner) { projectV2(number: $number) { id title url } } }'
+  await assert.rejects(client.request(bad, { owner: 'acme', number: 7 }), /Field 'projectV2' doesn't exist on type 'RepositoryOwner'/)
+  const { DRAFT_DOCUMENTS } = await import('./lib/github/draft-issues.mjs')
+  assert.equal((await client.request(DRAFT_DOCUMENTS.PROJECT, { owner: 'acme', number: 7 })).repositoryOwner.projectV2.id, 'PVT_1')
+})
+
+test('the fake refuses value selected on both the number and the date issue field values, as GitHub does for fields that do not merge', async () => {
+  const { docs, client, create } = setup()
+  await create({ title: 'A' })
+  const bad = docs.ISSUE.replace('numberValue: value', 'value').replace('dateValue: value', 'value')
+  assert.notEqual(bad, docs.ISSUE)
+  await assert.rejects(client.request(bad, { ...REPO, number: 1, ...VARS }), /Field 'value' has a return_type conflict/)
+  assert.equal((await client.request(docs.ISSUE, { ...REPO, number: 1, ...VARS })).repository.issue.number, 1)
+})
+
+test('a GHES fake refuses the Project field parts no GHES schema has, and Repository.issueFields before 3.22', () => {
+  const field = 'query PmkitProject { repositoryOwner(login: "acme") { ... on ProjectV2Owner { projectV2(number: 7) { id fields(first: 1) { nodes { ... on ProjectV2Field { isIssueField } } } } } } }'
+  const multi = 'query PmkitProject { repositoryOwner(login: "acme") { ... on ProjectV2Owner { projectV2(number: 7) { id fields(first: 1) { nodes { ... on ProjectV2MultiSelectField { id } } } } } } }'
+  const repoFields = 'query PmkitRepo { repository(owner: "acme", name: "widgets") { id issueFields(first: 1) { nodes { ... on IssueFieldDate { id } } } } }'
+  const multiType = 'query PmkitRepo { repository(owner: "acme", name: "widgets") { id } node(id: "IF_1") { ... on IssueFieldMultiSelect { id } } }'
+  const error = (fake, query, name) => fake.handle(name, { owner: 'acme', name: 'widgets', number: 7 }, query).errors?.[0]?.message ?? null
+  for (const version of ['3.19.0', '3.21.0', '3.22.0']) {
+    const ghes = fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: version })
+    assert.equal(error(ghes, field, 'PmkitProject'), "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'", version)
+    assert.equal(error(ghes, multi, 'PmkitProject'), "No such type ProjectV2MultiSelectField, so it can't be a fragment condition", version)
+  }
+  const ghes321 = fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: '3.21.0' })
+  assert.equal(error(ghes321, repoFields, 'PmkitRepo'), "Field 'issueFields' doesn't exist on type 'Repository'")
+  assert.equal(error(ghes321, multiType, 'PmkitRepo'), "No such type IssueFieldMultiSelect, so it can't be a fragment condition")
+  const ghes322 = fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: '3.22.0' })
+  assert.equal(error(ghes322, repoFields, 'PmkitRepo'), null)
+  const dotcom = fakeGithubIssues()
+  for (const [query, name] of [[field, 'PmkitProject'], [multi, 'PmkitProject'], [multiType, 'PmkitRepo']]) assert.equal(error(dotcom, query, name), null)
 })
