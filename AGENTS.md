@@ -2,47 +2,59 @@
 
 ## Development Workflow: SPEC-SS
 
-Every task goes through six phases, in order: **S**pecify, **P**lan, **E**xecute, **C**heck, **S**ecure, **S**hip. SPEC builds the change; SS guards it and delivers it. A phase starts only when the one before it is done.
+Every task that changes application code goes through the six steps below, in order: **S**pecify (Brainstorm, then Interview), **P**lan, **E**xecute, **C**heck, **S**ecure, **S**hip. A step starts only when the step before it meets its "Done when". Start each step by saying its name in one line (`SPEC-SS: Interview`), so a skipped step is visible.
 
-Every tool named in this section is a recommendation, not a requirement. Any plugin, skill or prompt that does the same job can replace it; when one is swapped, update its name here.
+A small task gets a short design doc and a short plan, never a skipped step. Skip a step only when the user names that step and says to skip it. Time pressure, a one-line fix, "keep it moving" or "open the PR" are not that permission: they mean go through the remaining steps quickly. When you notice an earlier step was skipped, go back and do it before going on. Code already written without a failing test first can't be made test-first: say so in the PR.
 
-Rules for every phase:
+| Step | Do | Done when |
+|---|---|---|
+| **Brainstorm** | Read the issue (`PMK-N`): `/pmkit:issues:work <id>` claims it and creates the branch. Invoke `superpowers:brainstorming` with the issue's context, scope and acceptance criteria. For a bug, find the root cause with `superpowers:systematic-debugging` first, and put it in the design. Answer factual questions from the code, not by asking the user. | The design doc is written to `docs/superpowers/specs/YYYY-MM-DD-<id>-<slug>-design.md` and committed. |
+| **Interview** | Invoke `mattpocock-skills:grilling` with `mattpocock-skills:domain-modeling` on the design doc file from Brainstorm (this is what `/grill-with-docs` does). Check the design against the issue, `CONTEXT.md` and the ADRs in `docs/adr/`. | The design doc is updated with the answers; new terms are in `CONTEXT.md` and hard-to-reverse decisions are ADRs; the user approves the doc. |
+| **P Plan** | Invoke `superpowers:writing-plans` on the approved design. | The plan is in `docs/superpowers/plans/`, with the design's file name minus `-design`. |
+| **E Execute** | Test-driven (`superpowers:test-driven-development`): a failing test first, then the code. Small tasks: `superpowers:executing-plans`. Medium and larger: `superpowers:subagent-driven-development`. | Every plan task is done, and `npm test` and `npm run lint` pass. |
+| **C Check** | Create or update the project's E2E test of every flow the work changes, then run the project's E2E tests of every flow the work touched. | Every affected flow test passes. |
+| **S Secure** | Invoke `ponytail:ponytail-review` on the branch diff (over-engineering), then `utils:review-work --base develop` on the branch (spec match, tests, security, complexity, error handling, performance, compatibility, docs). A finding that changes behavior gets a failing test before its fix: a flow test step when a user can see the behavior, a unit test otherwise. Then run the affected flow tests again. Last, invoke `utils:update-agent-docs --base develop` and apply the edits the user accepts to this file. | Every finding is fixed, or listed as open for the PR description. `utils:update-agent-docs` reported "No update needed", or its accepted edits are in. |
+| **S Ship** | Run `npm test` (`node scripts/run-tests.mjs`: every `scripts/**/*.test.mjs` on `node:test`, unit and E2E) and `npm run lint` (ESLint through `npx`, config in `eslint.config.js`). The project has no type-check or build step. Invoke `superpowers:finishing-a-development-branch` and take its push-and-open-PR option, never a local merge. Open the PR against `develop`, with a body from `utils:generate-pr-description` that lists the findings left open in Secure. Move the issue to review (`/pmkit:issues:move`). The project has no CI: `npm test` and `npm run lint` on the branch are the checks. | `npm test` and `npm run lint` pass on the pushed branch, and the PR is open. Never merge without explicit user authorization. |
 
-- Use `superpowers:systematic-debugging` for any bug or failing test, before proposing a fix.
-- Use `superpowers:verification-before-completion` before claiming any phase is done: run the check and read its output first.
+Rules for every step:
+
+- Use `superpowers:verification-before-completion` before saying a step is done: run its check and read the output.
 - Planning alone does not authorize implementation. Follow the execution scope the user asks for.
-- Work started through `/pmkit:issues:work` follows SPEC-SS, and the branch that command creates replaces `superpowers:using-git-worktrees`. After the pull request is open, post the summary comment and move the issue to `in_review` through the pmkit CLI.
-- Every commit message carries the issue ID.
+- A skill named here can be swapped for a plugin, skill or prompt that does the same job (update its name here when one is), but its step still runs. A tool being missing or uninvokable is a reason to use its replacement, not to skip the step.
 
-### S: Specify (before any code is written)
+| Thought | Reality |
+|---|---|
+| "It's a one-line fix, brainstorming and the interview are overkill" | A small fix gets a short design doc and a short interview. The interview is where a one-line fix turns out to be two. |
+| "The skills are only recommendations" | The skill can be swapped. The step cannot. |
+| "`/grill-with-docs` isn't available" | Invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`. |
+| "Writing the design doc or plan after the code is ceremony" | Write them now. They record what was decided, and Interview can still find a gap before the PR. |
+| "The user said open the PR / keep it moving" | Go faster through the remaining steps. That is not permission to skip one. |
 
-1. **The issue.** Context, scope and acceptance criteria come from the issue, read through pmkit (`/pmkit:issues:work` and the pmkit CLI).
-2. **Q&A session.** `mattpocock-skills:grilling` and `superpowers:brainstorming` sharpen the issue against the PRD and the domain glossary (`CONTEXT.md`). Answer factual questions from the code instead of asking the user.
-3. **Terms and decisions recorded.** When a new term or a hard-to-reverse decision comes up, record it with `mattpocock-skills:domain-modeling`: terms in `CONTEXT.md`, decisions as ADRs in `docs/adr/`.
-4. **Output: a written design doc** in `docs/specs/YYYY-MM-DD-<slug>-design.md`. The user approves it before planning starts.
+### Skill handoffs that skip a step
 
-### P: Plan
+These skills end by pointing at a later skill. In this project the next SPEC-SS step comes first:
 
-`superpowers:writing-plans` turns the approved design into a plan in `docs/plans/YYYY-MM-DD-<slug>.md`, the design's file name without `-design`. Execution follows the plan.
+| When this skill says | Do instead |
+|---|---|
+| `superpowers:brainstorming`: after approval, invoke `superpowers:writing-plans` | Interview, then P Plan |
+| `superpowers:executing-plans` or `superpowers:subagent-driven-development`: use `superpowers:finishing-a-development-branch` | C Check, then S Secure, then S Ship |
+| `/pmkit:issues:work` step 7 (propose a plan) and step 8 (implement) | Brainstorm through E |
+| `/pmkit:issues:work` step 9 (deliver: open the PR, move to review) | Only in S Ship, after Check and Secure |
 
-### E: Execute (TDD)
+### Running slash commands
 
-Implementation follows test-driven development (`superpowers:test-driven-development`): a failing test first, then the code that makes it pass. The execution skill depends on the size of the task:
+`/pmkit:*` and `/grill-with-docs` cannot be called through the Skill tool. To run `/pmkit:<cmd>`, invoke the `pmkit:pmkit` skill and follow the command file its table names. For `/grill-with-docs`, invoke `mattpocock-skills:grilling` and `mattpocock-skills:domain-modeling`.
 
-- Small tasks: `superpowers:executing-plans`, a single agent running the tasks in sequence.
-- Medium and larger tasks: `superpowers:subagent-driven-development`, an orchestrator dispatching one subagent per task.
+## Tech stack
 
-### C: Check
-
-Every user flow the work changes is validated by its runbook in `docs/runbooks/` (the `run` skill). Create the runbook of a new flow, or update the existing one. Before calling the work done, run the runbooks of every flow the work touched. Each runbook is verified by an E2E test script on Node's built-in test runner (`node:test`, run by `npm test`). The project has no dependencies (ADR 0003), so E2E tests use no external test framework. A failing runbook means the work is not done.
-
-### S: Secure
-
-Before each pull request, run `utils:review-work` on the branch. It checks the branch against 12 criteria: spec match, scope and size, readability and conventions, tech debt, unit tests, E2E tests, security, cyclomatic complexity, error handling and edge cases, performance, backward compatibility and documentation. Fix its findings, or report the ones left open, before shipping.
-
-### S: Ship
-
-Ship with `superpowers:finishing-a-development-branch`, only when every check passes. The project's only check is the test suite, `npm test` (`node scripts/run-tests.mjs`); it has no lint, type-check or build step. Open the pull request, then monitor CI (for example with `gh pr checks`). Never merge before every check is green, and never merge without explicit user authorization.
+- Project type: Other
+- What it is: Claude plugin
+- Language: JavaScript (ES modules, `.mjs`) on Node 18 or later, with no dependencies (ADR 0003)
+- Lint: ESLint, run by `npm run lint` through `npx` with a pinned version, not a devDependency (ADR 0003)
+- Type check: none
+- CI: none
+- Unit tests: Node's built-in test runner (`node:test`), in `scripts/**/*.test.mjs`, run by `npm test`
+- E2E tests: each runbook in `docs/runbooks/` is verified by a `scripts/runbook-*.test.mjs` script on `node:test` that runs the real CLI (with a fake `gh` for GitHub flows), run by `npm test`
 
 <!-- claude-reflect: learned rules (saved from the band; edit freely) -->
 ## Learned rules
