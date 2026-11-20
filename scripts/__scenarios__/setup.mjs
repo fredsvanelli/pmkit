@@ -25,7 +25,6 @@ const firstRun = 'there is no config, so step 1 takes the first run'
 const existing = 'the config exists, so step 1 takes the existing config path'
 const notLinear = 'the user picks the Local tracker, so step 1 never reaches the Linear paths'
 const linearOnly = 'the config names the Local tracker, so step 1 never reaches the Linear paths'
-const localOnly = 'the tracker is Linear, so step 1 never reaches the Local paths'
 const LINEAR_FIRST = ['Linear first run 3 init', 'Linear first run 4 init', 'Linear first run 6 init', 'Linear first run 9 validate', 'Linear first run 9 discover', 'Linear first run 9 capabilities']
 const LINEAR_EXISTING = [
   'Existing Linear config 2 validate', 'Existing Linear config 3 init', 'Existing Linear config 4 init', 'Existing Linear config 5 init',

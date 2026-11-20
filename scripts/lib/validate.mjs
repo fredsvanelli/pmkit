@@ -20,7 +20,6 @@ import { REQUEST_PREFIX, parseRequest } from './local/requests.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
 import { overlaps, readSprint, sprintFileExists } from './local/sprints.mjs'
 
-const LIST_REFS = ['blocked_by', 'related', 'duplicate_of']
 const read = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 const subdirs = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [])
 const files = (dir, ext) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(ext)).sort() : [])
@@ -222,7 +221,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     }
   })
   const active = sprints.filter(({ sprint }) => sprint.state === 'active')
-  for (const { sprint, file } of active.slice(1)) add(file, 'sprint', `more than one active sprint, ${active[0].sprint.id} is active too`)
+  for (const { file } of active.slice(1)) add(file, 'sprint', `more than one active sprint, ${active[0].sprint.id} is active too`)
 
   // Milestones
   const milestonesDir = path.join(issuesDir, 'milestones')

@@ -2,7 +2,6 @@
 // rescan the same text take 20 to 460 ms at 400,000 characters (load 30 to 100), and the quadratic code of PMK-288 took 43 s at
 // 200,000. The ceiling is the one of assert-fast.mjs (PMK-307): a fixed 1 s limit failed under load.
 import { test } from 'node:test'
-import assert from 'node:assert/strict'
 import { assertFast } from './assert-fast.mjs'
 
 const rep = (text, n) => text.repeat(n)

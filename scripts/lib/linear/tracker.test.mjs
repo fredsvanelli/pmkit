@@ -1967,7 +1967,7 @@ test('a docs path that is not relative to the repository is INVALID_INPUT before
 })
 
 test('a failure after the other fields were written says so', async () => {
-  const failing = (fake) => ({ PmkitAttachmentCreate: () => ({ status: 200, json: { data: null, errors: [{ message: 'Attachment refused', extensions: { code: 'INPUT_ERROR' } }] } }) })
+  const failing = () => ({ PmkitAttachmentCreate: () => ({ status: 200, json: { data: null, errors: [{ message: 'Attachment refused', extensions: { code: 'INPUT_ERROR' } }] } }) })
   const { tracker: linear, fake } = docsSetup({ routes: failing })
   seed(fake, { title: 'One' })
   await assert.rejects(linear.updateIssue('ACME-1', { title: 'Two', docs: ['docs/a.md'] }, 'user-1'), /already written.*title/s)
@@ -1976,7 +1976,7 @@ test('a failure after the other fields were written says so', async () => {
 test('one issue whose attachments cannot be read alone does not make the rest of the batch unknown', async () => {
   const { tracker: linear, fake } = docsSetup({
     nestedPage: 1,
-    routes: (f) => ({ PmkitIssueAttachments: ({ body } = {}) => ({ status: 200, json: { data: null, errors: [{ message: 'Rate limited', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }) }),
+    routes: () => ({ PmkitIssueAttachments: () => ({ status: 200, json: { data: null, errors: [{ message: 'Rate limited', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }) }),
   })
   seed(fake, { title: 'Big' }, { attachments: [docAttachment('docs/a.md', 1), docAttachment('docs/b.md', 2)] })
   seed(fake, { title: 'Small' }, { attachments: [docAttachment('docs/c.md', 3)] })

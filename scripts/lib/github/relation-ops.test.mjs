@@ -29,7 +29,6 @@ async function setup({ host = 'github.com', ghesVersion = null, epics = [] } = {
   }
   return { fake, relations, seedTwo, clear: () => { fake.reads.splice(0); fake.mutations.splice(0) } }
 }
-const sent = (fake) => fake.mutations.map((call) => call.name)
 
 test('blocks sends addBlockedBy with the blocked issue as issueId and reads the blocker back', async () => {
   const { fake, relations, seedTwo, clear } = await setup()

@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrFenceBlocks, adrStatusContinuation, adrKeptLines, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrFenceBlocks, adrStatusContinuation, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 import { assertFast } from './assert-fast.mjs'
@@ -1597,7 +1597,7 @@ test('a 9-digit ordered marker is still a list item, so the Status section stays
 })
 
 // PMK-306: the fixture says whether the Status section holds more than the status (its `status` is neither null nor just Accepted): then adr-status refuses and the file stays as it was, else it writes `written`.
-async function statusWrites(root, number, file, text, written, name, status) {
+async function statusWrites(root, number, file, text, written, name) {
   // PMK-311: refused when the section has more than the status and no top-level status line to replace.
   const refused = adrStatusDropped(text).length > 0
   assert.equal((await adrStatus(root, number, 'deprecated')).code, refused ? 2 : 0, name)

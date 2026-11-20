@@ -317,7 +317,7 @@ test('runbook: the issue flows without a Project, steps 17 to 23', () => {
     ['move', 'status', 'In progress', 'In review'],
     ['move', 'status', null, 'Closed'],
   ])
-  assert.ok(!changes.some(([op, field, from, to]) => field === 'labels' && /In (progress|review)|bug/.test(`${from} ${to}`)))
+  assert.ok(!changes.some(([, field, from, to]) => field === 'labels' && /In (progress|review)|bug/.test(`${from} ${to}`)))
 
   // Step 22: the capabilities a Project gives are absent.
   const manifest = json(pmkit('capabilities', '--json'))
