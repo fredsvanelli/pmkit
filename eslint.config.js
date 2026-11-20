@@ -1,9 +1,8 @@
 // Lint runs with `npx eslint@10.15.0`, not a devDependency (ADR 0003), so this config
 // imports nothing: @eslint/js and globals would not resolve from here.
 const node = Object.fromEntries(
-  ['process', 'console', 'Buffer', 'URL', 'URLSearchParams', 'TextEncoder', 'TextDecoder', 'AbortController', 'AbortSignal',
-    'fetch', 'Response', 'Headers', 'structuredClone', 'queueMicrotask', 'setTimeout', 'clearTimeout', 'setInterval',
-    'clearInterval', 'setImmediate', 'clearImmediate', 'globalThis'].map((name) => [name, 'readonly']),
+  ['AbortSignal', 'Buffer', 'Headers', 'Response', 'URL', 'clearInterval', 'clearTimeout', 'console', 'process', 'setImmediate',
+    'setInterval', 'setTimeout', 'structuredClone'].map((name) => [name, 'readonly']),
 )
 
 export default [
