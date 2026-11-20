@@ -50,7 +50,7 @@ These skills end by pointing at a later skill. In this project the next SPEC-SS 
 - Project type: Other
 - What it is: Claude plugin
 - Language: JavaScript (ES modules, `.mjs`) on Node 18 or later, with no dependencies (ADR 0003)
-- Lint: ESLint, run by `npm run lint` through `npx` with a pinned version, not a devDependency (ADR 0003)
+- Lint: ESLint, run by `npm run lint` through `npx` with a pinned version, not a devDependency (ADR 0003). ESLint 10 needs Node 20.19 or later, so lint does too; the scripts and `npm test` still run on Node 18
 - Type check: none
 - CI: none
 - Unit tests: Node's built-in test runner (`node:test`), in `scripts/**/*.test.mjs`, run by `npm test`

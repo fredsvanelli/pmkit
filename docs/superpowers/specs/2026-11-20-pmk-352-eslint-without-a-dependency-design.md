@@ -25,13 +25,13 @@ The SPEC-SS workflow in `AGENTS.md` makes "lint passes" part of Execute and Ship
 - `eslint.config.js` at the root, a flat config that imports nothing. It lints `**/*.mjs` and `**/*.js` as ES modules with the Node globals the code uses, and ignores only the untracked agent folders `.agents/` and `.codex/`, which hold vendored browser scripts. The tracked `.claude/` and `.superpowers/` hold no JavaScript, so they need no entry.
 - `no-unused-vars` follows the code's own idioms: `ignoreRestSiblings` for `const { key, ...rest } = obj`, which drops a key on purpose, and `^_` for arguments, variables and array elements kept on purpose. Caught errors are not checked. This takes 44 of the 63 first reports.
 - The other 19 are dead names, removed: unused imports, constants, helpers and trailing parameters in 14 files under `scripts/`. None hid a missing check. `LIST_REFS` in `validate.mjs` repeats the list written out where it is used, and the Linear setup scenarios cover the Local paths with other reason strings than the unused `localOnly`.
-- `AGENTS.md`: Execute is done when `npm test` and `npm run lint` pass. Ship runs both and says the project has no type check, build step or CI. Tech stack gains lines for lint, type check (none) and CI (none).
+- `AGENTS.md`: the branch also carries the SPEC-SS workflow section that the user asked for in the same session, which replaces the old phase-based one. Execute is done when `npm test` and `npm run lint` pass. Ship runs both and says the project has no type check, build step or CI. Tech stack gains lines for lint, type check (none) and CI (none).
 
 ## Decided in the interview
 
 - Lint stays outside `npm test`: two commands, so the suite keeps running offline on a cold npm cache.
 - No ADR: running ESLint through `npx` is one script line and one config file, easy to reverse. The comment at the top of `eslint.config.js` says why the config imports nothing. ADR 0003 stays as it is.
-- ESLint is pinned at 10.15.0.
+- ESLint is pinned at 10.15.0. It needs Node 20.19 or later (its `engines`), so `npm run lint` does too, while the scripts and `npm test` keep Node 18.
 - The Node globals stay a hand-written list. A new global fails lint with `no-undef` until it is added, a one-line fix.
 - No new term for `CONTEXT.md`: lint is tooling, not a pmkit domain term.
 
