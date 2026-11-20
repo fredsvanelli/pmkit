@@ -16,21 +16,28 @@ The SPEC-SS workflow in `AGENTS.md` makes "lint passes" part of Execute and Ship
 
 ## Approaches
 
-1. **ESLint through `npx`, pinned** (picked by the user). `npm run lint` runs `npx --yes eslint@10.0.1 .`. Nothing enters `package.json` dependencies, so ADR 0003 holds. Trade-off: the first run downloads ESLint into the npm cache and needs the network. The config cannot import `@eslint/js` or `globals`, because they do not resolve from the repository, so the rules and the Node globals are listed in `eslint.config.js`.
+1. **ESLint through `npx`, pinned** (picked by the user). `npm run lint` runs `npx --yes eslint@10.15.0 .` (the latest release, 2026-11-13). Nothing enters `package.json` dependencies, so ADR 0003 holds. Trade-off: the first run downloads ESLint into the npm cache and needs the network. The config cannot import `@eslint/js` or `globals`, because they do not resolve from the repository, so the rules and the Node globals are listed in `eslint.config.js`.
 2. **Biome through `npx`.** One binary and fast, with the same no-dependency property. Not picked: ESLint is the more common choice and its rule names are the ones reviewers know.
 3. **ESLint as a devDependency.** The usual setup, with a lockfile. Not picked: it needs an ADR superseding 0003 and a change to `plugin.test.mjs`, for one tool.
 
 ## Design
 
-- `eslint.config.js` at the root, a flat config that imports nothing. It lints `**/*.mjs` and `**/*.js` as ES modules with the Node globals the code uses, and ignores the untracked agent folders (`.agents/`, `.codex/`, `.claude/`, `.superpowers/`), which hold vendored browser scripts.
+- `eslint.config.js` at the root, a flat config that imports nothing. It lints `**/*.mjs` and `**/*.js` as ES modules with the Node globals the code uses, and ignores only the untracked agent folders `.agents/` and `.codex/`, which hold vendored browser scripts. The tracked `.claude/` and `.superpowers/` hold no JavaScript, so they need no entry.
 - `no-unused-vars` follows the code's own idioms: `ignoreRestSiblings` for `const { key, ...rest } = obj`, which drops a key on purpose, and `^_` for arguments, variables and array elements kept on purpose. Caught errors are not checked. This takes 44 of the 63 first reports.
 - The other 19 are dead names, removed: unused imports, constants, helpers and trailing parameters in 14 files under `scripts/`. None hid a missing check. `LIST_REFS` in `validate.mjs` repeats the list written out where it is used, and the Linear setup scenarios cover the Local paths with other reason strings than the unused `localOnly`.
 - `AGENTS.md`: Execute is done when `npm test` and `npm run lint` pass. Ship runs both and says the project has no type check, build step or CI. Tech stack gains lines for lint, type check (none) and CI (none).
 
+## Decided in the interview
+
+- Lint stays outside `npm test`: two commands, so the suite keeps running offline on a cold npm cache.
+- No ADR: running ESLint through `npx` is one script line and one config file, easy to reverse. The comment at the top of `eslint.config.js` says why the config imports nothing. ADR 0003 stays as it is.
+- ESLint is pinned at 10.15.0.
+- The Node globals stay a hand-written list. A new global fails lint with `no-undef` until it is added, a one-line fix.
+- No new term for `CONTEXT.md`: lint is tooling, not a pmkit domain term.
+
 ## Left to the builder
 
 - No new test: the change keeps behavior, and the lint run is its check (it failed with 63 errors before the fix and passes after). `npm test` shows nothing else changed.
-- Lint stays outside `npm test`, so the suite keeps running offline.
 
 ## Note for the PR
 
