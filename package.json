@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/run-tests.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "lint": "npx --yes eslint@10.15.0 ."
   }
 }
