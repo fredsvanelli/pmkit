@@ -213,7 +213,8 @@ export function discussionOperations({ client, scope }) {
   }
 
   /** Reads every page of a cut comments or replies connection, so a thread past 100 comes back whole up to the limit. */
-  async function completeThread(node, number) {
+  async function completeThread(node) {
+    const { number } = node
     if (node.comments.pageInfo?.hasNextPage === true) {
       node.comments.nodes = await allNodes(DISCUSSION_DOCUMENTS.COMMENTS, { id: node.id, replies: READ_REPLIES }, (found) => found.comments, () => missingDiscussion(number))
     }
@@ -225,10 +226,9 @@ export function discussionOperations({ client, scope }) {
   }
 
   async function get(value) {
-    const number = parseDiscussionNumber(value)
-    const found = await read(number)
+    const found = await read(parseDiscussionNumber(value))
     if (!found.enabled) return off({ discussion: null, warnings: [] })
-    const discussion = fullView(await completeThread(found.node, number))
+    const discussion = fullView(await completeThread(found.node))
     return { available: true, repo: scope.repo, discussion, warnings: cutWarnings(discussion) }
   }
 
