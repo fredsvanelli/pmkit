@@ -598,7 +598,6 @@ async function githubTrackerCopy({ seed }, { root, env, run }) {
   seed?.(github)
   const tracker = statefulGhOnPath({ meta: null, issues: github.toJSON() })
   Object.assign(env, { PATH: `${tracker.bin}${path.delimiter}${env.PATH}`, GH_TOKEN: 'ghp_fake_scenario_token' })
-  gitOrThrow(root, ['init', '-q', '-b', 'main'], env)
   const result = await run([...GITHUB_TRACKER_INIT, '--json'], root, { env })
   if (result.code !== 0) throw new Error(`githubTracker: init exited ${result.code}: ${result.stdout}${result.stderr}`)
   return tracker
@@ -625,18 +624,19 @@ export async function prepareCopy(scenario, { scratch, fixturesDir, run: given =
   if (scenario.githubTracker && scenario.fixture) throw new Error('githubTracker: the scenario must have no fixture, because the init writes .pmkit/config.yaml')
   if (scenario.fixture) copyFixture(path.join(fixturesDir, scenario.fixture), root)
   else fs.mkdirSync(root)
-  const tracker = scenario.githubTracker ? await githubTrackerCopy(scenario.githubTracker, { root, env, run }) : null
   if (scenario.github) {
     const config = path.join(root, '.pmkit', 'config.yaml')
     const text = fs.existsSync(config) ? fs.readFileSync(config, 'utf8') : ''
     if (!text.includes('system: none')) throw new Error('github: .pmkit/config.yaml has no `system: none` line to turn into github')
     fs.writeFileSync(config, text.replace('system: none', 'system: github\n  default_branch: main'))
   }
-  if (scenario.git || scenario.github || tracker) {
+  if (scenario.git || scenario.github || scenario.githubTracker) {
     gitOrThrow(root, ['init', '-q', '-b', 'main'], env)
     gitOrThrow(root, ['add', '-A'], env)
     gitOrThrow(root, ['commit', '-q', '--allow-empty', '-m', 'initial'], env)
   }
+  // The init writes .pmkit/config.yaml after the initial commit; the baseline below holds it, so it counts as no change.
+  const tracker = scenario.githubTracker ? await githubTrackerCopy(scenario.githubTracker, { root, env, run }) : null
   let gh = null
   if (scenario.github) {
     const remote = path.join(scratch, 'origin.git')
