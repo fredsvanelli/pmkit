@@ -33,7 +33,14 @@ const MATCHES = {
   start_date: ['start date', 'start'],
   target_date: ['target date', 'due date', 'end date'],
   sprint: ['iteration', 'sprint'],
+  urgent: ['urgent', 'p0'],
+  high: ['high', 'p1'],
+  medium: ['medium', 'p2'],
+  low: ['low', 'p3'],
 }
+
+// The pmkit priority levels a priority label stands for, highest first (ADR 0012).
+export const PRIORITY_LEVELS = ['urgent', 'high', 'medium', 'low']
 
 const words = (key) => key.replace(/_/g, ' ')
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -223,8 +230,8 @@ const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((ke
  * values.types is left out while a type is still a question.
  */
 export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) {
-  const held = { status: current.status ?? {}, fields: current.fields ?? {}, types: current.types }
-  const given = { status: answers.status ?? {}, fields: answers.fields ?? {}, types: answers.types ?? {} }
+  const held = { status: current.status ?? {}, fields: current.fields ?? {}, types: current.types, priority: current.priority ?? {}, estimate: current.estimate ?? {} }
+  const given = { status: answers.status ?? {}, fields: answers.fields ?? {}, types: answers.types ?? {}, priority: answers.priority ?? {}, estimate: answers.estimate ?? {} }
   const labels = raw.project === null
   const statusKeys = labels ? keysOf(LABEL_STATUS_KEYS, held.status) : keysOf(STATUS_KEYS, held.status)
   const fieldKeys = keysOf(FIELD_ROLES, held.fields)
@@ -237,6 +244,7 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
   checkKeys(given.status, labels ? LABEL_STATUS_KEYS : statusKeys, '--status')
   checkKeys(given.fields, fieldKeys, '--field')
   checkKeys(given.types, typeKeys, '--type-label')
+  checkValueLabelFlags(raw, given)
 
   const pmkit = { mappings: { status: held.status, fields: held.fields, ...(held.types === undefined ? {} : { types: held.types }) } }
   const state = {
@@ -274,7 +282,81 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
   const result = () => ({ applied: state.applied, questions: state.questions, broken: state.broken, notes: state.notes, values })
   const typeValues = typesOf(state, typeKeys, values.status)
   if (typeValues !== undefined) values.types = typeValues
+  Object.assign(values, valueLabelsOf(state, values))
+  refuseSharedLabels(values)
   return result()
+}
+
+/** Refuses --priority-label and --estimate-label with a Project, and a priority level setup does not know (ADR 0012). */
+function checkValueLabelFlags(raw, given) {
+  for (const [role, flag] of [['priority', '--priority-label'], ['estimate', '--estimate-label']]) {
+    if (raw.project !== null && Object.keys(given[role]).length > 0) throw invalid(`${flag} needs a repository without a Project`, `Remove ${flag}; the Project's fields hold the ${role}`)
+  }
+  checkKeys(given.priority, PRIORITY_LEVELS, '--priority-label')
+}
+
+/**
+ * The priority and estimate label maps, without a Project and once the role's field is none: a label per priority level, asked
+ * like the status labels; estimate labels from --estimate-label and the held ones, never asked, as their names vary too much.
+ */
+function valueLabelsOf(state, values) {
+  const out = {}
+  if (state.raw.project !== null) return out
+  if (values.fields.priority === NONE) {
+    const taken = new Set([...Object.values(values.status), ...Object.values(values.types ?? {})].map(parseLabelValue).filter(Boolean).map((name) => name.toLowerCase()))
+    const free = (state.raw.labels ?? []).map((label) => label.name).filter((name) => !taken.has(name.toLowerCase()))
+    const priority = {}
+    for (const level of PRIORITY_LEVELS) {
+      const value = priorityLabelValue(state, level, free)
+      if (value !== undefined) priority[level] = value
+    }
+    out.priority = priority
+  }
+  if (values.fields.estimate === NONE) {
+    const estimate = { ...state.held.estimate }
+    for (const [key, answer] of Object.entries(state.given.estimate)) estimate[key] = labelAnswer(state.raw, answer, `--estimate-label ${key}=${answer}`)
+    if (Object.keys(estimate).length > 0) out.estimate = estimate
+  }
+  return out
+}
+
+/** label:<name> of an answer naming a repository label, or none. Any other answer is INVALID_INPUT naming the flag. */
+function labelAnswer(raw, answer, flag) {
+  if (answer === NONE) return NONE
+  const label = answeredLabel(raw, answer)
+  if (!label) throw invalid(`${flag} is not a label of ${raw.repo}`, `Pass one of: ${[...(raw.labels ?? []).map((item) => item.name), NONE].join(', ')}`)
+  return `${LABEL_PREFIX}${label.name}`
+}
+
+/** The label of one priority level: the answer, the held value, or undefined with a question recorded. */
+function priorityLabelValue(state, level, free) {
+  const answer = state.given.priority[level]
+  if (answer !== undefined) return labelAnswer(state.raw, answer, `--priority-label ${level}=${answer}`)
+  const match = matchOf(level, free, (name) => name.replace(/^priority:\s*/i, ''))
+  const question = {
+    path: `mappings.priority.${level}`,
+    flag: `--priority-label ${level}=<label>`,
+    candidates: recommendedFirst(free, match),
+    recommended: match ?? NONE,
+    none: `No label stands for ${level}`,
+  }
+  return heldOr(state, question.path, state.held.priority[level], question)
+}
+
+/** Refuses one label that answers two of the status categories, priority levels and estimate values. */
+function refuseSharedLabels(values) {
+  const usedBy = new Map()
+  const entries = [
+    ...Object.entries(values.status).map(([key, value]) => [key, value]),
+    ...Object.entries(values.priority ?? {}).map(([key, value]) => [`priority ${key}`, value]),
+    ...Object.entries(values.estimate ?? {}).map(([key, value]) => [`estimate ${key}`, value]),
+  ]
+  for (const [key, value] of entries) {
+    const label = parseLabelValue(value)?.toLowerCase()
+    if (!label) continue
+    if (usedBy.has(label)) throw invalid(`label ${parseLabelValue(value)} cannot answer both ${usedBy.get(label)} and ${key}`, `Pick another label for ${key}`)
+    usedBy.set(label, key)
+  }
 }
 
 /** The held value when it is set and not broken; otherwise it records the question, with the broken item when there is one. */

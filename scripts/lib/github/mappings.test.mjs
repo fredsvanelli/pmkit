@@ -270,6 +270,47 @@ test('without issue types, type questions offer the labels no status took', asyn
   invalid(() => proposeGithubSetup(raw, {}, { status: { in_progress: 'Doing' }, types: { bug: 'Doing' } }, TYPES), /bug=Doing is not a free label of acme\/widgets/)
 })
 
+// Priority and estimate labels (PMK-339, ADR 0012).
+const VALUE_LABELS = ['Doing', 'P0', 'priority: high', 'P2', 'low', 'size: 3', 'S']
+const valueRaw = (fields = []) => rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: VALUE_LABELS, fields }) } }), 'none')
+const LABEL_ANSWERS = { status: { triage: 'none', backlog: 'none', in_progress: 'Doing', in_review: 'none' }, fields: { priority: 'none', estimate: 'none', start_date: 'none', target_date: 'none' } }
+
+test('without a Project and with the priority field none, setup asks a label per priority level, recommended by name', async () => {
+  const result = proposeGithubSetup(await valueRaw(), {}, LABEL_ANSWERS, TYPES)
+  const asked = result.questions.filter((q) => q.path.startsWith('mappings.priority.'))
+  assert.deepEqual(asked.map((q) => [q.path, q.recommended]), [
+    ['mappings.priority.urgent', 'P0'], ['mappings.priority.high', 'priority: high'], ['mappings.priority.medium', 'P2'], ['mappings.priority.low', 'low'],
+  ])
+  assert.deepEqual(questionAt(result, 'mappings.priority.urgent'), {
+    path: 'mappings.priority.urgent', flag: '--priority-label urgent=<label>', candidates: ['P0', 'priority: high', 'P2', 'low', 'size: 3', 'S'], recommended: 'P0', none: 'No label stands for urgent',
+  })
+  assert.ok(!result.questions.some((q) => q.path.startsWith('mappings.estimate.')), 'estimate labels are never asked')
+})
+
+test('setup takes --priority-label and --estimate-label answers as label:<name>, and refuses a label used twice', async () => {
+  const raw = await valueRaw()
+  const answers = { ...LABEL_ANSWERS, priority: { urgent: 'P0', high: 'label:priority: high', medium: 'none', low: 'none' }, estimate: { 3: 'size: 3', S: 'none' } }
+  const result = proposeGithubSetup(raw, {}, answers, TYPES)
+  assert.deepEqual(result.values.priority, { urgent: 'label:P0', high: 'label:priority: high', medium: 'none', low: 'none' })
+  assert.deepEqual(result.values.estimate, { 3: 'label:size: 3', S: 'none' })
+  assert.equal(result.questions.filter((q) => q.path.startsWith('mappings.priority.')).length, 0)
+  invalid(() => proposeGithubSetup(raw, {}, { ...answers, priority: { urgent: 'Doing' } }, TYPES), /label Doing cannot answer both in_progress and priority urgent/)
+  invalid(() => proposeGithubSetup(raw, {}, { ...answers, estimate: { 5: 'Gone' } }, TYPES), /--estimate-label 5=Gone is not a label of acme\/widgets/)
+  invalid(() => proposeGithubSetup(raw, {}, { ...answers, priority: { critical: 'P0' } }, TYPES), /--priority-label critical is not something setup maps/)
+})
+
+test('with a Project, or a priority field, setup asks no priority label and refuses the flags', async () => {
+  // The default repository has a Priority issue field, which setup proposes, so no priority label is asked.
+  const fielded = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: VALUE_LABELS }) } }), 'none')
+  const pending = proposeGithubSetup(fielded, {}, { status: LABEL_ANSWERS.status }, TYPES)
+  assert.notEqual(pending.values.fields.priority, 'none')
+  assert.ok(!pending.questions.some((q) => q.path.startsWith('mappings.priority.')), 'a priority field leaves no label to ask')
+  const issueField = proposeGithubSetup(fielded, {}, { status: LABEL_ANSWERS.status, fields: { priority: 'issue:Priority' } }, TYPES)
+  assert.equal(issueField.values.priority, undefined)
+  const withProject = await rawOf()
+  invalid(() => proposeGithubSetup(withProject, {}, { priority: { high: 'P1' } }, TYPES), /--priority-label needs a repository without a Project/)
+})
+
 const ITERATION_FIELD = {
   __typename: 'ProjectV2IterationField', id: 'PF_4', name: 'Sprint', dataType: 'ITERATION', isIssueField: false,
   configuration: { duration: 14, startDay: 1, iterations: [{ id: 'IT_a', title: 'Sprint 1', startDate: '2026-11-16', duration: 14 }], completedIterations: [] },

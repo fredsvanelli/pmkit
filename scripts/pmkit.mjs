@@ -913,8 +913,8 @@ async function flowInputs(ctx, tracker, statuses) {
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear or github writes only .pmkit/config.yaml and returns what setup must ask',
-    usage: '[--tracker local|linear|github] [--git-host github|none] [--workspace key] [--team KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'workspace', 'team', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
+    usage: '[--tracker local|linear|github] [--git-host github|none] [--workspace key] [--team KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'workspace', 'team', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'priority-label', 'estimate-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
@@ -3866,7 +3866,7 @@ function initLabels(ctx) {
 
 const LINEAR_FLAGS = ['workspace', 'team', 'status', 'field', 'type-label']
 const LOCAL_ONLY_FLAGS = ['prefix', 'id-style', 'estimate-unit', 'label', 'member', 'name', 'email', 'members-file']
-const GITHUB_FLAGS = ['host', 'repo', 'project']
+const GITHUB_FLAGS = ['host', 'repo', 'project', 'priority-label', 'estimate-label']
 const HOSTED_INIT = ['linear', 'github']
 
 /** Refuses each flag of `flags` that the call passed: it applies only with --tracker `system`. */
@@ -4412,6 +4412,8 @@ function hostedDraft(text) {
     status: draft?.mappings?.status ?? {},
     fields: draft?.mappings?.fields ?? {},
     types: draft?.mappings?.types,
+    priority: draft?.mappings?.priority,
+    estimate: draft?.mappings?.estimate,
   }
   return { draft, current }
 }
@@ -4424,8 +4426,11 @@ function putMappings(text, edit, values, current) {
   }
   for (const [key, value] of Object.entries(values.status)) put(['mappings', 'status', key], value, current.status[key])
   for (const [key, value] of Object.entries(values.fields)) put(['mappings', 'fields', key], value, current.fields[key])
-  if (values.types !== undefined && (current.types === undefined || !sameEntries(values.types, current.types))) {
-    out = edit('mappings.types', () => setMap(out, ['mappings', 'types'], values.types))
+  // Types, and the priority and estimate labels of a repository without a Project (ADR 0012), are whole maps.
+  for (const group of ['types', 'priority', 'estimate']) {
+    if (values[group] !== undefined && (current[group] === undefined || !sameEntries(values[group], current[group]))) {
+      out = edit(`mappings.${group}`, () => setMap(out, ['mappings', group], values[group]))
+    }
   }
   return out
 }
@@ -4535,7 +4540,7 @@ async function runInitGithub(ctx) {
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
   // Every label the file or the flags name is read by name too, so one past the first page of labels is still found.
   const flags = parseMappingFlags(ctx)
-  const answered = [...Object.values(flags.status ?? {}), ...Object.values(flags.types ?? {})].filter((value) => value !== NONE)
+  const answered = ['status', 'types', 'priority', 'estimate'].flatMap((group) => Object.values(flags[group] ?? {})).filter((value) => value !== NONE)
   const labelNames = mappedLabelNames({ mappings: current }, answered)
   const raw = await fetchGithubDiscovery(client, { host: scope.host, repo: scope.repo, project: NONE, exec, labels: labelNames })
   const projectStep = await resolveGithubProject(ctx, client, raw, current.scope.project, scope.repo)
