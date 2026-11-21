@@ -84,7 +84,8 @@ test('runbook: with every target all eight checks pass, and both throwaway Proje
   assert.deepEqual([github.items, ghes.items, ghes.issues], [[], [], []])
 })
 
-test('runbook: Ctrl-C during the openCycle check deletes its drafts, restores the iterations and exits 130', async () => {
+for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+test(`runbook: ${signal} during the openCycle check deletes its drafts, restores the iterations and exits ${exitCode}`, async () => {
   const fake = liveGhOnPath({
     github: fakeGithubIssues({ project: { title: 'pmkit-live checks', iterations: ITERATIONS } }).toJSON(), ghes: null, scopelessToken: SCOPELESS, pauseOn: 'PmkitUpdateIterations',
   }, tempDir('pmkit-fake-gh-live-'))
@@ -99,9 +100,10 @@ test('runbook: Ctrl-C during the openCycle check deletes its drafts, restores th
     if (waited > 60000) throw new Error(`the fake gh never paused: ${stderr}`)
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  process.kill(-child.pid, 'SIGINT')
+  process.kill(-child.pid, signal)
   const code = await new Promise((resolve) => child.on('exit', (exit) => resolve(exit)))
-  assert.equal(code, 130, stderr)
+  assert.equal(code, exitCode, stderr)
+  assert.match(stderr, new RegExp(`^${signal}: stopping the live checks`))
   assert.match(stderr, /deleted the draft PVTI_\d+/)
   assert.match(stderr, /restored the 2 iterations of the field Sprint/)
   assert.match(stderr, /the run was interrupted: check the throwaway Project for drafts titled pmkit-live/)
@@ -110,6 +112,7 @@ test('runbook: Ctrl-C during the openCycle check deletes its drafts, restores th
   const field = github.project.fields.find((item) => item.dataType === 'ITERATION')
   assert.deepEqual([...field.configuration.completedIterations, ...field.configuration.iterations].map((item) => item.id).sort(), ['IT_0', 'IT_1'])
 })
+}
 
 test('runbook: a check fails, and says why, on a Project that is not a throwaway one', () => {
   const fake = liveGhOnPath({ github: fakeGithubIssues({ project: { title: 'Roadmap', iterations: ITERATIONS } }).toJSON(), ghes: null, scopelessToken: SCOPELESS }, tempDir('pmkit-fake-gh-live-'))
