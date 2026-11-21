@@ -33,7 +33,22 @@ The runbook test (`scripts/runbook-live-checks-github.test.mjs`) is the E2E of t
 
 ## Result
 
-Filled in by the run.
+Run on 2026-11-21T22:11:44Z from `develop` at `7bca2c83` (PMK-349 merged), pmkit 0.6.1 (`.claude-plugin/plugin.json`), gh 2.96.0, Node 22.22.0, against github.com: repository `fredsvanelli/pmkit` and the throwaway Project `fredsvanelli/2` (https://github.com/users/fredsvanelli/projects/2), titled `pmkit-live checks`, with an iteration field `Sprint` holding `Sprint 2` (2026-11-16) and `Sprint 3` (2026-11-30). Command: `PMKIT_LIVE=1 PMKIT_LIVE_GITHUB_REPO=fredsvanelli/pmkit PMKIT_LIVE_GITHUB_PROJECT=fredsvanelli/2 node --test-reporter=tap scripts/lib/github/client-live.mjs`, exit 0, 18 s.
+
+| Check | Result | What it printed |
+|---|---|---|
+| no `gh` login is AUTH | pass | AUTH "GitHub CLI is not logged in", next step `gh auth login` |
+| a token GitHub does not know is AUTH | pass | AUTH "GitHub rejected the token of the gh login" (HTTP 401) |
+| a repository that does not exist is NOT_FOUND | pass | NOT_FOUND, type NOT_FOUND |
+| the rate-limit headers fill the GraphQL bucket | pass | 4982 of 5000 left on graphql, with the reset time |
+| a token without the `project` scope is AUTH | skip | no `PMKIT_LIVE_GITHUB_SCOPELESS_TOKEN`: a classic token without the `project` scope is the owner's to create |
+| discover reads a repository with a Project | pass | issue types 3, issue fields 0, Project fields 14 (iteration 1), Status options 3, capabilities 20 |
+| openCycle keeps every item's iteration | pass | added the sprint 2026-12-14; 2 items kept their iteration; deleted both drafts; restored the 2 iterations of `Sprint` |
+| a draft converts into an issue on GHES | skip | no GHES host is available (the owner's decision, 2026-11-21) |
+
+No check failed, so no issue was opened. After the run the Project held no item and its iteration field held `Sprint 2` and `Sprint 3` with their ids; it was then unlinked from the repository and closed.
+
+Also checked on this Project before the run, for PMK-344 (PR #334), with two draft items: GitHub's Project filter `sprint:"Sprint 2"` matches by the iteration field's name without case, `iteration:"Sprint 2"` matches nothing for a field named `Sprint`, and `is:issue` keeps draft issues.
 
 ## Interview
 
