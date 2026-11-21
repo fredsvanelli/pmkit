@@ -304,7 +304,7 @@ test('fetchDiscovery with users reads the ids and pages the assignable users', a
   assert.deepEqual(raw.viewer, { id: 'U_1', login: 'octocat', name: 'The Octocat' })
   assert.deepEqual(raw.labels, [{ id: 'LA_1', name: 'bug' }, { id: 'LA_2', name: 'documentation' }])
   assert.deepEqual(raw.users, THREE_USERS)
-  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
+  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true, itemQuery: true })
   assert.match(JSON.parse(calls[0].input).query, /viewer \{ id login name \}/)
   assert.match(JSON.parse(calls[0].input).query, /labels\(first: 100\) \{ nodes \{ id name \}/)
   const view = discoveryView(raw, pmkitWith({}))
