@@ -171,8 +171,15 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     } catch (error) {
       if (!(error instanceof PmkitError) || error.details?.stale !== true) throw error
       const fresh = await getContext({ refresh: true })
-      return { value: await build(fresh), context: fresh }
+      return { value: await build(fresh).catch(withoutStale), context: fresh }
     }
+  }
+
+  /** Rethrows an error of the build after the refresh without its stale hint, which is meant for withRefresh only. */
+  function withoutStale(error) {
+    if (!(error instanceof PmkitError) || error.details?.stale !== true) throw error
+    const { stale: _stale, ...rest } = error.details
+    throw new PmkitError(error.code, error.message, error.nextStep, Object.keys(rest).length > 0 ? rest : undefined)
   }
 
   // The milestones of the scope repository, read once per context. A run holds one context, so a run reads them at most once.

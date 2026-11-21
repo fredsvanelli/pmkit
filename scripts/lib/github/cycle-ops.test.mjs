@@ -96,7 +96,12 @@ test('searchIssues --sprint current refreshes the discovery once when the cached
 
 test('searchIssues --sprint current with no active sprint after the refresh answers INVALID_INPUT, after one refresh', async () => {
   const { ops, state } = await setup({ now: new Date('2026-12-30T00:00:00Z') })
-  await assert.rejects(ops.searchIssues({ sprint: 'current' }), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+  await assert.rejects(ops.searchIssues({ sprint: 'current' }), (error) => {
+    assert.deepEqual({ code: error.code, message: error.message, nextStep: error.nextStep }, { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+    // The stale hint is for withRefresh only: the error that leaves after the refresh carries none.
+    assert.equal(error.details?.stale, undefined)
+    return true
+  })
   assert.equal(state.refreshes, 1)
 })
 

@@ -56,6 +56,13 @@ export async function epicProjects(client, scope) {
   return epicsById
 }
 
+/** Refuses a key of input that is not in keys, naming the keys. */
+function refuseUnknownKeys(input, keys) {
+  for (const key of Object.keys(input)) {
+    if (!keys.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${keys.join(', ')}`)
+  }
+}
+
 /**
  * The project operations over one client. `ops` is issueOperations(...), which supplies the actor check. getContext({ refresh }) is the
  * tracker's. `now` is the clock, kept for the Deliverables operations.
@@ -75,9 +82,7 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
 
   /** The REST body of a create input, checked before any request. GitHub keeps a due date as a calendar date in US Pacific time, so noon UTC is the same date in every US zone. */
   function bodyOf(input) {
-    for (const key of Object.keys(input)) {
-      if (!CREATE_KEYS.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${CREATE_KEYS.join(', ')}`)
-    }
+    refuseUnknownKeys(input, CREATE_KEYS)
     const { id } = input
     if (typeof id !== 'string' || id.trim() === '' || /[\r\n]/.test(id)) throw invalid('a milestone id is its title, a non-empty line of text', 'Use an id like v1.0')
     if (!blank(input.name) && input.name !== id) throw invalid('a GitHub milestone has one name, its title', 'Pass only the id, which becomes the title')
@@ -251,24 +256,30 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
 
   /** The create input after every check that needs no request. */
   function epicInput(input) {
-    for (const key of Object.keys(input ?? {})) {
-      if (!EPIC_CREATE_KEYS.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${EPIC_CREATE_KEYS.join(', ')}`)
-    }
+    refuseUnknownKeys(input ?? {}, EPIC_CREATE_KEYS)
     if (!blank(input.milestone)) throw new PmkitError('NOT_SUPPORTED', 'a GitHub Project has no parent milestone', 'Leave milestone out on GitHub')
     if (!blank(input.goal)) throw new PmkitError('NOT_SUPPORTED', 'the GitHub adapter has no goals', 'Leave --goal out on GitHub')
     if (typeof input.title !== 'string' || input.title.trim() === '') throw invalid('title is required')
     if (/[\r\n]/.test(input.title)) throw invalid('title must not contain a line break')
-    const fields = { title: input.title.trim() }
+    return { title: input.title.trim(), ...epicDates(input), ...epicDescription(input) }
+  }
+
+  /** The start and target of a create input that has them, each a checked date. */
+  function epicDates(input) {
+    const dates = {}
     for (const key of ['start', 'target']) {
       if (blank(input[key])) continue
       if (!validDate(input[key])) throw invalid(`${key} must be a date as YYYY-MM-DD`)
-      fields[key] = input[key]
+      dates[key] = input[key]
     }
-    if (!blank(input.description)) {
-      if (typeof input.description !== 'string') throw invalid('description must be a string')
-      fields.description = input.description.trim()
-    }
-    return fields
+    return dates
+  }
+
+  /** The trimmed description of a create input, or nothing when it has none. */
+  function epicDescription(input) {
+    if (blank(input.description)) return {}
+    if (typeof input.description !== 'string') throw invalid('description must be a string')
+    return { description: input.description.trim() }
   }
 
   /** A write after the Project exists: a failure names the Project made and what is left to do by hand. */
@@ -281,6 +292,28 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     }
   }
 
+  /** What a dry run of createDeliverable shows: the epic as GitHub would hold it. */
+  function epicPreview(fields, dated) {
+    const preview = { id: null, title: fields.title, status: dated ? { name: 'Inactive', category: 'backlog' } : { name: 'No update', category: 'todo' } }
+    if (fields.start) preview.start = fields.start
+    if (fields.target) preview.target = fields.target
+    preview.description = fields.description ?? ''
+    return preview
+  }
+
+  /** The writes after the Project exists: its readme, then the first status update with the dates. */
+  async function describeAndDate(made, written, fields, dated) {
+    const README_STEP = 'Set the readme of the Project on GitHub'
+    const STATUS_STEP = 'Publish a status update with the dates on GitHub'
+    if (fields.description !== undefined) {
+      // A failed readme leaves the dated update unsent too, so the next step names both.
+      await afterCreate(written, 'could not set its readme', dated ? `${README_STEP}. ${STATUS_STEP}` : README_STEP, () => client.request(UPDATE_PROJECT_README, { input: { projectId: made.id, readme: fields.description } }))
+    }
+    if (!dated) return
+    const update = { projectId: made.id, status: 'INACTIVE', ...(fields.start ? { startDate: fields.start } : {}), ...(fields.target ? { targetDate: fields.target } : {}) }
+    await afterCreate(written, 'could not publish its first status update', STATUS_STEP, () => client.request(CREATE_STATUS_UPDATE, { input: update }))
+  }
+
   async function createDeliverable(input, actor, { dryRun = false } = {}) {
     const fields = epicInput(input)
     await ops.requireActor(actor)
@@ -288,27 +321,12 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     const { ownerId, repositoryId } = context.raw
     if (!ownerId || !repositoryId) throw new PmkitError('NOT_CONFIGURED', 'the GitHub discovery has no owner id or repository id', '/pmkit:setup')
     const dated = fields.start !== undefined || fields.target !== undefined
-    if (dryRun) {
-      const preview = { id: null, title: fields.title, status: dated ? { name: 'Inactive', category: 'backlog' } : { name: 'No update', category: 'todo' } }
-      if (fields.start) preview.start = fields.start
-      if (fields.target) preview.target = fields.target
-      preview.description = fields.description ?? ''
-      return { before: null, after: preview }
-    }
+    if (dryRun) return { before: null, after: epicPreview(fields, dated) }
     const made = (await client.request(CREATE_PROJECT, { input: { ownerId, title: fields.title, repositoryId } })).createProjectV2.projectV2
     const written = `${context.repo.split('/')[0]}/${made.number}`
     // The run's epic map learns the new Project, so a later operation of this run finds it.
     context.epics.set(made.id, written)
-    const README_STEP = 'Set the readme of the Project on GitHub'
-    const STATUS_STEP = 'Publish a status update with the dates on GitHub'
-    if (fields.description !== undefined) {
-      // A failed readme leaves the dated update unsent too, so the next step names both.
-      await afterCreate(written, 'could not set its readme', dated ? `${README_STEP}. ${STATUS_STEP}` : README_STEP, () => client.request(UPDATE_PROJECT_README, { input: { projectId: made.id, readme: fields.description } }))
-    }
-    if (dated) {
-      const update = { projectId: made.id, status: 'INACTIVE', ...(fields.start ? { startDate: fields.start } : {}), ...(fields.target ? { targetDate: fields.target } : {}) }
-      await afterCreate(written, 'could not publish its first status update', STATUS_STEP, () => client.request(CREATE_STATUS_UPDATE, { input: update }))
-    }
+    await describeAndDate(made, written, fields, dated)
     const read = await afterCreate(written, 'could not read it back', 'Run pmkit epic list to check it', () => readEpic(written))
     if (!read) throw new PmkitError('UPSTREAM', `GitHub created the Project ${written} but a read of it found nothing`, 'pmkit epic list')
     return { before: null, after: toEpic(read.project, read.latest) }
