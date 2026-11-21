@@ -96,22 +96,34 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
    * Adds one iteration. GitHub replaces the whole configuration, so the update sends every completed and current iteration with its id,
    * and the Project's items keep their sprint. The memo of the discovery is reread afterwards, so a write of the new sprint resolves.
    */
-  async function openCycle(input, actor, { dryRun = false } = {}) {
+  /** The scope of an openCycle, after the checks that need no read: the actor, the goal, and a host that keeps iteration ids. */
+  async function openScope(input, actor) {
     await ops.requireActor(actor)
     if (typeof input?.goal === 'string' && input.goal.trim() !== '') throw new PmkitError('NOT_SUPPORTED', 'a GitHub iteration has no goal', 'Leave the goal out')
-    const { context, field, key } = await scope()
-    if (context.features?.iterationIds !== true) {
+    const found = await scope()
+    if (found.context.features?.iterationIds !== true) {
       throw new PmkitError('NOT_SUPPORTED', 'this GitHub host cannot keep the ids of the iterations when pmkit adds one', 'Add the iteration in the Project settings on GitHub')
     }
-    const given = await checkedOpen(input)
-    const { sprints, found } = await readSprints(context, field, key)
-    const { configuration } = found
-    const { start, name } = given
-    const end = given.end ?? addDays(start, configuration.duration - 1)
+    return found
+  }
+
+  /** The end of a new sprint, checked against its start and the sprints the field holds. */
+  function checkedEnd({ start, end: given }, sprints, configuration) {
+    const end = given ?? addDays(start, configuration.duration - 1)
     if (start > end) throw invalid(`start ${start} is after end ${end}`)
     if (sprints.some((sprint) => sprint.id === start)) throw invalid(`sprint ${start} already exists`, 'pmkit cycle list')
     const clash = sprints.find((sprint) => sprint.state !== 'closed' && overlaps(sprint, { start, end }))
     if (clash) throw invalid(`sprint ${start} to ${end} overlaps ${clash.id} (${clash.start} to ${clash.end})`, 'pmkit cycle list')
+    return end
+  }
+
+  async function openCycle(input, actor, { dryRun = false } = {}) {
+    const { context, field, key } = await openScope(input, actor)
+    const given = await checkedOpen(input)
+    const { sprints, found } = await readSprints(context, field, key)
+    const { configuration } = found
+    const { start, name } = given
+    const end = checkedEnd(given, sprints, configuration)
     const iterationConfiguration = appendIteration(configuration, { start, end, name })
     const added = iterationConfiguration.iterations.find((iteration) => iteration.startDate === start && iteration.id === undefined)
     if (dryRun) return { before: null, after: toSprint(added, { completed: false, today: today() }) }
@@ -132,25 +144,39 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
    * `to` is a start date, 'current' for the active sprint, or null to take the issues out of their sprint. Every issue and the target
    * are checked first, so a bad id writes nothing, and a closed sprint is a target as on Local. Each issue then gets one item write, after an item add when it has no item.
    */
-  async function moveToCycle(ids, to, actor, { dryRun = false } = {}) {
-    await ops.requireActor(actor)
-    if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
-    if (to !== null && typeof to !== 'string') throw invalid('to must be a sprint id, current or null')
-    const { context, field, key } = await scope()
-    let target = null
-    if (to !== null) {
-      const { sprints } = await readSprints(context, field, key)
-      target = to === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === to)
-      if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
-      if (!target) throw notFound(to)
-    }
-    // Every issue is checked before the first write: the actor, the repository (the adapter writes the scope repository only) and the read.
-    // Each read is used once, by the write of its issue; a repeated id reads again, after its first write.
+  /** The sprint a move goes to: null for none, the active one for current, or the one starting on to. */
+  async function moveTarget({ context, field, key }, to) {
+    if (to === null) return null
+    const { sprints } = await readSprints(context, field, key)
+    const target = to === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === to)
+    if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
+    if (!target) throw notFound(to)
+    return target
+  }
+
+  /**
+   * Every issue is checked before the first write: the actor, the repository (the adapter writes the scope repository only) and the read.
+   * Each read is used once, by the write of its issue; a repeated id reads again, after its first write.
+   */
+  async function readAll(ids, actor) {
     const reads = new Map()
     for (const id of ids) {
       await ops.writable(id, actor)
       reads.set(id, await ops.readNode(id))
     }
+    return reads
+  }
+
+  function checkMoveInput(ids, to) {
+    if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
+    if (to !== null && typeof to !== 'string') throw invalid('to must be a sprint id, current or null')
+  }
+
+  async function moveToCycle(ids, to, actor, { dryRun = false } = {}) {
+    await ops.requireActor(actor)
+    checkMoveInput(ids, to)
+    const target = await moveTarget(await scope(), to)
+    const reads = await readAll(ids, actor)
     const results = []
     const moved = []
     for (const id of ids) {
