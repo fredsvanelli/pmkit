@@ -469,6 +469,14 @@ test('paginate joins pages and passes first and after', async () => {
   assert.deepEqual(calls.map((call) => JSON.parse(call.input).variables), [{ label: 'bug', first: 2, after: null }, { label: 'bug', first: 2, after: 'c1' }])
 })
 
+test('paginate passes permissions to each page request', async () => {
+  const refused = answer({ body: { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] } })
+  const { client } = setup([page([1, 2], 'c1'), refused])
+  const error = await failure(client.paginate(ISSUES, {}, { select, pageSize: 2, permissions: 'Discussions' }))
+  assert.equal(error.code, 'AUTH')
+  assert.equal(error.nextStep, 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login')
+})
+
 test('paginate stops at limit and says there is more', async () => {
   const { client, calls } = setup([page([1, 2], 'c1'), page([3], 'c2')])
   const result = await client.paginate(ISSUES, {}, { select, pageSize: 2, limit: 3 })
