@@ -42,6 +42,18 @@ On GHES 3.20 pmkit reads no Status change events, so `issues get --history` and 
 
 Names; which existing GHES test gains the 3.20 case.
 
+## Validation
+
+Run on 2026-11-21, outside the repository: the GHES 3.19 and 3.20 schemas from `github/docs` (`src/graphql/data/ghes-3.19/` and `ghes-3.20/`, `schema.docs-enterprise.graphql`), graphql-js 16.9.0, and the documents and variables pmkit sent to the stateful fake for `getHistory` and `metricEvents` of one issue moved to In Progress, per host version:
+
+| Sent on | Document | Against 3.19 | Against 3.20 |
+|---|---|---|---|
+| 3.19.0 | `PmkitIssue`, `PmkitTimeline`, `PmkitMetricIssues`, `PmkitTimelines` | valid | valid |
+| 3.20.0 | `PmkitIssue`, `PmkitMetricIssues` | valid | valid |
+| 3.20.0 | `PmkitTimeline`, `PmkitTimelines` | invalid: unknown type `ProjectV2ItemStatusChangedEvent`, and `PROJECT_V2_ITEM_STATUS_CHANGED_EVENT` not in `IssueTimelineItemsItemType` | valid |
+
+Every document sent on 3.20 validates against the 3.20 schema. The two that read events fail against 3.19, so 3.19 must keep them off, as it does. No other document changes per version with this issue; PMK-335 validated the rest of the adapter against 3.20.
+
 ## Interview
 
 Approved on 2026-11-21 by the pmkit PO on the owner's behalf: the issue's acceptance criteria and this design, with no open product question. The questions the grilling raised and the answers taken (the recommended ones):
