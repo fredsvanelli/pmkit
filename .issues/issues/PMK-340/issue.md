@@ -2,13 +2,15 @@
 id: PMK-340
 title: Run the scenario tests against the fake GitHub
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 3
+assignee: fred
 parent: EPC-8
 milestone: github-issues
+branch: pmk-340-run-the-scenario-tests-against-the-fake
 created: 2026-11-17T22:21:23.192Z
-updated: 2026-11-21T16:50:26Z
+updated: 2026-11-21T20:15:59Z
 ---
 
 ## Description
