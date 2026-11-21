@@ -30,7 +30,8 @@ import { teamMembers } from './lib/team-capacity.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
+// deliverable-writes covers moving an epic to a status category: the live Linear run leaves it out, because its write guard has no projectUpdate rule.
+export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'deliverable-writes', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
 
 /** The members of the scope team: on Linear `discover().members` lists the whole workspace, and a capacity write refuses another team's user. */
 const scopeMembers = async (tracker) => {
@@ -442,6 +443,15 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await tracker.setParent(second, null, actor)
       assert.equal((await tracker.deliverableProgress(epic.id)).total, 1)
       await rejects(() => tracker.getDeliverable('NOPE-999999'), 'NOT_FOUND')
+    })
+
+    it('moves an epic and refuses the category it already has', ['deliverables', 'deliverable-writes'], async ({ tracker, actor }) => {
+      const epic = (await tracker.createDeliverable({ title: 'Moves' }, actor)).after
+      const moved = await tracker.moveDeliverable(epic.id, 'done', actor)
+      assert.equal(moved.before.id, epic.id)
+      assert.equal(moved.after.status.category, 'done')
+      assert.equal((await tracker.getDeliverable(epic.id)).status.category, 'done')
+      await rejects(() => tracker.moveDeliverable(epic.id, 'done', actor), 'INVALID_INPUT')
     })
 
     it('lists the status updates of an epic, newest first', ['deliverables'], async ({ tracker, actor }) => {

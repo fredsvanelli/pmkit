@@ -189,6 +189,73 @@ test('epic create, issues parent and epic progress', () => {
   assert.match(run(root, ['epic', 'list']).stdout, new RegExp(`${epic.id}\\s+\\| E`))
 })
 
+/** An epic with one issue in each of the given categories, moved there with `issues move`. */
+function epicWithIssues(categories) {
+  const root = makeRepo('basic')
+  const { after: epic } = json(root, ['epic', 'create', '--title', 'E'])
+  const issues = categories.map((category, index) => {
+    const { after: issue } = json(root, ['issues', 'create', '--title', `Part ${index}`])
+    json(root, ['issues', 'parent', issue.id, epic.id])
+    if (category !== 'backlog') json(root, ['issues', 'move', issue.id, category])
+    return issue.id
+  })
+  return { root, epic: epic.id, issues }
+}
+
+test('epic move warns with the open issue ids on a move to done and still moves', () => {
+  const { root, epic, issues } = epicWithIssues(['todo', 'in_progress', 'done'])
+  const result = run(root, ['epic', 'move', epic, 'done', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const out = JSON.parse(result.stdout)
+  assert.equal(out.after.status.category, 'done')
+  assert.match(result.stderr, new RegExp(`${epic} still has open issues: ${issues[0]}, ${issues[1]}\\n`))
+  assert.equal(json(root, ['epic', 'list']).find((e) => e.id === epic).status.category, 'done')
+})
+
+test('epic move to canceled warns too', () => {
+  const { root, epic, issues } = epicWithIssues(['todo'])
+  const result = run(root, ['epic', 'move', epic, 'canceled'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, new RegExp(`${epic} still has open issues: ${issues[0]}\\n`))
+  assert.equal(json(root, ['epic', 'get', epic]).status.category, 'canceled')
+})
+
+test('epic move gives no warning when the other issues are canceled or archived', () => {
+  const { root, epic, issues } = epicWithIssues(['done', 'canceled', 'todo'])
+  json(root, ['issues', 'archive', issues[2]])
+  const result = run(root, ['epic', 'move', epic, 'done'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stderr, /still has open issues/)
+  assert.equal(json(root, ['epic', 'get', epic]).status.category, 'done')
+})
+
+test('epic move to a category before done gives no warning', () => {
+  const { root, epic } = epicWithIssues(['todo'])
+  const result = run(root, ['epic', 'move', epic, 'in_review'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stderr, /still has open issues/)
+})
+
+test('epic move --dry-run writes nothing and carries the warning', () => {
+  const { root, epic, issues } = epicWithIssues(['todo'])
+  const before = hashTree(root)
+  const result = run(root, ['epic', 'move', epic, 'done', '--dry-run'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, new RegExp(`${epic} still has open issues: ${issues[0]}\\n`))
+  assert.equal(hashTree(root), before)
+})
+
+test('epic move refuses the category the epic already has, and the refusal wins over the warning', () => {
+  const { root, epic } = epicWithIssues(['todo'])
+  json(root, ['epic', 'move', epic, 'done'])
+  const before = hashTree(root)
+  const result = run(root, ['epic', 'move', epic, 'done', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  assert.doesNotMatch(result.stderr, /still has open issues/)
+  assert.equal(hashTree(root), before)
+})
+
 function descriptionFile(content) {
   const file = path.join(tempDir('pmkit-epic-description-'), 'description.md')
   fs.writeFileSync(file, content)
@@ -1658,6 +1725,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'goal close': ['GOAL-8K2W'],
     'goal delete': ['GOAL-8K2W'],
     'epic goal': ['EPC-2M9D', 'none'],
+    'epic move': ['EPC-2M9D', 'done'],
     'customers create': ['--name', 'Acme'],
     'customers update': ['CUS-1', '--tier', 'gold'],
     'requests create': ['--title', 'CSV export'],

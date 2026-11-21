@@ -1444,6 +1444,18 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'epic move', summary: 'moves an epic to a status category; warns when it still has open issues on a move to done or canceled', usage: '<id> <category> [--status name]', write: true, args: ['id', 'category'], flags: ['status'],
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
+      const [id, category] = ctx.args
+      // The move runs first, so a refusal wins over the warning. The move does not change the epic's issues, so progress reads the same after it.
+      const result = await tracker.moveDeliverable(id, category, await ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })
+      const open = category === 'done' || category === 'canceled' ? (await tracker.deliverableProgress(id)).open : []
+      const warnings = open.length > 0 ? [`${result.after.id} still has open issues: ${open.join(', ')}`] : []
+      return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id, warnings }
+    },
+  },
+  {
     name: 'goal list', summary: 'lists the strategic goals with their epics', flags: [],
     run: async (ctx) => {
       const { goals, problems } = await (await ctx.tracker()).listGoals()

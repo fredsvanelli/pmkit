@@ -1,0 +1,153 @@
+$ pmkit epic move EPC-2M9D done
+exit 0
+--- stdout
+EPC-2M9D  Reliable webhooks and billing export
+status: in_progress → done
+--- stderr
+warning: EPC-2M9D still has open issues: ISS-2X6D, ISS-4M2S, ISS-8C4W
+
+$ pmkit epic move EPC-2M9D done --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  },
+  "after": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  }
+}
+--- stderr
+warning: EPC-2M9D still has open issues: ISS-2X6D, ISS-4M2S, ISS-8C4W
+
+$ pmkit epic move EPC-2M9D done --dry-run
+exit 0
+--- stdout
+EPC-2M9D  Reliable webhooks and billing export
+status: in_progress → done
+dry run: nothing was written
+--- stderr
+warning: EPC-2M9D still has open issues: ISS-2X6D, ISS-4M2S, ISS-8C4W
+
+$ pmkit epic move EPC-2M9D done --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  },
+  "after": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  }
+}
+--- stderr
+warning: EPC-2M9D still has open issues: ISS-2X6D, ISS-4M2S, ISS-8C4W
+
+$ pmkit epic move EPC-2M9D in_review
+exit 0
+--- stdout
+EPC-2M9D  Reliable webhooks and billing export
+status: in_progress → in_review
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-2M9D in_review --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  },
+  "after": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-2M9D in_review --dry-run
+exit 0
+--- stdout
+EPC-2M9D  Reliable webhooks and billing export
+status: in_progress → in_review
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-2M9D in_review --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  },
+  "after": {
+    "id": "EPC-2M9D",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+  }
+}
+--- stderr
+(empty)

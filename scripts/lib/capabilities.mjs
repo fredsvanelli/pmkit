@@ -17,7 +17,7 @@ export const SERVED_BY = {
   multilevel_hierarchy: ['issues parent', 'epic list', 'issues dependencies'],
   dependencies: ['issues link', 'issues dependencies'],
   native_triage: ['issues move'],
-  deliverables: ['epic list', 'epic get', 'epic create', 'epic progress'],
+  deliverables: ['epic list', 'epic get', 'epic create', 'epic move', 'epic progress'],
   strategic_goals: ['goal list', 'goal get', 'goal create', 'goal update', 'goal close', 'goal delete', 'goal progress', 'epic goal'],
   status_update: ['epic update-status', 'epic updates'],
   releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes', 'release-readiness'],
