@@ -97,13 +97,14 @@ The flow of `/pmkit:issues:move` (`commands/issues/move.md`) when the ID is an e
 
 ## From the command file
 
-9. The user gave an epic ID to `/pmkit:issues:move`. The command reads the ID as an issue first, and the CLI answers that no issue has it:
+9. The user gave an epic ID to `/pmkit:issues:move`. The command file reads the ID as an issue first, then as an epic, so run the two calls it makes:
 
    ```
-   node scripts/pmkit.mjs issues move <epic-id> done --json
+   node scripts/pmkit.mjs issues get <epic-id> --json
+   node scripts/pmkit.mjs epic get <epic-id> --json
    ```
 
-   The command exits with code 2 and `NOT_FOUND`, `issue <epic-id> does not exist`. `issues move` never moves an epic. The fallback is in the command file: on `NOT_FOUND` or `INVALID_INPUT` it runs `epic get <epic-id> --json`, and when that finds the epic it follows the epic path with `epic move`, as in steps 1 and 2.
+   The first call exits with code 2 and `NOT_FOUND`, `issue <epic-id> does not exist`. The command file falls back on `NOT_FOUND` or `INVALID_INPUT`. The second call finds the epic and returns it with its `id` `<epic-id>`, so the command follows the epic path with `epic move`, as in steps 1 and 2.
 
 ## What the test checks
 

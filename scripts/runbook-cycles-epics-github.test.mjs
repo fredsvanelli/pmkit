@@ -108,6 +108,8 @@ test('the runbook names the commands this test runs', () => {
     'epic move acme/13 canceled --json',
     'warning: acme/13 still has open issues: 3',
     'a GitHub epic cannot move to canceled',
+    'issues get acme/13 --json',
+    'issue acme/13 does not exist',
     'milestone create v2 --due 2026-12-31 --json',
     'milestone create v1.0 --name "Version one" --json',
     'issues update 3 --milestone v2 --json',
@@ -124,7 +126,7 @@ test('the runbook names the commands this test runs', () => {
   }
 })
 
-test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 19', () => {
+test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 20', () => {
   const { root, fake, pmkit } = runbookRepo()
 
   // Step 1: the sprint field is mapped, and the Project holds one sprint, which is active on 2026-11-17.
@@ -235,31 +237,36 @@ test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 19', (
   assert.deepEqual([refused.code, refused.message, refused.nextStep], ['INVALID_INPUT', 'a GitHub epic cannot move to canceled', 'Use one of: backlog, in_progress, done'])
   assert.equal(mutations(), mutationsAfter)
 
-  // Step 15: create a milestone. GitHub has no GraphQL mutation for it, so the call is a REST POST.
+  // Step 15: the calls of commands/issues/move.md for an epic ID. issues get does not find it, which is the fallback condition, and epic get does.
+  const asIssue = failure(pmkit('issues', 'get', 'acme/13', '--json'))
+  assert.deepEqual([asIssue.code, asIssue.message], ['NOT_FOUND', 'issue acme/13 does not exist'])
+  assert.equal(json(pmkit('epic', 'get', 'acme/13', '--json')).id, 'acme/13')
+
+  // Step 16: create a milestone. GitHub has no GraphQL mutation for it, so the call is a REST POST.
   const milestone = json(pmkit('milestone', 'create', 'v2', '--due', '2026-12-31', '--json'))
   assert.deepEqual(milestone.after, { id: 'v2', name: 'v2', due: '2026-12-31', status: 'open' })
   assert.ok(calls(fake).some((call) => call.args.includes('--method') && call.args.includes('POST') && call.args.includes('repos/acme/widgets/milestones')))
 
-  // Step 16: a milestone name that differs from its id is refused, and no REST call follows.
+  // Step 17: a milestone name that differs from its id is refused, and no REST call follows.
   const before = calls(fake).length
   const named = failure(pmkit('milestone', 'create', 'v1.0', '--name', 'Version one', '--json'))
   assert.equal(named.code, 'INVALID_INPUT')
   assert.match(named.message, /a GitHub milestone has one name, its title/)
   assert.equal(calls(fake).slice(before).filter((call) => call.args.includes('POST')).length, 0)
 
-  // Step 17: put issue 3 in the milestone, then read the milestone.
+  // Step 18: put issue 3 in the milestone, then read the milestone.
   assert.equal(json(pmkit('issues', 'update', '3', '--milestone', 'v2', '--json')).after.milestone, 'v2')
   assert.equal(json(pmkit('milestone', 'get', 'v2', '--json')).due, '2026-12-31')
   assert.deepEqual(githubState(fake).milestones.map((entry) => entry.title), ['v2'])
 
-  // Step 18: the capabilities.
+  // Step 19: the capabilities.
   const manifest = json(pmkit('capabilities', '--json'))
   const byId = Object.fromEntries(manifest.capabilities.map((entry) => [entry.id, entry]))
   assert.equal(byId.cycles.path, 'native')
   assert.deepEqual([byId.cycles.detail.field, byId.cycles.detail.open, byId.cycles.detail.close], ['Sprint', true, false])
   for (const id of ['capacity', 'deliverables', 'status_update']) assert.notEqual(byId[id].path, 'absent', id)
 
-  // Step 19: set a capacity in the current sprint. GitHub has no capacity, so pmkit writes .pmkit/capacity.yaml under the Project key.
+  // Step 20: set a capacity in the current sprint. GitHub has no capacity, so pmkit writes .pmkit/capacity.yaml under the Project key.
   const callsBefore = calls(fake).length
   const capacity = json(pmkit('cycle', 'capacity', 'current', '--set', 'octocat=5', '--json'))
   assert.deepEqual([capacity.before.capacity, capacity.after.id, capacity.after.capacity], [{}, '2026-11-16', { octocat: 5 }])

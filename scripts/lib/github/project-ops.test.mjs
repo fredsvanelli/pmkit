@@ -520,12 +520,13 @@ test('moveDeliverable refuses todo, canceled, triage and in_review', async () =>
   assert.deepEqual(fake.mutations, [])
 })
 
-test('moveDeliverable checks the epic, the category, the status and the actor in order, before any mutation', async () => {
+test('moveDeliverable checks the actor, the epic, the category and the status in order, before any mutation', async () => {
   const { fake, projects } = await epicSetup()
+  await assert.rejects(projects.moveDeliverable('acme/99', 'bogus', 'someone'), { code: 'INVALID_INPUT', message: 'GitHub records every write as the gh login (octocat)' })
   await assert.rejects(projects.moveDeliverable('acme/99', 'bogus', 'octocat'), { code: 'NOT_FOUND' })
   await assert.rejects(projects.moveDeliverable('acme/12', 'bogus', 'octocat'), { code: 'INVALID_INPUT', message: 'category must be one of triage, backlog, todo, in_progress, in_review, done, canceled' })
   await assert.rejects(projects.moveDeliverable('acme/12', 'done', 'octocat', { status: 'On track' }), (error) => error.code === 'INVALID_INPUT' && error.message === 'status On track is not in category done' && error.nextStep === 'Use one of: Complete, Closed')
-  await assert.rejects(projects.moveDeliverable('acme/12', 'done', 'someone'), { code: 'INVALID_INPUT' })
+  await assert.rejects(projects.moveDeliverable('acme/12', 'done', 'someone'), { code: 'INVALID_INPUT', message: 'GitHub records every write as the gh login (octocat)' })
   assert.deepEqual(fake.mutations, [])
 })
 
@@ -561,7 +562,7 @@ test('moveDeliverable reports a reopen whose update failed, and the Project read
 test('moveDeliverable propagates a failed update that follows no reopen', async () => {
   const { fake, projects } = await epicSetup()
   fake.failNext('PmkitCreateStatusUpdate')
-  await assert.rejects(projects.moveDeliverable('acme/12', 'in_progress', 'octocat'), (error) => error.code !== 'INVALID_INPUT' && !error.message.includes('reopened'))
+  await assert.rejects(projects.moveDeliverable('acme/12', 'in_progress', 'octocat'), { code: 'UPSTREAM', message: 'GitHub answered with an error: fake GitHub failed PmkitCreateStatusUpdate' })
 })
 
 test('deliverableProgress lists the open issues by id', async () => {

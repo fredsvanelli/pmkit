@@ -256,6 +256,37 @@ test('epic move refuses the category the epic already has, and the refusal wins 
   assert.equal(hashTree(root), before)
 })
 
+// The epic move command's run function with a fake ctx: a tracker whose progress read fails or is cut.
+function epicMoveCtx(progress) {
+  const status = (category) => ({ name: category, category })
+  return {
+    args: ['EPC-1', 'done'],
+    opt: () => undefined,
+    dryRun: false,
+    json: false,
+    actor: async () => 'fred',
+    tracker: async () => ({
+      moveDeliverable: async () => ({ before: { id: 'EPC-1', title: 'E', status: status('todo') }, after: { id: 'EPC-1', title: 'E', status: status('done') } }),
+      deliverableProgress: progress,
+    }),
+  }
+}
+
+test('epic move warns instead of failing when the open issues read fails after the move landed (PMK-353)', async () => {
+  const out = await cmd('epic move').run(epicMoveCtx(async () => { throw new Error('Linear is down') }))
+  assert.deepEqual(out.warnings, ['could not read the open issues of EPC-1: Linear is down'])
+  assert.equal(out.commit, 'EPC-1')
+  assert.equal(out.data.after.status.category, 'done')
+})
+
+test('epic move warns that the open list is partial when the progress read was cut (PMK-353)', async () => {
+  const out = await cmd('epic move').run(epicMoveCtx(async () => ({ open: ['PMK-1'], hasMore: true })))
+  assert.deepEqual(out.warnings, [
+    'EPC-1 still has open issues: PMK-1',
+    'EPC-1: the tracker has more issues in this epic than pmkit read, so the open issues listed may be partial',
+  ])
+})
+
 function descriptionFile(content) {
   const file = path.join(tempDir('pmkit-epic-description-'), 'description.md')
   fs.writeFileSync(file, content)

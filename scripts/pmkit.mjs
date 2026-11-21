@@ -1450,8 +1450,17 @@ export const COMMANDS = [
       const [id, category] = ctx.args
       // The move runs first, so a refusal wins over the warning. The move does not change the epic's issues, so progress reads the same after it.
       const result = await tracker.moveDeliverable(id, category, await ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })
-      const open = category === 'done' || category === 'canceled' ? (await tracker.deliverableProgress(id)).open : []
-      const warnings = open.length > 0 ? [`${result.after.id} still has open issues: ${open.join(', ')}`] : []
+      const warnings = []
+      if (category === 'done' || category === 'canceled') {
+        // The write has landed: a failed read is a warning, never an error that would skip the commit.
+        try {
+          const progress = await tracker.deliverableProgress(id)
+          if (progress.open.length > 0) warnings.push(`${result.after.id} still has open issues: ${progress.open.join(', ')}`)
+          if (progress.hasMore === true) warnings.push(`${result.after.id}: the tracker has more issues in this epic than pmkit read, so the open issues listed may be partial`)
+        } catch (error) {
+          warnings.push(`could not read the open issues of ${result.after.id}: ${error.message}`)
+        }
+      }
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id, warnings }
     },
   },

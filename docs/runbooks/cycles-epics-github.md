@@ -166,7 +166,16 @@ An epic on GitHub is a Project linked to the repository. Its id is `owner/number
 
 A GitHub milestone has one name, its title, and pmkit uses that title as the milestone id.
 
-15. Create a milestone with a due date:
+15. Give the epic ID to `/pmkit:issues:move`. The command file reads the ID as an issue first, then as an epic, so run the two calls it makes:
+
+    ```
+    node scripts/pmkit.mjs issues get acme/13 --json
+    node scripts/pmkit.mjs epic get acme/13 --json
+    ```
+
+    The first call exits with code 2 and `NOT_FOUND`, `issue acme/13 does not exist`, which is the fallback condition of the command file (`NOT_FOUND` or `INVALID_INPUT`). The second call finds the epic and returns its `id` `acme/13`, so the command follows the epic path with `epic move`, as in steps 10 to 14.
+
+16. Create a milestone with a due date:
 
     ```
     node scripts/pmkit.mjs milestone create v2 --due 2026-12-31 --json
@@ -174,7 +183,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
     Expect `after` to be `{ id: "v2", name: "v2", due: "2026-12-31", status: "open" }`. GitHub has no GraphQL mutation for a milestone, so pmkit calls `gh api --method POST repos/acme/widgets/milestones`.
 
-16. Try a name that differs from the id:
+17. Try a name that differs from the id:
 
     ```
     node scripts/pmkit.mjs milestone create v1.0 --name "Version one" --json
@@ -182,7 +191,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
     The command exits with code 2 and `INVALID_INPUT`, `a GitHub milestone has one name, its title`. pmkit makes no REST call.
 
-17. Put issue 3 in the milestone and read the milestone:
+18. Put issue 3 in the milestone and read the milestone:
 
     ```
     node scripts/pmkit.mjs issues update 3 --milestone v2 --json
@@ -193,7 +202,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
 ## Capabilities
 
-18. Read the capabilities:
+19. Read the capabilities:
 
     ```
     node scripts/pmkit.mjs capabilities --json
@@ -203,7 +212,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
 ## Capacity
 
-19. Set the capacity of a member in the current sprint:
+20. Set the capacity of a member in the current sprint:
 
     ```
     node scripts/pmkit.mjs cycle capacity current --set octocat=5 --json

@@ -65,7 +65,7 @@ test('the runbook names every call the test runs', () => {
     'epic move EPC-ZZZZ done --json',
     'epic move <epic-id> later --json',
     'epic move <epic-id> todo --status nope --json',
-    'issues move <epic-id> done --json',
+    'issues get <epic-id> --json',
     'warning: <epic-id> still has open issues: <open-issue-id>',
     '.issues/epics/<epic-id>/events.jsonl',
     'epic <epic-id> is already in done',
@@ -129,8 +129,8 @@ test('runbook: move an epic on a Local tracker, steps 1 to 9', () => {
   const status = failure(pmkit(root, ['epic', 'move', epic, 'todo', '--status', 'nope', '--json']))
   assert.deepEqual([status.code, status.message, status.nextStep], ['INVALID_INPUT', 'status nope is not in category todo', 'Use one of: todo'])
 
-  // Step 9: issues move does not move an epic. The fallback to epic get is in the command file.
-  const asIssue = failure(pmkit(root, ['issues', 'move', epic, 'done', '--json']))
+  // Step 9: the calls of commands/issues/move.md for an epic ID. issues get does not find it, which is the fallback condition, and epic get does.
+  const asIssue = failure(pmkit(root, ['issues', 'get', epic, '--json']))
   assert.deepEqual([asIssue.code, asIssue.message], ['NOT_FOUND', `issue ${epic} does not exist`])
   assert.equal(hashTree(tracker, ['.cache']), refused)
   assert.equal(json(pmkit(root, ['epic', 'get', epic, '--json'])).id, epic)
