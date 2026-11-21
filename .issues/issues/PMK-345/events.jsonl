@@ -1,2 +1,9 @@
 {"at":"2026-11-18T00:15:22Z","by":"fred","op":"create","to":{"id":"PMK-345","title":"Clean up the open review findings of the GitHub sprint and epic code","type":"chore","status":"backlog","priority":"low","labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-11-18T00:15:22.878Z","updated":"2026-11-18T00:15:22Z"}}
 {"at":"2026-11-21T16:50:26Z","by":"fred","op":"update","field":"estimate","from":null,"to":5}
+{"at":"2026-11-21T20:15:06Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-21T20:15:06Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-21T20:15:06Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-345-clean-up-the-open-review-findings-of-the"}
+{"at":"2026-11-21T21:14:48Z","by":"fred","op":"comment","to":"2026-11-21T21-14-48Z-fred.md"}
+{"at":"2026-11-21T21:14:48Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-21T21:14:48Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-21T21:15:19Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

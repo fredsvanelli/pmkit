@@ -151,7 +151,12 @@ test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 20', (
   // Step 4: move two issues to the current sprint.
   const moved = json(pmkit('cycle', 'add', '1', '2', '--to', 'current', '--json'))
   assert.deepEqual(moved.map((entry) => entry.after.sprint), ['2026-11-16', '2026-11-16'])
+  const listedFrom = calls(fake).length
   assert.deepEqual(json(pmkit('cycle', 'issues', '2026-11-16', '--json')).map((issue) => issue.id), ['1', '2'])
+  // On github.com the sprint is read from the Project's items, filtered by GitHub, not from every issue of the repository.
+  const listing = calls(fake).slice(listedFrom).map((call) => /query (\w+)/.exec(call.input)?.[1]).filter(Boolean)
+  assert.ok(listing.includes('PmkitSprintItems'), listing.join(', '))
+  assert.ok(!listing.includes('PmkitIssues'), listing.join(', '))
 
   // Step 5: move issue 2 to the next sprint.
   assert.equal(json(pmkit('cycle', 'add', '2', '--to', '2026-11-30', '--json'))[0].after.sprint, '2026-11-30')

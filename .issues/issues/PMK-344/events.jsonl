@@ -1,2 +1,9 @@
 {"at":"2026-11-18T00:15:22Z","by":"fred","op":"create","to":{"id":"PMK-344","title":"Read sprint issues faster on GitHub","type":"feature","status":"backlog","priority":"low","labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-11-18T00:15:22.814Z","updated":"2026-11-18T00:15:22Z"}}
 {"at":"2026-11-21T16:50:26Z","by":"fred","op":"update","field":"estimate","from":null,"to":5}
+{"at":"2026-11-21T20:13:54Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-21T20:13:54Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-21T20:13:54Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-344-read-sprint-issues-faster-on-github"}
+{"at":"2026-11-21T21:01:31Z","by":"fred","op":"comment","to":"2026-11-21T21-01-31Z-fred.md"}
+{"at":"2026-11-21T21:01:31Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-21T21:01:31Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-21T21:01:54Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

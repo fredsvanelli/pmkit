@@ -1,2 +1,8 @@
 {"at":"2026-11-17T22:21:23Z","by":"fred","op":"create","to":{"id":"PMK-340","title":"Run the scenario tests against the fake GitHub","type":"chore","status":"backlog","priority":"low","labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-11-17T22:21:23.192Z","updated":"2026-11-17T22:21:23Z"}}
 {"at":"2026-11-21T16:50:26Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-21T20:15:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-21T20:15:58Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-21T20:15:59Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-340-run-the-scenario-tests-against-the-fake"}
+{"at":"2026-11-21T21:27:07Z","by":"fred","op":"comment","to":"2026-11-21T21-27-07Z-fred.md"}
+{"at":"2026-11-21T21:27:07Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-21T21:27:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
