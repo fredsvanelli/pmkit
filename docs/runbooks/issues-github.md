@@ -151,7 +151,7 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
     node scripts/pmkit.mjs issues get 1 --history --json
     ```
 
-    Expect `history` in time order: `create`, the type set to `bug`, the moves to `Todo`, `In Progress` and `Done`, the `blockedBy` link to `2` and its unlink, the `children` link to `2` and the `comment`. On GitHub Enterprise Server before 3.21, Status option changes have no events, so the command warns that moves show only as opens and closes.
+    Expect `history` in time order: `create`, the type set to `bug`, the moves to `Todo`, `In Progress` and `Done`, the `blockedBy` link to `2` and its unlink, the `children` link to `2` and the `comment`. On GitHub Enterprise Server before 3.20, Status option changes have no events, so the command warns that moves show only as opens and closes.
 
 15. Archive issue 1:
 

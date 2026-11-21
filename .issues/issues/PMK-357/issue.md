@@ -2,14 +2,14 @@
 id: PMK-357
 title: Report a GitHub discussion or comment deleted mid-read as not found
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-8
 branch: pmk-357-report-a-github-discussion-or-comment
 created: 2026-11-21T18:10:43.549Z
-updated: 2026-11-21T20:31:03Z
+updated: 2026-11-21T20:35:05Z
 ---
 
 ## Description

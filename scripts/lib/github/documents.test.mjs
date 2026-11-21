@@ -38,6 +38,12 @@ test('hostFeatures per host', () => {
   assert.deepEqual(GHES, { issueFields: false, relatesTo: false, statusEvents: false, iterationIds: false })
 })
 
+test('hostFeatures reads Status change events from GHES 3.20, not 3.19', () => {
+  for (const [version, expected] of [['3.19.9', false], ['3.20.0', true], ['3.20.4', true]]) {
+    assert.equal(hostFeatures({ host: 'git.acme.dev', ghesVersion: version }).statusEvents, expected, version)
+  }
+})
+
 for (const [label, features] of [['github.com', GITHUB], ['GHES 3.19', GHES]]) {
   test(`documents parse as one named operation on ${label}`, () => {
     const docs = issueDocuments(features, ALL_FIELDS)
