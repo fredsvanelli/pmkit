@@ -115,6 +115,32 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     return { issues: cut, problems: [], hasMore: hasMore && !stopped, ...(shownWarnings.length > 0 ? { warnings: shownWarnings } : {}) }
   }
 
+  /**
+   * The issues of one sprint ({ id, name }) from the scope Project's items, filtered on GitHub by the iteration field fieldName and
+   * the sprint's title, in pmkit's created order. Checked on github.com on 2026-11-21: `sprint:"Sprint 2"` matches by field name
+   * without case, while `is:issue` keeps draft issues, so the kind and the repository are checked here. Two iterations can share a
+   * title, so the sprint id decides here too.
+   */
+  async function sprintIssues(sprint, fieldName) {
+    const context = await getContext()
+    const query = `${fieldName.toLowerCase()}:"${sprint.name}"`
+    const kept = []
+    await client.paginate(docsOf(context).SPRINT_ITEMS, { project: context.project.id, query, ...context.fieldVariables }, {
+      select: (data) => data.node.items,
+      pageSize: PAGE_SIZE,
+      stop: async (items) => {
+        for (const { content: node } of items) {
+          if (node?.__typename !== 'Issue' || node.repository?.nameWithOwner?.toLowerCase() !== context.repo.toLowerCase()) continue
+          await completeNested(node, context)
+          const issue = toIssue(node, context)
+          if (issue.sprint === sprint.id) kept.push(issue)
+        }
+        return false
+      },
+    })
+    return kept.sort(issueComparator('created', context.priorities))
+  }
+
   // Writes.
 
   const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -289,9 +315,10 @@ export function issueOperations({ client, config, getContext, now = () => new Da
    * `base` is the branch the linked branch starts from, without origin/. A result that links a branch carries linked { branch, base },
    * base being the branch GitHub started it at: the fallback when GitHub lacks the one asked for.
    */
-  async function updateIssue(id, patch, actor, { dryRun = false, base } = {}) {
+  async function updateIssue(id, patch, actor, { dryRun = false, base, read } = {}) {
     await writable(id, actor)
-    const { node, issue: before } = await readNode(id)
+    // read is { node, issue } from readNode(id), when the caller read the issue just before (cycle add, PMK-344).
+    const { node, issue: before } = read ?? await readNode(id)
     const { value: plan, context } = await withRefresh(async (current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current, milestones: needed(patch?.milestone) ? await milestonesOf(current) : [], now: now().toISOString() }))
     const branch = await planBranch(plan.branch, before, base, context)
     const notes = branch?.note ? [branch.note] : []
@@ -384,5 +411,5 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     return result
   }
 
-  return { getIssue, searchIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, runSteps }
+  return { getIssue, searchIssues, sprintIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, runSteps }
 }

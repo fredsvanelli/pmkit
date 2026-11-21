@@ -67,9 +67,14 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
   }
 
   async function cycleIssues(id) {
-    await scope()
+    const { context, field } = await scope()
     // An id that is not a date names no iteration, so it holds no issue, as an unknown sprint on Linear.
     if (!validDate(id)) return []
+    // github.com and GHE.com filter the Project's items on GitHub (PMK-344). A sprint the cached discovery lacks, a title or field
+    // name the filter cannot quote, and GHES read the repository through searchIssues, which refreshes the cache when it must.
+    const sprint = sprintsOf(field.configuration, today()).sprints.find((item) => item.id === id)
+    const quotable = sprint && !sprint.name.includes('"') && !/[\s"]/.test(field.name)
+    if (context.features?.itemQuery === true && quotable) return ops.sprintIssues(sprint, field.name)
     return (await ops.searchIssues({ sprint: id })).issues
   }
 
@@ -140,15 +145,19 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
       if (!target) throw notFound(to)
     }
     // Every issue is checked before the first write: the actor, the repository (the adapter writes the scope repository only) and the read.
+    // Each read is used once, by the write of its issue; a repeated id reads again, after its first write.
+    const reads = new Map()
     for (const id of ids) {
       await ops.writable(id, actor)
-      await ops.readNode(id)
+      reads.set(id, await ops.readNode(id))
     }
     const results = []
     const moved = []
     for (const id of ids) {
+      const read = reads.get(id)
+      reads.delete(id)
       try {
-        results.push(await ops.updateIssue(id, { sprint: target?.id ?? null }, actor, { dryRun }))
+        results.push(await ops.updateIssue(id, { sprint: target?.id ?? null }, actor, { dryRun, read }))
       } catch (error) {
         throw stoppedHalfway(error, moved, 'GitHub')
       }
