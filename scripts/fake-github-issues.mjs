@@ -552,18 +552,16 @@ function build(state) {
       })
       return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
     },
-    // One sprint's issues through GitHub's Project filter (PMK-344): the fake knows is:issue, repo:<owner/name> and
-    // <iteration field>:"<title>", and leaves archived items out, as items() does by default.
+    // One sprint's items through GitHub's Project filter (PMK-344): the fake knows <iteration field>:"<title>", matched by field name
+    // without case, and leaves archived items out, as items() does by default. Like GitHub, it returns drafts, pull requests and
+    // issues of any repository.
     PmkitSprintItems(vars) {
       const project = projectById(vars.project)
       const terms = String(vars.query ?? '')
-      const repo = /(?:^|\s)repo:(\S+)/.exec(terms)?.[1]
       const [, fieldName, title] = /(?:^|\s)([^\s:]+):"([^"]*)"/.exec(terms) ?? []
       const field = project.fields.find((candidate) => candidate.dataType === 'ITERATION' && candidate.name.toLowerCase() === fieldName)
       const titleOf = (item) => iterationsOf(field ?? {}).find((iteration) => iteration.id === item.values[field?.id]?.iterationId)?.title
       const items = state.items.filter((item) => item.projectId === project.id && !item.isArchived)
-        .filter((item) => !/(?:^|\s)is:issue(?:\s|$)/.test(terms) || item.type === 'ISSUE')
-        .filter((item) => !repo || (item.type === 'ISSUE' && sameName(issueById(item.issueId).repo, repo)))
         .filter((item) => !fieldName || (field && titleOf(item) === title))
         .map((item) => ({ content: item.type === 'ISSUE' ? { __typename: 'Issue', ...issueNode(issueById(item.issueId), vars) } : contentOf(item, vars) }))
       return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }

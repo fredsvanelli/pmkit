@@ -14,7 +14,7 @@
 
 - No dependencies (ADR 0003).
 - `cycle issues` output unchanged: same issues, same shape, created order (oldest first), no archived item, no other repository, no draft or pull request.
-- Query text: `is:issue repo:<owner/name> <qualifier>:"<iteration title>"`, where `<qualifier>` is the iteration field's name in lower case. The scan stays when the host has no `itemQuery`, when the title holds `"`, or when the field name holds a space or `"` (`// ponytail:` the Project filter syntax is not checked live yet, PMK-351).
+- Query text: `<qualifier>:"<iteration title>"`, where `<qualifier>` is the iteration field's name in lower case. The scan stays when the host has no `itemQuery`, when the title holds `"`, or when the field name holds a space or `"`. Ruling during Secure, after a live check on github.com (2026-11-21): `is:issue` keeps draft issues and `repo:` could not be checked without real issues, so both left the query; the client keeps only issues of the scope repository.
 - `hostFeatures(...).itemQuery`: true on github.com and GHE.com, false on GHES (any version).
 
 ## Review Focus

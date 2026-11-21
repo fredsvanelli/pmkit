@@ -117,11 +117,13 @@ export function issueOperations({ client, config, getContext, now = () => new Da
 
   /**
    * The issues of one sprint ({ id, name }) from the scope Project's items, filtered on GitHub by the iteration field fieldName and
-   * the sprint's title, in pmkit's created order. Two iterations can share a title, so the sprint id decides on the client.
+   * the sprint's title, in pmkit's created order. Checked on github.com on 2026-11-21: `sprint:"Sprint 2"` matches by field name
+   * without case, while `is:issue` keeps draft issues, so the kind and the repository are checked here. Two iterations can share a
+   * title, so the sprint id decides here too.
    */
   async function sprintIssues(sprint, fieldName) {
     const context = await getContext()
-    const query = `is:issue repo:${context.repo} ${fieldName.toLowerCase()}:"${sprint.name}"`
+    const query = `${fieldName.toLowerCase()}:"${sprint.name}"`
     const kept = []
     await client.paginate(docsOf(context).SPRINT_ITEMS, { project: context.project.id, query, ...context.fieldVariables }, {
       select: (data) => data.node.items,

@@ -50,7 +50,7 @@ The sprint, epic and milestone commands on a repository whose tracker is GitHub 
    node scripts/pmkit.mjs cycle issues 2026-11-16 --json
    ```
 
-   Expect `after.sprint: "2026-11-16"` on both issues, and the sprint lists issues `1` and `2`. An issue with no item in the Project gets one first. `cycle add` reads each issue once before its write. On github.com and GHE.com, `cycle issues` reads only the sprint's items of the Project, through GitHub's Project filter (`is:issue repo:acme/widgets sprint:"Sprint 2"`); on GitHub Enterprise Server it reads the repository's issues and keeps the sprint's.
+   Expect `after.sprint: "2026-11-16"` on both issues, and the sprint lists issues `1` and `2`. An issue with no item in the Project gets one first. `cycle add` reads each issue once before its write. On github.com and GHE.com, `cycle issues` reads only the sprint's items of the Project, through GitHub's Project filter on the iteration field (`sprint:"Sprint 2"`), and keeps the issues of `acme/widgets`; on GitHub Enterprise Server it reads the repository's issues and keeps the sprint's.
 
 5. Move issue 2 to the next sprint and read the sprints:
 
