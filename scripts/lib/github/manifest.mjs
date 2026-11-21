@@ -2,16 +2,16 @@
 // See docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md, "Capabilities".
 
 import { CAPABILITIES } from '../capabilities.mjs'
-import { estimateOf } from './discovery.mjs'
-import { CAPACITY_FILE } from '../linear/capacity-store.mjs'
+import { estimateLabelScale, estimateOf } from './discovery.mjs'
+import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldOf, iterationFieldOf, labelOf, parseLabelValue } from './mappings.mjs'
 
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const unservedHint = (id) => `The GitHub adapter does not serve ${id} yet (EPC-8)`
 
-/** estimation: native with the unit and scale of the mapped estimate field, absent when no field GitHub has is mapped. */
+/** estimation: native with the unit and scale of the mapped estimate field or estimate labels, absent when GitHub has neither. */
 function estimation(raw, pmkit) {
-  if (!fieldOf(raw, pmkit?.mappings?.fields?.estimate)) return { path: 'absent', enableHint: 'Map an estimate field with /pmkit:setup' }
+  if (!fieldOf(raw, pmkit?.mappings?.fields?.estimate) && estimateLabelScale(raw, pmkit).length === 0) return { path: 'absent', enableHint: 'Map an estimate field with /pmkit:setup' }
   const { unit, scale } = estimateOf(raw, pmkit)
   return { path: 'native', detail: { unit, scale } }
 }

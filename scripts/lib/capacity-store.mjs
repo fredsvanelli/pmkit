@@ -1,13 +1,13 @@
-// Capacity and days off of Linear cycles, kept in the committed file .pmkit/capacity.yaml (Unified model, Q5: local context).
-// Linear has no such field. The validators are the Local tracker's, so a sprint file and this file accept the same data.
+// Capacity and days off of Linear cycles and GitHub iterations, kept in the committed file .pmkit/capacity.yaml (Unified model,
+// Q5: local context). Neither tracker has such a field. The validators are the Local tracker's, so a sprint file and this file accept the same data.
 // See docs/superpowers/specs/2026-10-28-pmk-37-linear-cycles-to-sprints-design.md, "Capacity in local context".
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { PmkitError } from '../errors.mjs'
-import { applyBasePatch, applyCapacityPatch, baseField, readCapacityBase, requireCapacity, requireDaysOff, validDate, writeCapacityBase } from '../local/sprints.mjs'
-import { writeFileAtomic } from '../local/store.mjs'
-import { parseYaml, stringifyYaml } from '../yaml.mjs'
+import { PmkitError } from './errors.mjs'
+import { applyBasePatch, applyCapacityPatch, baseField, readCapacityBase, requireCapacity, requireDaysOff, validDate, writeCapacityBase } from './local/sprints.mjs'
+import { writeFileAtomic } from './local/store.mjs'
+import { parseYaml, stringifyYaml } from './yaml.mjs'
 
 export const CAPACITY_FILE = '.pmkit/capacity.yaml'
 const VERSION = 1

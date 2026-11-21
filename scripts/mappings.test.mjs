@@ -229,10 +229,10 @@ test('a hand-written key that still exists is kept and not asked', () => {
 
 test('parseMappingFlags keeps spaces, accepts repeated flags and refuses a flag without a value', () => {
   const ctx = (lists) => ({ list: (name) => lists[name] ?? [] })
-  assert.deepEqual(parseMappingFlags(ctx({ status: ['in_review=In Review', 'blocked=none'], field: ['estimate=native'], 'type-label': ['bug=Bug', 'bug=Defect'] })),
-    { status: { in_review: 'In Review', blocked: 'none' }, fields: { estimate: 'native' }, types: { bug: 'Defect' } })
+  assert.deepEqual(parseMappingFlags(ctx({ status: ['in_review=In Review', 'blocked=none'], field: ['estimate=native'], 'type-label': ['bug=Bug', 'bug=Defect'], 'priority-label': ['high=P1'], 'estimate-label': ['3=size: 3'] })),
+    { status: { in_review: 'In Review', blocked: 'none' }, fields: { estimate: 'native' }, types: { bug: 'Defect' }, priority: { high: 'P1' }, estimate: { 3: 'size: 3' } })
   assert.deepEqual(parseMappingFlags(ctx({ status: ['a=b=c'] })).status, { a: 'b=c' })
-  for (const flag of ['status', 'field', 'type-label']) {
+  for (const flag of ['status', 'field', 'type-label', 'priority-label', 'estimate-label']) {
     assert.throws(() => parseMappingFlags(ctx({ [flag]: ['in_review'] })), (error) => error.code === 'INVALID_INPUT')
     assert.throws(() => parseMappingFlags(ctx({ [flag]: ['=x'] })), (error) => error.code === 'INVALID_INPUT')
   }

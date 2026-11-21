@@ -3,13 +3,14 @@
 import { compareVersions, hasIssueFields, needsVersionCheck } from './discovery.mjs'
 
 /**
- * Which parts of the schema the host has: { issueFields, relatesTo, statusEvents, iterationIds }. github.com and GHE.com have all of them.
- * GHES has Status events from 3.21, issue fields from 3.22, and never relatesTo.
+ * Which parts of the schema the host has: { issueFields, relatesTo, statusEvents, iterationIds, itemQuery }. github.com and GHE.com have all of them.
+ * itemQuery (ProjectV2.items(query:)) is off on every GHES: its schema has the argument from 3.20, but its filter syntax is unchecked there (PMK-344).
+ * GHES has Status events from 3.20 (PMK-350), issue fields from 3.22, and never relatesTo.
  */
 export function hostFeatures({ host, ghesVersion }) {
-  if (!needsVersionCheck(host)) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true }
-  if (ghesVersion === null || ghesVersion === undefined) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: false }
-  return { issueFields: hasIssueFields(ghesVersion), relatesTo: false, statusEvents: compareVersions(ghesVersion, '3.21') >= 0, iterationIds: false }
+  if (!needsVersionCheck(host)) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true, itemQuery: true }
+  if (ghesVersion === null || ghesVersion === undefined) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: false, itemQuery: false }
+  return { issueFields: hasIssueFields(ghesVersion), relatesTo: false, statusEvents: compareVersions(ghesVersion, '3.20') >= 0, iterationIds: false, itemQuery: false }
 }
 
 const ITEM_TYPE_NAMES = [
@@ -131,6 +132,11 @@ ${fragment}`,
   repository(owner: $owner, name: $name) {
     issues(first: $first, after: $after, filterBy: $filterBy, orderBy: $orderBy) { nodes { ...PmkitIssueFields } ${PAGE} }
   }
+}
+${fragment}`,
+    // The issues of one sprint, read from the scope Project's items with GitHub's filter (PMK-344). Archived items are left out by default.
+    SPRINT_ITEMS: `query PmkitSprintItems(${declare('$project: ID!', '$first: Int!', '$after: String', '$query: String!', vars)}) {
+  node(id: $project) { ... on ProjectV2 { items(first: $first, after: $after, query: $query) { nodes { content { __typename ... on Issue { ...PmkitIssueFields } } } ${PAGE} } } }
 }
 ${fragment}`,
     // The issue read of metricEvents: only what toEvents reads, so a read of up to 1000 issues stays small.

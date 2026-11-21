@@ -219,6 +219,10 @@ test('discoveryView reports open and closed when the repository has no Project',
   assert.ok(view.warnings.some((warning) => /tracker\.scope\.project is none/.test(warning)))
 })
 
+test('mappedLabelNames includes the priority and estimate labels (PMK-339)', () => {
+  assert.deepEqual(mappedLabelNames({ mappings: { status: { in_progress: 'label:Doing' }, priority: { high: 'label:P1', low: 'none' }, estimate: { 3: 'label:size: 3' } } }), ['Doing', 'P1', 'size: 3'])
+})
+
 test('discoveryView lists the mapped pmkit types and the estimate unit', async () => {
   const raw = await rawOf()
   assert.deepEqual(discoveryView(raw, pmkitWith({ types: { feature: 'Feature', bug: 'Bug' } })).types, ['feature', 'bug'])
@@ -304,7 +308,7 @@ test('fetchDiscovery with users reads the ids and pages the assignable users', a
   assert.deepEqual(raw.viewer, { id: 'U_1', login: 'octocat', name: 'The Octocat' })
   assert.deepEqual(raw.labels, [{ id: 'LA_1', name: 'bug' }, { id: 'LA_2', name: 'documentation' }])
   assert.deepEqual(raw.users, THREE_USERS)
-  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
+  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true, itemQuery: true })
   assert.match(JSON.parse(calls[0].input).query, /viewer \{ id login name \}/)
   assert.match(JSON.parse(calls[0].input).query, /labels\(first: 100\) \{ nodes \{ id name \}/)
   const view = discoveryView(raw, pmkitWith({}))

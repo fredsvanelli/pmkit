@@ -198,6 +198,11 @@ function build(state) {
   initDiscussions(state)
   initDrafts(state)
   const features = hostFeatures({ host: state.host, ghesVersion: state.ghesVersion })
+  // A schema fact kept apart from hostFeatures, so a wrong adapter threshold fails a test: the published GHES schemas have the
+  // Status change event from 3.20 (PMK-350), and 3.19 has neither the type nor its timeline item type.
+  const statusEventsSchema = !needsVersionCheck(state.host) || state.ghesVersion === null || compareVersions(state.ghesVersion, '3.20') >= 0
+  // ProjectV2.items(query:) is in the published schemas of github.com and GHES 3.20 and later, not 3.19 (PMK-344).
+  const itemQuerySchema = statusEventsSchema
   const mutations = []
   const reads = []
 
@@ -426,7 +431,7 @@ function build(state) {
     // A draft or a pull request item takes the value too, and has no issue timeline to record it in.
     if (item.type !== 'ISSUE') return
     const record = issueById(item.issueId)
-    if (field.name === 'Status' && features.statusEvents && before !== statusName(item)) {
+    if (field.name === 'Status' && statusEventsSchema && before !== statusName(item)) {
       event(record, 'ProjectV2ItemStatusChangedEvent', { previousStatus: before, status: statusName(item), project: { id: item.projectId } }, at)
     }
     touch(at, record)
@@ -545,6 +550,20 @@ function build(state) {
         const content = contentOf(item, vars)
         return { ...itemNode(item, vars), status: projectValue(item, 'Status'), content: content && withTypename(content, typed) }
       })
+      return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
+    },
+    // One sprint's items through GitHub's Project filter (PMK-344): the fake knows <iteration field>:"<title>", matched by field name
+    // without case, and leaves archived items out, as items() does by default. Like GitHub, it returns drafts, pull requests and
+    // issues of any repository.
+    PmkitSprintItems(vars) {
+      const project = projectById(vars.project)
+      const terms = String(vars.query ?? '')
+      const [, fieldName, title] = /(?:^|\s)([^\s:]+):"([^"]*)"/.exec(terms) ?? []
+      const field = project.fields.find((candidate) => candidate.dataType === 'ITERATION' && candidate.name.toLowerCase() === fieldName)
+      const titleOf = (item) => iterationsOf(field ?? {}).find((iteration) => iteration.id === item.values[field?.id]?.iterationId)?.title
+      const items = state.items.filter((item) => item.projectId === project.id && !item.isArchived)
+        .filter((item) => !fieldName || (field && titleOf(item) === title))
+        .map((item) => ({ content: item.type === 'ISSUE' ? { __typename: 'Issue', ...issueNode(issueById(item.issueId), vars) } : contentOf(item, vars) }))
       return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
     },
     // Issues by node id, in the order asked, null for an id that is no issue: the batched read of the epic progress.
@@ -907,7 +926,8 @@ function build(state) {
       [repositoryIssueFields, /\bIssueFieldMultiSelect\b/, "No such type IssueFieldMultiSelect, so it can't be a fragment condition"],
       [!ghes, /\bisIssueField\b/, "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'"],
       [!ghes, /\bProjectV2MultiSelectField\b/, "No such type ProjectV2MultiSelectField, so it can't be a fragment condition"],
-      [features.statusEvents, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
+      [itemQuerySchema, /\bitems\([^)]*\bquery:/, "Unknown argument 'query' on field 'ProjectV2.items'"],
+      [statusEventsSchema, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
       // ProjectV2Owner is an interface with id, projectV2 and projectsV2 only: a login needs an inline fragment on Organization or User.
       [false, /\bowner\s*\{\s*login\b/, "Field 'login' doesn't exist on type 'ProjectV2Owner'"],
       // RepositoryOwner has no projectV2: the read needs an inline fragment on ProjectV2Owner (or Organization or User).
@@ -917,7 +937,7 @@ function build(state) {
     ]
     const found = checks.find(([present, pattern]) => !present && pattern.test(query ?? ''))
     if (found) return found[2]
-    if (!features.statusEvents && variables.itemTypes?.includes?.('PROJECT_V2_ITEM_STATUS_CHANGED_EVENT')) {
+    if (!statusEventsSchema && variables.itemTypes?.includes?.('PROJECT_V2_ITEM_STATUS_CHANGED_EVENT')) {
       return 'Variable $itemTypes of type [IssueTimelineItemsItemType!] was provided invalid value'
     }
     return null

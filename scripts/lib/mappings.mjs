@@ -63,7 +63,8 @@ export function brokenMappings(description, pmkit) {
 }
 
 /**
- * The repeated --status, --field and --type-label options as { status, fields, types }. Each option is key=value:
+ * The repeated --status, --field, --type-label, --priority-label and --estimate-label options as { status, fields, types, priority,
+ * estimate }; the last two serve GitHub without a Project (ADR 0012). Each option is key=value:
  * the value runs to the end of the argument, spaces included. A later option for the same key wins.
  */
 export function parseMappingFlags(ctx) {
@@ -77,7 +78,7 @@ export function parseMappingFlags(ctx) {
     }
     return out
   }
-  return { status: read('status'), fields: read('field'), types: read('type-label') }
+  return { status: read('status'), fields: read('field'), types: read('type-label'), priority: read('priority-label'), estimate: read('estimate-label') }
 }
 
 /** The team of the description whose key is `key`, or undefined. */

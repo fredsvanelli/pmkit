@@ -3,7 +3,7 @@
 
 import { parseDescription } from '../body-criteria.mjs'
 import { TERMINAL } from '../model.mjs'
-import { CLOSED, CLOSED_NOT_PLANNED, OPEN, statusFieldOf } from './discovery.mjs'
+import { CLOSED, CLOSED_NOT_PLANNED, isPointsScale, OPEN, statusFieldOf } from './discovery.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
 import { fieldOf, iterationFieldOf, labelOf, NONE, parseFieldSource, parseLabelValue } from './mappings.mjs'
 
@@ -79,23 +79,35 @@ export function makeContext(raw, pmkit, { epics = new Map() } = {}) {
   }) : [])
   const statusLabels = labelMap(statusMap, READ_ORDER, !project)
   const typeLabels = labelMap(typeMap, Object.keys(typeMap), raw.issueTypes.length === 0)
-  const mappedLabelIds = new Set([...statusLabels.values(), ...typeLabels.values()].map((label) => label.id))
+  // Priority and estimate labels hold without a Project and while no field holds the role (ADR 0012). Priorities read highest first.
+  const valueLabels = (role, keys = Object.keys(mappings[role] ?? {})) => labelMap(mappings[role] ?? {}, keys, !project && [undefined, null, '', NONE].includes(mappings.fields?.[role]))
+  const priorityLabels = valueLabels('priority', PRIORITIES)
+  const estimateLabels = valueLabels('estimate')
+  const pointKeys = isPointsScale([...estimateLabels.keys()])
+  const estimateValue = (key) => (pointKeys ? Number(key) : key)
+  const mappedLabelIds = new Set([...statusLabels.values(), ...typeLabels.values(), ...priorityLabels.values(), ...estimateLabels.values()].map((label) => label.id))
 
   /** The status and the type that an issue's label names give, with a warning for each one several labels claim. */
   function readLabels(names, id) {
     const has = (label) => names.some((name) => name.toLowerCase() === label.name.toLowerCase())
     const warnings = []
     const statuses = [...statusLabels].filter(([, label]) => has(label))
-    const types = [...typeLabels].filter(([, label]) => has(label))
     const status = statuses.at(-1)
-    const type = types[0]
     if (statuses.length > 1) warnings.push(`${id} has several status labels (${statuses.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${status[1].name}`)
-    if (types.length > 1) warnings.push(`${id} has several type labels (${types.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${type[0]}`)
-    return { status: status ? { name: status[1].name, category: status[0] } : null, type: type?.[0], warnings }
+    // A type, a priority and an estimate read the first label of their map, with a warning when several apply.
+    const first = (map, what, show = (key) => key) => {
+      const found = [...map].filter(([, label]) => has(label))
+      if (found.length > 1) warnings.push(`${id} has several ${what} labels (${found.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${show(found[0][0])}`)
+      return found[0]?.[0]
+    }
+    const type = first(typeLabels, 'type')
+    const priority = first(priorityLabels, 'priority')
+    const estimate = first(estimateLabels, 'estimate', estimateValue)
+    return { status: status ? { name: status[1].name, category: status[0] } : null, type, priority, estimate: estimate === undefined ? undefined : estimateValue(estimate), warnings }
   }
 
   return {
-    raw, pmkit, repo: raw.repo, project, features: raw.features, statusLabels, typeLabels, mappedLabelIds, readLabels,
+    raw, pmkit, repo: raw.repo, project, features: raw.features, statusLabels, typeLabels, priorityLabels, estimateLabels, mappedLabelIds, readLabels,
     categoryOfOption: (name) => categoryOf.get(name) ?? 'in_progress',
     optionOf: (category) => {
       const name = statusMap[category]
@@ -169,13 +181,15 @@ function rawValue(role, node, context) {
   return item?.[ROLES[role].alias] ?? undefined
 }
 
-function priorityOf(node, context) {
+function priorityOf(node, context, read) {
+  if (context.priorityLabels?.size > 0) return read.priority
   const value = rawValue('priority', node, context)
   if (!value?.name) return undefined
   return priorityRule(context.field('priority').field.options).get(value.name)
 }
 
-function estimateOf(node, context) {
+function estimateOf(node, context, read) {
+  if (context.estimateLabels?.size > 0) return read.estimate
   const value = rawValue('estimate', node, context)
   if (!value) return undefined
   const found = value.number ?? value.numberValue ?? value.name
@@ -208,41 +222,48 @@ export function toIssue(node, context) {
   return toIssueWithWarnings(node, context).issue
 }
 
+/** Sets issue[key] to value unless value is undefined, so an unset field is an absent key. */
+const setDefined = (issue, key, value) => {
+  if (value !== undefined) issue[key] = value
+}
+
+/** The type of a node: its type label when types are labels, else its issue type's pmkit type. */
+function typeOfNode(node, context, read) {
+  if (context.typeLabels?.size > 0) return read.type
+  return node.issueType ? context.typeOf(node.issueType.name) : undefined
+}
+
+/** What the labels of a node give (readLabels), or no type and no warning without label mappings. */
+const labelRead = (node, context, id) => (context.readLabels ? context.readLabels(labelNames(node), id) : { type: undefined, warnings: [] })
+
+/** The warnings of a node's labels. A closed issue reads no status label, so only an open one warns about several. */
+const labelWarnings = (node, read) => (node.state === 'CLOSED' ? read.warnings.filter((warning) => !warning.includes('status labels')) : read.warnings)
+
 /** The pmkit issue of a node, and the warnings of its labels: several status labels or several type labels. */
 export function toIssueWithWarnings(node, context) {
   const { description, acceptanceCriteria } = parseDescription(node.body)
   const issue = { id: issueIdOf(node, context.repo), title: node.title }
-  const read = context.readLabels ? context.readLabels(labelNames(node), issue.id) : { type: undefined, warnings: [] }
-  const type = context.typeLabels?.size > 0 ? read.type : node.issueType ? context.typeOf(node.issueType.name) : undefined
-  if (type !== undefined) issue.type = type
+  const read = labelRead(node, context, issue.id)
+  setDefined(issue, 'type', typeOfNode(node, context, read))
   issue.status = statusOf(node, context)
-  const priority = priorityOf(node, context)
-  if (priority !== undefined) issue.priority = priority
-  const estimate = estimateOf(node, context)
-  if (estimate !== undefined) issue.estimate = estimate
-  const assignee = nodesOf(node.assignees)[0]?.login
-  if (assignee) issue.assignee = assignee
+  setDefined(issue, 'priority', priorityOf(node, context, read))
+  setDefined(issue, 'estimate', estimateOf(node, context, read))
+  setDefined(issue, 'assignee', nodesOf(node.assignees)[0]?.login || undefined)
   issue.labels = nodesOf(node.labels).map((label) => label.name).sort()
-  const parent = parentOf(node, context)
-  if (parent !== undefined) issue.parent = parent
+  setDefined(issue, 'parent', parentOf(node, context))
   issue.blockedBy = sortedIds(nodesOf(node.blockedBy), context)
   issue.blocks = sortedIds(nodesOf(node.blocking), context)
   issue.related = sortedIds(nodesOf(node.relatesTo), context)
-  issue.duplicateOf = node.duplicateOf ? [issueIdOf(node.duplicateOf, context.repo)] : []
+  issue.duplicateOf = idsOf([node.duplicateOf].filter(Boolean), context)
   issue.children = idsOf(nodesOf(node.subIssues), context)
   issue.archived = itemOf(node, context)?.isArchived === true
-  const due = dueOf(node, context)
-  if (due !== undefined) issue.due = due
-  const sprint = sprintOf(node, context)
-  if (sprint !== undefined) issue.sprint = sprint
-  if (node.milestone?.title) issue.milestone = node.milestone.title
-  const branch = nodesOf(node.linkedBranches)[0]?.ref?.name
-  if (branch) issue.branch = branch
+  setDefined(issue, 'due', dueOf(node, context))
+  setDefined(issue, 'sprint', sprintOf(node, context))
+  setDefined(issue, 'milestone', node.milestone?.title || undefined)
+  setDefined(issue, 'branch', nodesOf(node.linkedBranches)[0]?.ref?.name || undefined)
   issue.description = description
   issue.acceptanceCriteria = acceptanceCriteria
   issue.created = node.createdAt
   issue.updated = node.updatedAt
-  // A closed issue reads no status label, so only an open one warns about several.
-  const warnings = node.state === 'CLOSED' ? read.warnings.filter((warning) => !warning.includes('status labels')) : read.warnings
-  return { issue, warnings }
+  return { issue, warnings: labelWarnings(node, read) }
 }

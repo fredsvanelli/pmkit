@@ -2,13 +2,15 @@
 id: PMK-349
 title: Clean up after the writing GitHub live checks when a run is interrupted
 type: task
-status: backlog
+status: done
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-8
 related: [PMK-335]
+branch: pmk-349-clean-up-after-the-writing-github-live
 created: 2026-11-20T22:03:02.091Z
-updated: 2026-11-20T22:03:02Z
+updated: 2026-11-21T21:46:14Z
 ---
 
 ## Description
@@ -35,6 +37,6 @@ Found while working PMK-335 (PR #327). The writing live checks in `scripts/lib/g
 
 ## Acceptance criteria
 
-- [ ] Stopping a writing live check with Ctrl-C removes the drafts it added and restores the Project's iteration list
-- [ ] An interrupted run that cannot remove an item prints the item's URL and the runbook step to remove it by hand
-- [ ] A test against the fake gh proves the cleanup runs on SIGINT
+- [x] Stopping a writing live check with Ctrl-C removes the drafts it added and restores the Project's iteration list
+- [x] An interrupted run that cannot remove an item prints the item's URL and the runbook step to remove it by hand
+- [x] A test against the fake gh proves the cleanup runs on SIGINT

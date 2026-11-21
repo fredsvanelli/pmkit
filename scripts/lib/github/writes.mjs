@@ -205,16 +205,19 @@ export function skeletonNode(context, at) {
   }
 }
 
+/** The issueType of a node for an issue type id: { id, name }, or null for none. */
+function issueTypeNode(context, id) {
+  const type = context.raw.issueTypes.find((item) => item.id === id)
+  return type ? { id: type.id, name: type.name } : null
+}
+
 /** The node with a plan applied, so toIssue of it is the after of a dry run. */
 function applyPlan(node, plan, context, parentNode, milestones) {
   const next = structuredClone(node)
   const { input } = plan
   if (input.title !== undefined) next.title = input.title
   if (input.body !== undefined) next.body = input.body
-  if (input.issueTypeId !== undefined) {
-    const type = context.raw.issueTypes.find((item) => item.id === input.issueTypeId)
-    next.issueType = type ? { id: type.id, name: type.name } : null
-  }
+  if (input.issueTypeId !== undefined) next.issueType = issueTypeNode(context, input.issueTypeId)
   if (input.labelIds !== undefined) next.labels = { nodes: input.labelIds.map((id) => context.raw.labels.find((label) => label.id === id)), pageInfo: { hasNextPage: false } }
   if (input.assigneeIds !== undefined) next.assignees = { nodes: input.assigneeIds.map((id) => ({ id, login: assignable(context).find((user) => user.id === id).login })) }
   if (input.parentIssueId !== undefined) next.parent = parentNode
@@ -279,11 +282,36 @@ function planType(patch, node, create, context) {
   return changed ? { issueTypeId: id } : {}
 }
 
-/** The label a labels patch may not name: one that holds a status or a type, with the command that sets it. */
+// What a mapped label holds, and the command that sets it, for the refusal of a labels patch that names it.
+const HELD_BY = [['statusLabels', 'a status; use pmkit issues move'], ['priorityLabels', 'a priority; use --priority'], ['estimateLabels', 'an estimate; use --estimate']]
+
+/** The label a labels patch may not name: one that holds a status, a type, a priority or an estimate, with the command that sets it. */
 function refuseMapped(label, given, context) {
   if (!context.mappedLabelIds.has(label.id)) return
-  const status = [...context.statusLabels.values()].some((held) => held.id === label.id)
-  throw invalid(status ? `label ${given} holds a status; use pmkit issues move` : `label ${given} holds a type; use --type`)
+  const holds = HELD_BY.find(([map]) => [...(context[map]?.values() ?? [])].some((held) => held.id === label.id))?.[1] ?? 'a type; use --type'
+  throw invalid(`label ${given} holds ${holds}`)
+}
+
+/** True when the role's value is a label: priority and estimate labels without a Project (ADR 0012). */
+const roleIsLabel = (role, context) => context[`${role}Labels`]?.size > 0
+
+/** The label of a priority or estimate value, or null for null. A value no label stands for fails before any request. */
+function valueLabelOf(role, value, context) {
+  if (value === null) return null
+  const map = context[`${role}Labels`]
+  const found = map.get(String(value))
+  if (!found) throw invalid(`${role} ${value} has no label in mappings.${role} (${[...map.keys()].join(', ')})`, SETUP)
+  return found
+}
+
+/** The [labels of a role, target label] pairs a patch swaps: the type without issue types, the priority and the estimate as labels. */
+function labelSwaps(patch, context) {
+  const swaps = []
+  if (patch.type !== undefined && typesAreLabels(context)) swaps.push([context.typeLabels, typeLabelOf(patch.type, context)])
+  for (const role of ['priority', 'estimate']) {
+    if (patch[role] !== undefined && roleIsLabel(role, context)) swaps.push([context[`${role}Labels`], valueLabelOf(role, patch[role], context)])
+  }
+  return swaps
 }
 
 /**
@@ -291,8 +319,8 @@ function refuseMapped(label, given, context) {
  * stay. Without issue types, a type patch swaps the type labels.
  */
 function planLabels(patch, node, create, context) {
-  const typeLabel = patch.type !== undefined && typesAreLabels(context)
-  if (patch.labels === undefined && !typeLabel) return {}
+  const swaps = labelSwaps(patch, context)
+  if (patch.labels === undefined && swaps.length === 0) return {}
   if (patch.labels !== undefined && patch.labels !== null && !Array.isArray(patch.labels)) throw invalid('labels must be a list of strings')
   const current = (node.labels?.nodes ?? []).map((label) => label.id)
   let ids = patch.labels === undefined
@@ -305,10 +333,9 @@ function planLabels(patch, node, create, context) {
           return label.id
         }),
       ]
-  if (typeLabel) {
-    const target = typeLabelOf(patch.type, context)
-    const typeIds = new Set([...context.typeLabels.values()].map((label) => label.id))
-    ids = [...ids.filter((id) => !typeIds.has(id)), ...(target ? [target.id] : [])]
+  for (const [labels, target] of swaps) {
+    const held = new Set([...labels.values()].map((label) => label.id))
+    ids = [...ids.filter((id) => !held.has(id)), ...(target ? [target.id] : [])]
   }
   ids = [...new Set(ids)]
   const same = ids.length === current.length && ids.every((id) => current.includes(id))
@@ -344,7 +371,8 @@ function planFields(patch, create, beforeIssue, context, today) {
     if (patch[role] === undefined) return false
     return create ? patch[role] !== null : (beforeIssue[role] ?? null) !== valueOf(role)
   }
-  return Object.keys(ROLES).filter(changes).map((role) => fieldWrite(role, valueOf(role), context, today))
+  // A priority or estimate held as a label is written by planLabels.
+  return Object.keys(ROLES).filter((role) => !roleIsLabel(role, context)).filter(changes).map((role) => fieldWrite(role, valueOf(role), context, today))
 }
 
 /** The branch name an update links, or undefined. */

@@ -245,7 +245,14 @@ test('the default exec throws ENOENT for a command that does not exist', () => {
 test('the default exec returns status, stdout and stderr', () => {
   const run = defaultExec({ root: process.cwd(), env: process.env })
   const result = run(process.execPath, ['-e', 'process.stdin.pipe(process.stdout)'], { input: 'hi' })
-  assert.deepEqual(result, { status: 0, stdout: 'hi', stderr: '' })
+  assert.deepEqual(result, { status: 0, stdout: 'hi', stderr: '', signal: null })
+})
+
+test('the default exec names the signal that ended the command, as Ctrl-C ends gh (PMK-349)', () => {
+  const run = defaultExec({ root: process.cwd(), env: process.env })
+  const result = run(process.execPath, ['-e', "process.kill(process.pid, 'SIGINT')"])
+  assert.equal(result.signal, 'SIGINT')
+  assert.equal(result.status, 1)
 })
 
 const depList = [
