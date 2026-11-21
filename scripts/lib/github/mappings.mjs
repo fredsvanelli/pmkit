@@ -229,8 +229,8 @@ const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((ke
  * values.types is left out while a type is still a question.
  */
 export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) {
-  const held = { status: current.status ?? {}, fields: current.fields ?? {}, types: current.types, priority: current.priority ?? {}, estimate: current.estimate ?? {} }
-  const given = { status: answers.status ?? {}, fields: answers.fields ?? {}, types: answers.types ?? {}, priority: answers.priority ?? {}, estimate: answers.estimate ?? {} }
+  const held = { ...mapsOf(current, ['status', 'fields', 'priority', 'estimate']), types: current.types }
+  const given = mapsOf(answers, ['status', 'fields', 'types', 'priority', 'estimate'])
   const labels = raw.project === null
   const statusKeys = labels ? keysOf(LABEL_STATUS_KEYS, held.status) : keysOf(STATUS_KEYS, held.status)
   const fieldKeys = keysOf(FIELD_ROLES, held.fields)
@@ -357,6 +357,9 @@ function refuseSharedLabels(values) {
     usedBy.set(label, key)
   }
 }
+
+/** The groups of a mappings object, each a map: an absent group is {}. */
+const mapsOf = (source, groups) => Object.fromEntries(groups.map((group) => [group, source[group] ?? {}]))
 
 /** The held value when it is set and not broken; otherwise it records the question, with the broken item when there is one. */
 function heldOr(state, path, value, question) {

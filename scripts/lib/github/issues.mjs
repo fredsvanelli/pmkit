@@ -80,9 +80,9 @@ export function makeContext(raw, pmkit, { epics = new Map() } = {}) {
   const statusLabels = labelMap(statusMap, READ_ORDER, !project)
   const typeLabels = labelMap(typeMap, Object.keys(typeMap), raw.issueTypes.length === 0)
   // Priority and estimate labels hold without a Project and while no field holds the role (ADR 0012). Priorities read highest first.
-  const valueLabels = (role, keys) => labelMap(mappings[role] ?? {}, keys, !project && [undefined, null, '', NONE].includes(mappings.fields?.[role]))
+  const valueLabels = (role, keys = Object.keys(mappings[role] ?? {})) => labelMap(mappings[role] ?? {}, keys, !project && [undefined, null, '', NONE].includes(mappings.fields?.[role]))
   const priorityLabels = valueLabels('priority', PRIORITIES)
-  const estimateLabels = valueLabels('estimate', Object.keys(mappings.estimate ?? {}))
+  const estimateLabels = valueLabels('estimate')
   const pointKeys = isPointsScale([...estimateLabels.keys()])
   const estimateValue = (key) => (pointKeys ? Number(key) : key)
   const mappedLabelIds = new Set([...statusLabels.values(), ...typeLabels.values(), ...priorityLabels.values(), ...estimateLabels.values()].map((label) => label.id))
