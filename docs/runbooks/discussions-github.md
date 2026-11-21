@@ -106,6 +106,22 @@ The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub 
 
    pmkit reads up to 1000 comments, and up to 1000 replies per comment, 100 at a time. Expect `commentsTotal: 1001` and the first 1000 comments, the last one `Same here 999`; the answer first, with `repliesTotal: 120` and all 120 replies, the last one `Thanks 120`; and the warning `discussion #2 has 1001 comments and pmkit read the first 1000`. A thread within the limit comes back whole with no warning, as in step 3.
 
+11. Delete discussion 2 on GitHub right after pmkit's first read of it, before it reads the further pages of comments. The test makes GitHub answer the comments read with `NOT_FOUND` once. Read it:
+
+   ```
+   node scripts/pmkit.mjs github discussions get 2 --json
+   ```
+
+   The command exits with code 2 and `NOT_FOUND`, `GitHub has no discussion #2 in acme/widgets`, with the next step `pmkit github discussions list`: the same answer as a discussion that never existed (step 7).
+
+12. Delete the answer of discussion 2 right after the first read, before pmkit reads its further replies. The test makes GitHub answer the replies read with `NOT_FOUND` once. Read it again:
+
+   ```
+   node scripts/pmkit.mjs github discussions get 2 --json
+   ```
+
+   The command exits with code 2 and `NOT_FOUND`, `GitHub has no comment <id> in discussion #2 in acme/widgets; it was deleted while pmkit read the thread`, where `<id>` is the answer's id, with the next step `pmkit github discussions get 2` to read the thread again.
+
 ## What the fake `gh` checks
 
 The test records every `gh` call and fails when an argument or the standard input holds the token in `GH_TOKEN`. Every call carries `--hostname github.com`.
