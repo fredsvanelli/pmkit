@@ -4,6 +4,7 @@ title: Read GitHub discussion threads past 100 comments or 100 replies
 type: feature
 status: in_review
 priority: low
+estimate: 2
 assignee: fred
 parent: EPC-8
 milestone: github-issues
