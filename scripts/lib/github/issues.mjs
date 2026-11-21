@@ -208,41 +208,48 @@ export function toIssue(node, context) {
   return toIssueWithWarnings(node, context).issue
 }
 
+/** Sets issue[key] to value unless value is undefined, so an unset field is an absent key. */
+const setDefined = (issue, key, value) => {
+  if (value !== undefined) issue[key] = value
+}
+
+/** The type of a node: its type label when types are labels, else its issue type's pmkit type. */
+function typeOfNode(node, context, read) {
+  if (context.typeLabels?.size > 0) return read.type
+  return node.issueType ? context.typeOf(node.issueType.name) : undefined
+}
+
+/** What the labels of a node give (readLabels), or no type and no warning without label mappings. */
+const labelRead = (node, context, id) => (context.readLabels ? context.readLabels(labelNames(node), id) : { type: undefined, warnings: [] })
+
+/** The warnings of a node's labels. A closed issue reads no status label, so only an open one warns about several. */
+const labelWarnings = (node, read) => (node.state === 'CLOSED' ? read.warnings.filter((warning) => !warning.includes('status labels')) : read.warnings)
+
 /** The pmkit issue of a node, and the warnings of its labels: several status labels or several type labels. */
 export function toIssueWithWarnings(node, context) {
   const { description, acceptanceCriteria } = parseDescription(node.body)
   const issue = { id: issueIdOf(node, context.repo), title: node.title }
-  const read = context.readLabels ? context.readLabels(labelNames(node), issue.id) : { type: undefined, warnings: [] }
-  const type = context.typeLabels?.size > 0 ? read.type : node.issueType ? context.typeOf(node.issueType.name) : undefined
-  if (type !== undefined) issue.type = type
+  const read = labelRead(node, context, issue.id)
+  setDefined(issue, 'type', typeOfNode(node, context, read))
   issue.status = statusOf(node, context)
-  const priority = priorityOf(node, context)
-  if (priority !== undefined) issue.priority = priority
-  const estimate = estimateOf(node, context)
-  if (estimate !== undefined) issue.estimate = estimate
-  const assignee = nodesOf(node.assignees)[0]?.login
-  if (assignee) issue.assignee = assignee
+  setDefined(issue, 'priority', priorityOf(node, context))
+  setDefined(issue, 'estimate', estimateOf(node, context))
+  setDefined(issue, 'assignee', nodesOf(node.assignees)[0]?.login || undefined)
   issue.labels = nodesOf(node.labels).map((label) => label.name).sort()
-  const parent = parentOf(node, context)
-  if (parent !== undefined) issue.parent = parent
+  setDefined(issue, 'parent', parentOf(node, context))
   issue.blockedBy = sortedIds(nodesOf(node.blockedBy), context)
   issue.blocks = sortedIds(nodesOf(node.blocking), context)
   issue.related = sortedIds(nodesOf(node.relatesTo), context)
-  issue.duplicateOf = node.duplicateOf ? [issueIdOf(node.duplicateOf, context.repo)] : []
+  issue.duplicateOf = idsOf([node.duplicateOf].filter(Boolean), context)
   issue.children = idsOf(nodesOf(node.subIssues), context)
   issue.archived = itemOf(node, context)?.isArchived === true
-  const due = dueOf(node, context)
-  if (due !== undefined) issue.due = due
-  const sprint = sprintOf(node, context)
-  if (sprint !== undefined) issue.sprint = sprint
-  if (node.milestone?.title) issue.milestone = node.milestone.title
-  const branch = nodesOf(node.linkedBranches)[0]?.ref?.name
-  if (branch) issue.branch = branch
+  setDefined(issue, 'due', dueOf(node, context))
+  setDefined(issue, 'sprint', sprintOf(node, context))
+  setDefined(issue, 'milestone', node.milestone?.title || undefined)
+  setDefined(issue, 'branch', nodesOf(node.linkedBranches)[0]?.ref?.name || undefined)
   issue.description = description
   issue.acceptanceCriteria = acceptanceCriteria
   issue.created = node.createdAt
   issue.updated = node.updatedAt
-  // A closed issue reads no status label, so only an open one warns about several.
-  const warnings = node.state === 'CLOSED' ? read.warnings.filter((warning) => !warning.includes('status labels')) : read.warnings
-  return { issue, warnings }
+  return { issue, warnings: labelWarnings(node, read) }
 }
