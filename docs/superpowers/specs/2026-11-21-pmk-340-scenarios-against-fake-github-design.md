@@ -43,4 +43,8 @@ Names; where the init arguments live.
 
 ## Interview
 
-Pending.
+Approved on 2026-11-21 by the pmkit PO on the owner's behalf: the issue's acceptance criteria and this design, with no open product question. The questions the grilling raised and the answers taken (the recommended ones):
+
+- Only the discussions command gets a GitHub scenario now; draft-issues and the others can follow with the same option: yes, the issue names discussions.
+- The snapshot lists the GraphQL operation names the fake `gh` received, not the request bodies: yes, bodies hold node ids that change with the seed.
+- No new term for `CONTEXT.md` and no ADR.
