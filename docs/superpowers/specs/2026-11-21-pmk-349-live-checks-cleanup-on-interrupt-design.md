@@ -35,6 +35,15 @@ The writing live checks (`checkOpenCycle`, `checkGhesConversion` in `scripts/lib
 
 Names; the exact cleanup lines.
 
+## As built (Execute and Secure, 2026-11-21)
+
+Probes in a scratch folder changed approach 1 in two places, and the review dropped its registry:
+
+- gh runs synchronously (`spawnSync`), so Ctrl-C lands during a gh call. It ends that call, and a `process.on('SIGINT')` handler runs only at a later event-loop turn, which node:test may never give before the run ends. The entry therefore treats a gh call ended by SIGINT or SIGTERM (`defaultExec` now returns the call's `signal`) as the stop. The check fails, its own `withCleanup` cleans up and prints each step, and the run exits 130 or 143 before the next check. The handlers stay for a signal that arrives between checks.
+- With that, the registry of pending cleanups (`cleanUpPending`) had no caller that could find anything pending, so ponytail-review removed it.
+- Under `node --test`, the runner exits on Ctrl-C and leaves the file's process to clean up with no output to write to. The runbook runs the entry with plain `node`.
+- Lines go to stderr with `fs.writeSync`, because on macOS a pipe is asynchronous and `process.exit` drops what it has not written.
+
 ## Interview
 
 Approved on 2026-11-21 by the pmkit PO on the owner's behalf: the issue's acceptance criteria and this design, with no open product question. The questions the grilling raised and the answers taken (the recommended ones):

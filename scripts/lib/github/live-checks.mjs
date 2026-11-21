@@ -294,30 +294,8 @@ async function cleanUp(steps) {
   return failed
 }
 
-// The cleanups of the checks running now, each run at most once: a signal handler drains them through cleanUpPending (PMK-349).
-const pending = new Set()
-
-/** Runs every pending cleanup, writes a line per failure, and returns the failed lines. With nothing pending it does nothing. */
-export async function cleanUpPending(write) {
-  const failed = []
-  for (const entry of [...pending]) failed.push(...await entry.run(write))
-  return failed
-}
-
 /** Runs body, then cleanup; a cleanup failure is reported with the body's own failure, or fails a body that passed. */
 async function withCleanup(body, cleanup, write) {
-  let once = null
-  const entry = {
-    run: (to = write) => {
-      once ??= cleanup().then((lines) => {
-        pending.delete(entry)
-        for (const line of lines) to(`cleanup failed, ${line}`)
-        return lines
-      })
-      return once
-    },
-  }
-  pending.add(entry)
   let result
   let failure = null
   try {
@@ -325,7 +303,8 @@ async function withCleanup(body, cleanup, write) {
   } catch (error) {
     failure = error
   }
-  const failed = await entry.run()
+  const failed = await cleanup()
+  for (const line of failed) write(`cleanup failed, ${line}`)
   if (failure) throw failure
   if (failed.length > 0) fail(`the check passed, but its cleanup failed: ${failed.join('; ')}`)
   return result
