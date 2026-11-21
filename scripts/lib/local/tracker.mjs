@@ -1433,17 +1433,50 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
+  /**
+   * Moves an epic to a status category: the first status of the category, or `status` when given. Only the status line of the
+   * stored frontmatter is edited, so every other key, comment and the body stay as they are.
+   */
+  function moveDeliverable(epicId, category, actor, { status, dryRun = false } = {}) {
+    requireWriter(actor)
+    const { epic: before, dir } = readEpic(epicId)
+    oneOf('category', category, CATEGORIES)
+    const inCategory = Object.keys(local.statuses).filter((name) => local.statuses[name].category === category)
+    if (inCategory.length === 0) {
+      throw invalid(`a Local epic cannot move to ${category}`, `Use one of: ${CATEGORIES.filter((name) => Object.values(local.statuses).some((s) => s.category === name)).join(', ')}`)
+    }
+    if (status !== undefined && !inCategory.includes(status)) throw invalid(`status ${status} is not in category ${category}`, `Use one of: ${inCategory.join(', ')}`)
+    if (status === undefined && before.status.category === category) throw invalid(`epic ${before.id} is already in ${category}`)
+    const name = status ?? inCategory[0]
+    if (before.status.name === name) throw invalid(`epic ${before.id} is already in status ${name}`)
+    const file = path.join(dir, 'epic.md')
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited
+    try {
+      edited = setScalar(yaml, ['status'], name)
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
+    if (dryRun) return { before, after }
+    writeFile(file, content)
+    append(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'move', field: 'status', from: before.status.name, to: name }])
+    return { before, after }
+  }
+
   const deliverableProgress = (id) => progressOf(getDeliverable(id).id, scanIssues())
 
   /** Counts the non-archived issues whose parent chain reaches the epic. Canceled issues are counted apart, outside `total`. */
   function progressOf(epic, issues) {
     const byId = new Map(issues.map((issue) => [issue.id, issue]))
     const parentOf = (key) => byId.get(key)?.parent
-    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])), open: [] }
     for (const issue of issues) {
       if (issue.archived || !walkParents(issue.id, parentOf).chain.includes(epic)) continue
       const { category } = issue.status
       if (category in progress.byCategory) progress.byCategory[category]++
+      if (category !== 'done' && category !== 'canceled') progress.open.push(issue.id)
       if (category === 'canceled') {
         progress.canceled++
         continue
@@ -2379,7 +2412,7 @@ export function createLocalTracker(root, {
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
     listCustomers, getCustomer, createCustomer, updateCustomer, listRequests, getRequest, createRequest, updateRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
-    listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
+    listDeliverables, getDeliverable, createDeliverable, moveDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, unarchive, delete: deleteIssue, restore, link, unlink, setParent,

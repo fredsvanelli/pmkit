@@ -44,7 +44,8 @@ exit 0
               "in_review": 0,
               "done": 2,
               "canceled": 0
-            }
+            },
+            "open": []
           }
         }
       ],
