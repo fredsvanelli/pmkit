@@ -1,1 +1,6 @@
 {"at":"2026-11-17T22:21:23Z","by":"fred","op":"create","to":{"id":"PMK-342","title":"Read GitHub discussion threads past 100 comments or 100 replies","type":"feature","status":"backlog","priority":"low","labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"github-issues","created":"2026-11-17T22:21:23.349Z","updated":"2026-11-17T22:21:23Z"}}
+{"at":"2026-11-21T16:54:37Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-21T16:54:37Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-21T16:54:37Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-342-read-github-discussion-threads-past-100"}
+{"at":"2026-11-21T17:14:32Z","by":"fred","op":"comment","to":"2026-11-21T17-14-32Z-fred.md"}
+{"at":"2026-11-21T17:14:32Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

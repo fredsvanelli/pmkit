@@ -302,8 +302,9 @@ export function createGithubClient({
     return send(document, variables, permissions)
   }
 
+  // options.permissions goes to each page's request, as request takes it.
   const paginate = (document, variables = {}, options = {}) =>
-    paginateConnection(request, document, variables, options, {
+    paginateConnection((query, vars) => request(query, vars, { permissions: options.permissions }), document, variables, options, {
       maxPageSize: MAX_PAGE,
       broken: (name) => new PmkitError('UPSTREAM', `GitHub returned a broken page for ${name}`, RETRY_STEP),
     })
