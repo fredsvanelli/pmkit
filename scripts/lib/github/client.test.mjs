@@ -587,6 +587,21 @@ test('rest maps other 4xx answers to UPSTREAM with the message of GitHub', async
   assert.match(error.message, /Validation Failed/)
 })
 
+test('rest GET with an unreadable 2xx body is UPSTREAM and not retried', async () => {
+  const { client, calls } = setup([restAnswer(200, 'not json'), restAnswer(200, { ok: true })])
+  const error = await failure(client.rest('GET', 'repos/acme/widgets'))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.equal(error.message, 'GitHub returned an unreadable answer (HTTP 200)')
+  assert.equal(calls.length, 1)
+})
+
+test('rest already_exists off /milestones is UPSTREAM with the message of GitHub, not CONFLICT', async () => {
+  const { client } = setup([restAnswer(422, { message: 'Validation Failed', errors: [{ resource: 'Label', code: 'already_exists', field: 'name' }] })])
+  const error = await failure(client.rest('POST', 'repos/acme/widgets/labels', { name: 'bug' }))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.match(error.message, /^GitHub answered with an error: .*Validation Failed/)
+})
+
 test('rest write is never retried: a timeout or 5xx is the unconfirmed-mutation error', async () => {
   const timeout = setup([spawnError('ETIMEDOUT')])
   const first = await failure(timeout.client.rest('POST', REST_PATH, { title: 'v1' }))
