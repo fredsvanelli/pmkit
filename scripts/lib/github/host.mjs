@@ -19,13 +19,13 @@ const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!, $en
 const STATUS_QUERY = 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } }'
 export const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
-/** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
+/** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). signal names the signal that ended it, or null. */
 export const defaultExec =
   ({ root, env }) =>
   (cmd, args, { input, timeout } = {}) => {
     const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT, timeout })
     if (result.error) throw result.error
-    return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+    return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '', signal: result.signal ?? null }
   }
 
 const firstLine = (text) => text.split(/\r?\n/).find((line) => line.trim()) ?? ''
