@@ -41,7 +41,7 @@ export const repoQuery = ({ issueFields, named = 0 }) => {
  * or label:<name>), once each without case.
  */
 export function mappedLabelNames(pmkit, extra = []) {
-  const values = [...['status', 'types'].flatMap((group) => Object.values(pmkit?.mappings?.[group] ?? {})), ...extra.map((name) => parseLabelValue(name) ? name : `label:${name}`)]
+  const values = [...['status', 'types', 'priority', 'estimate'].flatMap((group) => Object.values(pmkit?.mappings?.[group] ?? {})), ...extra.map((name) => parseLabelValue(name) ? name : `label:${name}`)]
   const names = []
   for (const value of values) {
     const name = parseLabelValue(value)
@@ -258,11 +258,25 @@ export const statusFieldOf = (project) => project?.fields.find((item) => item.na
 
 const plainField = ({ name, dataType, options }) => ({ name, dataType, options: options.map((item) => item.name) })
 
-/** The estimate unit and scale of the mapped estimate field: sizes for a single select, points otherwise. */
+/**
+ * The estimate values whose label the repository has, in mapping order, when estimate labels hold: no Project and no estimate
+ * field (ADR 0012). Empty otherwise.
+ */
+export function estimateLabelScale(raw, pmkit) {
+  const field = pmkit?.mappings?.fields?.estimate
+  if (raw.project !== null || (field !== undefined && field !== null && field !== '' && field !== NONE)) return []
+  return Object.entries(pmkit?.mappings?.estimate ?? {}).filter(([, value]) => {
+    const name = parseLabelValue(value)
+    return name !== null && labelOf(raw, name) !== null
+  }).map(([key]) => key)
+}
+
+/** The estimate unit and scale of the mapped estimate field (sizes for a single select, points otherwise), or of the estimate labels. */
 export function estimateOf(raw, pmkit) {
   const found = fieldOf(raw, pmkit?.mappings?.fields?.estimate)
   if (found?.dataType === 'SINGLE_SELECT') return { unit: 'sizes', scale: found.options.map((item) => item.name) }
-  return { unit: 'points', scale: [] }
+  const scale = found ? [] : estimateLabelScale(raw, pmkit)
+  return { unit: scale.every((key) => /^\d+(?:\.\d+)?$/.test(key)) ? 'points' : 'sizes', scale }
 }
 
 // The names pmkit gives an issue's state when no Status option names it: history moves use them, so discover lists them.
