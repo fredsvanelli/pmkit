@@ -2,7 +2,7 @@
 id: PMK-345
 title: Clean up the open review findings of the GitHub sprint and epic code
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-8
 milestone: github-issues
 branch: pmk-345-clean-up-the-open-review-findings-of-the
 created: 2026-11-18T00:15:22.878Z
-updated: 2026-11-21T21:14:48Z
+updated: 2026-11-21T21:15:19Z
 ---
 
 ## Description
