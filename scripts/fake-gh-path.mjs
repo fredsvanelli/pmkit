@@ -7,6 +7,17 @@ import { tempDir } from './test-helpers.mjs'
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
 
+/**
+ * The init of a GitHub Issues tracker on the stateful fake GitHub's acme/widgets and its Project acme/7: what the runbook
+ * tests and the GitHub scenarios set up first.
+ */
+export const GITHUB_TRACKER_INIT = Object.freeze([
+  'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'acme/7',
+  ...['backlog=Backlog', 'todo=Todo', 'in_progress=In Progress', 'in_review=In Review', 'done=Done', 'canceled=none', 'blocked=none'].flatMap((item) => ['--status', item]),
+  ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date'].flatMap((item) => ['--field', item]),
+  ...['feature=Feature', 'bug=Bug', 'task=Task', 'chore=none'].flatMap((item) => ['--type-label', item]),
+])
+
 /** Writes the fake gh into a new folder and returns { bin, fixtureFile, log }. */
 export function statefulGhOnPath(fixture) {
   const bin = tempDir('pmkit-fake-gh-')

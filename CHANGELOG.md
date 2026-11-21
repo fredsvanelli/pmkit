@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The command scenarios can run on a GitHub Issues tracker over the stateful fake GitHub, with the scenario option `githubTracker` (PMK-340). `/pmkit:github:discussions` gets a GitHub scenario that lists, reads, creates the issue and comments back, so none of its calls is skipped any more. `scripts/runbook-setup-github.test.mjs` uses the shared fake `gh` of `scripts/fake-gh-path.mjs`.
 - Cleanup of the GitHub sprint and epic code, with no change in behavior (PMK-345): the capacity store both adapters use moves from `scripts/lib/linear/` to `scripts/lib/capacity-store.mjs`; nine functions of the GitHub adapter are split under a cyclomatic complexity of 10; and the error `searchIssues` throws for `--sprint current` with no active sprint, after its one refresh, no longer carries the internal `stale` hint.
 - On github.com and GHE.com, `cycle issues` reads only the sprint's items of the scope Project, through GitHub's Project filter, instead of every issue of the repository (PMK-344). GitHub Enterprise Server, a sprint the cached discovery does not list yet, and an iteration title or field name the filter cannot quote keep the repository read. `cycle add` reads each issue once before its write, not twice.
 - On GitHub Enterprise Server 3.20, `issues get --history`, `events` and the flow metrics read Status change events, which the 3.20 schema already has (PMK-350). Before, pmkit read them only from 3.21 and warned on 3.20 that moves show only as opens and closes; GHES 3.19 keeps that warning. ADR 0007 gains a dated amendment.

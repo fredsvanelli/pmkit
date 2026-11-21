@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fakeGithubIssues } from './fake-github-issues.mjs'
-import { statefulGhCalls, statefulGhOnPath } from './fake-gh-path.mjs'
+import { GITHUB_TRACKER_INIT, statefulGhCalls, statefulGhOnPath } from './fake-gh-path.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -18,13 +18,7 @@ const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'discussions-github
 const URL_1 = 'https://github.com/acme/widgets/discussions/1'
 const PAT_STEP = 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login'
 
-const SETUP = [
-  'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'acme/7',
-  ...['backlog=Backlog', 'todo=Todo', 'in_progress=In Progress', 'in_review=In Review', 'done=Done', 'canceled=none', 'blocked=none'].flatMap((item) => ['--status', item]),
-  ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date'].flatMap((item) => ['--field', item]),
-  ...['feature=Feature', 'bug=Bug', 'task=Task', 'chore=none'].flatMap((item) => ['--type-label', item]),
-  '--json',
-]
+const SETUP = [...GITHUB_TRACKER_INIT, '--json']
 
 const COMMANDS = {
   list: ['github', 'discussions', 'list', '--json'],
