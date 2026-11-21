@@ -2,7 +2,7 @@
 id: PMK-339
 title: "Read priority, estimate and dates from labels on GitHub repositories without a Project"
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-358]
 milestone: github-issues
 branch: pmk-339-read-priority-estimate-and-dates-from
 created: 2026-11-17T21:22:17.656Z
-updated: 2026-11-21T22:10:41Z
+updated: 2026-11-21T22:11:22Z
 ---
 
 ## Description
