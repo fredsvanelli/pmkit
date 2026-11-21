@@ -29,8 +29,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 The ID is an epic. Skip steps 2 and 3 of the issue path.
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" epic move <id> <category> [--status <name>] --dry-run --json`. When the category has more than one status and the user gave no status name, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and ask with `AskUserQuestion` which status to use, as in step 3 of the issue path.
-2. Show `before` and `after` of the status, with the warning of the CLI above them. The CLI warns when the epic still has open issues on a move to `done` or `canceled`, and lists them by ID. Follow "How to show a write" in the conventions: ask once. When the user declines, stop and change nothing.
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" epic move <id> <category> [--status <name>] --dry-run --json`. Do not ask which status to use: without `--status`, the CLI picks the first status of the category.
+2. Show `before` and `after` of the status, with the warning of the CLI above them. The CLI warns when the epic still has open issues on a move to `done` or `canceled`, and lists them by ID. Tell the user the status that the dry run picked, and that `--status <name>` picks another status of the category. Follow "How to show a write" in the conventions: ask once. When the user declines, stop and change nothing.
 3. When the user approves, run the same command without `--dry-run`.
 
 ## Confirmation points
