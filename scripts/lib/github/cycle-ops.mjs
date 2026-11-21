@@ -67,9 +67,15 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
   }
 
   async function cycleIssues(id) {
-    await scope()
+    const { context, field } = await scope()
     // An id that is not a date names no iteration, so it holds no issue, as an unknown sprint on Linear.
     if (!validDate(id)) return []
+    // github.com and GHE.com filter the Project's items on GitHub (PMK-344). A sprint the cached discovery lacks, a title or field
+    // name the filter cannot quote, and GHES read the repository through searchIssues, which refreshes the cache when it must.
+    // ponytail: the qualifier is the field name in lower case, as GitHub's Project filter takes it; unchecked live until PMK-351.
+    const sprint = sprintsOf(field.configuration, today()).sprints.find((item) => item.id === id)
+    const quotable = sprint && !sprint.name.includes('"') && !/[\s"]/.test(field.name)
+    if (context.features?.itemQuery === true && quotable) return ops.sprintIssues(sprint, field.name)
     return (await ops.searchIssues({ sprint: id })).issues
   }
 

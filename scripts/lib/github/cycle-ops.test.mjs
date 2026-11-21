@@ -118,6 +118,47 @@ test('cycleIssues returns the issues of an iteration, and nothing for an unknown
   assert.deepEqual(await cycles.cycleIssues('x'), [])
 })
 
+const readNames = (fake) => fake.reads.map((call) => call.name)
+
+test('cycleIssues on github.com reads the sprint\'s Project items, not the repository', async () => {
+  const { fake, cycles, clear } = await setup()
+  fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+  fake.seed({ number: 2, item: { status: 'Todo', values: { Sprint: '2026-11-02' } } })
+  fake.seed({ number: 3, item: { status: 'Todo' } })
+  fake.seed({ number: 4, item: { status: 'Todo', archived: true, values: { Sprint: '2026-11-16' } } })
+  fake.seed({ number: 5, createdAt: '2026-11-01T00:00:00.000Z', item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+  fake.seedProjectItem('acme/7', { type: 'PULL_REQUEST', title: 'A pull request' })
+  clear()
+  assert.deepEqual(ids(await cycles.cycleIssues('2026-11-16')), ['5', '1'])
+  assert.ok(readNames(fake).includes('PmkitSprintItems'))
+  assert.ok(!readNames(fake).includes('PmkitIssues'))
+  assert.equal(fake.reads.find((call) => call.name === 'PmkitSprintItems').variables.query, 'is:issue repo:acme/widgets sprint:"Sprint 2"')
+  clear()
+  assert.deepEqual(await cycles.cycleIssues('2027-01-04'), [])
+  assert.ok(!readNames(fake).includes('PmkitSprintItems'), 'a date the cached field lacks scans, as before')
+})
+
+test('cycleIssues keeps only the asked sprint when two iterations share a title', async () => {
+  const same = { iterations: [{ id: 'IT_1', title: 'Sprint', startDate: '2026-11-16', duration: 14 }], completed: [{ id: 'IT_0', title: 'Sprint', startDate: '2026-11-02', duration: 14 }] }
+  const { fake, cycles } = await setup({ iterations: same })
+  fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+  fake.seed({ number: 2, item: { status: 'Todo', values: { Sprint: '2026-11-02' } } })
+  assert.deepEqual(ids(await cycles.cycleIssues('2026-11-16')), ['1'])
+  assert.deepEqual(ids(await cycles.cycleIssues('2026-11-02')), ['2'])
+})
+
+test('cycleIssues on GHES, or for a title with a quote, scans the repository', async () => {
+  const quoted = { iterations: [{ id: 'IT_1', title: 'Sprint "2"', startDate: '2026-11-16', duration: 14 }], completed: COMPLETED }
+  for (const options of [{ host: 'ghe.acme.test', ghesVersion: '3.20.0' }, { iterations: quoted }]) {
+    const { fake, cycles, clear } = await setup(options)
+    fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+    clear()
+    assert.deepEqual(ids(await cycles.cycleIssues('2026-11-16')), ['1'], JSON.stringify(options))
+    assert.ok(readNames(fake).includes('PmkitIssues'))
+    assert.ok(!readNames(fake).includes('PmkitSprintItems'))
+  }
+})
+
 test('openCycle sends one update that keeps every id, and an item in a completed iteration keeps its sprint', async () => {
   const { fake, ops, cycles, clear } = await setup()
   fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-02' } } })

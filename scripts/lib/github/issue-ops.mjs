@@ -115,6 +115,30 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     return { issues: cut, problems: [], hasMore: hasMore && !stopped, ...(shownWarnings.length > 0 ? { warnings: shownWarnings } : {}) }
   }
 
+  /**
+   * The issues of one sprint ({ id, name }) from the scope Project's items, filtered on GitHub by the iteration field fieldName and
+   * the sprint's title, in pmkit's created order. Two iterations can share a title, so the sprint id decides on the client.
+   */
+  async function sprintIssues(sprint, fieldName) {
+    const context = await getContext()
+    const query = `is:issue repo:${context.repo} ${fieldName.toLowerCase()}:"${sprint.name}"`
+    const kept = []
+    await client.paginate(docsOf(context).SPRINT_ITEMS, { project: context.project.id, query, ...context.fieldVariables }, {
+      select: (data) => data.node.items,
+      pageSize: PAGE_SIZE,
+      stop: async (items) => {
+        for (const { content: node } of items) {
+          if (node?.__typename !== 'Issue' || node.repository?.nameWithOwner?.toLowerCase() !== context.repo.toLowerCase()) continue
+          await completeNested(node, context)
+          const issue = toIssue(node, context)
+          if (issue.sprint === sprint.id && issue.archived !== true) kept.push(issue)
+        }
+        return false
+      },
+    })
+    return kept.sort(issueComparator('created', context.priorities))
+  }
+
   // Writes.
 
   const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -384,5 +408,5 @@ export function issueOperations({ client, config, getContext, now = () => new Da
     return result
   }
 
-  return { getIssue, searchIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, runSteps }
+  return { getIssue, searchIssues, sprintIssues, readNode, requireActor, writable, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, runSteps }
 }

@@ -708,6 +708,13 @@ test('the fake refuses value selected on both the number and the date issue fiel
   assert.equal((await client.request(docs.ISSUE, { ...REPO, number: 1, ...VARS })).repository.issue.number, 1)
 })
 
+test('a GHES 3.19 fake refuses the query argument of ProjectV2.items, which its schema lacks', () => {
+  const query = 'query PmkitSprintItems { node(id: "PVT_1") { ... on ProjectV2 { items(first: 1, query: $query) { nodes { id } } } } }'
+  const error = (version) => fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: version }).handle('PmkitSprintItems', { project: 'PVT_1', query: 'is:issue' }, query).errors?.[0]?.message ?? null
+  assert.equal(error('3.19.0'), "Unknown argument 'query' on field 'ProjectV2.items'")
+  assert.notEqual(error('3.20.0'), "Unknown argument 'query' on field 'ProjectV2.items'")
+})
+
 test('a GHES fake refuses the Status change event before 3.20, as the published schemas do', () => {
   const fragment = 'query PmkitTimeline { node(id: "I_1") { ... on Issue { timelineItems(first: 1) { nodes { ... on ProjectV2ItemStatusChangedEvent { status } } } } } }'
   const plain = 'query PmkitTimeline { node(id: "I_1") { id } }'
