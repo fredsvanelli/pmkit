@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrFenceBlocks, adrStatusContinuation, adrKeptLines, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrFenceBlocks, adrStatusContinuation, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 import { assertFast } from './assert-fast.mjs'
@@ -1169,7 +1169,7 @@ test('a list item, a quote or a thematic break above ---, === interrupts the par
     const file = `docs/adr/000${number}-use-z.md`
     writeAdr(root, file, text)
     assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
-    await statusWrites(root, String(number), file, text, written, name, status)
+    await statusWrites(root, String(number), file, text, written, name)
     number++
   }
 })
@@ -1191,7 +1191,7 @@ test('a list item continuation above --- keeps the Status section open, in adr-g
     const file = `docs/adr/000${number}-use-w.md`
     writeAdr(root, file, text)
     assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
-    await statusWrites(root, String(number), file, text, written, name, status)
+    await statusWrites(root, String(number), file, text, written, name)
     number++
   }
   // A line indented less than the item content is not a continuation: it is the setext paragraph, so the section ends at it.
@@ -1229,7 +1229,7 @@ test('only a line that CommonMark lets interrupt a paragraph does, so 2. foo, an
     const file = `docs/adr/${String(number).padStart(4, "0")}-use-v.md`
     writeAdr(root, file, text)
     assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
-    await statusWrites(root, String(number), file, text, written, name, status)
+    await statusWrites(root, String(number), file, text, written, name)
     number++
   }
 })
@@ -1254,7 +1254,7 @@ test('a list item continuation of four columns or a tab is not indented code, so
     const file = `docs/adr/000${number}-use-u.md`
     writeAdr(root, file, text)
     assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
-    await statusWrites(root, String(number), file, text, written, name, status)
+    await statusWrites(root, String(number), file, text, written, name)
     number++
   }
   // Outside a list item the same lines are indented code, then a paragraph.
@@ -1393,7 +1393,7 @@ test('the item that holds the line decides: a wider sibling, a fence at column 0
     assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     const written = setAdrStatus(text, 'deprecated').text
     assert.equal(adrInfo(written).status, 'Deprecated', name)
-    await statusWrites(root, String(number), file, text, written, name, status)
+    await statusWrites(root, String(number), file, text, written, name)
     number++
   }
 })
@@ -1415,7 +1415,7 @@ test('an empty item and an item that opens with indented code are not paragraphs
       writeAdr(root, file, text)
       assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
-      await statusWrites(root, '1', file, text, written, name, status)
+      await statusWrites(root, '1', file, text, written, name)
     }
     number++
   }
@@ -1438,7 +1438,7 @@ test('indented code inside a list item is not the item continuing, so a lazy lin
       writeAdr(root, file, text)
       assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
-      await statusWrites(root, '1', file, text, written, name, status)
+      await statusWrites(root, '1', file, text, written, name)
     }
     number++
   }
@@ -1472,7 +1472,7 @@ test('a line belongs to the deepest open item whose content column it reaches, a
       assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
       assert.equal(adrInfo(written).status, 'Deprecated', name)
-      await statusWrites(root, '1', file, text, written, name, status)
+      await statusWrites(root, '1', file, text, written, name)
     }
     number++
   }
@@ -1510,7 +1510,7 @@ test('an HTML block and a paragraph of link reference definitions end the Status
       assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
       assert.equal(adrInfo(written).status, 'Deprecated', name)
-      await statusWrites(root, '1', file, text, written, name, status)
+      await statusWrites(root, '1', file, text, written, name)
     }
     number++
   }
@@ -1558,7 +1558,7 @@ test('an empty item followed by a line and a === or --- underline ends the Statu
     const file = `docs/adr/${String(number).padStart(4, '0')}-use-e.md`
     writeAdr(root, file, text)
     assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
-    await statusWrites(root, String(number), file, text, written, name, status)
+    await statusWrites(root, String(number), file, text, written, name)
     number++
   }
 })
@@ -1580,7 +1580,7 @@ test('a 10-digit ordered marker is paragraph text, so an underline ends the Stat
     const file = `docs/adr/${String(number).padStart(4, '0')}-use-t.md`
     writeAdr(root, file, text)
     assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
-    await statusWrites(root, String(number), file, text, written, name, status)
+    await statusWrites(root, String(number), file, text, written, name)
     number++
   }
 })
@@ -1596,8 +1596,8 @@ test('a 9-digit ordered marker is still a list item, so the Status section stays
   assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), text.replace('Accepted', 'Deprecated'))
 })
 
-// PMK-306: the fixture says whether the Status section holds more than the status (its `status` is neither null nor just Accepted): then adr-status refuses and the file stays as it was, else it writes `written`.
-async function statusWrites(root, number, file, text, written, name, status) {
+// PMK-306, PMK-311: when the Status section holds more than the status and has no status line to replace (`adrStatusDropped(text)` is not empty), adr-status refuses and the file stays as it was, else it writes `written`.
+async function statusWrites(root, number, file, text, written, name) {
   // PMK-311: refused when the section has more than the status and no top-level status line to replace.
   const refused = adrStatusDropped(text).length > 0
   assert.equal((await adrStatus(root, number, 'deprecated')).code, refused ? 2 : 0, name)

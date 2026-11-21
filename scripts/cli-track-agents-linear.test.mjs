@@ -125,7 +125,7 @@ test('Linear: dependency bots are skipped and only a pull request with an issue 
 })
 
 test('Linear: an issue with no delegate shows its delegation as unknown, not stale (PMK-215 review)', async () => {
-  const { cli, fake } = await world({ prs: [listed(61, 'acme-1-fix-it', bot('app/claude'))], seed: [{ title: 'Fix it' }] })
+  const { cli } = await world({ prs: [listed(61, 'acme-1-fix-it', bot('app/claude'))], seed: [{ title: 'Fix it' }] })
   const file = path.join(tempDir('pmkit-deleg-'), 'c.md')
   fs.writeFileSync(file, 'Delegated to agent:user-4 by fred, to run locally.\n\nDo it.\n')
   assert.equal((await cli('issues', 'comment', 'ACME-1', '--body-file', file)).code, 0)

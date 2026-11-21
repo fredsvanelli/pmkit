@@ -7,7 +7,7 @@ import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 

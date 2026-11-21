@@ -249,7 +249,7 @@ test('bulk release warns when the release is already released, as issues update 
 })
 
 test('when every issue is unchanged there is nothing to write and no digest is needed', async () => {
-  await withRepo(async (root, ids) => {
+  await withRepo(async (root) => {
     const { digest } = (await bulk(root, 'priority', 'high', '--label', 'legacy', '--dry-run')).body
     await ok(root, ['issues', 'bulk', 'priority', 'high', '--label', 'legacy', '--expect', digest])
     const before = hashTree(root, ['.issues/.cache', '.git'])
@@ -310,7 +310,7 @@ test('a write that fails midway stops, lists what changed and what is left, and 
 })
 
 test('a commit that fails after every write succeeded carries applied and no failed', async () => {
-  await withRepo(async (root, ids, git) => {
+  await withRepo(async (root, ids) => {
     fs.writeFileSync(path.join(root, '.git/hooks/pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
     const args = ['issues', 'bulk', 'assign', 'fred', '--label', 'legacy']
     const { digest } = (await bulk(root, ...args.slice(2), '--dry-run')).body

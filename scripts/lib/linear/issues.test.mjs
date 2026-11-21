@@ -46,7 +46,6 @@ const pmkit = (mappings = {}, scope = { workspace: 'acme', team: 'ACME' }) => ({
 const VIEWER = { id: 'user-1', name: 'Test User' }
 const BASE_MAPPINGS = { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } }
 const context = makeContext(raw, pmkit(BASE_MAPPINGS), VIEWER)
-const contextWith = (mappings) => makeContext(raw, pmkit({ ...BASE_MAPPINGS, ...mappings }), VIEWER)
 const contextWithTeam = async (team, mappings = { fields: { estimate: 'native' } }) => {
   const other = await fakeRaw({ teams: [{ ...rawTeam, ...team }] })
   return makeContext(other, pmkit({ ...BASE_MAPPINGS, ...mappings }), VIEWER)

@@ -90,7 +90,7 @@ export const hideAbsolutePaths = (text) => {
   let result = ''
   let copied = 0
   for (let m; (m = re.exec(text2)); ) {
-    const [whole, prefix, url] = m
+    const [, prefix, url] = m
     if (url === undefined) {
       result += `${text2.slice(copied, m.index)}<path>`
       copied = re.lastIndex
