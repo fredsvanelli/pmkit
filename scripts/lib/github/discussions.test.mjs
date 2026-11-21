@@ -162,6 +162,47 @@ test('get on a missing number fails with NOT_FOUND', async () => {
   await assert.rejects(ops.get('9'), { code: 'NOT_FOUND', message: 'GitHub has no discussion #9 in acme/widgets', nextStep: 'pmkit github discussions list' })
 })
 
+/** Removes state with remove(fake.state) right after GitHub answers the first read of a discussion, as a delete between reads would. */
+function deleteAfterFirstRead(remove) {
+  const fake = fakeGithubIssues()
+  let first = true
+  const exec = (...args) => {
+    const answer = fake.exec(...args)
+    if (first && String(args[2]?.input ?? '').includes('PmkitDiscussion(')) {
+      first = false
+      remove(fake.state)
+    }
+    return answer
+  }
+  const client = createGithubClient({ exec, retries: 0, sleep: async () => {} })
+  return { fake, ops: discussionOperations({ client, scope: SCOPE }) }
+}
+
+const many = (count, make) => Array.from({ length: count }, (_, index) => make(index))
+const MISSING_1 = { code: 'NOT_FOUND', message: 'GitHub has no discussion #1 in acme/widgets', nextStep: 'pmkit github discussions list' }
+
+test('get fails NOT_FOUND like a missing discussion when the discussion is deleted mid-read', async () => {
+  const { fake, ops } = deleteAfterFirstRead((state) => state.discussions.splice(0))
+  fake.seedDiscussion({ title: 'Long', category: 'Ideas', comments: many(150, (index) => ({ author: 'hubot', body: `c${index}` })) })
+  await assert.rejects(ops.get('1'), MISSING_1)
+})
+
+test('get fails NOT_FOUND naming the comment deleted mid-read', async () => {
+  const { fake, ops } = deleteAfterFirstRead((state) => state.discussions[0].comments.splice(0))
+  fake.seedDiscussion({ title: 'Long', category: 'Ideas', comments: [{ author: 'hubot', body: 'c', replies: many(150, (index) => ({ author: 'octocat', body: `r${index}` })) }] })
+  const id = fake.state.discussions[0].comments[0].id
+  await assert.rejects(ops.get('1'), {
+    code: 'NOT_FOUND', message: `GitHub has no comment ${id} in discussion #1 in acme/widgets; it was deleted while pmkit read the thread`, nextStep: 'pmkit github discussions get 1',
+  })
+})
+
+test('get maps a further page with a null node and no error to NOT_FOUND', async () => {
+  const { fake, ops } = setup()
+  fake.seedDiscussion({ title: 'Long', category: 'Ideas', comments: many(150, (index) => ({ author: 'hubot', body: `c${index}` })) })
+  fake.failNext('PmkitDiscussionComments', { data: { node: null } })
+  await assert.rejects(ops.get('1'), MISSING_1)
+})
+
 test('parseDiscussionNumber takes 12 and #12 and refuses anything else', () => {
   assert.equal(parseDiscussionNumber('12'), 12)
   assert.equal(parseDiscussionNumber('#12'), 12)

@@ -148,6 +148,9 @@ export function discussionOperations({ client, scope }) {
   const off = (extra) => ({ available: false, reason: 'disabled', enableHint: ENABLE_HINT, repo: scope.repo, ...extra })
   // A fine-grained PAT needs the Discussions permission for these calls, so a PAT refusal names it (PMK-341).
   const request = (document, variables) => client.request(document, variables, { permissions: 'Discussions' })
+  const missingDiscussion = (number) => new PmkitError('NOT_FOUND', `GitHub has no discussion #${number} in ${scope.repo}`, 'pmkit github discussions list')
+  const deletedComment = (number, id) =>
+    new PmkitError('NOT_FOUND', `GitHub has no comment ${id} in discussion #${number} in ${scope.repo}; it was deleted while pmkit read the thread`, `pmkit github discussions get ${number}`)
 
   async function categoryId(category) {
     const { repository } = await request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
@@ -187,29 +190,45 @@ export function discussionOperations({ client, scope }) {
     // GitHub hides the discussions of a repository with Discussions off, so a miss asks which case it is.
     const { repository } = await request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
     if (!repository.hasDiscussionsEnabled) return { enabled: false }
-    throw new PmkitError('NOT_FOUND', `GitHub has no discussion #${number} in ${scope.repo}`, 'pmkit github discussions list')
+    throw missingDiscussion(number)
   }
 
-  // paginate's default cap of 10 pages is the documented limit: 1000 comments, 1000 replies per comment. cutWarnings names the rest.
-  const allNodes = async (document, variables, pick) =>
-    (await client.paginate(document, variables, { select: (data) => pick(data.node), pageSize: READ_COMMENTS, permissions: 'Discussions' })).nodes
+  /**
+   * Every node of a further read. paginate's default cap of 10 pages is the documented limit: 1000 comments, 1000 replies per
+   * comment, and cutWarnings names the rest. A node deleted since the first read, which GitHub answers NOT_FOUND or as a null
+   * node (paginate then calls the page broken), throws gone() instead (PMK-357).
+   */
+  async function allNodes(document, variables, pick, gone) {
+    let missing = false
+    const select = (data) => {
+      missing = data.node === null
+      return pick(data.node)
+    }
+    try {
+      return (await client.paginate(document, variables, { select, pageSize: READ_COMMENTS, permissions: 'Discussions' })).nodes
+    } catch (error) {
+      if (missing || error?.code === 'NOT_FOUND') throw gone()
+      throw error
+    }
+  }
 
   /** Reads every page of a cut comments or replies connection, so a thread past 100 comes back whole up to the limit. */
-  async function completeThread(node) {
+  async function completeThread(node, number) {
     if (node.comments.pageInfo?.hasNextPage === true) {
-      node.comments.nodes = await allNodes(DISCUSSION_DOCUMENTS.COMMENTS, { id: node.id, replies: READ_REPLIES }, (found) => found.comments)
+      node.comments.nodes = await allNodes(DISCUSSION_DOCUMENTS.COMMENTS, { id: node.id, replies: READ_REPLIES }, (found) => found.comments, () => missingDiscussion(number))
     }
     for (const comment of node.comments.nodes) {
       if (comment.replies.pageInfo?.hasNextPage !== true) continue
-      comment.replies.nodes = await allNodes(DISCUSSION_DOCUMENTS.REPLIES, { id: comment.id }, (found) => found.replies)
+      comment.replies.nodes = await allNodes(DISCUSSION_DOCUMENTS.REPLIES, { id: comment.id }, (found) => found.replies, () => deletedComment(number, comment.id))
     }
     return node
   }
 
   async function get(value) {
-    const found = await read(parseDiscussionNumber(value))
+    const number = parseDiscussionNumber(value)
+    const found = await read(number)
     if (!found.enabled) return off({ discussion: null, warnings: [] })
-    const discussion = fullView(await completeThread(found.node))
+    const discussion = fullView(await completeThread(found.node, number))
     return { available: true, repo: scope.repo, discussion, warnings: cutWarnings(discussion) }
   }
 
