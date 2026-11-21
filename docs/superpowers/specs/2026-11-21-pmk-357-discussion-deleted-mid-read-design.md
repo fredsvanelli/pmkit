@@ -47,4 +47,9 @@ How `completeThread` notices the `null` node; test names.
 
 ## Interview
 
-Pending.
+Approved on 2026-11-21 by the pmkit PO on the owner's behalf: the issue's acceptance criteria and this design, with no open product question. The questions the grilling raised and the answers taken (the recommended ones):
+
+- A host that answers `node: null` with no error ends as the same `NOT_FOUND`, not a broken-page `UPSTREAM`: yes, both answers mean the node is gone.
+- A deleted comment's next step is `pmkit github discussions get <n>` (read the thread again), and its message says it was deleted while pmkit read the thread.
+- Errors other than `NOT_FOUND` from a further page keep their code and message.
+- No new term for `CONTEXT.md` (Discussion is defined) and no ADR.
