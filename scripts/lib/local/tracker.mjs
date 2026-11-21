@@ -1433,6 +1433,18 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
+  /** The content of an epic file with its frontmatter passed through `edit`, so every other key, comment and the body stay as they are. */
+  function editEpicFrontmatter(file, edit) {
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited
+    try {
+      edited = edit(yaml)
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    return `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+  }
+
   /**
    * Moves an epic to a status category: the first status of the category, or `status` when given. Only the status line of the
    * stored frontmatter is edited, so every other key, comment and the body stay as they are.
@@ -1443,14 +1455,7 @@ export function createLocalTracker(root, {
     const targets = Object.entries(local.statuses).map(([name, { category: own }]) => ({ name, category: own }))
     const { name } = pickMoveTarget({ before, category, status, targets, tracker: 'Local' })
     const file = path.join(dir, 'epic.md')
-    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
-    let edited
-    try {
-      edited = setScalar(yaml, ['status'], name)
-    } catch (error) {
-      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
-    }
-    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const content = editEpicFrontmatter(file, (yaml) => setScalar(yaml, ['status'], name))
     const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (dryRun) return { before, after }
     writeFile(file, content)
@@ -1626,14 +1631,7 @@ export function createLocalTracker(root, {
     const next = goal === null ? undefined : requireGoal(goal)
     // Only the goal line of the stored frontmatter is edited, so every other key, comment and the body stay as they are.
     const file = path.join(dir, 'epic.md')
-    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
-    let edited
-    try {
-      edited = next === undefined ? removeKey(yaml, ['goal']) : setScalar(yaml, ['goal'], next)
-    } catch (error) {
-      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
-    }
-    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const content = editEpicFrontmatter(file, (yaml) => (next === undefined ? removeKey(yaml, ['goal']) : setScalar(yaml, ['goal'], next)))
     const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (before.goal === after.goal || dryRun) return { before, after }
     writeFile(file, content)
