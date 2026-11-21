@@ -90,9 +90,25 @@ A repository with no Project reads its statuses from labels, and a repository wi
 
     Expect `cycles`, `capacity`, `deliverables` and `status_update` absent with the hint `Needs a GitHub Project: set tracker.scope.project with /pmkit:setup`, and the warning `tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent`.
 
+12. On a repository with no Project and no issue field, map the priority and the estimate to labels. Answer every field role `none`, then read the questions:
+
+    ```
+    node scripts/pmkit.mjs init --tracker github --git-host github --project none --field priority=none --field estimate=none \
+      --field start_date=none --field target_date=none <the status and type answers of step 10> --dry-run --json
+    ```
+
+    Expect one label question per priority level, `mappings.priority.urgent` to `mappings.priority.low`, each recommending the label whose name matches (`P0` or `urgent`, `P1` or `high`, `P2` or `medium`, `P3` or `low`, with or without a `priority:` prefix), or `none`. Estimate labels get no question, because their names vary too much to guess. Answer both with flags:
+
+    ```
+    node scripts/pmkit.mjs init ... --priority-label urgent=P0 --priority-label high=P1 --priority-label medium=none --priority-label low=none \
+      --estimate-label "3=size: 3" --json
+    ```
+
+    `.pmkit/config.yaml` holds `mappings.priority.high: label:P1` and `mappings.estimate.3: label:size: 3`, and `discover` reports the estimate as points with the scale `[3]`. The dates stay `none`: a label cannot hold a date. ADR 0012 records the rules. With a Project, `--priority-label` and `--estimate-label` fail with `INVALID_INPUT`.
+
 ## On GitHub Enterprise Server
 
-12. On a GHES host, from 3.19, with a Project, read the questions:
+13. On a GHES host, from 3.19, with a Project, read the questions:
 
     ```
     node scripts/pmkit.mjs init --tracker github --git-host github --project acme/7 --dry-run --json

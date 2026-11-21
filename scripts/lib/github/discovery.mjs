@@ -276,7 +276,8 @@ export function estimateOf(raw, pmkit) {
   const found = fieldOf(raw, pmkit?.mappings?.fields?.estimate)
   if (found?.dataType === 'SINGLE_SELECT') return { unit: 'sizes', scale: found.options.map((item) => item.name) }
   const scale = found ? [] : estimateLabelScale(raw, pmkit)
-  return { unit: scale.every((key) => /^\d+(?:\.\d+)?$/.test(key)) ? 'points' : 'sizes', scale }
+  const points = scale.every((key) => /^\d+(?:\.\d+)?$/.test(key))
+  return points ? { unit: 'points', scale: scale.map(Number) } : { unit: 'sizes', scale }
 }
 
 // The names pmkit gives an issue's state when no Status option names it: history moves use them, so discover lists them.

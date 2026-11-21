@@ -197,6 +197,30 @@ test('runbook: setup without a Project maps status and type labels (steps 9 to 1
   assert.ok(manifest.warnings.includes('tracker.scope.project is none, so cycles, capacity, deliverables and status_update are absent'))
 })
 
+test('runbook: setup without a Project or issue fields asks priority labels and takes estimate labels (step 12)', () => {
+  const text = fs.readFileSync(RUNBOOK, 'utf8')
+  for (const expected of ['--priority-label urgent=P0', '--estimate-label "3=size: 3"', 'mappings.priority.high: label:P1']) assert.ok(text.includes(expected), expected)
+  const root = repository()
+  const fixture = standardFixture()
+  fixture.graphql.PmkitRepo = repoReply({ labels: ['bug', 'P0', 'P1', 'size: 3'], types: [], fields: [] })
+  const fake = statefulGhOnPath(fixture)
+  const base = [
+    ...INIT, '--project', 'none',
+    ...['triage=none', 'backlog=none', 'in_progress=none', 'in_review=none'].flatMap((item) => ['--status', item]),
+    ...['feature=none', 'bug=bug', 'task=none', 'chore=none'].flatMap((item) => ['--type-label', item]),
+  ]
+  const asked = json(pmkit(root, fake, [...base, '--dry-run', '--json']))
+  assert.deepEqual(asked.questions.map((q) => [q.path, q.recommended]), [
+    ['mappings.priority.urgent', 'P0'], ['mappings.priority.high', 'P1'], ['mappings.priority.medium', 'none'], ['mappings.priority.low', 'none'],
+  ])
+  const answers = [...['urgent=P0', 'high=P1', 'medium=none', 'low=none'].flatMap((item) => ['--priority-label', item]), '--estimate-label', '3=size: 3']
+  json(pmkit(root, fake, [...base, ...answers, '--json']))
+  const config = fs.readFileSync(path.join(root, '.pmkit', 'config.yaml'), 'utf8')
+  assert.match(config, /high: "?label:P1"?/)
+  assert.match(config, /"?3"?: "?label:size: 3"?/)
+  assert.deepEqual(json(pmkit(root, fake, ['discover', '--json'])).estimate, { unit: 'points', scale: [3] })
+})
+
 test('runbook: on GitHub Enterprise Server 3.21 setup reads the Project and offers Project fields only, and 3.22 adds the issue fields', async () => {
   const { fakeGithubIssues } = await import('./fake-github-issues.mjs')
   const { statefulGhOnPath } = await import('./fake-gh-path.mjs')
