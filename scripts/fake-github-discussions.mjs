@@ -1,5 +1,5 @@
 // The discussions of the stateful fake GitHub (scripts/fake-github-issues.mjs): the reads and the comment mutation of
-// scripts/lib/github/discussions.mjs, and seedDiscussion. A discussion takes its number from the same counter as the
+// scripts/lib/github/discussions.mjs (with the further pages of PMK-342), and seedDiscussion. A discussion takes its number from the same counter as the
 // repository's issues, as on GitHub. See docs/specs/2026-11-17-pmk-90-github-discussions-design.md.
 
 export const DEFAULT_CATEGORIES = [
@@ -72,6 +72,16 @@ export function discussionRoutes(state, { stamp, register, requireRepository, re
     PmkitDiscussion(vars) {
       const record = findDiscussion(vars)
       return { viewer: { login: state.viewer }, repository: { hasDiscussionsEnabled: true, discussion: fullView(record, { comments: vars.comments, replies: vars.replies }) } }
+    },
+    // The further pages of get (PMK-342): a discussion's comments and a comment's replies, by node id.
+    PmkitDiscussionComments(vars) {
+      const record = state.discussions.find((candidate) => candidate.id === vars.id) ?? unknownNode(vars.id)
+      const views = record.comments.map((comment) => commentView(comment, vars.replies))
+      return { node: { comments: { totalCount: record.comments.length, ...connection(views, vars.first, vars.after) } } }
+    },
+    PmkitDiscussionReplies(vars) {
+      const comment = state.discussions.flatMap((record) => record.comments).find((candidate) => candidate.id === vars.id) ?? unknownNode(vars.id)
+      return { node: { replies: { totalCount: comment.replies.length, ...connection(comment.replies.map(replyView), vars.first, vars.after) } } }
     },
   }
 
