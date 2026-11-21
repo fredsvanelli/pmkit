@@ -205,16 +205,19 @@ export function skeletonNode(context, at) {
   }
 }
 
+/** The issueType of a node for an issue type id: { id, name }, or null for none. */
+function issueTypeNode(context, id) {
+  const type = context.raw.issueTypes.find((item) => item.id === id)
+  return type ? { id: type.id, name: type.name } : null
+}
+
 /** The node with a plan applied, so toIssue of it is the after of a dry run. */
 function applyPlan(node, plan, context, parentNode, milestones) {
   const next = structuredClone(node)
   const { input } = plan
   if (input.title !== undefined) next.title = input.title
   if (input.body !== undefined) next.body = input.body
-  if (input.issueTypeId !== undefined) {
-    const type = context.raw.issueTypes.find((item) => item.id === input.issueTypeId)
-    next.issueType = type ? { id: type.id, name: type.name } : null
-  }
+  if (input.issueTypeId !== undefined) next.issueType = issueTypeNode(context, input.issueTypeId)
   if (input.labelIds !== undefined) next.labels = { nodes: input.labelIds.map((id) => context.raw.labels.find((label) => label.id === id)), pageInfo: { hasNextPage: false } }
   if (input.assigneeIds !== undefined) next.assignees = { nodes: input.assigneeIds.map((id) => ({ id, login: assignable(context).find((user) => user.id === id).login })) }
   if (input.parentIssueId !== undefined) next.parent = parentNode
