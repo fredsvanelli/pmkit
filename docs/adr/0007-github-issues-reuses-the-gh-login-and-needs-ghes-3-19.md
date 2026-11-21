@@ -48,3 +48,7 @@ PMK-335 validated every GraphQL document of the adapter against the schemas GitH
 
 - Issue fields reach GHES in 3.22, not 3.21. The 3.21 schema has `Issue.issueFieldValues` and `setIssueFieldValue`, but no `Repository.issueFields` and no `IssueFieldMultiSelect`, so `discover` cannot list a repository's issue fields there. pmkit now asks for issue fields from 3.22, and setup offers only Project fields on 3.19 to 3.21. Status change events stay at 3.21.
 - No GHES schema, 3.22 included, has `isIssueField` on Project fields or the type `ProjectV2MultiSelectField`. The Project read sends both only on github.com and GHE.com.
+
+## Amendment, 2026-11-21 (PMK-350)
+
+Status change events reach GHES in 3.20, not 3.21. The published GHES 3.20 schema (`github/docs`, `src/graphql/data/ghes-3.20/`) has the type `ProjectV2ItemStatusChangedEvent` and the timeline item type `PROJECT_V2_ITEM_STATUS_CHANGED_EVENT`; 3.19 has neither. pmkit now reads Status change events from 3.20, so on 3.20 the history and the flow metrics see Status moves and no longer warn. The fake GitHub encodes the 3.20 fact on its own, apart from `hostFeatures`. The minimum version stays 3.19, and issue fields stay at 3.22.
