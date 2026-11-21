@@ -41,7 +41,7 @@ These answer `NOT_SUPPORTED`. Opening a sprint on GitHub Enterprise Server fails
 - `/pmkit:issues:link`: Link two issues (blocks, related, duplicate), remove a link, or set a parent.
 - `/pmkit:issues:log-time`: Log time worked on an issue after confirmation and show its total, or suggest a comment when the tracker has no time tracking.
 - `/pmkit:issues:mine`: List the issues assigned to the user, with the state of their pull requests and the next one to pick up.
-- `/pmkit:issues:move`: Move an issue to a status category: in progress, in review, done.
+- `/pmkit:issues:move`: Move an issue or an epic to a status category: in progress, in review, done.
 - `/pmkit:issues:pause`: Pause work on an issue, leave a handoff note and push a draft PR when there is code.
 - `/pmkit:issues:progress`: Post what was done on an issue as a comment, tick acceptance criteria and log the time spent.
 - `/pmkit:issues:review`: Review the pull request of an issue against its acceptance criteria and its checks, flag the gaps, then post the result on the issue and on the pull request after approval.
