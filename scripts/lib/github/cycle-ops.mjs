@@ -146,15 +146,19 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
       if (!target) throw notFound(to)
     }
     // Every issue is checked before the first write: the actor, the repository (the adapter writes the scope repository only) and the read.
+    // Each read is used once, by the write of its issue; a repeated id reads again, after its first write.
+    const reads = new Map()
     for (const id of ids) {
       await ops.writable(id, actor)
-      await ops.readNode(id)
+      reads.set(id, await ops.readNode(id))
     }
     const results = []
     const moved = []
     for (const id of ids) {
+      const read = reads.get(id)
+      reads.delete(id)
       try {
-        results.push(await ops.updateIssue(id, { sprint: target?.id ?? null }, actor, { dryRun }))
+        results.push(await ops.updateIssue(id, { sprint: target?.id ?? null }, actor, { dryRun, read }))
       } catch (error) {
         throw stoppedHalfway(error, moved, 'GitHub')
       }

@@ -275,6 +275,25 @@ test('moveToCycle current uses the active sprint, null clears, and a dry run sen
   assert.equal(names(fake).at(-1), 'PmkitClearProjectField')
 })
 
+test('moveToCycle reads each issue once before its write', async () => {
+  const { fake, cycles, clear } = await setup()
+  fake.seed({ number: 1, item: { status: 'Todo' } })
+  fake.seed({ number: 2, item: { status: 'Todo' } })
+  clear()
+  await cycles.moveToCycle(['1', '2'], '2026-11-16', ME)
+  // One read per issue before the writes, and the read of what GitHub holds after each write.
+  assert.equal(fake.reads.filter((call) => call.name === 'PmkitIssue').length, 4)
+})
+
+test('moveToCycle of the same id twice plans the second write from a fresh read', async () => {
+  const { fake, cycles, clear } = await setup()
+  fake.seed({ number: 1, item: { status: 'Todo' } })
+  clear()
+  const results = await cycles.moveToCycle(['1', '1'], '2026-11-16', ME)
+  assert.equal(results[1].before.sprint, '2026-11-16')
+  assert.equal(fake.mutations.filter((call) => call.name === 'PmkitSetProjectField').length, 1)
+})
+
 test('moveToCycle checks every issue and the target before it writes', async () => {
   const { fake, cycles, clear } = await setup()
   fake.seed({ number: 1, item: { status: 'Todo' } })

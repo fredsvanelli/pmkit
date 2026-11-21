@@ -313,9 +313,10 @@ export function issueOperations({ client, config, getContext, now = () => new Da
    * `base` is the branch the linked branch starts from, without origin/. A result that links a branch carries linked { branch, base },
    * base being the branch GitHub started it at: the fallback when GitHub lacks the one asked for.
    */
-  async function updateIssue(id, patch, actor, { dryRun = false, base } = {}) {
+  async function updateIssue(id, patch, actor, { dryRun = false, base, read } = {}) {
     await writable(id, actor)
-    const { node, issue: before } = await readNode(id)
+    // read is { node, issue } from readNode(id), when the caller read the issue just before (cycle add, PMK-344).
+    const { node, issue: before } = read ?? await readNode(id)
     const { value: plan, context } = await withRefresh(async (current) => planWrite(patch ?? {}, { mode: 'update', before: node, context: current, milestones: needed(patch?.milestone) ? await milestonesOf(current) : [], now: now().toISOString() }))
     const branch = await planBranch(plan.branch, before, base, context)
     const notes = branch?.note ? [branch.note] : []
