@@ -3,7 +3,7 @@
 
 import { stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
-import { entryFor, readCapacity, writeEntry } from './capacity-store.mjs'
+import { entryFor, readCapacity, writeEntry } from '../capacity-store.mjs'
 import { cycleKey, cycleState, cyclesOff, toSprint } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY } from './documents.mjs'
 

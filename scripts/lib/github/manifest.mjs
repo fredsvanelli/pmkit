@@ -3,7 +3,7 @@
 
 import { CAPABILITIES } from '../capabilities.mjs'
 import { estimateOf } from './discovery.mjs'
-import { CAPACITY_FILE } from '../linear/capacity-store.mjs'
+import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldOf, iterationFieldOf, labelOf, parseLabelValue } from './mappings.mjs'
 
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'

@@ -5,7 +5,7 @@
 import { stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
 import { addDays, baseField, overlaps, SPRINT_STATES, validDate } from '../local/sprints.mjs'
-import { entryFor, readCapacity, writeEntry } from '../linear/capacity-store.mjs'
+import { entryFor, readCapacity, writeEntry } from '../capacity-store.mjs'
 import { appendIteration, ITERATION_FIELD_QUERY, sprintsOf, toSprint, UPDATE_ITERATIONS } from './cycles.mjs'
 import { projectName } from './writes.mjs'
 
