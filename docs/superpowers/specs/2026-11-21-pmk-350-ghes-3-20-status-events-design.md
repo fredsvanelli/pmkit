@@ -44,4 +44,8 @@ Names; which existing GHES test gains the 3.20 case.
 
 ## Interview
 
-Pending.
+Approved on 2026-11-21 by the pmkit PO on the owner's behalf: the issue's acceptance criteria and this design, with no open product question. The questions the grilling raised and the answers taken (the recommended ones):
+
+- The fake GitHub holds its own schema fact for Status events (3.20), apart from `hostFeatures`: yes, as PMK-335 did for the other facts.
+- ADR 0007 gets a dated amendment rather than a new ADR: yes, the decision (minimum 3.19, per-feature thresholds) does not change.
+- No new term for `CONTEXT.md`.
