@@ -72,9 +72,19 @@ process.exitCode = answer.status
   return { bin, fixtureFile }
 }
 
-/** One call of the PATH fake: loads the fixture, answers, and saves the new state of both fake GitHubs. */
+/**
+ * One call of the PATH fake: loads the fixture, answers, and saves the new state of both fake GitHubs. A fixture whose pauseOn names
+ * the call's GraphQL operation pauses once instead: it writes the file paused next to the fixture and blocks for up to 30 seconds,
+ * so a test can send the run a signal while this call is in flight (PMK-349).
+ */
 export function answerLiveFromFile(fixtureFile, env, args, input) {
   const fixture = JSON.parse(fs.readFileSync(fixtureFile, 'utf8'))
+  if (fixture.pauseOn && new RegExp(`\\b${fixture.pauseOn}\\b`).test(input ?? '')) {
+    fs.writeFileSync(fixtureFile, JSON.stringify({ ...fixture, pauseOn: null }))
+    fs.writeFileSync(path.join(path.dirname(fixtureFile), 'paused'), '')
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30000)
+    return { status: 1, stdout: '', stderr: 'the fake gh paused and was not stopped\n' }
+  }
   const fakes = { github: fixture.github ? fakeGithubIssuesFrom(fixture.github) : null, ghes: fixture.ghes ? fakeGithubIssuesFrom(fixture.ghes) : null }
   const answer = answerLive(fakes, env, args, input, { scopelessToken: fixture.scopelessToken })
   fs.writeFileSync(fixtureFile, JSON.stringify({ ...fixture, github: fakes.github?.toJSON() ?? null, ghes: fakes.ghes?.toJSON() ?? null }))

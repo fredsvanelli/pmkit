@@ -3,7 +3,7 @@
 // their state in a fixture file between gh calls. No call leaves the machine.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,7 +33,7 @@ function fakeGh() {
 /** Runs the entry as the runbook says, with the TAP reporter. Returns { code, stdout, results: [{ ok, name, skip }] }. */
 function runChecks(fake, vars) {
   const env = { ...childEnv(), PATH: `${fake.bin}${path.delimiter}${process.env.PATH}`, ...vars }
-  const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ENTRY], { cwd: ROOT, env, encoding: 'utf8' })
+  const result = spawnSync(process.execPath, ['--test-reporter=tap', ENTRY], { cwd: ROOT, env, encoding: 'utf8' })
   const results = [...result.stdout.matchAll(/^(not ok|ok) \d+ - (.+?)(?: # SKIP (.*))?$/gm)].map(([, ok, name, skip]) => ({ ok: ok === 'ok', name, skip: skip ?? null }))
   return { code: result.status, stdout: result.stdout, stderr: result.stderr, results }
 }
@@ -43,7 +43,7 @@ const state = (fake) => JSON.parse(fs.readFileSync(fake.fixtureFile, 'utf8'))
 test('the runbook names the commands and the skip reasons this test checks', () => {
   const text = fs.readFileSync(RUNBOOK, 'utf8')
   for (const expected of [
-    `node --test ${ENTRY}`, 'set PMKIT_LIVE=1 to run the live check', 'no GHES host configured', ...Object.keys({ ...GITHUB, ...GHES }), 'pmkit-live',
+    `node ${ENTRY}`, 'set PMKIT_LIVE=1 to run the live check', 'restored the 2 iterations of the field', 'exits with code 130', 'no GHES host configured', ...Object.keys({ ...GITHUB, ...GHES }), 'pmkit-live',
   ]) assert.ok(text.includes(expected), expected)
 })
 
@@ -83,6 +83,36 @@ test('runbook: with every target all eight checks pass, and both throwaway Proje
   const { github, ghes } = state(fake)
   assert.deepEqual([github.items, ghes.items, ghes.issues], [[], [], []])
 })
+
+for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+test(`runbook: ${signal} during the openCycle check deletes its drafts, restores the iterations and exits ${exitCode}`, async () => {
+  const fake = liveGhOnPath({
+    github: fakeGithubIssues({ project: { title: 'pmkit-live checks', iterations: ITERATIONS } }).toJSON(), ghes: null, scopelessToken: SCOPELESS, pauseOn: 'PmkitUpdateIterations',
+  }, tempDir('pmkit-fake-gh-live-'))
+  const env = { ...childEnv(), PATH: `${fake.bin}${path.delimiter}${process.env.PATH}`, PMKIT_LIVE: '1', ...GITHUB }
+  // detached: the child leads its own process group, so the signal reaches it and its gh as Ctrl-C in a terminal would.
+  const child = spawn(process.execPath, ['--test-reporter=tap', ENTRY], { cwd: ROOT, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  let stderr = ''
+  child.stderr.on('data', (chunk) => { stderr += chunk })
+  child.stdout.resume()
+  const paused = path.join(fake.bin, 'paused')
+  for (let waited = 0; !fs.existsSync(paused); waited += 50) {
+    if (waited > 60000) throw new Error(`the fake gh never paused: ${stderr}`)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  process.kill(-child.pid, signal)
+  const code = await new Promise((resolve) => child.on('exit', (exit) => resolve(exit)))
+  assert.equal(code, exitCode, stderr)
+  assert.match(stderr, new RegExp(`^${signal}: stopping the live checks`))
+  assert.match(stderr, /deleted the draft PVTI_\d+/)
+  assert.match(stderr, /restored the 2 iterations of the field Sprint/)
+  assert.match(stderr, /the run was interrupted: check the throwaway Project for drafts titled pmkit-live/)
+  const github = state(fake).github
+  assert.deepEqual(github.items, [])
+  const field = github.project.fields.find((item) => item.dataType === 'ITERATION')
+  assert.deepEqual([...field.configuration.completedIterations, ...field.configuration.iterations].map((item) => item.id).sort(), ['IT_0', 'IT_1'])
+})
+}
 
 test('runbook: a check fails, and says why, on a Project that is not a throwaway one', () => {
   const fake = liveGhOnPath({ github: fakeGithubIssues({ project: { title: 'Roadmap', iterations: ITERATIONS } }).toJSON(), ghes: null, scopelessToken: SCOPELESS }, tempDir('pmkit-fake-gh-live-'))

@@ -10,6 +10,8 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from './fake-linear-api.mjs'
 import { addBareOrigin, fakeGh, ghCalls } from './fake-gh.mjs'
+import { GITHUB_TRACKER_INIT, statefulGhCalls, statefulGhOnPath } from './fake-gh-path.mjs'
+import { fakeGithubIssues } from './fake-github-issues.mjs'
 import { copyFixture, hashTree } from './test-helpers.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { parseYaml, splitFrontmatter } from './lib/yaml.mjs'
@@ -533,7 +535,7 @@ const eventLog = (root, baseline, id) => ['issues', 'epics']
   .find((rel) => baseline.has(rel) || fs.existsSync(path.join(root, rel)))
 
 /** What `expect(repo)` reads: records parsed from the copy, events appended after the baseline, gh calls and git. */
-export function makeRepoView(root, baseline, gh, env = childEnv()) {
+export function makeRepoView(root, baseline, gh, env = childEnv(), tracker = null) {
   const file = (rel) => {
     const full = path.join(root, rel)
     return fs.existsSync(full) ? fs.readFileSync(full, 'utf8') : null
@@ -562,6 +564,8 @@ export function makeRepoView(root, baseline, gh, env = childEnv()) {
       return after.slice(before.length).split('\n').filter(Boolean).map((line) => JSON.parse(line))
     },
     ghCalls: () => (gh ? ghCalls(gh) : []),
+    // The state of the stateful fake GitHub of a githubTracker scenario, as its fake gh left it.
+    github: () => (tracker ? JSON.parse(fs.readFileSync(tracker.fixtureFile, 'utf8')).issues : null),
     git: (...args) => gitOrThrow(root, args, env),
   }
 }
@@ -586,10 +590,29 @@ function linearRunner({ routes, ...options }) {
 }
 
 /**
+ * The GitHub Issues tracker of a `githubTracker` scenario: the stateful fake GitHub, seeded by `seed(github)`, behind a fake gh
+ * first on `env.PATH`, and the init of GITHUB_TRACKER_INIT run in `root`. Returns the fake gh ({ bin, fixtureFile, log }).
+ */
+async function githubTrackerCopy({ seed }, { root, env, run }) {
+  const github = fakeGithubIssues()
+  seed?.(github)
+  const tracker = statefulGhOnPath({ meta: null, issues: github.toJSON() })
+  Object.assign(env, { PATH: `${tracker.bin}${path.delimiter}${env.PATH}`, GH_TOKEN: 'ghp_fake_scenario_token' })
+  const result = await run([...GITHUB_TRACKER_INIT, '--json'], root, { env })
+  if (result.code !== 0) throw new Error(`githubTracker: init exited ${result.code}: ${result.stdout}${result.stderr}`)
+  return tracker
+}
+
+/** The GraphQL operation of each call the fake gh of a githubTracker scenario logged, as `graphql <name>`. */
+const trackerCalls = (tracker) => statefulGhCalls(tracker).map((call) => `graphql ${/(?:query|mutation)\s+(\w+)/.exec(call.input ?? '')?.[1] ?? '(no operation)'}`)
+
+/**
  * Prepares a run of a scenario in `scratch`: copies the fixture into `<scratch>/repo`, applies `github` and `git`,
  * runs `setup` and takes the baseline after it. For `github`, it adds a bare origin, puts the fake gh first on
  * `env.PATH` and sets `env.PMKIT_FAKE_GH`; `gh` is null otherwise. With `linear`, it points the user store at
- * `<scratch>/home`, sets LINEAR_API_KEY to FAKE_KEY and returns the in-process runner as `run`. The caller removes `scratch`.
+ * `<scratch>/home`, sets LINEAR_API_KEY to FAKE_KEY and returns the in-process runner as `run`. With `githubTracker` ({ seed(github) },
+ * no fixture), it runs the init of a GitHub Issues tracker on the stateful fake GitHub behind a fake gh first on `env.PATH`, and
+ * returns that fake gh as `tracker`. The caller removes `scratch`.
  */
 export async function prepareCopy(scenario, { scratch, fixturesDir, run: given = runPmkit }) {
   const root = path.join(scratch, 'repo')
@@ -600,6 +623,7 @@ export async function prepareCopy(scenario, { scratch, fixturesDir, run: given =
     Object.assign(env, { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: path.join(home, '.config'), PMKIT_HOME: path.join(home, '.config', 'pmkit'), LINEAR_API_KEY: FAKE_KEY })
     run = linearRunner(scenario.linear)
   }
+  if (scenario.githubTracker && scenario.fixture) throw new Error('githubTracker: the scenario must have no fixture, because the init writes .pmkit/config.yaml')
   if (scenario.fixture) copyFixture(path.join(fixturesDir, scenario.fixture), root)
   else fs.mkdirSync(root)
   if (scenario.github) {
@@ -608,11 +632,13 @@ export async function prepareCopy(scenario, { scratch, fixturesDir, run: given =
     if (!text.includes('system: none')) throw new Error('github: .pmkit/config.yaml has no `system: none` line to turn into github')
     fs.writeFileSync(config, text.replace('system: none', 'system: github\n  default_branch: main'))
   }
-  if (scenario.git || scenario.github) {
+  if (scenario.git || scenario.github || scenario.githubTracker) {
     gitOrThrow(root, ['init', '-q', '-b', 'main'], env)
     gitOrThrow(root, ['add', '-A'], env)
     gitOrThrow(root, ['commit', '-q', '--allow-empty', '-m', 'initial'], env)
   }
+  // The init writes .pmkit/config.yaml after the initial commit; the baseline below holds it, so it counts as no change.
+  const tracker = scenario.githubTracker ? await githubTrackerCopy(scenario.githubTracker, { root, env, run }) : null
   let gh = null
   if (scenario.github) {
     const remote = path.join(scratch, 'origin.git')
@@ -630,7 +656,7 @@ export async function prepareCopy(scenario, { scratch, fixturesDir, run: given =
     return JSON.parse(result.stdout)
   }
   await scenario.setup?.({ root, pmkit, git: (...args) => gitOrThrow(root, args, env) })
-  return { root, env, baseline: readTree(root), gh, run }
+  return { root, env, baseline: readTree(root), gh, tracker, run }
 }
 
 const parseJson = (text) => {
@@ -659,7 +685,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
   const confirmed = []
   const saved = {}
   try {
-    const { root, env, baseline, gh, run: exec } = await prepareCopy(scenario, { scratch, fixturesDir, run })
+    const { root, env, baseline, gh, tracker, run: exec } = await prepareCopy(scenario, { scratch, fixturesDir, run })
     const show = (args) => displayArgs(args, { root, inputs: inputsDir }).map(quoteArg).join(' ')
 
     let stopped = false
@@ -735,13 +761,13 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
     problems.push(...pointProblems(parsed.points, confirmed, scenario.notHit ?? {})
       .map((problem) => `rule ${problem.startsWith('confirm ') ? 10 : 7}: ${problem}`))
     try {
-      await scenario.expect?.(makeRepoView(root, baseline, gh, env), saved)
+      await scenario.expect?.(makeRepoView(root, baseline, gh, env, tracker), saved)
     } catch (error) {
       problems.push(`rule 11: expect failed: ${error.message}`)
     }
     const changes = treeChanges(baseline, readTree(root))
     const normalize = makeNormalizer({ root, inputs: inputsDir })
-    const snapshot = normalize(formatSnapshot({ rows, changes, gh: gh ? ghCalls(gh) : null }))
+    const snapshot = normalize(formatSnapshot({ rows, changes, gh: gh ? ghCalls(gh) : tracker ? trackerCalls(tracker) : null }))
     for (const leak of [scratch, fs.realpathSync(scratch), 'pmkit-scn-']) {
       if (snapshot.includes(leak)) problems.push(`rule 12: the snapshot holds the scratch path ${leak}`)
     }

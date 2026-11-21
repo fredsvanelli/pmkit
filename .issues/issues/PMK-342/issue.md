@@ -2,7 +2,7 @@
 id: PMK-342
 title: Read GitHub discussion threads past 100 comments or 100 replies
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-8
 milestone: github-issues
 branch: pmk-342-read-github-discussion-threads-past-100
 created: 2026-11-17T22:21:23.349Z
-updated: 2026-11-21T17:14:32Z
+updated: 2026-11-21T20:11:37Z
 ---
 
 ## Description

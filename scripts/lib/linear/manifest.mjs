@@ -2,7 +2,7 @@
 // See "The capability manifest" in docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md.
 
 import { CAPABILITIES, SERVED_BY } from '../capabilities.mjs'
-import { CAPACITY_FILE } from './capacity-store.mjs'
+import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { estimateScale } from './discovery.mjs'
 
 /** The hint of agent_delegation and of delegate on a workspace without an app user. */

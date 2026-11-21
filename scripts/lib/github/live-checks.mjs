@@ -29,7 +29,7 @@ export const LIVE_DOCUMENTS = Object.freeze({
   VIEWER: 'query PmkitLiveViewer { viewer { login } }',
   SCOPE: 'query PmkitLiveScope { viewer { projectsV2(first: 1) { totalCount } } }',
   PROJECT: `query PmkitLiveProject($owner: String!, $number: Int!) {
-  repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) { id title items(first: 1) { totalCount } } } }
+  repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) { id title url items(first: 1) { totalCount } } } }
 }`,
   ADD_DRAFT: `mutation PmkitLiveAddDraft($input: AddProjectV2DraftIssueInput!) {
   addProjectV2DraftIssue(input: $input) { projectItem { id } }
@@ -151,7 +151,7 @@ export async function preflightProject(client, value, variable) {
   if (!String(node.title).startsWith(MARKER)) throw refuse(`the title of the Project ${value} does not start with ${MARKER}`, `Rename a throwaway Project to start with ${MARKER}, or name one in ${variable}`)
   const count = node.items?.totalCount ?? 0
   if (count > 0) throw refuse(`the Project ${value} holds ${plural(count, 'item')}; empty it, or name another Project`, `Delete its items on GitHub, or name an empty throwaway Project in ${variable}`)
-  return { id: node.id, title: node.title }
+  return { id: node.id, title: node.title, url: node.url }
 }
 
 // Criterion 1: the error shapes of the client against github.com. Each check builds its own environment for gh, sends one read
@@ -275,14 +275,20 @@ const ITEM_PAGE = 100
 const byStart = (a, b) => a.startDate.localeCompare(b.startDate)
 const keepIteration = ({ id, title, startDate, duration }) => ({ id, title, startDate, duration })
 
-/** Runs every cleanup step, even after one fails, and returns the messages of the steps that failed. */
+const RUNBOOK = 'docs/runbooks/live-checks-github.md'
+/** Where and how to remove an item by hand: the URL and the step of the runbook's "Clean up after a stopped run". */
+const byHand = (where, step) => `remove it by hand at ${where}, as "Clean up after a stopped run" step ${step} in ${RUNBOOK} says`
+/** The line an interrupted run ends with: an add in flight at the signal may have left a draft no cleanup knows (PMK-349). */
+export const INTERRUPTED_STEP = `the run was interrupted: check the throwaway Project for drafts titled ${MARKER}, as "Clean up after a stopped run" step 1 in ${RUNBOOK} says`
+
+/** Runs every cleanup step [what, run, hint], even after one fails, and returns the messages of the steps that failed. */
 async function cleanUp(steps) {
   const failed = []
-  for (const [what, step] of steps) {
+  for (const [what, step, hint] of steps) {
     try {
       await step()
     } catch (error) {
-      failed.push(`${what}: ${error.message}`)
+      failed.push(`${what}: ${error.message}${hint ? `; ${hint}` : ''}`)
     }
   }
   return failed
@@ -298,7 +304,7 @@ async function withCleanup(body, cleanup, write) {
     failure = error
   }
   const failed = await cleanup()
-  for (const line of failed) write(`cleanup failed, ${line}; see "Clean up after a stopped run" in docs/runbooks/live-checks-github.md`)
+  for (const line of failed) write(`cleanup failed, ${line}`)
   if (failure) throw failure
   if (failed.length > 0) fail(`the check passed, but its cleanup failed: ${failed.join('; ')}`)
   return result
@@ -367,9 +373,13 @@ export async function checkOpenCycle({ env, makeExec, write = () => {}, now = ()
     write(`restored the ${all.length} iterations of the field ${fieldRead.name}`)
   }
 
+  const deleteDraft = async (item) => {
+    await writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })
+    write(`deleted the draft ${item}`)
+  }
   const cleanup = () => cleanUp([
-    ...[...added].map((item) => [`deleting the draft ${item}`, () => writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })]),
-    ...(opened ? [[`restoring the iterations of ${fieldRead.name}`, restore]] : []),
+    ...[...added].map((item) => [`deleting the draft ${item}`, () => deleteDraft(item), byHand(`${project.url} (item ${item})`, 1)]),
+    ...(opened ? [[`restoring the iterations of ${fieldRead.name}`, restore, byHand(`${project.url}/settings`, 2)]] : []),
   ])
   return withCleanup(body, cleanup, write)
 }
@@ -435,10 +445,14 @@ export async function checkGhesConversion({ env, makeExec, write = () => {} }) {
     }
   }
 
+  const removeItem = async (item) => {
+    await writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })
+    write(`removed the Project item ${item}`)
+  }
   const cleanup = () => cleanUp([
-    ...[...added].map((item) => [`removing the Project item ${item}`, () => writer.request(docs.DELETE_PROJECT_ITEM, { input: { projectId: project.id, itemId: item } })]),
-    ...(created.id ? [[`removing issue #${created.number}`, removeIssue]] : []),
-    ...(!created.id && created.number ? [[`removing issue #${created.number}`, async () => { throw new Error(`its id could not be read; delete ${created.url} by hand`) }]] : []),
+    ...[...added].map((item) => [`removing the Project item ${item}`, () => removeItem(item), byHand(`${project.url} (item ${item})`, 1)]),
+    ...(created.id ? [[`removing issue #${created.number}`, removeIssue, byHand(created.url, 3)]] : []),
+    ...(!created.id && created.number ? [[`removing issue #${created.number}`, async () => { throw new Error('its id could not be read') }, byHand(created.url, 3)]] : []),
   ])
   return withCleanup(body, cleanup, write)
 }

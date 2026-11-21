@@ -650,6 +650,22 @@ test('a scenario with linear runs the CLI in process over the fake workspace', a
   assert.equal(JSON.parse((await custom.run(['discover', '--json'], custom.root, { env: custom.env })).stdout).workspace.name, 'Other')
 })
 
+test('prepareCopy with githubTracker runs the CLI on the stateful fake GitHub', async () => {
+  const seed = (github) => github.seedDiscussion({ title: 'RFC: offline mode', category: 'Ideas' })
+  const { root, env, run, tracker } = await prepareCopy({ fixture: null, githubTracker: { seed } }, { scratch: tempDir(), fixturesDir: FIXTURES })
+  assert.ok(tracker, 'the prepared copy names its fake gh')
+  const capabilities = await run(['capabilities', '--json'], root, { env })
+  assert.equal(capabilities.code, 0, capabilities.stdout + capabilities.stderr)
+  assert.equal(JSON.parse(capabilities.stdout).tracker, 'github')
+  const listed = await run(['github', 'discussions', 'list', '--json'], root, { env })
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.deepEqual(JSON.parse(listed.stdout).discussions.map((item) => item.title), ['RFC: offline mode'])
+})
+
+test('prepareCopy refuses githubTracker with a fixture, whose config the init would not replace', async () => {
+  await assert.rejects(prepareCopy({ fixture: 'basic', githubTracker: {} }, { scratch: tempDir(), fixturesDir: FIXTURES }), /githubTracker: the scenario must have no fixture/)
+})
+
 test('a scenario without linear still runs the CLI as a child process', async () => {
   const prepared = await prepareCopy({ fixture: 'basic' }, { scratch: tempDir(), fixturesDir: FIXTURES })
   assert.equal(prepared.run, runPmkit)

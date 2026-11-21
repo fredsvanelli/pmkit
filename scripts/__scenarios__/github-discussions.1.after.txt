@@ -1,0 +1,36 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit github discussions list --json  [step 2, read]
+exit 0
+? Step 2  [confirmed]
+$ pmkit github discussions get 1 --json  [step 3, read]
+exit 0
+? Step 4  [confirmed]
+$ pmkit issues create --title-file <inputs>/discussion-issue-title.txt --description-file <inputs>/discussion-issue-description.md --criteria-file <inputs>/discussion-issue-criteria.md --dry-run --json  [step 5, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues create --title-file <inputs>/discussion-issue-title.txt --description-file <inputs>/discussion-issue-description.md --criteria-file <inputs>/discussion-issue-criteria.md --json  [step 6, write]
+exit 0
+$ pmkit github discussions comment 1 --body-file <inputs>/discussion-comment.txt --dry-run --json  [step 7, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit github discussions comment 1 --body-file <inputs>/discussion-comment.txt --json  [step 8, write]
+exit 0
+
+(no file changed)
+--- gh calls
+graphql PmkitRepo
+graphql PmkitProject
+graphql PmkitRepo
+graphql PmkitAssignableUsers
+graphql PmkitProject
+graphql PmkitDiscussions
+graphql PmkitDiscussion
+graphql PmkitLinkedProjects
+graphql PmkitLinkedProjects
+graphql PmkitCreateIssue
+graphql PmkitAddProjectItem
+graphql PmkitIssue
+graphql PmkitDiscussion
+graphql PmkitDiscussion
+graphql PmkitAddDiscussionComment

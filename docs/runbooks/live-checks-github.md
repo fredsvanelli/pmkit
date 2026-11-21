@@ -44,7 +44,7 @@ To keep the token off your shell history, read it with `read -rs PMKIT_LIVE_GITH
 1. Run the entry without `PMKIT_LIVE` first:
 
    ```
-   node --test scripts/lib/github/client-live.mjs
+   node scripts/lib/github/client-live.mjs
    ```
 
    Expect all eight tests skipped with `set PMKIT_LIVE=1 to run the live check`, and exit code 0. Nothing reaches `gh`.
@@ -52,7 +52,7 @@ To keep the token off your shell history, read it with `read -rs PMKIT_LIVE_GITH
 2. Run it with the github.com variables:
 
    ```
-   PMKIT_LIVE=1 node --test scripts/lib/github/client-live.mjs
+   PMKIT_LIVE=1 node scripts/lib/github/client-live.mjs
    ```
 
    Expect seven passes. The GHES test is skipped with `no GHES host configured: set PMKIT_LIVE_GHES_HOST, PMKIT_LIVE_GHES_REPO and PMKIT_LIVE_GHES_PROJECT to convert a draft on GHES`. Each test prints what it asserted as a diagnostic. `discover` prints counts only, such as `issue types 3, issue fields 4, Project fields 9 (iteration 1), Status options 3, capabilities 21`. The openCycle check adds one draft per iteration (up to six), adds the sprint that starts the day after the last iteration ends, reads every draft back, then deletes the drafts and prints `restored the <n> iterations of the field <name>`.
@@ -70,7 +70,20 @@ A test that is skipped names the variable it lacks, or the one whose value has t
 
 ## Clean up after a stopped run
 
-A check cleans up in all cases but a stopped process (Ctrl-C, a lost connection). When a run stops, or prints `cleanup failed`:
+Run the entry with plain `node`, as above, not `node --test`: under `node --test` the runner exits on Ctrl-C before the checks can clean up.
+
+Ctrl-C (or SIGTERM) during a writing check stops the run after that check's cleanup. The run prints, on stderr:
+
+```
+SIGINT: stopping the live checks after cleaning up what they wrote
+deleted the draft <item id>
+restored the 2 iterations of the field Sprint
+the run was interrupted: check the throwaway Project for drafts titled pmkit-live, as "Clean up after a stopped run" step 1 in docs/runbooks/live-checks-github.md says
+```
+
+and exits with code 130 (143 for SIGTERM). A step it could not finish prints `cleanup failed, <step>: <error>; remove it by hand at <link>, as "Clean up after a stopped run" step <n> ... says`, with the Project's link and the item id for a draft, its settings link for the iterations, or the issue's link on GHES. A draft whose add was in flight at Ctrl-C may be left with no line, so check the Project.
+
+A check cannot clean up after a forced stop (SIGKILL) or a lost connection. When a run stops that way, prints `cleanup failed`, or ends with the interrupted line:
 
 1. List what the Project holds and delete the drafts whose title starts with `pmkit-live`:
 
