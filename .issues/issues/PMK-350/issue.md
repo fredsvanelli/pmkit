@@ -2,7 +2,7 @@
 id: PMK-350
 title: Read Status change events from GHES 3.20
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-8
 related: [PMK-335]
 branch: pmk-350-read-status-change-events-from-ghes-3-20
 created: 2026-11-20T22:03:02.155Z
-updated: 2026-11-21T20:13:09Z
+updated: 2026-11-21T20:46:09Z
 ---
 
 ## Description
@@ -38,6 +38,6 @@ Found while working PMK-335 (PR #327). The schema validation showed that the pub
 
 ## Acceptance criteria
 
-- [ ] On a GHES 3.20 host, the history and flow metrics read Status change events
-- [ ] On GHES 3.19 the fake GitHub still refuses the Status change event document, and pmkit does not send it
-- [ ] Every document pmkit sends to GHES 3.20 validates against the published 3.20 schema
+- [x] On a GHES 3.20 host, the history and flow metrics read Status change events
+- [x] On GHES 3.19 the fake GitHub still refuses the Status change event document, and pmkit does not send it
+- [x] Every document pmkit sends to GHES 3.20 validates against the published 3.20 schema
