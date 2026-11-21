@@ -16,9 +16,9 @@ const ANSWERED = { yes: true, no: false }
 
 const AUTHOR = 'author { login }'
 const PAGE = 'pageInfo { hasNextPage endCursor }'
-const REPLY = `id body createdAt upvoteCount ${AUTHOR}`
-const COMMENT = `id body createdAt upvoteCount isAnswer ${AUTHOR}
-          replies(first: $replies) { totalCount nodes { ${REPLY} } ${PAGE} }`
+const REPLY_FIELDS = `id body createdAt upvoteCount ${AUTHOR}`
+const COMMENT_FIELDS = `id body createdAt upvoteCount isAnswer ${AUTHOR}
+          replies(first: $replies) { totalCount nodes { ${REPLY_FIELDS} } ${PAGE} }`
 
 // Each document starts with its operation, as the fake GitHub reads only the first definition.
 export const DISCUSSION_DOCUMENTS = Object.freeze({
@@ -46,16 +46,16 @@ export const DISCUSSION_DOCUMENTS = Object.freeze({
       category { name isAnswerable }
       labels(first: 50) { nodes { name } }
       answer { id body ${AUTHOR} }
-      comments(first: $comments) { totalCount nodes { ${COMMENT} } ${PAGE} }
+      comments(first: $comments) { totalCount nodes { ${COMMENT_FIELDS} } ${PAGE} }
     }
   }
 }`,
   // The further pages of a thread past 100 comments or 100 replies, by node id (PMK-342).
   COMMENTS: `query PmkitDiscussionComments($id: ID!, $first: Int!, $after: String, $replies: Int!) {
-  node(id: $id) { ... on Discussion { comments(first: $first, after: $after) { totalCount nodes { ${COMMENT} } ${PAGE} } } }
+  node(id: $id) { ... on Discussion { comments(first: $first, after: $after) { totalCount nodes { ${COMMENT_FIELDS} } ${PAGE} } } }
 }`,
   REPLIES: `query PmkitDiscussionReplies($id: ID!, $first: Int!, $after: String) {
-  node(id: $id) { ... on DiscussionComment { replies(first: $first, after: $after) { totalCount nodes { ${REPLY} } ${PAGE} } } }
+  node(id: $id) { ... on DiscussionComment { replies(first: $first, after: $after) { totalCount nodes { ${REPLY_FIELDS} } ${PAGE} } } }
 }`,
   COMMENT: `mutation PmkitAddDiscussionComment($input: AddDiscussionCommentInput!) {
   addDiscussionComment(input: $input) { comment { id url } }
