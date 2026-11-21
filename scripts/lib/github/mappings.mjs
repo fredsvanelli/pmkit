@@ -5,6 +5,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { NONE } from '../mappings.mjs'
+import { PRIORITY_LABEL_LEVELS } from '../model.mjs'
 
 export { NONE }
 
@@ -40,7 +41,7 @@ const MATCHES = {
 }
 
 // The pmkit priority levels a priority label stands for, highest first (ADR 0012).
-export const PRIORITY_LEVELS = ['urgent', 'high', 'medium', 'low']
+const PRIORITY_LEVELS = PRIORITY_LABEL_LEVELS
 
 const words = (key) => key.replace(/_/g, ' ')
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)

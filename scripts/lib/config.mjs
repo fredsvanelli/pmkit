@@ -4,7 +4,7 @@ import { ADAPTERS, adapterFor } from './adapters.mjs'
 import { PmkitError } from './errors.mjs'
 import { ID_STYLES } from './ids.mjs'
 import { FORMAT_VERSION, MIGRATIONS, formatError, formatState, migratedCopy } from './local/migrations.mjs'
-import { CATEGORIES, FIELD_ROLES, STATUS_MAPPING_KEYS, isCategory } from './model.mjs'
+import { CATEGORIES, FIELD_ROLES, PRIORITY_LABEL_LEVELS, STATUS_MAPPING_KEYS, isCategory } from './model.mjs'
 import { parseYaml } from './yaml.mjs'
 
 export const TRACKERS = ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops']
@@ -76,7 +76,23 @@ function mappingsProblems(mappings) {
   if (mappings === undefined) return []
   if (!isObject(mappings)) return ['mappings must be a map with status, fields or types']
   const problems = []
-  const { status, fields, types } = mappings
+  const { status, fields, types, priority, estimate } = mappings
+  // The priority and estimate labels of GitHub Issues without a Project (ADR 0012). The adapter's mapping check reads label:<name>.
+  if (priority !== undefined && !isObject(priority)) {
+    problems.push('mappings.priority must be a map from a priority level to a label')
+  } else {
+    for (const [key, value] of Object.entries(priority ?? {})) {
+      if (!PRIORITY_LABEL_LEVELS.includes(key)) problems.push(`mappings.priority.${key}: ${key} is not a priority level, use one of ${PRIORITY_LABEL_LEVELS.join(', ')}`)
+      if (!isName(value)) problems.push(`mappings.priority.${key} must be a label`)
+    }
+  }
+  if (estimate !== undefined && !isObject(estimate)) {
+    problems.push('mappings.estimate must be a map from an estimate value to a label')
+  } else {
+    for (const [key, value] of Object.entries(estimate ?? {})) {
+      if (!isName(value)) problems.push(`mappings.estimate.${key} must be a label`)
+    }
+  }
   if (status !== undefined && !isObject(status)) {
     problems.push('mappings.status must be a map from a category or blocked to a status name')
   } else {

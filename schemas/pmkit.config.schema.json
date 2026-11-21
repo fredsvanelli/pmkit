@@ -133,7 +133,7 @@
             "title": "Label",
             "description": "label:<name> of a repository label, or none.",
             "type": "string",
-            "pattern": "^(?:label:\\S.*|none)$"
+            "pattern": "\\S"
           }
         },
         "estimate": {
@@ -144,7 +144,7 @@
             "title": "Label",
             "description": "label:<name> of a repository label, or none.",
             "type": "string",
-            "pattern": "^(?:label:\\S.*|none)$"
+            "pattern": "\\S"
           }
         },
         "types": {
