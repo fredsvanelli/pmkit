@@ -12,7 +12,7 @@ import { isUnconfirmed } from './issue-ops.mjs'
 import { estimateOf, makeContext, stateCategory } from './issues.mjs'
 import {
   DOCUMENTS_QUERY, DOCUMENT_QUERY, EPIC_ISSUES_QUERY, HEALTH_TO_LINEAR, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY,
-  PROJECT_UPDATE_CREATE, epicId, epicKey, toDocument, toEpic, toMilestone, toStatusUpdate,
+  PROJECT_SET_STATUS, PROJECT_STATUSES, PROJECT_UPDATE_CREATE, STATUS_CATEGORY, epicId, epicKey, toDocument, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
 const LIST_PAGE = 100
@@ -99,11 +99,12 @@ export function projectOperations({ client, discovery, config, now = () => new D
       level = next
     }
     const mapping = await context()
-    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])), open: [] }
     for (const node of seen.values()) {
       if (node.archivedAt) continue
       const category = stateCategory(node.state, mapping)
       if (category in progress.byCategory) progress.byCategory[category] += 1
+      if (category !== 'done' && category !== 'canceled') progress.open.push(node.identifier)
       if (category === 'canceled') {
         progress.canceled += 1
         continue
@@ -191,6 +192,34 @@ export function projectOperations({ client, discovery, config, now = () => new D
     node ??= await readById(id)
     if (!node) throw new PmkitError('UPSTREAM', `Linear created project ${id} but a read of it found nothing`, 'pmkit epic list')
     return { before: null, after: toEpic(node) }
+  }
+
+  /** The project statuses a move can reach, by position, each with the pmkit category of its type. */
+  async function moveTargets() {
+    const { nodes } = (await client.request(PROJECT_STATUSES, {})).projectStatuses
+    return [...nodes].sort((a, b) => a.position - b.position).map((node) => ({ id: node.id, name: node.name, category: STATUS_CATEGORY[node.type] ?? 'backlog' }))
+  }
+
+  async function moveDeliverable(id, category, actor, { status, dryRun = false } = {}) {
+    await requireViewer(actor)
+    const project = await findProject(id)
+    if (!project) throw notFound(id)
+    if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
+    const before = toEpic(project)
+    const targets = await moveTargets()
+    const inCategory = targets.filter((item) => item.category === category)
+    if (inCategory.length === 0) {
+      throw invalid(`a Linear epic cannot move to ${category}`, `Use one of: ${CATEGORIES.filter((name) => targets.some((item) => item.category === name)).join(', ')}`)
+    }
+    if (status !== undefined && !inCategory.some((item) => item.name === status)) {
+      throw invalid(`status ${status} is not in category ${category}`, `Use one of: ${inCategory.map((item) => item.name).join(', ')}`)
+    }
+    if (status === undefined && before.status.category === category) throw invalid(`epic ${before.id} is already in ${category}`)
+    const target = status === undefined ? inCategory[0] : inCategory.find((item) => item.name === status)
+    if (before.status.name === target.name) throw invalid(`epic ${before.id} is already in status ${target.name}`)
+    if (dryRun) return { before, after: { ...before, status: { name: target.name, category } } }
+    const node = (await client.request(PROJECT_SET_STATUS, { id: project.id, input: { statusId: target.id } })).projectUpdate.project
+    return { before, after: toEpic(node) }
   }
 
   async function publishStatusUpdate(input, actor, { dryRun = false } = {}) {
@@ -281,7 +310,7 @@ export function projectOperations({ client, discovery, config, now = () => new D
     throw new PmkitError('NOT_SUPPORTED', `the Linear adapter reads project ${what}s but does not create them`, `Create the ${what} in Linear`)
   }
 
-  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, resolveMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), updateDocument: async () => {
+  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, moveDeliverable, listMilestones, getMilestone, resolveMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), updateDocument: async () => {
     throw new PmkitError('NOT_SUPPORTED', 'the Linear adapter reads project documents but does not edit them', 'Edit the document in Linear')
   }, publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
 }
