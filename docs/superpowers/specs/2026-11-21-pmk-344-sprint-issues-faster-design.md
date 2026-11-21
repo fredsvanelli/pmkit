@@ -51,4 +51,9 @@ Names; whether `sprintIssues` lives in `issue-ops.mjs` or `cycle-ops.mjs`.
 
 ## Interview
 
-Pending.
+Approved on 2026-11-21 by the pmkit PO on the owner's behalf: the issue's acceptance criteria and this design, with no open product question. The questions the grilling raised and the answers taken (the recommended ones):
+
+- GHES 3.20 and later also have `items(query:)` in their schema. Use it there too? No: the issue keeps the scan on GHES, and nobody has checked the filter syntax on a GHES host (PMK-351). Only github.com and GHE.com read through the query.
+- `issues list --sprint` keeps the scan: yes, out of the issue's scope.
+- `cycle add` keeps the read after each write (`after`): yes, it is GitHub's state after the write.
+- No new term for `CONTEXT.md` and no ADR (a host-gated read path, easy to reverse).
