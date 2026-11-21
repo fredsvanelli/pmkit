@@ -12,7 +12,7 @@ Acceptance criterion: `github discussions get` pages through every comment and r
 
 - Goal: `get` returns every comment and every reply of a thread up to the limit below, and warns only past it.
 - Non-goal: `github discussions comment` keeps its read of one comment and one reply (it needs only the id and the title). `list` is unchanged.
-- Non-goal: no new flag (`--all`, `--max-comments`). Nobody asked for one.
+- Non-goal: no new flag (`--all`, `--max-comments`) (approved by the user).
 - Anti-goal: a thread of normal size (100 comments or fewer, 100 replies or fewer each) costs a second request. It must still be one call.
 
 ## Approaches
@@ -23,14 +23,14 @@ Acceptance criterion: `github discussions get` pages through every comment and r
 
 ## Design
 
-- **The limit (builder's call, the user's to change):** `paginate`'s default cap of 10 pages of 100. So at most 1000 comments, and at most 1000 replies per comment. Past that, the existing warnings, which now name the read count: `discussion #<n> has <total> comments and pmkit read the first 1000`, `comment <id> has <total> replies and pmkit read the first 1000`. `cutWarnings` already compares `totalCount` with what was read, so it needs no change.
+- **The limit (approved by the user):** `paginate`'s default cap of 10 pages of 100. So at most 1000 comments, and at most 1000 replies per comment. Past that, the existing warnings, which now name the read count: `discussion #<n> has <total> comments and pmkit read the first 1000`, `comment <id> has <total> replies and pmkit read the first 1000`. `cutWarnings` already compares `totalCount` with what was read, so it needs no change.
 - **New documents** in `DISCUSSION_DOCUMENTS`:
   - `COMMENTS`: `query PmkitDiscussionComments($id: ID!, $first: Int!, $after: String, $replies: Int!) { node(id: $id) { ... on Discussion { comments(first: $first, after: $after) { nodes { <comment fields> replies(first: $replies) { totalCount nodes { <reply fields> } pageInfo } } pageInfo } } } }`.
   - `REPLIES`: `query PmkitDiscussionReplies($id: ID!, $first: Int!, $after: String) { node(id: $id) { ... on DiscussionComment { replies(first: $first, after: $after) { nodes { <reply fields> } pageInfo } } } }`.
   - `GET` adds `pageInfo { hasNextPage endCursor }` to `comments` and `replies`. The comment and reply selections become shared constants so the three documents select the same fields.
 - **Where:** a `completeThread(node)` step in `get`, after `read` and before `fullView`. `read` and `comment` do not change.
 - **The fine-grained PAT step:** `client.paginate` passes `options.permissions` on to `request`, so a refusal on a further page names the Discussions permission like the first read does (PMK-341). One-line change in `scripts/lib/github/client.mjs`.
-- **Rate limit:** no extra cap on the total number of requests (builder's call). Worst case is 10 comment pages plus 10 reply pages per comment past 100 replies; the client's rate-limit guard (`assertRoom`) already stops a call when the GraphQL budget is spent. A page of 100 comments with 100 replies each is about 10,100 nodes, well under GitHub's 500,000-node limit per query.
+- **Rate limit:** no extra cap on the total number of requests (approved by the user). Worst case is 10 comment pages plus 10 reply pages per comment past 100 replies; the client's rate-limit guard (`assertRoom`) already stops a call when the GraphQL budget is spent. A page of 100 comments with 100 replies each is about 10,100 nodes, well under GitHub's 500,000-node limit per query.
 - **Fake GitHub:** `scripts/fake-github-discussions.mjs` answers `PmkitDiscussionComments` and `PmkitDiscussionReplies` with its `connection` helper, and refuses an unknown node id with `unknownNode`.
 - **Docs:** README's `github discussions get` row, `commands/github/discussions.md` ("If something is missing": 1000, not 100), the runbook `docs/runbooks/discussions-github.md`, and a note in the PMK-90 design's get section pointing here.
 
@@ -43,3 +43,7 @@ Acceptance criterion: `github discussions get` pages through every comment and r
 ## Left to the builder
 
 The names of the shared selection constants and of `completeThread`; whether the thread past 1000 test seeds 1001 comments or lowers nothing (the cap is `paginate`'s default, not a pmkit constant).
+
+## Interview
+
+The user approved the design on 2026-11-21 with the three open questions answered: the limit is 10 pages (1000 comments, 1000 replies per comment), no cap on the total request count, no new flag. No new term for CONTEXT.md (Discussion is already defined) and no ADR: the limit is a constant that is easy to change.
