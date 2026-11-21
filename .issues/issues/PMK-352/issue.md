@@ -2,13 +2,13 @@
 id: PMK-352
 title: Add ESLint without a dependency and fix the unused names it reports
 type: chore
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 branch: pmk-352-add-eslint-without-a-dependency-and-fix
 created: 2026-11-20T23:36:26.814Z
-updated: 2026-11-20T23:53:25Z
+updated: 2026-11-21T00:02:16Z
 ---
 
 ## Description

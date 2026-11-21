@@ -2,7 +2,7 @@
 id: PMK-335
 title: Add live checks of the GitHub adapter against github.com and GHES
 type: task
-status: in_review
+status: done
 priority: low
 assignee: fred
 parent: EPC-8
@@ -10,7 +10,7 @@ related: [PMK-349, PMK-350, PMK-351]
 milestone: github-issues
 branch: pmk-335-add-live-checks-of-the-github-adapter
 created: 2026-11-16T18:34:34.787Z
-updated: 2026-11-20T22:03:02Z
+updated: 2026-11-21T00:02:16Z
 ---
 
 ## Description
