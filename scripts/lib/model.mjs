@@ -1,5 +1,7 @@
 // The common model every tracker adapter maps to. See the pmkit design spec, "Common model".
 
+import { PmkitError } from './errors.mjs'
+
 export const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 export const TERMINAL = ['done', 'canceled']
 export const EVENT_OPS = ['create', 'update', 'move', 'assign', 'link', 'unlink', 'comment', 'log_time', 'archive', 'unarchive']
@@ -127,4 +129,24 @@ export function compareTimes(a, b) {
   const ta = time(a)
   const tb = time(b)
   return ta < tb ? -1 : ta > tb ? 1 : 0
+}
+
+/**
+ * The status an epic move lands on, the same rules for every tracker. `targets` are the statuses a move can reach, in order, each
+ * `{ name, category, ... }`; the chosen one comes back whole, so the caller keeps its own fields. `tracker` is the name in the refusals.
+ */
+export function pickMoveTarget({ before, category, status, targets, tracker }) {
+  const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
+  if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
+  const inCategory = targets.filter((item) => item.category === category)
+  if (inCategory.length === 0) {
+    throw invalid(`a ${tracker} epic cannot move to ${category}`, `Use one of: ${CATEGORIES.filter((name) => targets.some((item) => item.category === name)).join(', ')}`)
+  }
+  if (status !== undefined && !inCategory.some((item) => item.name === status)) {
+    throw invalid(`status ${status} is not in category ${category}`, `Use one of: ${inCategory.map((item) => item.name).join(', ')}`)
+  }
+  if (status === undefined && before.status.category === category) throw invalid(`epic ${before.id} is already in ${category}`)
+  const target = status === undefined ? inCategory[0] : inCategory.find((item) => item.name === status)
+  if (before.status.name === target.name) throw invalid(`epic ${before.id} is already in status ${target.name}`)
+  return target
 }

@@ -5,7 +5,7 @@ import { PmkitError } from '../errors.mjs'
 import { HEALTH, sortEpics } from '../local/epics.mjs'
 import { sortMilestones } from '../local/milestones.mjs'
 import { validDate } from '../local/sprints.mjs'
-import { CATEGORIES } from '../model.mjs'
+import { CATEGORIES, pickMoveTarget } from '../model.mjs'
 import { parseProject } from './discovery.mjs'
 import { toIssue } from './issues.mjs'
 import { docsOf } from './requests.mjs'
@@ -318,14 +318,8 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     await ops.requireActor(actor)
     const found = await findEpic(id)
     if (!found) throw notFoundEpic(id)
-    if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
     const before = toEpic(found.project, found.latest)
-    const inCategory = MOVE_TARGETS.filter((item) => item.category === category)
-    if (inCategory.length === 0) throw invalid(`a GitHub epic cannot move to ${category}`, `Use one of: ${CATEGORIES.filter((name) => MOVE_TARGETS.some((item) => item.category === name)).join(', ')}`)
-    if (status !== undefined && !inCategory.some((item) => item.name === status)) throw invalid(`status ${status} is not in category ${category}`, `Use one of: ${inCategory.map((item) => item.name).join(', ')}`)
-    if (status === undefined && before.status.category === category) throw invalid(`epic ${before.id} is already in ${category}`)
-    const target = status === undefined ? inCategory[0] : inCategory.find((item) => item.name === status)
-    if (before.status.name === target.name) throw invalid(`epic ${before.id} is already in status ${target.name}`)
+    const target = pickMoveTarget({ before, category, status, targets: MOVE_TARGETS, tracker: 'GitHub' })
     if (dryRun) {
       const { health: _left, ...kept } = before
       return { before, after: { ...kept, status: { name: target.name, category }, ...(HEALTH.includes(target.update?.toLowerCase()) ? { health: target.update.toLowerCase() } : {}) } }

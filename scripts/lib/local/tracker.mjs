@@ -12,7 +12,7 @@ import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
-import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
+import { CATEGORIES, LINK_KINDS, TERMINAL, pickMoveTarget } from '../model.mjs'
 import { appendEvents, driftEvents, parseEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
@@ -1440,15 +1440,8 @@ export function createLocalTracker(root, {
   function moveDeliverable(epicId, category, actor, { status, dryRun = false } = {}) {
     requireWriter(actor)
     const { epic: before, dir } = readEpic(epicId)
-    oneOf('category', category, CATEGORIES)
-    const inCategory = Object.keys(local.statuses).filter((name) => local.statuses[name].category === category)
-    if (inCategory.length === 0) {
-      throw invalid(`a Local epic cannot move to ${category}`, `Use one of: ${CATEGORIES.filter((name) => Object.values(local.statuses).some((s) => s.category === name)).join(', ')}`)
-    }
-    if (status !== undefined && !inCategory.includes(status)) throw invalid(`status ${status} is not in category ${category}`, `Use one of: ${inCategory.join(', ')}`)
-    if (status === undefined && before.status.category === category) throw invalid(`epic ${before.id} is already in ${category}`)
-    const name = status ?? inCategory[0]
-    if (before.status.name === name) throw invalid(`epic ${before.id} is already in status ${name}`)
+    const targets = Object.entries(local.statuses).map(([name, { category: own }]) => ({ name, category: own }))
+    const { name } = pickMoveTarget({ before, category, status, targets, tracker: 'Local' })
     const file = path.join(dir, 'epic.md')
     const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
     let edited

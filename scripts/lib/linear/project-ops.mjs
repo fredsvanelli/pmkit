@@ -6,7 +6,7 @@ import { PmkitError } from '../errors.mjs'
 import { HEALTH, sortEpics } from '../local/epics.mjs'
 import { sortMilestones } from '../local/milestones.mjs'
 import { validDate } from '../local/sprints.mjs'
-import { CATEGORIES } from '../model.mjs'
+import { CATEGORIES, pickMoveTarget } from '../model.mjs'
 import { PARENT_CHAIN_DEPTH } from './documents.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 import { estimateOf, makeContext, stateCategory } from './issues.mjs'
@@ -204,19 +204,8 @@ export function projectOperations({ client, discovery, config, now = () => new D
     await requireViewer(actor)
     const project = await findProject(id)
     if (!project) throw notFound(id)
-    if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
     const before = toEpic(project)
-    const targets = await moveTargets()
-    const inCategory = targets.filter((item) => item.category === category)
-    if (inCategory.length === 0) {
-      throw invalid(`a Linear epic cannot move to ${category}`, `Use one of: ${CATEGORIES.filter((name) => targets.some((item) => item.category === name)).join(', ')}`)
-    }
-    if (status !== undefined && !inCategory.some((item) => item.name === status)) {
-      throw invalid(`status ${status} is not in category ${category}`, `Use one of: ${inCategory.map((item) => item.name).join(', ')}`)
-    }
-    if (status === undefined && before.status.category === category) throw invalid(`epic ${before.id} is already in ${category}`)
-    const target = status === undefined ? inCategory[0] : inCategory.find((item) => item.name === status)
-    if (before.status.name === target.name) throw invalid(`epic ${before.id} is already in status ${target.name}`)
+    const target = pickMoveTarget({ before, category, status, targets: await moveTargets(), tracker: 'Linear' })
     if (dryRun) return { before, after: { ...before, status: { name: target.name, category } } }
     const node = (await client.request(PROJECT_SET_STATUS, { id: project.id, input: { statusId: target.id } })).projectUpdate.project
     return { before, after: toEpic(node) }
