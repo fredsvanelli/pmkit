@@ -393,8 +393,8 @@ const moveOnly = (steps, extra = {}) => ({
   command: 'issues/move',
   fixture: 'team',
   steps,
-  skip: { '1 issues get': 'test', '2 issues get': 'test', '3 discover': 'test' },
-  notHit: { 'Step 5': 'test' },
+  skip: { '1 issues get': 'test', '1 epic get': 'test', '2 issues get': 'test', '3 discover': 'test' },
+  notHit: { 'Step 5': 'test', 'Epic path, step 2': 'test' },
   ...extra,
 })
 const runMove = (scenario, run) =>
@@ -448,16 +448,16 @@ test('runScenario lets a dry run change files under .git', async () => {
 test('runScenario matches a write to its dry run on the args without --json and --dry-run', async () => {
   const write = (args) => ({ step: '4', write: args })
   const confirm = { confirm: 'Step 5' }
-  const same = await runMove(moveOnly([DRY_MOVE, confirm, write(DRY_MOVE.dryRun)], { notHit: {} }))
+  const same = await runMove(moveOnly([DRY_MOVE, confirm, write(DRY_MOVE.dryRun)], { notHit: { 'Epic path, step 2': 'test' } }))
   assert.deepEqual(same.problems, [])
-  const other = await runMove(moveOnly([DRY_MOVE, confirm, write([...DRY_MOVE.dryRun, '--status', 'done'])], { notHit: {} }))
+  const other = await runMove(moveOnly([DRY_MOVE, confirm, write([...DRY_MOVE.dryRun, '--status', 'done'])], { notHit: { 'Epic path, step 2': 'test' } }))
   assert.equal(other.problems.length, 1, other.problems.join('\n'))
   assert.match(other.problems[0], /^rule 9: .*--status done.*no earlier dry run/)
 })
 
 test('runScenario does not let a dry run that failed as expected cover a write', async () => {
   const failing = { step: '4', dryRun: ['issues', 'move', 'ISS-2X6D', 'finished'], expectError: 'INVALID_INPUT' }
-  const { problems, snapshot } = await runMove(moveOnly([failing, { confirm: 'Step 5' }, { step: '4', write: failing.dryRun, expectError: 'INVALID_INPUT' }], { notHit: {} }))
+  const { problems, snapshot } = await runMove(moveOnly([failing, { confirm: 'Step 5' }, { step: '4', write: failing.dryRun, expectError: 'INVALID_INPUT' }], { notHit: { 'Epic path, step 2': 'test' } }))
   assert.equal(problems.length, 1, problems.join('\n'))
   assert.match(problems[0], /^rule 9: write .*finished.*no earlier dry run/)
   assert.match(snapshot, /exit 2 \(expected INVALID_INPUT\)/)
