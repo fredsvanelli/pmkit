@@ -180,6 +180,27 @@ test('labelOf finds a label without case', async () => {
   assert.equal(labelOf(raw, 'Review'), null)
 })
 
+test('brokenGithubMappings accepts priority and estimate labels only without a Project and with the field none (PMK-339)', async () => {
+  const labels = ['P1', 'size: 3']
+  const noProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }) } }), 'none')
+  const held = { priority: { high: 'label:P1', low: 'none' }, estimate: { 3: 'label:size: 3' } }
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { fields: { priority: 'none', estimate: 'none' }, ...held } }), [])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: held }), [])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { priority: { high: 'label:P9', urgent: 'P0' }, estimate: { 5: 'label:size: 5' } } }).map((item) => item.problem), [
+    'mappings.priority.high names label P9, which acme/widgets no longer has',
+    'mappings.priority.urgent is P0, which is not label:<name> or none',
+    'mappings.estimate.5 names label size: 5, which acme/widgets no longer has',
+  ])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { fields: { priority: 'issue:Priority' }, priority: { high: 'label:P1' } } }).map((item) => item.problem), [
+    'mappings.priority.high names label P1, but mappings.fields.priority names a field, which holds the priority',
+  ])
+  const withProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitProject: projectReply() } }))
+  assert.deepEqual(brokenGithubMappings(withProject, { mappings: held }).map((item) => item.problem), [
+    'mappings.priority.high names label P1, but the priority and the estimate come from fields when there is a Project (acme/7)',
+    'mappings.estimate.3 names label size: 3, but the priority and the estimate come from fields when there is a Project (acme/7)',
+  ])
+})
+
 test('brokenGithubMappings reports label values a Project or issue types rule out', async () => {
   const labels = ['Doing', 'bug']
   const withProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitProject: projectReply() } }))

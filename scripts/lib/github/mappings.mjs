@@ -125,12 +125,24 @@ function typeProblem(raw, path, value, label) {
   return raw.issueTypes.some((type) => type.name === value) ? null : `${path} names issue type ${value}, which ${raw.repo} does not have enabled`
 }
 
+/**
+ * Why a held mappings.priority or mappings.estimate value is broken, or null (ADR 0012): it must be label:<name> of a label the
+ * repository has, and holds only without a Project and while mappings.fields.<role> is none.
+ */
+function valueLabelProblem(raw, path, value, label, field) {
+  if (!label) return `${path} is ${value}, which is not label:<name> or none`
+  if (raw.project !== null) return `${path} names label ${label}, but the priority and the estimate come from fields when there is a Project (${projectId(raw)})`
+  if (isSet(field) && field !== NONE) return `${path} names label ${label}, but mappings.fields.${path.split('.')[1]} names a field, which holds the ${path.split('.')[1]}`
+  return missingLabelProblem(raw, path, label)
+}
+
 const missingLabelProblem = (raw, path, label) => (labelOf(raw, label) ? null : `${path} names label ${label}, which ${raw.repo} no longer has`)
 
 /** Why a held value is broken, or null when GitHub still has what it names. */
-function problemOf(raw, path, value) {
+function problemOf(raw, path, value, pmkit) {
   const group = path.split('.')[1]
   const label = parseLabelValue(value)
+  if (group === 'priority' || group === 'estimate') return valueLabelProblem(raw, path, value, label, pmkit?.mappings?.fields?.[group])
   if (group === 'status') return statusProblem(raw, path, value, label)
   if (group === 'fields') return fieldProblem(raw, path, value)
   if (group === 'types') return typeProblem(raw, path, value, label)
@@ -140,11 +152,11 @@ function problemOf(raw, path, value) {
 /** Each mapping in config.pmkit that names something GitHub no longer has, as [{ path, value, problem }]. none never breaks. */
 export function brokenGithubMappings(raw, pmkit) {
   const items = []
-  for (const group of ['status', 'fields', 'types']) {
+  for (const group of ['status', 'fields', 'types', 'priority', 'estimate']) {
     for (const [key, value] of Object.entries(pmkit?.mappings?.[group] ?? {})) {
       if (!isSet(value) || value === NONE) continue
       const path = `mappings.${group}.${key}`
-      const problem = problemOf(raw, path, value)
+      const problem = problemOf(raw, path, value, pmkit)
       if (problem) items.push({ path, value, problem })
     }
   }
