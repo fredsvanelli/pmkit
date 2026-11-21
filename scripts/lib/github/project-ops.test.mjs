@@ -126,9 +126,11 @@ const EPICS = [
   { id: 'PVT_E30', owner: 'acme', number: 30, title: 'Not linked', linked: false },
 ]
 
-async function epicSetup(options = {}) {
+async function epicSetup({ wrapClient = (made) => made, ...options } = {}) {
   const fake = fakeGithubIssues({ epics: EPICS, ...options })
-  const client = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  const made = createGithubClient({ exec: fake.exec, retries: 0, sleep: async () => {} })
+  // wrapClient lets a test change what one request answers; the discovery and the epic map above use the plain client.
+  const client = wrapClient(made)
   const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'acme/7', exec: fake.exec, users: true })
   const scope = PMKIT.tracker.scope
   const context = makeContext(raw, EPIC_PMKIT, { epics: await epicProjects(client, scope) })
@@ -563,6 +565,33 @@ test('moveDeliverable propagates a failed update that follows no reopen', async 
   const { fake, projects } = await epicSetup()
   fake.failNext('PmkitCreateStatusUpdate')
   await assert.rejects(projects.moveDeliverable('acme/12', 'in_progress', 'octocat'), { code: 'UPSTREAM', message: 'GitHub answered with an error: fake GitHub failed PmkitCreateStatusUpdate' })
+})
+
+test('moveDeliverable passes a failure that is not a PmkitError through unwrapped, even after a reopen', async () => {
+  const boom = new Error('socket hang up')
+  const wrapClient = (made) => ({ ...made, request: async (document, ...rest) => (document.includes('PmkitCreateStatusUpdate') ? Promise.reject(boom) : made.request(document, ...rest)) })
+  const { fake, projects } = await epicSetup({ wrapClient })
+  await assert.rejects(projects.moveDeliverable('acme/9', 'done', 'octocat', { status: 'Complete' }), (error) => error === boom && error.code !== 'UPSTREAM')
+  assert.deepEqual(mutationNames(fake), ['PmkitSetProjectClosed'])
+})
+
+test('moveDeliverable answers UPSTREAM when the read after a successful move finds nothing', async () => {
+  let moved = false
+  const wrapClient = (made) => ({
+    ...made,
+    request: async (document, ...rest) => {
+      if (moved && document.includes('query PmkitEpic(')) return { repositoryOwner: { projectV2: null } }
+      const answer = await made.request(document, ...rest)
+      if (document.includes('PmkitCreateStatusUpdate')) moved = true
+      return answer
+    },
+  })
+  const { fake, projects } = await epicSetup({ wrapClient })
+  await assert.rejects(
+    projects.moveDeliverable('acme/12', 'in_progress', 'octocat'),
+    (error) => error.code === 'UPSTREAM' && error.message === 'GitHub moved the Project acme/12 but a read of it found nothing' && error.nextStep === 'pmkit epic list',
+  )
+  assert.deepEqual(mutationNames(fake), ['PmkitCreateStatusUpdate'])
 })
 
 test('deliverableProgress lists the open issues by id', async () => {
