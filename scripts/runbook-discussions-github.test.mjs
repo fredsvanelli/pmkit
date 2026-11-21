@@ -83,7 +83,7 @@ const mutationNames = (fake) => statefulGhCalls(fake).map((call) => /mutation (\
 test('the runbook names the commands this test runs', () => {
   const text = fs.readFileSync(RUNBOOK, 'utf8')
   for (const args of Object.values(COMMANDS)) assert.ok(text.includes(`node scripts/pmkit.mjs ${args.join(' ')}`), args.join(' '))
-  for (const expected of ['Turn on Discussions in the repository settings on GitHub', 'GitHub has no discussion #9 in acme/widgets', 'acme/widgets has Discussions turned off', `From discussion #1: ${URL_1}`, 'Tracked in #3', PAT_STEP, 'discussion #2 has 1001 comments and pmkit read the first 1000']) {
+  for (const expected of ['Turn on Discussions in the repository settings on GitHub', 'GitHub has no discussion #9 in acme/widgets', 'acme/widgets has Discussions turned off', `From discussion #1: ${URL_1}`, 'Tracked in #3', PAT_STEP, 'discussion #2 has 1001 comments and pmkit read the first 1000', 'GitHub has no discussion #2 in acme/widgets', '; it was deleted while pmkit read the thread', 'pmkit github discussions get 2']) {
     assert.ok(text.includes(expected), expected)
   }
 })
@@ -152,6 +152,20 @@ test('runbook: list, read, create an issue from a discussion and comment back, s
   assert.deepEqual([long.discussion.comments[0].isAnswer, long.discussion.comments[0].repliesTotal, long.discussion.comments[0].replies.length], [true, 120, 120])
   assert.equal(long.discussion.comments[0].replies.at(-1).body, 'Thanks 120')
   assert.deepEqual(long.warnings, ['discussion #2 has 1001 comments and pmkit read the first 1000'])
+
+  // Steps 11 and 12: the discussion, then a comment, deleted between the first read and a further page. GitHub answers the node read NOT_FOUND once.
+  const goneOnce = (operation, id) => {
+    const fixture = JSON.parse(fs.readFileSync(fake.fixtureFile, 'utf8'))
+    fixture.issues.failures = { [operation]: [{ data: { node: null }, errors: [{ type: 'NOT_FOUND', path: ['node'], message: `Could not resolve to a node with the global id of '${id}'` }] }] }
+    fs.writeFileSync(fake.fixtureFile, JSON.stringify(fixture))
+  }
+  goneOnce('PmkitDiscussionComments', 'D_2')
+  assert.deepEqual(failure(pmkit(COMMANDS.get2)), { code: 'NOT_FOUND', message: 'GitHub has no discussion #2 in acme/widgets', nextStep: 'pmkit github discussions list' })
+  const answer = long.discussion.comments[0].id
+  goneOnce('PmkitDiscussionReplies', answer)
+  assert.deepEqual(failure(pmkit(COMMANDS.get2)), {
+    code: 'NOT_FOUND', message: `GitHub has no comment ${answer} in discussion #2 in acme/widgets; it was deleted while pmkit read the thread`, nextStep: 'pmkit github discussions get 2',
+  })
 
   // No call holds the token, and every call names the host.
   const made = statefulGhCalls(fake)
