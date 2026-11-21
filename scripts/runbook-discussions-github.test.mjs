@@ -35,6 +35,7 @@ const COMMANDS = {
   commentDry: ['github', 'discussions', 'comment', '1', '--body-file', 'tmp/comment.txt', '--dry-run', '--json'],
   comment: ['github', 'discussions', 'comment', '1', '--body-file', 'tmp/comment.txt', '--json'],
   get9: ['github', 'discussions', 'get', '9', '--json'],
+  get2: ['github', 'discussions', 'get', '2', '--json'],
 }
 
 /** The state "Before you start" describes: setup done, two discussions on GitHub, the texts in tmp/. Returns { fake, pmkit }. */
@@ -46,7 +47,10 @@ function runbookRepo() {
     title: 'RFC: offline mode', body: 'Should the app work without a network?', category: 'Ideas', author: 'hubot', upvotes: 4, updatedAt: '2026-11-10T00:00:00.000Z',
     comments: [{ author: 'octocat', body: 'Yes, read-only first', upvotes: 2, replies: [{ author: 'hubot', body: 'And writes later?' }] }, { author: 'hubot', body: 'Sync conflicts worry me' }],
   })
-  github.seedDiscussion({ title: 'How do I reset my token?', category: 'Q&A', updatedAt: '2026-11-12T00:00:00.000Z', comments: [{ author: 'hubot', body: 'Run gh auth refresh', isAnswer: true }] })
+  // A long thread: the answer has 120 replies, and 149 other comments follow it (PMK-342).
+  const replies = Array.from({ length: 120 }, (_, index) => ({ author: 'octocat', body: `Thanks ${index + 1}` }))
+  const others = Array.from({ length: 149 }, (_, index) => ({ author: 'octocat', body: `Same here ${index + 1}` }))
+  github.seedDiscussion({ title: 'How do I reset my token?', category: 'Q&A', updatedAt: '2026-11-12T00:00:00.000Z', comments: [{ author: 'hubot', body: 'Run gh auth refresh', isAnswer: true, replies }, ...others] })
   const fake = statefulGhOnPath({ meta: null, issues: github.toJSON() })
   const env = { ...childEnv(), ...userStoreEnv().env, GH_TOKEN: TOKEN, PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
   const pmkit = (args) => {
@@ -84,7 +88,7 @@ test('the runbook names the commands this test runs', () => {
   }
 })
 
-test('runbook: list, read, create an issue from a discussion and comment back, steps 1 to 9', () => {
+test('runbook: list, read, create an issue from a discussion and comment back, steps 1 to 10', () => {
   const { fake, pmkit } = runbookRepo()
 
   // Step 1: newest activity first.
@@ -139,6 +143,15 @@ test('runbook: list, read, create an issue from a discussion and comment back, s
   pat.issues.failures = { PmkitDiscussion: [{ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }] }
   fs.writeFileSync(fake.fixtureFile, JSON.stringify(pat))
   assert.deepEqual(failure(pmkit(COMMANDS.get1)), { code: 'AUTH', message: 'GitHub refused the personal access token: Resource not accessible by personal access token', nextStep: PAT_STEP })
+
+  // Step 10: a thread past 100 comments, whose answer has past 100 replies, comes back whole with no warning.
+  const long = json(pmkit(COMMANDS.get2))
+  assert.equal(long.discussion.commentsTotal, 150)
+  assert.equal(long.discussion.comments.length, 150)
+  assert.equal(long.discussion.comments.at(-1).body, 'Same here 149')
+  assert.deepEqual([long.discussion.comments[0].isAnswer, long.discussion.comments[0].repliesTotal, long.discussion.comments[0].replies.length], [true, 120, 120])
+  assert.equal(long.discussion.comments[0].replies.at(-1).body, 'Thanks 120')
+  assert.deepEqual(long.warnings, [])
 
   // No call holds the token, and every call names the host.
   const made = statefulGhCalls(fake)
