@@ -3,7 +3,7 @@
 
 import { parseDescription } from '../body-criteria.mjs'
 import { TERMINAL } from '../model.mjs'
-import { CLOSED, CLOSED_NOT_PLANNED, OPEN, statusFieldOf } from './discovery.mjs'
+import { CLOSED, CLOSED_NOT_PLANNED, isPointsScale, OPEN, statusFieldOf } from './discovery.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
 import { fieldOf, iterationFieldOf, labelOf, NONE, parseFieldSource, parseLabelValue } from './mappings.mjs'
 
@@ -83,7 +83,7 @@ export function makeContext(raw, pmkit, { epics = new Map() } = {}) {
   const valueLabels = (role, keys) => labelMap(mappings[role] ?? {}, keys, !project && [undefined, null, '', NONE].includes(mappings.fields?.[role]))
   const priorityLabels = valueLabels('priority', PRIORITIES)
   const estimateLabels = valueLabels('estimate', Object.keys(mappings.estimate ?? {}))
-  const pointKeys = [...estimateLabels.keys()].every((key) => /^\d+(?:\.\d+)?$/.test(key))
+  const pointKeys = isPointsScale([...estimateLabels.keys()])
   const estimateValue = (key) => (pointKeys ? Number(key) : key)
   const mappedLabelIds = new Set([...statusLabels.values(), ...typeLabels.values(), ...priorityLabels.values(), ...estimateLabels.values()].map((label) => label.id))
 

@@ -40,8 +40,6 @@ const MATCHES = {
   low: ['low', 'p3'],
 }
 
-// The pmkit priority levels a priority label stands for, highest first (ADR 0012).
-const PRIORITY_LEVELS = PRIORITY_LABEL_LEVELS
 
 const words = (key) => key.replace(/_/g, ' ')
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -293,7 +291,7 @@ function checkValueLabelFlags(raw, given) {
   for (const [role, flag] of [['priority', '--priority-label'], ['estimate', '--estimate-label']]) {
     if (raw.project !== null && Object.keys(given[role]).length > 0) throw invalid(`${flag} needs a repository without a Project`, `Remove ${flag}; the Project's fields hold the ${role}`)
   }
-  checkKeys(given.priority, PRIORITY_LEVELS, '--priority-label')
+  checkKeys(given.priority, PRIORITY_LABEL_LEVELS, '--priority-label')
 }
 
 /**
@@ -307,7 +305,7 @@ function valueLabelsOf(state, values) {
     const taken = new Set([...Object.values(values.status), ...Object.values(values.types ?? {})].map(parseLabelValue).filter(Boolean).map((name) => name.toLowerCase()))
     const free = (state.raw.labels ?? []).map((label) => label.name).filter((name) => !taken.has(name.toLowerCase()))
     const priority = {}
-    for (const level of PRIORITY_LEVELS) {
+    for (const level of PRIORITY_LABEL_LEVELS) {
       const value = priorityLabelValue(state, level, free)
       if (value !== undefined) priority[level] = value
     }

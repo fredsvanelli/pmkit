@@ -258,13 +258,15 @@ export const statusFieldOf = (project) => project?.fields.find((item) => item.na
 
 const plainField = ({ name, dataType, options }) => ({ name, dataType, options: options.map((item) => item.name) })
 
+/** True when every estimate key is a number, so the estimate labels give points; otherwise they give sizes (ADR 0012). */
+export const isPointsScale = (keys) => keys.every((key) => /^\d+(?:\.\d+)?$/.test(key))
+
 /**
  * The estimate values whose label the repository has, in mapping order, when estimate labels hold: no Project and no estimate
  * field (ADR 0012). Empty otherwise.
  */
 export function estimateLabelScale(raw, pmkit) {
-  const field = pmkit?.mappings?.fields?.estimate
-  if (raw.project !== null || (field !== undefined && field !== null && field !== '' && field !== NONE)) return []
+  if (raw.project !== null || ![undefined, null, '', NONE].includes(pmkit?.mappings?.fields?.estimate)) return []
   return Object.entries(pmkit?.mappings?.estimate ?? {}).filter(([, value]) => {
     const name = parseLabelValue(value)
     return name !== null && labelOf(raw, name) !== null
@@ -276,8 +278,7 @@ export function estimateOf(raw, pmkit) {
   const found = fieldOf(raw, pmkit?.mappings?.fields?.estimate)
   if (found?.dataType === 'SINGLE_SELECT') return { unit: 'sizes', scale: found.options.map((item) => item.name) }
   const scale = found ? [] : estimateLabelScale(raw, pmkit)
-  const points = scale.every((key) => /^\d+(?:\.\d+)?$/.test(key))
-  return points ? { unit: 'points', scale: scale.map(Number) } : { unit: 'sizes', scale }
+  return isPointsScale(scale) ? { unit: 'points', scale: scale.map(Number) } : { unit: 'sizes', scale }
 }
 
 // The names pmkit gives an issue's state when no Status option names it: history moves use them, so discover lists them.

@@ -72,27 +72,23 @@ function scopeProblems(scope) {
   return problems
 }
 
+/** The problems of mappings.<name>, a map from a key (one of keys, when given) to a label name. */
+function labelMapProblems(name, map, keys, what) {
+  if (map === undefined) return []
+  if (!isObject(map)) return [`mappings.${name} must be a map from ${what} to a label`]
+  return Object.entries(map).flatMap(([key, value]) => [
+    ...(keys && !keys.includes(key) ? [`mappings.${name}.${key}: ${key} is not ${what}, use one of ${keys.join(', ')}`] : []),
+    ...(isName(value) ? [] : [`mappings.${name}.${key} must be a label`]),
+  ])
+}
+
 function mappingsProblems(mappings) {
   if (mappings === undefined) return []
   if (!isObject(mappings)) return ['mappings must be a map with status, fields or types']
   const problems = []
   const { status, fields, types, priority, estimate } = mappings
   // The priority and estimate labels of GitHub Issues without a Project (ADR 0012). The adapter's mapping check reads label:<name>.
-  if (priority !== undefined && !isObject(priority)) {
-    problems.push('mappings.priority must be a map from a priority level to a label')
-  } else {
-    for (const [key, value] of Object.entries(priority ?? {})) {
-      if (!PRIORITY_LABEL_LEVELS.includes(key)) problems.push(`mappings.priority.${key}: ${key} is not a priority level, use one of ${PRIORITY_LABEL_LEVELS.join(', ')}`)
-      if (!isName(value)) problems.push(`mappings.priority.${key} must be a label`)
-    }
-  }
-  if (estimate !== undefined && !isObject(estimate)) {
-    problems.push('mappings.estimate must be a map from an estimate value to a label')
-  } else {
-    for (const [key, value] of Object.entries(estimate ?? {})) {
-      if (!isName(value)) problems.push(`mappings.estimate.${key} must be a label`)
-    }
-  }
+  problems.push(...labelMapProblems('priority', priority, PRIORITY_LABEL_LEVELS, 'a priority level'), ...labelMapProblems('estimate', estimate, null, 'an estimate value'))
   if (status !== undefined && !isObject(status)) {
     problems.push('mappings.status must be a map from a category or blocked to a status name')
   } else {
