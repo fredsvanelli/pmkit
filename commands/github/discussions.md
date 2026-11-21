@@ -55,5 +55,5 @@ The summary of the discussion in its six parts. When an issue was created, the i
 - Discussions turned off in the repository: stop at step 2 or 3 and give the `enableHint`.
 - A category the repository lacks: the CLI fails with `INVALID_INPUT` and lists the categories. Ask for one of them.
 - A number the repository has no discussion for: the CLI fails with `NOT_FOUND`. Offer the list of step 2.
-- A thread longer than pmkit reads (100 comments, 100 replies each): show the warning, say the summary covers the part that was read, and link the discussion for the rest.
+- A thread longer than pmkit reads (1000 comments, 1000 replies each): show the warning, say the summary covers the part that was read, and link the discussion for the rest.
 - An error from the CLI: apply the rules for reading errors in the conventions.

@@ -113,17 +113,47 @@ test('get keeps shell and prompt text as plain text', async () => {
   assert.ok(fake.reads.every((call) => !JSON.stringify(call.variables).includes('rm -rf')))
 })
 
-test('get warns when comments or replies are cut', async () => {
+const discussionReads = (fake) => fake.reads.map((call) => call.name).filter((name) => name.startsWith('PmkitDiscussion') && name !== 'PmkitDiscussions')
+
+test('get reads every comment and reply of a long thread', async () => {
   const { fake, ops } = setup()
-  const replies = Array.from({ length: 101 }, (_, index) => ({ body: `reply ${index}` }))
-  fake.seedDiscussion({ title: 'Busy', comments: [{ body: 'root', replies }, ...Array.from({ length: 100 }, (_, index) => ({ body: `comment ${index}` }))] })
+  const comments = Array.from({ length: 250 }, (_, index) => ({ body: `comment ${index}` }))
+  comments[149].replies = Array.from({ length: 230 }, (_, index) => ({ body: `reply ${index}` }))
+  comments[199].author = null
+  fake.seedDiscussion({ title: 'Long RFC', comments })
   const { discussion, warnings } = await ops.get('1')
+  assert.deepEqual(warnings, [])
+  assert.equal(discussion.commentsTotal, 250)
+  assert.deepEqual(discussion.comments.map((comment) => comment.body), comments.map((comment) => comment.body))
+  assert.deepEqual(discussion.comments[149].replies.map((reply) => reply.body), comments[149].replies.map((reply) => reply.body))
+  assert.equal(discussion.comments[149].repliesTotal, 230)
+  assert.equal(discussion.comments[199].author, 'ghost')
+  assert.deepEqual(discussionReads(fake), ['PmkitDiscussion', ...Array(3).fill('PmkitDiscussionComments'), ...Array(3).fill('PmkitDiscussionReplies')])
+})
+
+test('get of a thread within 100 comments and 100 replies reads once', async () => {
+  const { fake, ops } = setup()
+  const comments = Array.from({ length: 100 }, (_, index) => ({ body: `comment ${index}` }))
+  comments[0].replies = Array.from({ length: 100 }, (_, index) => ({ body: `reply ${index}` }))
+  fake.seedDiscussion({ title: 'Full page', comments })
+  const { discussion, warnings } = await ops.get('1')
+  assert.deepEqual(warnings, [])
   assert.equal(discussion.comments.length, 100)
-  assert.equal(discussion.commentsTotal, 101)
   assert.equal(discussion.comments[0].replies.length, 100)
+  assert.deepEqual(discussionReads(fake), ['PmkitDiscussion'])
+})
+
+test('get warns past 1000 comments or 1000 replies', async () => {
+  const { fake, ops } = setup()
+  const replies = Array.from({ length: 1001 }, (_, index) => ({ body: `reply ${index}` }))
+  fake.seedDiscussion({ title: 'Busy', comments: [{ body: 'root', replies }, ...Array.from({ length: 1000 }, (_, index) => ({ body: `comment ${index}` }))] })
+  const { discussion, warnings } = await ops.get('1')
+  assert.equal(discussion.comments.length, 1000)
+  assert.equal(discussion.commentsTotal, 1001)
+  assert.equal(discussion.comments[0].replies.length, 1000)
   assert.deepEqual(warnings, [
-    'discussion #1 has 101 comments and pmkit read the first 100',
-    `comment ${discussion.comments[0].id} has 101 replies and pmkit read the first 100`,
+    'discussion #1 has 1001 comments and pmkit read the first 1000',
+    `comment ${discussion.comments[0].id} has 1001 replies and pmkit read the first 1000`,
   ])
 })
 
@@ -206,8 +236,16 @@ test('list, get and comment refused for a fine-grained PAT name the Discussions 
     ['PmkitDiscussion', (ops) => ops.comment('1', 'Tracked in #4', { dryRun: true })],
     ['PmkitAddDiscussionComment', (ops) => ops.comment('1', 'Tracked in #4')],
   ]
-  for (const [operation, call] of calls) {
+  // A further page of comments or of replies is refused like the first read.
+  const long = (fake, comments) => fake.seedDiscussion({ number: 10, title: 'Long', comments })
+  const many = (count) => Array.from({ length: count }, (_, index) => ({ body: `item ${index}` }))
+  const further = [
+    ['PmkitDiscussionComments', (ops) => ops.get('10'), (fake) => long(fake, many(101))],
+    ['PmkitDiscussionReplies', (ops) => ops.get('10'), (fake) => long(fake, [{ body: 'root', replies: many(101) }])],
+  ]
+  for (const [operation, call, seed = () => {}] of [...calls, ...further]) {
     const { fake, ops } = seeded()
+    seed(fake)
     fake.failNext(operation, refused)
     await assert.rejects(call(ops), expected, operation)
   }

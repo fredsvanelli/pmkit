@@ -60,6 +60,7 @@ All three calls work only when `tracker.system` is `github` and refuse any other
 
 - Reads one discussion with its first 100 comments and the first 100 replies of each **(builder's call)**. Returns `{ available: true, discussion: { number, title, url, category: { name, answerable }, author, created, updated, state, stateReason, locked, answered, answer, upvotes, labels, body, comments: [{ id, author, body, created, upvotes, isAnswer, replies: [{ id, author, body, created, upvotes }], repliesTotal }], commentsTotal }, warnings }`. `answer` is `{ id, author, body }` of the marked answer, or null. `state` is `open` or `closed`.
 - A thread longer than the read adds a warning: `discussion #<n> has <total> comments and pmkit read the first 100`, and `comment <id> has <total> replies and pmkit read the first 100`.
+- Since PMK-342, `get` pages through the comments and replies past 100, up to 1000 comments and 1000 replies per comment, and the warnings name 1000. See `docs/superpowers/specs/2026-11-21-pmk-342-discussion-threads-past-100-design.md`.
 - An author whose account was deleted reads `ghost`, as GitHub shows it.
 - A number the repository lacks fails with `NOT_FOUND`, `GitHub has no discussion #<n> in <owner/name>`, next step `pmkit github discussions list`. Discussions off returns the `available: false` answer of `list`.
 
