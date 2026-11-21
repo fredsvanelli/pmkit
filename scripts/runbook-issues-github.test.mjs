@@ -55,7 +55,18 @@ const SETUP_NO_PROJECT = [
   '--json',
 ]
 
-function runbookRepo({ behind = 0, project = true } = {}) {
+// The repository of steps 24 to 26: no Project and no issue field, so the priority and the estimate are labels (PMK-339, ADR 0012).
+const SETUP_LABELS = [
+  'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'none',
+  ...['triage=none', 'backlog=none', 'in_progress=none', 'in_review=none'].flatMap((item) => ['--status', item]),
+  ...['priority=none', 'estimate=none', 'start_date=none', 'target_date=none'].flatMap((item) => ['--field', item]),
+  ...['feature=none', 'bug=bug', 'task=none', 'chore=none'].flatMap((item) => ['--type-label', item]),
+  ...['urgent=P0', 'high=P1', 'medium=P2', 'low=none'].flatMap((item) => ['--priority-label', item]),
+  ...['1=size: 1', '3=size: 3', '5=size: 5'].flatMap((item) => ['--estimate-label', item]),
+  '--json',
+]
+
+function runbookRepo({ behind = 0, project = true, valueLabels = false } = {}) {
   const root = tempDir('pmkit-runbook-issues-github-')
   git(root, 'init', '-q', '-b', 'main')
   git(root, 'commit', '--allow-empty', '-qm', 'init')
@@ -64,13 +75,14 @@ function runbookRepo({ behind = 0, project = true } = {}) {
   git(root, 'push', '-q', 'origin', 'main')
   if (behind > 0) git(root, 'reset', '-q', '--hard', `HEAD~${behind}`)
   const github = project ? {} : { project: null, issueTypes: [], labels: ['bug', 'documentation', 'Backlog', 'In progress', 'In review'] }
+  if (valueLabels) Object.assign(github, { issueFields: [], labels: ['bug', 'P0', 'P1', 'P2', 'size: 1', 'size: 3', 'size: 5'] })
   const fake = fakeGhOnPath({ meta: null, issues: fakeGithubIssues({ branches: { main: git(root, 'rev-parse', 'refs/remotes/origin/main') }, ...github }).toJSON() })
   const env = { ...baseEnv(), GH_TOKEN: TOKEN, PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
   const pmkit = (...args) => {
     const result = spawnSync(process.execPath, [CLI, ...args], { cwd: root, env, encoding: 'utf8' })
     return { code: result.status, stdout: result.stdout, stderr: result.stderr }
   }
-  json(pmkit(...(project ? SETUP : SETUP_NO_PROJECT)))
+  json(pmkit(...(project ? SETUP : valueLabels ? SETUP_LABELS : SETUP_NO_PROJECT)))
   fs.mkdirSync(path.join(root, 'tmp'))
   const files = {
     'title-1.txt': 'Login fails on Safari\n',
@@ -135,6 +147,10 @@ test('the runbook names the commands this test runs', () => {
     pushNote('main', 'main', true),
     `Run git fetch origin, then git rebase --onto origin/main main ${BRANCH}`,
     'Restore the item from the archived items of the Project on GitHub',
+    'issues create --title-file tmp/title-1.txt --type bug --priority high --estimate 3 --json',
+    'issues update 1 --priority urgent --estimate none --json',
+    'label P1 holds a priority; use --priority',
+    'priority low has no label in mappings.priority (urgent, high, medium)',
   ]) {
     assert.ok(text.includes(command), command)
   }
@@ -337,4 +353,24 @@ test('runbook: the issue flows without a Project, steps 17 to 23', () => {
     nextStep: 'Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup',
   })
   assertNoToken(fake)
+})
+
+test('runbook: priority and estimate as labels without a Project or issue fields, steps 24 to 26', () => {
+  const { fake, pmkit } = runbookRepo({ project: false, valueLabels: true })
+  const labels = (number) => githubIssue(fake, number).labelIds.map((id) => githubState(fake).labels.find((label) => label.id === id).name).sort()
+
+  // Step 24: create with a priority and an estimate; both are labels.
+  const created = json(pmkit('issues', 'create', '--title-file', 'tmp/title-1.txt', '--type', 'bug', '--priority', 'high', '--estimate', '3', '--json')).after
+  assert.deepEqual([created.priority, created.estimate, created.labels], ['high', 3, ['P1', 'bug', 'size: 3']])
+  assert.deepEqual(labels(1), ['P1', 'bug', 'size: 3'])
+  assert.deepEqual(json(pmkit('discover', '--json')).estimate, { unit: 'points', scale: [1, 3, 5] })
+
+  // Step 25: a new priority swaps the label, and --estimate none removes it.
+  const updated = json(pmkit('issues', 'update', '1', '--priority', 'urgent', '--estimate', 'none', '--json')).after
+  assert.deepEqual([updated.priority, updated.estimate, updated.labels], ['urgent', undefined, ['P0', 'bug']])
+  assert.deepEqual(labels(1), ['P0', 'bug'])
+
+  // Step 26: a priority label is not a plain label, and a value with no label is refused.
+  assert.equal(JSON.parse(pmkit('issues', 'update', '1', '--label', 'P1', '--json').stdout).error.message, 'label P1 holds a priority; use --priority')
+  assert.equal(JSON.parse(pmkit('issues', 'update', '1', '--priority', 'low', '--json').stdout).error.message, 'priority low has no label in mappings.priority (urgent, high, medium)')
 })

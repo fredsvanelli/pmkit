@@ -219,6 +219,10 @@ test('discoveryView reports open and closed when the repository has no Project',
   assert.ok(view.warnings.some((warning) => /tracker\.scope\.project is none/.test(warning)))
 })
 
+test('mappedLabelNames includes the priority and estimate labels (PMK-339)', () => {
+  assert.deepEqual(mappedLabelNames({ mappings: { status: { in_progress: 'label:Doing' }, priority: { high: 'label:P1', low: 'none' }, estimate: { 3: 'label:size: 3' } } }), ['Doing', 'P1', 'size: 3'])
+})
+
 test('discoveryView lists the mapped pmkit types and the estimate unit', async () => {
   const raw = await rawOf()
   assert.deepEqual(discoveryView(raw, pmkitWith({ types: { feature: 'Feature', bug: 'Bug' } })).types, ['feature', 'bug'])

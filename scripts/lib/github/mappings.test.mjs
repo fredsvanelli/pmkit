@@ -180,6 +180,27 @@ test('labelOf finds a label without case', async () => {
   assert.equal(labelOf(raw, 'Review'), null)
 })
 
+test('brokenGithubMappings accepts priority and estimate labels only without a Project and with the field none (PMK-339)', async () => {
+  const labels = ['P1', 'size: 3']
+  const noProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }) } }), 'none')
+  const held = { priority: { high: 'label:P1', low: 'none' }, estimate: { 3: 'label:size: 3' } }
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { fields: { priority: 'none', estimate: 'none' }, ...held } }), [])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: held }), [])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { priority: { high: 'label:P9', urgent: 'P0' }, estimate: { 5: 'label:size: 5' } } }).map((item) => item.problem), [
+    'mappings.priority.high names label P9, which acme/widgets no longer has',
+    'mappings.priority.urgent is P0, which is not label:<name> or none',
+    'mappings.estimate.5 names label size: 5, which acme/widgets no longer has',
+  ])
+  assert.deepEqual(brokenGithubMappings(noProject, { mappings: { fields: { priority: 'issue:Priority' }, priority: { high: 'label:P1' } } }).map((item) => item.problem), [
+    'mappings.priority.high names label P1, but mappings.fields.priority names a field, which holds the priority',
+  ])
+  const withProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitProject: projectReply() } }))
+  assert.deepEqual(brokenGithubMappings(withProject, { mappings: held }).map((item) => item.problem), [
+    'mappings.priority.high names label P1, but the priority and the estimate come from fields when there is a Project (acme/7)',
+    'mappings.estimate.3 names label size: 3, but the priority and the estimate come from fields when there is a Project (acme/7)',
+  ])
+})
+
 test('brokenGithubMappings reports label values a Project or issue types rule out', async () => {
   const labels = ['Doing', 'bug']
   const withProject = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels }), PmkitProject: projectReply() } }))
@@ -247,6 +268,47 @@ test('without issue types, type questions offer the labels no status took', asyn
   const answered = proposeGithubSetup(raw, {}, { status: { triage: 'none', backlog: 'none', in_progress: 'Doing', in_review: 'none' }, types: { feature: 'enhancement', bug: 'label:bug', task: 'none', chore: 'none' } }, TYPES)
   assert.deepEqual(answered.values.types, { feature: 'label:enhancement', bug: 'label:bug' })
   invalid(() => proposeGithubSetup(raw, {}, { status: { in_progress: 'Doing' }, types: { bug: 'Doing' } }, TYPES), /bug=Doing is not a free label of acme\/widgets/)
+})
+
+// Priority and estimate labels (PMK-339, ADR 0012).
+const VALUE_LABELS = ['Doing', 'P0', 'priority: high', 'P2', 'low', 'size: 3', 'S']
+const valueRaw = (fields = []) => rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: VALUE_LABELS, fields }) } }), 'none')
+const LABEL_ANSWERS = { status: { triage: 'none', backlog: 'none', in_progress: 'Doing', in_review: 'none' }, fields: { priority: 'none', estimate: 'none', start_date: 'none', target_date: 'none' } }
+
+test('without a Project and with the priority field none, setup asks a label per priority level, recommended by name', async () => {
+  const result = proposeGithubSetup(await valueRaw(), {}, LABEL_ANSWERS, TYPES)
+  const asked = result.questions.filter((q) => q.path.startsWith('mappings.priority.'))
+  assert.deepEqual(asked.map((q) => [q.path, q.recommended]), [
+    ['mappings.priority.urgent', 'P0'], ['mappings.priority.high', 'priority: high'], ['mappings.priority.medium', 'P2'], ['mappings.priority.low', 'low'],
+  ])
+  assert.deepEqual(questionAt(result, 'mappings.priority.urgent'), {
+    path: 'mappings.priority.urgent', flag: '--priority-label urgent=<label>', candidates: ['P0', 'priority: high', 'P2', 'low', 'size: 3', 'S'], recommended: 'P0', none: 'No label stands for urgent',
+  })
+  assert.ok(!result.questions.some((q) => q.path.startsWith('mappings.estimate.')), 'estimate labels are never asked')
+})
+
+test('setup takes --priority-label and --estimate-label answers as label:<name>, and refuses a label used twice', async () => {
+  const raw = await valueRaw()
+  const answers = { ...LABEL_ANSWERS, priority: { urgent: 'P0', high: 'label:priority: high', medium: 'none', low: 'none' }, estimate: { 3: 'size: 3', S: 'none' } }
+  const result = proposeGithubSetup(raw, {}, answers, TYPES)
+  assert.deepEqual(result.values.priority, { urgent: 'label:P0', high: 'label:priority: high', medium: 'none', low: 'none' })
+  assert.deepEqual(result.values.estimate, { 3: 'label:size: 3', S: 'none' })
+  assert.equal(result.questions.filter((q) => q.path.startsWith('mappings.priority.')).length, 0)
+  invalid(() => proposeGithubSetup(raw, {}, { ...answers, priority: { urgent: 'Doing' } }, TYPES), /label Doing cannot answer both in_progress and priority urgent/)
+  invalid(() => proposeGithubSetup(raw, {}, { ...answers, estimate: { 5: 'Gone' } }, TYPES), /--estimate-label 5=Gone is not a label of acme\/widgets/)
+  invalid(() => proposeGithubSetup(raw, {}, { ...answers, priority: { critical: 'P0' } }, TYPES), /--priority-label critical is not something setup maps/)
+})
+
+test('with a Project, or a priority field, setup asks no priority label and refuses the flags', async () => {
+  // The default repository has a Priority issue field, which setup proposes, so no priority label is asked.
+  const fielded = await rawOf(standardFixture({ graphql: { PmkitRepo: repoReply({ labels: VALUE_LABELS }) } }), 'none')
+  const pending = proposeGithubSetup(fielded, {}, { status: LABEL_ANSWERS.status }, TYPES)
+  assert.notEqual(pending.values.fields.priority, 'none')
+  assert.ok(!pending.questions.some((q) => q.path.startsWith('mappings.priority.')), 'a priority field leaves no label to ask')
+  const issueField = proposeGithubSetup(fielded, {}, { status: LABEL_ANSWERS.status, fields: { priority: 'issue:Priority' } }, TYPES)
+  assert.equal(issueField.values.priority, undefined)
+  const withProject = await rawOf()
+  invalid(() => proposeGithubSetup(withProject, {}, { priority: { high: 'P1' } }, TYPES), /--priority-label needs a repository without a Project/)
 })
 
 const ITERATION_FIELD = {

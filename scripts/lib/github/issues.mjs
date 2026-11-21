@@ -3,7 +3,7 @@
 
 import { parseDescription } from '../body-criteria.mjs'
 import { TERMINAL } from '../model.mjs'
-import { CLOSED, CLOSED_NOT_PLANNED, OPEN, statusFieldOf } from './discovery.mjs'
+import { CLOSED, CLOSED_NOT_PLANNED, isPointsScale, OPEN, statusFieldOf } from './discovery.mjs'
 import { compareGithubIds, issueIdOf } from './ids.mjs'
 import { fieldOf, iterationFieldOf, labelOf, NONE, parseFieldSource, parseLabelValue } from './mappings.mjs'
 
@@ -79,23 +79,35 @@ export function makeContext(raw, pmkit, { epics = new Map() } = {}) {
   }) : [])
   const statusLabels = labelMap(statusMap, READ_ORDER, !project)
   const typeLabels = labelMap(typeMap, Object.keys(typeMap), raw.issueTypes.length === 0)
-  const mappedLabelIds = new Set([...statusLabels.values(), ...typeLabels.values()].map((label) => label.id))
+  // Priority and estimate labels hold without a Project and while no field holds the role (ADR 0012). Priorities read highest first.
+  const valueLabels = (role, keys = Object.keys(mappings[role] ?? {})) => labelMap(mappings[role] ?? {}, keys, !project && [undefined, null, '', NONE].includes(mappings.fields?.[role]))
+  const priorityLabels = valueLabels('priority', PRIORITIES)
+  const estimateLabels = valueLabels('estimate')
+  const pointKeys = isPointsScale([...estimateLabels.keys()])
+  const estimateValue = (key) => (pointKeys ? Number(key) : key)
+  const mappedLabelIds = new Set([...statusLabels.values(), ...typeLabels.values(), ...priorityLabels.values(), ...estimateLabels.values()].map((label) => label.id))
 
   /** The status and the type that an issue's label names give, with a warning for each one several labels claim. */
   function readLabels(names, id) {
     const has = (label) => names.some((name) => name.toLowerCase() === label.name.toLowerCase())
     const warnings = []
     const statuses = [...statusLabels].filter(([, label]) => has(label))
-    const types = [...typeLabels].filter(([, label]) => has(label))
     const status = statuses.at(-1)
-    const type = types[0]
     if (statuses.length > 1) warnings.push(`${id} has several status labels (${statuses.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${status[1].name}`)
-    if (types.length > 1) warnings.push(`${id} has several type labels (${types.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${type[0]}`)
-    return { status: status ? { name: status[1].name, category: status[0] } : null, type: type?.[0], warnings }
+    // A type, a priority and an estimate read the first label of their map, with a warning when several apply.
+    const first = (map, what, show = (key) => key) => {
+      const found = [...map].filter(([, label]) => has(label))
+      if (found.length > 1) warnings.push(`${id} has several ${what} labels (${found.map(([, label]) => label.name).sort().join(', ')}); pmkit reads ${show(found[0][0])}`)
+      return found[0]?.[0]
+    }
+    const type = first(typeLabels, 'type')
+    const priority = first(priorityLabels, 'priority')
+    const estimate = first(estimateLabels, 'estimate', estimateValue)
+    return { status: status ? { name: status[1].name, category: status[0] } : null, type, priority, estimate: estimate === undefined ? undefined : estimateValue(estimate), warnings }
   }
 
   return {
-    raw, pmkit, repo: raw.repo, project, features: raw.features, statusLabels, typeLabels, mappedLabelIds, readLabels,
+    raw, pmkit, repo: raw.repo, project, features: raw.features, statusLabels, typeLabels, priorityLabels, estimateLabels, mappedLabelIds, readLabels,
     categoryOfOption: (name) => categoryOf.get(name) ?? 'in_progress',
     optionOf: (category) => {
       const name = statusMap[category]
@@ -169,13 +181,15 @@ function rawValue(role, node, context) {
   return item?.[ROLES[role].alias] ?? undefined
 }
 
-function priorityOf(node, context) {
+function priorityOf(node, context, read) {
+  if (context.priorityLabels?.size > 0) return read.priority
   const value = rawValue('priority', node, context)
   if (!value?.name) return undefined
   return priorityRule(context.field('priority').field.options).get(value.name)
 }
 
-function estimateOf(node, context) {
+function estimateOf(node, context, read) {
+  if (context.estimateLabels?.size > 0) return read.estimate
   const value = rawValue('estimate', node, context)
   if (!value) return undefined
   const found = value.number ?? value.numberValue ?? value.name
@@ -232,8 +246,8 @@ export function toIssueWithWarnings(node, context) {
   const read = labelRead(node, context, issue.id)
   setDefined(issue, 'type', typeOfNode(node, context, read))
   issue.status = statusOf(node, context)
-  setDefined(issue, 'priority', priorityOf(node, context))
-  setDefined(issue, 'estimate', estimateOf(node, context))
+  setDefined(issue, 'priority', priorityOf(node, context, read))
+  setDefined(issue, 'estimate', estimateOf(node, context, read))
   setDefined(issue, 'assignee', nodesOf(node.assignees)[0]?.login || undefined)
   issue.labels = nodesOf(node.labels).map((label) => label.name).sort()
   setDefined(issue, 'parent', parentOf(node, context))

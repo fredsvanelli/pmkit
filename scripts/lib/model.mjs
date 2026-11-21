@@ -13,6 +13,8 @@ export const isCategory = (value) => CATEGORIES.includes(value)
 export const FIELD_ROLES = ['estimate', 'priority', 'target_date', 'start_date', 'assignee', 'acceptance_criteria', 'time_spent', 'sprint']
 // The keys of mappings.status: a category, or blocked for the status a team uses for blocked work.
 export const STATUS_MAPPING_KEYS = [...CATEGORIES, 'blocked']
+// The levels mappings.priority maps to labels on GitHub Issues without a Project, highest first (ADR 0012).
+export const PRIORITY_LABEL_LEVELS = ['urgent', 'high', 'medium', 'low']
 
 /**
  * @typedef {{ name: string, category: string }} Status

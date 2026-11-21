@@ -100,6 +100,14 @@ _Avoid_: project (alone, which reads as an Epic or a Linear project), board
 A repository label that `mappings.status` names as `label:<name>` on a GitHub Issues tracker without a Project, such as `in_progress: label:Doing`. An open issue takes the category of its status label, and one with none is `todo`; a closed issue is `done` or `canceled` whatever its labels (ADR 0009).
 _Avoid_: status tag, workflow label
 
+**Priority label**:
+A repository label that `mappings.priority` names as `label:<name>` for one priority level on a GitHub Issues tracker without a Project, such as `high: label:P1`. An issue with several reads the highest (ADR 0012).
+_Avoid_: priority tag
+
+**Estimate label**:
+A repository label that `mappings.estimate` names as `label:<name>` for one estimate value on a GitHub Issues tracker without a Project, such as `3: label:size: 3`. The keys of `mappings.estimate`, in order, are the estimate scale (ADR 0012).
+_Avoid_: size tag, points label
+
 **Linked branch**:
 A branch that GitHub links to an issue in the issue's Development section. On GitHub Issues, `issues branch` creates it on GitHub at the head there of the branch it starts from, pmkit's default branch or `--from`, and the issue's `branch` reads it (ADR 0008).
 _Avoid_: issue branch (alone)

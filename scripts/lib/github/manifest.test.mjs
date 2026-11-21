@@ -105,3 +105,11 @@ test('with a Project, deliverables and status updates are native', () => {
   assert.deepEqual(entryOf(entries, 'deliverables'), { id: 'deliverables', path: 'native', detail: { entity: 'project', derived: ['deliverableProgress'], milestones: 'repository' } })
   assert.deepEqual(entryOf(entries, 'status_update'), { id: 'status_update', path: 'native', detail: { entity: 'project status update' } })
 })
+
+test('estimation is native with the scale of the estimate labels without a Project (PMK-339)', () => {
+  const raw = { ...RAW, project: null, labels: [{ id: 'L1', name: 'size: 1' }, { id: 'L3', name: 'size: 3' }] }
+  const labelled = (estimate, fields = { estimate: 'none' }) => ({ ...pmkit(fields), mappings: { fields, estimate } })
+  assert.deepEqual(entryOf(buildGithubCapabilities(raw, labelled({ 1: 'label:size: 1', 3: 'label:size: 3', 5: 'none' })), 'estimation'), { id: 'estimation', path: 'native', detail: { unit: 'points', scale: [1, 3] } })
+  assert.equal(entryOf(buildGithubCapabilities(raw, labelled({ 8: 'label:size: 8' })), 'estimation').path, 'absent', 'a label the repository lacks gives no scale')
+  assert.equal(entryOf(buildGithubCapabilities({ ...raw, project: RAW.project }, labelled({ 1: 'label:size: 1' })), 'estimation').path, 'absent', 'a Project turns the labels off')
+})

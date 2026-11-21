@@ -219,6 +219,38 @@ test('type from a type label without issue types', () => {
   assert.equal(toIssue(labelled(['bug']), typed).type, undefined, 'with issue types a label is no type')
 })
 
+// Priority and estimate labels without a Project (PMK-339, ADR 0012).
+const VALUE_LABELS = ['P0', 'P1', 'P2', 'size: 1', 'size: 3', 'S', 'M'].map((name, index) => ({ id: `V${index + 1}`, name }))
+const valued = (names, over = {}) => node({ labels: { nodes: names.map((name) => VALUE_LABELS.find((label) => label.name === name)) }, ...over })
+const LABEL_FIELDS = { fields: { priority: 'none', estimate: 'none' }, priority: { urgent: 'label:P0', high: 'label:P1', medium: 'label:P2', low: 'none' } }
+const valueContext = (estimate, over = {}) => ctx({ project: null, labels: VALUE_LABELS, ...over }, { ...LABEL_FIELDS, estimate })
+
+test('priority and estimate come from their labels without a Project, the estimate a number when every key is one', () => {
+  const points = valueContext({ 1: 'label:size: 1', 3: 'label:size: 3' })
+  assert.deepEqual([...points.priorityLabels.keys()], ['urgent', 'high', 'medium'])
+  assert.deepEqual([...points.estimateLabels.keys()], ['1', '3'])
+  assert.ok(['V1', 'V2', 'V3', 'V4', 'V5'].every((id) => points.mappedLabelIds.has(id)))
+  const issue = toIssue(valued(['P1', 'size: 3']), points)
+  assert.deepEqual([issue.priority, issue.estimate], ['high', 3])
+  assert.deepEqual([toIssue(valued([]), points).priority, toIssue(valued([]), points).estimate], [undefined, undefined])
+  const sizes = valueContext({ S: 'label:S', M: 'label:M' })
+  assert.equal(toIssue(valued(['M']), sizes).estimate, 'M')
+})
+
+test('several priority labels read the highest, several estimate labels the first mapped, each with a warning', () => {
+  const c = valueContext({ 1: 'label:size: 1', 3: 'label:size: 3' })
+  const { issue, warnings } = toIssueWithWarnings(valued(['P2', 'P0', 'size: 3', 'size: 1']), c)
+  assert.deepEqual([issue.priority, issue.estimate], ['urgent', 1])
+  assert.deepEqual(warnings, ['12 has several priority labels (P0, P2); pmkit reads urgent', '12 has several estimate labels (size: 1, size: 3); pmkit reads 1'])
+})
+
+test('priority and estimate labels are off with a Project, or with a field mapped to the role', () => {
+  const withProject = ctx({ labels: VALUE_LABELS }, { ...LABEL_FIELDS, fields: { priority: 'none', estimate: 'none' }, estimate: { 3: 'label:size: 3' } })
+  assert.deepEqual([withProject.priorityLabels.size, withProject.estimateLabels.size], [0, 0])
+  const fielded = ctx({ project: null, labels: VALUE_LABELS }, { ...LABEL_FIELDS, fields: { priority: 'issue:Priority', estimate: 'none' } })
+  assert.deepEqual([fielded.priorityLabels.size, fielded.estimateLabels.size], [0, 0])
+})
+
 const SPRINT_FIELD = { id: 'F5', name: 'Sprint', dataType: 'ITERATION', options: [], issueField: null }
 const sprintRaw = () => {
   const base = raw()

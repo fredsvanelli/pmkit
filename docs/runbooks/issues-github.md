@@ -236,6 +236,33 @@ These steps run on another repository: one with no Project and no enabled issue 
 
     The command exits with code 2 and `NOT_SUPPORTED`, `acme/widgets has no Project, and GitHub has no archive for an issue outside one`, with the next step `Close it with pmkit issues move 1 canceled, or set tracker.scope.project with /pmkit:setup`.
 
+## Priority and estimate as labels
+
+These steps run on a third repository: no Project, no enabled issue type, and no issue field, so no field can hold the priority or the estimate. ADR 0012 records how pmkit reads them from labels there.
+
+- `/pmkit:setup` ran with `--project none` and every field role `none`, as the "Without a Project" section of `docs/runbooks/setup-github.md` describes, with `--priority-label urgent=P0 --priority-label high=P1 --priority-label medium=P2 --priority-label low=none` and `--estimate-label 1="size: 1" --estimate-label 3="size: 3" --estimate-label 5="size: 5"`.
+- `tmp/title-1.txt` holds `Login fails on Safari`.
+
+24. Create the bug with a priority and an estimate:
+
+    ```
+    node scripts/pmkit.mjs issues create --title-file tmp/title-1.txt --type bug --priority high --estimate 3 --json
+    ```
+
+    Expect `priority: high`, `estimate: 3` and `labels: ["P1", "bug", "size: 3"]`. GitHub has those three labels on the issue. `discover` reports the estimate as `{ unit: points, scale: [1, 3, 5] }`: the keys of `mappings.estimate`, in points because each is a number.
+
+25. Raise the priority and clear the estimate:
+
+    ```
+    node scripts/pmkit.mjs issues update 1 --priority urgent --estimate none --json
+    ```
+
+    pmkit swaps `P1` for `P0` and removes `size: 3`, in one labels update and no field write. Expect `priority: urgent`, no `estimate`, and `labels: ["P0", "bug"]`.
+
+26. A priority or estimate label is not a plain label, and a value needs a label:
+
+    `issues update 1 --label P1` fails with `INVALID_INPUT`, `label P1 holds a priority; use --priority`. `issues update 1 --priority low` fails with `INVALID_INPUT`, `priority low has no label in mappings.priority (urgent, high, medium)`, with the next step `/pmkit:setup`. An issue with two priority labels reads the higher one, with a warning that names both.
+
 ## What the fake `gh` checks
 
 The test records every `gh` call and fails when an argument or the standard input holds the token in `GH_TOKEN`. Every call carries `--hostname github.com`.
