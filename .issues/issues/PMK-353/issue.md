@@ -7,9 +7,10 @@ priority: medium
 estimate: 8
 assignee: fred
 parent: EPC-6
+related: [PMK-354, PMK-355, PMK-356]
 branch: pmk-353-add-epic-move-to-change-an-epic-s-status
 created: 2026-11-21T02:24:06.919Z
-updated: 2026-11-21T06:58:43Z
+updated: 2026-11-21T07:03:24Z
 ---
 
 ## Description

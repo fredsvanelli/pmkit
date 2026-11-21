@@ -4,3 +4,6 @@
 {"at":"2026-11-21T02:33:59Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-353-add-epic-move-to-change-an-epic-s-status"}
 {"at":"2026-11-21T06:58:43Z","by":"fred","op":"comment","to":"2026-11-21T06-58-43Z-fred.md"}
 {"at":"2026-11-21T06:58:43Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-21T07:03:23Z","by":"fred","op":"link","field":"related","to":"PMK-354"}
+{"at":"2026-11-21T07:03:24Z","by":"fred","op":"link","field":"related","to":"PMK-355"}
+{"at":"2026-11-21T07:03:24Z","by":"fred","op":"link","field":"related","to":"PMK-356"}

@@ -1,0 +1,2 @@
+{"at":"2026-11-21T07:03:24Z","by":"fred","op":"create","to":{"id":"PMK-355","title":"Cover the epic path of /pmkit:issues:move in the scenario tests","type":"feature","status":"backlog","labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-21T07:03:24.081Z","updated":"2026-11-21T07:03:24Z"}}
+{"at":"2026-11-21T07:03:24Z","by":"fred","op":"link","field":"related","to":"PMK-353"}
