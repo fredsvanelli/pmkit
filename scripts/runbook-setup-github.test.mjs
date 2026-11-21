@@ -5,8 +5,9 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { projectReply, repoReply, SCOPE_ERROR, standardFixture } from './fake-github-api.mjs'
+import { statefulGhCalls, statefulGhOnPath } from './fake-gh-path.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -14,31 +15,6 @@ const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
 const CLI = path.join(SCRIPTS, 'pmkit.mjs')
 const TOKEN = `ghp_${'Zx9Q'.repeat(9)}`
 const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'setup-github.md')
-
-/** Writes the fake gh into a new folder and returns { bin, fixtureFile, log }. */
-function fakeGhOnPath(fixture) {
-  const bin = tempDir('pmkit-fake-gh-')
-  const fixtureFile = path.join(bin, 'fixture.json')
-  const log = path.join(bin, 'calls.jsonl')
-  fs.writeFileSync(fixtureFile, JSON.stringify(fixture))
-  const api = pathToFileURL(path.join(SCRIPTS, 'fake-github-api.mjs')).href
-  const script = `#!/usr/bin/env node
-import fs from 'node:fs'
-import { answerGh } from ${JSON.stringify(api)}
-const args = process.argv.slice(2)
-let input = ''
-try { input = fs.readFileSync(0, 'utf8') } catch {}
-fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, input }) + '\\n')
-const fixture = JSON.parse(fs.readFileSync(${JSON.stringify(fixtureFile)}, 'utf8'))
-const answer = answerGh(args, input, fixture)
-process.stdout.write(answer.stdout)
-process.stderr.write(answer.stderr)
-process.exitCode = answer.status
-`
-  fs.writeFileSync(path.join(bin, 'gh.mjs'), script)
-  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${path.join(bin, 'gh.mjs')}" "$@"\n`, { mode: 0o755 })
-  return { bin, fixtureFile, log }
-}
 
 function repository(remote = 'git@github.com:acme/widgets.git') {
   const root = tempDir('pmkit-runbook-github-')
@@ -58,7 +34,7 @@ const json = (result) => {
   assert.equal(result.code, 0, `${result.stdout}\n${result.stderr}`)
   return JSON.parse(result.stdout)
 }
-const calls = (fake) => (fs.existsSync(fake.log) ? fs.readFileSync(fake.log, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [])
+const calls = statefulGhCalls
 
 const INIT = ['init', '--tracker', 'github', '--git-host', 'github']
 const ANSWERS = [
@@ -77,7 +53,7 @@ test('the runbook names the commands this test runs', () => {
 
 test('runbook: first run, check, and an update with nothing changed', () => {
   const root = repository()
-  const fake = fakeGhOnPath(standardFixture())
+  const fake = statefulGhOnPath(standardFixture())
 
   // Step 1: the repository and the Project question.
   const first = json(pmkit(root, fake, [...INIT, '--dry-run', '--json']))
@@ -133,7 +109,7 @@ test('runbook: first run, check, and an update with nothing changed', () => {
 
 test('runbook: a renamed Status option is asked again on update (step 8)', () => {
   const root = repository()
-  const fake = fakeGhOnPath(standardFixture())
+  const fake = statefulGhOnPath(standardFixture())
   json(pmkit(root, fake, [...INIT, ...ANSWERS, '--json']))
   fs.writeFileSync(fake.fixtureFile, JSON.stringify(standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ status: ['Backlog', 'Todo', 'In Progress', 'Reviewing', 'Done'] }) } })))
   const broken = json(pmkit(root, fake, ['init', '--update', '--dry-run', '--json']))
@@ -150,7 +126,7 @@ test('runbook: the sprint field is offered, written and asked again when the Pro
     const nodes = projectReply().data.repositoryOwner.projectV2.fields.nodes.filter((node) => node.dataType !== 'ITERATION')
     return standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply({ extra: [...nodes, ...extra] }) } })
   }
-  const fake = fakeGhOnPath(withIteration(iteration, { ...iteration, id: 'PF_9', name: 'Cycle' }))
+  const fake = statefulGhOnPath(withIteration(iteration, { ...iteration, id: 'PF_9', name: 'Cycle' }))
   const asked = json(pmkit(root, fake, [...INIT, '--project', 'acme/7', '--dry-run', '--json']))
   const sprint = asked.questions.find((q) => q.path === 'mappings.fields.sprint')
   assert.deepEqual(sprint.candidates, ['project:Sprint', 'project:Cycle'])
@@ -168,7 +144,7 @@ test('runbook: the sprint field is offered, written and asked again when the Pro
 
 test('runbook: without the project scope the Project question offers none with the step (step 1)', () => {
   const root = repository('https://acme.ghe.com/acme/widgets.git')
-  const fake = fakeGhOnPath(standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitLinkedProjects: SCOPE_ERROR } }))
+  const fake = statefulGhOnPath(standardFixture({ graphql: { PmkitRepo: repoReply(), PmkitLinkedProjects: SCOPE_ERROR } }))
   const first = json(pmkit(root, fake, [...INIT, '--dry-run', '--json']))
   assert.equal(first.host, 'acme.ghe.com')
   assert.equal(first.questions[0].recommended, 'none')
@@ -177,7 +153,7 @@ test('runbook: without the project scope the Project question offers none with t
 
 test('runbook: GHES below 3.19 stops setup with NOT_SUPPORTED (step 1)', () => {
   const root = repository('git@ghes.example.com:acme/widgets.git')
-  const fake = fakeGhOnPath(standardFixture({ meta: { installed_version: '3.17.9' } }))
+  const fake = statefulGhOnPath(standardFixture({ meta: { installed_version: '3.17.9' } }))
   const result = pmkit(root, fake, [...INIT, '--dry-run', '--json'])
   assert.equal(result.code, 2)
   const { error } = JSON.parse(result.stdout)
@@ -191,7 +167,7 @@ test('runbook: setup without a Project maps status and type labels (steps 9 to 1
   const root = repository()
   const fixture = standardFixture()
   fixture.graphql.PmkitRepo = repoReply({ labels: ['bug', 'documentation', 'Backlog', 'In progress', 'In review'], types: [] })
-  const fake = fakeGhOnPath(fixture)
+  const fake = statefulGhOnPath(fixture)
   const asked = json(pmkit(root, fake, [...INIT, '--project', 'none', '--dry-run', '--json']))
   assert.equal(asked.project, null)
   const status = asked.questions.filter((q) => q.path.startsWith('mappings.status.'))
