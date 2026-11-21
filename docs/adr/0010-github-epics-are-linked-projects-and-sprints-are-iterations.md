@@ -45,3 +45,4 @@ Milestone id:
 - Renaming an iteration does not change a sprint's id; moving its start date does.
 - Renaming a milestone on GitHub changes its pmkit id, and issues show the new title.
 - When GHES schemas gain the iteration `id` input, `openCycle` can lift its GHES refusal by version.
+- ADR 0011 says how `epic move` writes a GitHub epic's status: a status update, or closing the Project for Closed.

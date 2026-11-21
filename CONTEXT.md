@@ -33,7 +33,7 @@ An issue whose `parent` names another issue or an epic. The parent's `children` 
 _Avoid_: subtask, child ticket
 
 **Epic**:
-A larger body of work with a status, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
+A larger body of work with a status that `epic move` changes, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
 
 **Goal**:
@@ -133,7 +133,7 @@ A root comment and its replies. Replies attach to the root, so a thread is one l
 _Avoid_: conversation, discussion
 
 **Event**:
-One line of an issue's `events.jsonl`, appended on each write. It has `at`, `by`, `op` (`create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `log_time` or `archive`) and the changed field with its old and new values. Replaying the events gives the issue's state and feeds the metrics.
+One line of an issue's or a Local epic's `events.jsonl`, appended on each write. It has `at`, `by`, `op` (`create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `log_time` or `archive`) and the changed field with its old and new values. Replaying an issue's events gives its state and feeds the metrics. An epic's events (`create`, the `update` of its goal, the `move` of its status) are its history, and the metrics don't read them.
 _Avoid_: log entry, activity, audit record
 
 **Synthetic event**:

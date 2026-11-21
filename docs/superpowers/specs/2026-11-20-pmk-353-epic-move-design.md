@@ -10,7 +10,7 @@ No command can change an epic's status. Every epic stays where `epic create` put
 
 - Goal: `pmkit epic move <id> <category> [--status <name>]` changes the status, and `epic get` and `epic list` show the new one.
 - Goal: the dry run shows the status before and after, and writes nothing on any tracker.
-- Goal: a move to done while the epic has open issues warns with their IDs, and still moves it.
+- Goal: a move to done or canceled while the epic has open issues warns with their IDs, and still moves it. The issue asks only for done. Canceled was added in the interview because it's the same check, and canceling an epic leaves its open issues under a dead parent.
 - Goal: the move lands in the local epic's `events.jsonl` with its author and date, and on Linear and GitHub the remote epic shows the new status.
 - Goal: `/pmkit:issues:move` accepts an epic ID and runs `epic move` for it.
 - Goal: an unknown epic answers NOT_FOUND. An unknown category, a category the tracker can't store for an epic, or the status the epic already has answers INVALID_INPUT.
@@ -48,11 +48,11 @@ The rules, the same on every tracker:
 
 ### Linear
 
-- An epic is a Linear project. The statuses are the workspace's project statuses (the existing `PROJECT_STATUSES` query), in `position` order, each in the category that `STATUS_CATEGORY` gives its `type`. So `paused` sits in backlog, and triage and in_review have no status and answer INVALID_INPUT.
+- An epic is a Linear project. The statuses are the workspace's project statuses (the existing `PROJECT_STATUSES` query), in `position` order, each in the category that `STATUS_CATEGORY` gives its `type`. When a workspace has several statuses of one type, such as two `started` ones, the default is the first by `position` (decided in the interview). The dry run shows it, and `--status` picks another. So `paused` sits in backlog, and triage and in_review have no status and answer INVALID_INPUT.
 - The write is a new `projectUpdate(id, input: { statusId })` mutation. `after` is the project read back.
 - `--status` matches names the same way Linear's `moveToCategory` matches issue state names.
 
-### GitHub (approach A)
+### GitHub (approach A, ADR 0011)
 
 The statuses an epic move can write, by category, with the default first:
 
@@ -64,13 +64,13 @@ The statuses an epic move can write, by category, with the default first:
 
 - todo, canceled, triage and in_review answer INVALID_INPUT, naming backlog, in_progress and done. Todo reads as "No update", which a write can't produce. Closed reads as done, so it can't stand for canceled.
 - From Closed to any other status (for done, only with `--status Complete`, by rule 4), the move first reopens the Project (`updateProjectV2(closed: false)`), then publishes the update. To Closed, it only closes the Project and publishes nothing.
-- The status update carries the latest update's start and target dates forward, as `publishStatusUpdate` does (ADR 0010). Its body says what happened, for example `Status changed to Complete.`
+- The status update carries the latest update's start and target dates forward, as `publishStatusUpdate` does (ADR 0010). Its body is the fixed line `Status changed to <name>.`, for example `Status changed to Complete.`, and `epic move` has no flag for a note (decided in the interview: `epic update-status` publishes notes).
 - A reopen that succeeds while the update that follows fails leaves the Project open. The error says so and names the step left, the same way `createDeliverable` reports a half-done write (`afterCreate`).
 - These are the names `STATUS_OF` already reads, so a move reads back as itself.
 
-### Open issues on a move to done
+### Open issues on a move to a terminal category
 
-`deliverableProgress` already walks every non-archived issue whose parent chain reaches the epic, on all three trackers. It gains an `open` list: the IDs of the counted issues whose category is neither done nor canceled, in the order they were read. `epic move ... done` reads progress first. When `open` isn't empty, it adds a warning, `EPC-3 still has open issues: PMK-12, PMK-14`, to both the dry run and the real run, and moves anyway. Using progress keeps the warning's set the same as the one `epic progress` counts, including grandchildren. Local `searchIssues({ parent })` only sees direct children, so it isn't used.
+`deliverableProgress` already walks every non-archived issue whose parent chain reaches the epic, on all three trackers. It gains an `open` list: the IDs of the counted issues whose category is neither done nor canceled, in the order they were read. A move to done or canceled reads progress first. When `open` isn't empty, the move adds a warning, `EPC-3 still has open issues: PMK-12, PMK-14`, to both the dry run and the real run, and goes ahead. On GitHub, canceled is refused before progress is read, so there the warning only comes with done. Using progress keeps the warning's set the same as the one `epic progress` counts, including grandchildren. Local `searchIssues({ parent })` only sees direct children, so it isn't used.
 
 ### CLI
 
@@ -95,11 +95,16 @@ When `epic get` answers NOT_FOUND too, show the original `issues get` error. The
 ## Left to the builder
 
 - Linear: whether `projectUpdate` returns the project with the fields `toEpic` needs, or needs a read after the write.
-- GitHub: whether `createProjectV2StatusUpdate` accepts an empty body. The design gives it a one-line body either way.
 - Where `open` is filled in each adapter's progress code, and its exact order.
 - The wording of messages and next steps, following `scripts/lib/errors.mjs` and the existing epic commands.
 
-## For the interview
+## Decided in the interview
 
-- Should the GitHub status mapping for writes be an ADR (0011) extending ADR 0010? It fixes which categories a GitHub epic can be moved to.
-- Is there a term to add to `CONTEXT.md`? "Move" already means changing an issue's status category.
+- The GitHub mapping for writes is ADR 0011, `docs/adr/0011-github-epic-moves-publish-status-updates.md`, and ADR 0010's consequences point to it.
+- `CONTEXT.md`: "Event" now covers a Local epic's `events.jsonl` (its history, which the metrics don't read), and "Epic" says `epic move` changes its status. No new term: "move", "category" and "open issue" already mean what this design uses.
+- The open-issues warning comes with done and with canceled.
+- On Linear, the default status of a category is the first by `position`.
+- A GitHub move's status update has the fixed body `Status changed to <name>.`, with no flag for a note.
+- The reports need no change: `risks.mjs` and `roadmap-review.mjs` already skip epics in a terminal category, so a moved epic stops reading as open.
+
+Approved by the user on 2026-11-20.
