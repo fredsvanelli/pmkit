@@ -71,7 +71,7 @@ test('the guard refuses a mutation it does not allow, one whose check fails, and
 
 test('the preflight accepts an empty Project whose title starts with the marker, and returns its id', async () => {
   const fake = fakeGithubIssues({ project: { title: `${MARKER} checks` } })
-  assert.deepEqual(await preflightProject(clientOf(fake), 'acme/7', 'PMKIT_LIVE_GITHUB_PROJECT'), { id: 'PVT_1', title: `${MARKER} checks` })
+  assert.deepEqual(await preflightProject(clientOf(fake), 'acme/7', 'PMKIT_LIVE_GITHUB_PROJECT'), { id: 'PVT_1', title: `${MARKER} checks`, url: 'https://github.com/orgs/acme/projects/7' })
 })
 
 test('the preflight refuses a missing Project, one without the marker and one with an item, and writes nothing', async () => {
@@ -204,6 +204,32 @@ test('the openCycle check fails, naming the items, when GitHub drops the ids, an
   await assert.rejects(checkOpenCycle({ env, makeExec, now: NOW }), /openCycle cleared the iteration of 2 of 2 items: PVTI_1, PVTI_2/)
   assert.deepEqual(projectItems(github), [])
   assert.deepEqual(iterationIds(github), ['IT_0', 'IT_1'])
+})
+
+// Ctrl-C ends the gh call in flight (gh runs synchronously): openCycle's update fails, and the check cleans up after it (PMK-349).
+const interruptedExec = (github) => (child) => (cmd, args, options = {}) => {
+  const body = options.input ? JSON.parse(options.input) : null
+  const opening = /PmkitUpdateIterations/.test(body?.query ?? '') && body.variables.input.iterationConfiguration.iterations.some((item) => item.id === undefined)
+  if (opening) return { status: 1, stdout: '', stderr: '', signal: 'SIGINT' }
+  return liveGhExec({ github, ghes: null })(child)(cmd, args, options)
+}
+
+test('a gh call ended by Ctrl-C during the openCycle check still deletes its drafts and restores the iterations, and says so', async () => {
+  const { github, env } = cycleRun()
+  const lines = []
+  await assert.rejects(checkOpenCycle({ env, makeExec: interruptedExec(github), write: (line) => lines.push(line), now: NOW }))
+  assert.deepEqual(projectItems(github), [])
+  assert.deepEqual(iterationIds(github), ['IT_0', 'IT_1'])
+  assert.ok(lines.includes('deleted the draft PVTI_1'), lines.join('\n'))
+  assert.ok(lines.some((line) => /restored the 2 iterations of the field Sprint/.test(line)), lines.join('\n'))
+})
+
+test('a cleanup step that fails prints the URL and the runbook step to remove the item by hand', async () => {
+  const { github, env } = cycleRun()
+  github.failNext('PmkitDeleteProjectItem')
+  const lines = []
+  await assert.rejects(checkOpenCycle({ env, makeExec: interruptedExec(github), write: (line) => lines.push(line), now: NOW }))
+  assert.ok(lines.some((line) => /^cleanup failed, deleting the draft PVTI_1: .*; remove it by hand at https:\/\/github\.com\/orgs\/acme\/projects\/7 \(item PVTI_1\), as "Clean up after a stopped run" step 1 in docs\/runbooks\/live-checks-github\.md says$/.test(line)), lines.join('\n'))
 })
 
 test('the openCycle check deletes its drafts when a write fails in the middle', async () => {

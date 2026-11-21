@@ -67,7 +67,7 @@ export function draftRoutes(state, { stamp, register, requireRepository, reposit
     PmkitLiveProject({ owner, number }) {
       const project = projects().find((candidate) => sameName(candidate.owner, owner ?? '') && candidate.number === number)
       if (!project) refuseWithData({ repositoryOwner: { projectV2: null } }, ['repositoryOwner', 'projectV2'], `Could not resolve to a ProjectV2 with the number ${number}.`)
-      return { repositoryOwner: { projectV2: { id: project.id, title: project.title, items: { totalCount: state.items.filter((item) => item.projectId === project.id).length } } } }
+      return { repositoryOwner: { projectV2: { id: project.id, title: project.title, url: `https://${state.host}/orgs/${project.owner}/projects/${project.number}`, items: { totalCount: state.items.filter((item) => item.projectId === project.id).length } } } }
     },
     PmkitLiveItems({ project, field, first, after }) {
       if (!projectOf(project)) unknownNode(project)
