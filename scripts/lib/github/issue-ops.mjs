@@ -131,7 +131,7 @@ export function issueOperations({ client, config, getContext, now = () => new Da
           if (node?.__typename !== 'Issue' || node.repository?.nameWithOwner?.toLowerCase() !== context.repo.toLowerCase()) continue
           await completeNested(node, context)
           const issue = toIssue(node, context)
-          if (issue.sprint === sprint.id && issue.archived !== true) kept.push(issue)
+          if (issue.sprint === sprint.id) kept.push(issue)
         }
         return false
       },
