@@ -1,0 +1,2 @@
+- The app opens without a network
+- Changes made offline sync when the network is back
