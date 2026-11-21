@@ -99,31 +99,41 @@ function sprintProblem(raw, path, value) {
   return issueField || otherProjectField ? `${path} must name a Project iteration field` : null
 }
 
+/** Why a held mappings.status value is broken, or null. label is its label name, or null for a Status option. */
+function statusProblem(raw, path, value, label) {
+  if (raw.project === null) return label ? missingLabelProblem(raw, path, label) : `${path} names Status option ${value}, but tracker.scope.project is none`
+  if (label) return `${path} names label ${label}, but statuses come from the Status field of ${projectId(raw)}`
+  if (statusOptionsOf(raw).includes(value)) return null
+  return `${path} names ${value}, which the Status field of ${projectId(raw)} no longer has`
+}
+
+/** Why a held mappings.fields value is broken, or null. */
+function fieldProblem(raw, path, value) {
+  const parsed = parseFieldSource(value)
+  if (!parsed) return `${path} is ${value}, which is not issue:<name>, project:<name> or none`
+  const sprint = sprintProblem(raw, path, value)
+  if (sprint) return sprint
+  if (parsed.source === NONE || fieldOf(raw, value)) return null
+  if (parsed.source === 'issue') return `${path} names issue field ${parsed.name}, which ${raw.repo} no longer has`
+  if (raw.project === null) return `${path} names Project field ${parsed.name}, but tracker.scope.project is none`
+  return `${path} names Project field ${parsed.name}, which ${projectId(raw)} no longer has`
+}
+
+/** Why a held mappings.types value is broken, or null. */
+function typeProblem(raw, path, value, label) {
+  if (label) return raw.issueTypes.length > 0 ? `${path} names label ${label}, but ${raw.repo} has issue types` : missingLabelProblem(raw, path, label)
+  return raw.issueTypes.some((type) => type.name === value) ? null : `${path} names issue type ${value}, which ${raw.repo} does not have enabled`
+}
+
+const missingLabelProblem = (raw, path, label) => (labelOf(raw, label) ? null : `${path} names label ${label}, which ${raw.repo} no longer has`)
+
 /** Why a held value is broken, or null when GitHub still has what it names. */
 function problemOf(raw, path, value) {
   const group = path.split('.')[1]
   const label = parseLabelValue(value)
-  const missingLabel = () => (labelOf(raw, label) ? null : `${path} names label ${label}, which ${raw.repo} no longer has`)
-  if (group === 'status') {
-    if (raw.project === null) return label ? missingLabel() : `${path} names Status option ${value}, but tracker.scope.project is none`
-    if (label) return `${path} names label ${label}, but statuses come from the Status field of ${projectId(raw)}`
-    if (statusOptionsOf(raw).includes(value)) return null
-    return `${path} names ${value}, which the Status field of ${projectId(raw)} no longer has`
-  }
-  if (group === 'fields') {
-    const parsed = parseFieldSource(value)
-    if (!parsed) return `${path} is ${value}, which is not issue:<name>, project:<name> or none`
-    const sprint = sprintProblem(raw, path, value)
-    if (sprint) return sprint
-    if (parsed.source === NONE || fieldOf(raw, value)) return null
-    if (parsed.source === 'issue') return `${path} names issue field ${parsed.name}, which ${raw.repo} no longer has`
-    if (raw.project === null) return `${path} names Project field ${parsed.name}, but tracker.scope.project is none`
-    return `${path} names Project field ${parsed.name}, which ${projectId(raw)} no longer has`
-  }
-  if (group === 'types') {
-    if (label) return raw.issueTypes.length > 0 ? `${path} names label ${label}, but ${raw.repo} has issue types` : missingLabel()
-    return raw.issueTypes.some((type) => type.name === value) ? null : `${path} names issue type ${value}, which ${raw.repo} does not have enabled`
-  }
+  if (group === 'status') return statusProblem(raw, path, value, label)
+  if (group === 'fields') return fieldProblem(raw, path, value)
+  if (group === 'types') return typeProblem(raw, path, value, label)
   return null
 }
 

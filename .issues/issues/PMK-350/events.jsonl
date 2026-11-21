@@ -1,2 +1,9 @@
 {"at":"2026-11-20T22:03:02Z","by":"fred","op":"create","to":{"id":"PMK-350","title":"Read Status change events from GHES 3.20","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-8","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-20T22:03:02.155Z","updated":"2026-11-20T22:03:02Z"}}
 {"at":"2026-11-20T22:03:02Z","by":"fred","op":"link","field":"related","to":"PMK-335"}
+{"at":"2026-11-21T20:13:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-350-read-status-change-events-from-ghes-3-20"}
+{"at":"2026-11-21T20:13:04Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-21T20:13:09Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-21T20:46:09Z","by":"fred","op":"comment","to":"2026-11-21T20-46-09Z-fred.md"}
+{"at":"2026-11-21T20:46:09Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-21T20:46:09Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-21T20:47:42Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
