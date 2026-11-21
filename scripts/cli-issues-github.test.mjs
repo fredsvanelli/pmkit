@@ -101,6 +101,22 @@ test('on github.com, issues get --history prints no warning, and events notes th
   assert.equal(events.stderr, 'note: events computed from GitHub issue history\n')
 })
 
+test('on GHES 3.20, issues get --history, events and the flow metrics read the Status move with no warning', async () => {
+  const { cli } = githubRepo({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+  const { id } = dataOf(await cli(['issues', 'create', '--title', 'Newer host', '--json'])).after
+  assert.equal((await cli(['issues', 'move', id, 'in_progress', '--json'])).code, 0)
+  const history = await cli(['issues', 'get', id, '--history', '--json'])
+  assert.equal(history.code, 0, history.stderr)
+  assert.ok(JSON.parse(history.stdout).history.some((event) => event.op === 'move' && event.to === 'In Progress'))
+  for (const args of [['issues', 'get', id, '--history'], ['events'], ['metrics', 'cycle-time']]) {
+    const json = await cli([...args, '--json'])
+    assert.equal(json.code, 0, json.stdout + json.stderr)
+    assert.ok(!json.stderr.includes('Status option changes have no events'), `${args.join(' ')}: ${json.stderr}`)
+  }
+  const events = JSON.parse((await cli(['events', '--json'])).stdout)
+  assert.ok(JSON.stringify(events).includes('In Progress'), 'events holds the Status move')
+})
+
 test('issues unarchive and issues bulk unarchive refuse on GitHub and point at the Project', async () => {
   const { cli, fake } = githubRepo()
   for (const args of [['issues', 'unarchive', '1'], ['issues', 'bulk', 'unarchive']]) {
