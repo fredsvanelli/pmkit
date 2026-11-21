@@ -708,6 +708,20 @@ test('the fake refuses value selected on both the number and the date issue fiel
   assert.equal((await client.request(docs.ISSUE, { ...REPO, number: 1, ...VARS })).repository.issue.number, 1)
 })
 
+test('a GHES fake refuses the Status change event before 3.20, as the published schemas do', () => {
+  const fragment = 'query PmkitTimeline { node(id: "I_1") { ... on Issue { timelineItems(first: 1) { nodes { ... on ProjectV2ItemStatusChangedEvent { status } } } } } }'
+  const plain = 'query PmkitTimeline { node(id: "I_1") { id } }'
+  const error = (version, query, variables) => fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: version }).handle('PmkitTimeline', variables, query).errors?.[0]?.message ?? null
+  const itemTypes = { itemTypes: ['PROJECT_V2_ITEM_STATUS_CHANGED_EVENT'] }
+  const noType = "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"
+  const noValue = 'Variable $itemTypes of type [IssueTimelineItemsItemType!] was provided invalid value'
+  assert.equal(error('3.19.0', fragment, {}), noType)
+  assert.equal(error('3.19.0', plain, itemTypes), noValue)
+  // On 3.20 the schema accepts both, so the fake goes on to the node, which this call does not name.
+  assert.notEqual(error('3.20.0', fragment, {}), noType)
+  assert.notEqual(error('3.20.0', plain, itemTypes), noValue)
+})
+
 test('a GHES fake refuses the Project field parts no GHES schema has, and Repository.issueFields before 3.22', () => {
   const field = 'query PmkitProject { repositoryOwner(login: "acme") { ... on ProjectV2Owner { projectV2(number: 7) { id fields(first: 1) { nodes { ... on ProjectV2Field { isIssueField } } } } } } }'
   const multi = 'query PmkitProject { repositoryOwner(login: "acme") { ... on ProjectV2Owner { projectV2(number: 7) { id fields(first: 1) { nodes { ... on ProjectV2MultiSelectField { id } } } } } } }'

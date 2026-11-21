@@ -76,10 +76,10 @@ test('issues delete removes a GitHub issue, and its dry run deletes nothing', as
   assert.equal(JSON.parse(gone.stdout).error.code, 'NOT_FOUND')
 })
 
-const STATUS_WARNING = 'on GitHub Enterprise Server before 3.21, Status option changes have no events, so moves show only as opens and closes'
+const STATUS_WARNING = 'on GitHub Enterprise Server before 3.20, Status option changes have no events, so moves show only as opens and closes'
 
-test('on GHES 3.20, issues get --history, events and the flow metrics print that Status changes have no events', async () => {
-  const { cli } = githubRepo({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+test('on GHES 3.19, issues get --history, events and the flow metrics print that Status changes have no events', async () => {
+  const { cli } = githubRepo({ host: 'ghe.acme.test', ghesVersion: '3.19.0' })
   const { id } = dataOf(await cli(['issues', 'create', '--title', 'Old host', '--json'])).after
   for (const args of [['issues', 'get', id, '--history'], ['events'], ['metrics', 'cycle-time']]) {
     const json = await cli([...args, '--json'])
@@ -115,8 +115,8 @@ test('issues unarchive and issues bulk unarchive refuse on GitHub and point at t
   assert.equal(fake.mutations.length, 0)
 })
 
-test('a cut metric events read on GHES 3.20 prints the cut warning and the Status warning once each', async () => {
-  const { cli, fake } = githubRepo({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+test('a cut metric events read on GHES 3.19 prints the cut warning and the Status warning once each', async () => {
+  const { cli, fake } = githubRepo({ host: 'ghe.acme.test', ghesVersion: '3.19.0' })
   for (let index = 0; index < 1001; index += 1) fake.seed({ title: `S${index}` })
   const cut = 'GitHub has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
   const count = (text, line) => text.split('\n').filter((entry) => entry === `warning: ${line}`).length
