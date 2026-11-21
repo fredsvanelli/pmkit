@@ -2,7 +2,7 @@
 id: PMK-344
 title: Read sprint issues faster on GitHub
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-8
 milestone: github-issues
 branch: pmk-344-read-sprint-issues-faster-on-github
 created: 2026-11-18T00:15:22.814Z
-updated: 2026-11-21T21:01:31Z
+updated: 2026-11-21T21:01:54Z
 ---
 
 ## Description
