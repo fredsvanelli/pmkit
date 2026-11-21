@@ -2,7 +2,7 @@
 id: PMK-351
 title: Run the GitHub live checks against github.com and GHES and record the result
 type: task
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-8
 related: [PMK-335]
 branch: pmk-351-run-the-github-live-checks-against
 created: 2026-11-20T22:03:02.220Z
-updated: 2026-11-21T20:19:47Z
+updated: 2026-11-21T22:16:50Z
 ---
 
 ## Description
@@ -37,7 +37,7 @@ PMK-335 (PR #327) built the GitHub live checks gated by `PMKIT_LIVE`, but verifi
 
 ## Acceptance criteria
 
-- [ ] The live checks ran against github.com, and the result per check is recorded
-- [ ] The GHES checks ran against a GHES host, or the record says why they were skipped
-- [ ] Every failing check has its own issue linked to this one
-- [ ] The throwaway Project is empty after the run
+- [x] The live checks ran against github.com, and the result per check is recorded
+- [x] The GHES checks ran against a GHES host, or the record says why they were skipped
+- [x] Every failing check has its own issue linked to this one
+- [x] The throwaway Project is empty after the run
