@@ -2,13 +2,15 @@
 id: PMK-349
 title: Clean up after the writing GitHub live checks when a run is interrupted
 type: task
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-8
 related: [PMK-335]
+branch: pmk-349-clean-up-after-the-writing-github-live
 created: 2026-11-20T22:03:02.091Z
-updated: 2026-11-20T22:03:02Z
+updated: 2026-11-21T20:16:41Z
 ---
 
 ## Description
