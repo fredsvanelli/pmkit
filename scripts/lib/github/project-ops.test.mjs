@@ -228,6 +228,7 @@ test('deliverableProgress counts an item, its sub-issue and a canceled issue wit
   assert.deepEqual(progress, {
     total: 5, done: 3, canceled: 1, points: 10, pointsDone: 7,
     byCategory: { triage: 0, backlog: 0, todo: 1, in_progress: 1, in_review: 0, done: 3, canceled: 1 },
+    open: ['2', '6'],
   })
 })
 
@@ -445,4 +446,130 @@ test('the documents whose code filters on __typename select it at that level', (
   const fragment = 'fragment PmkitIssueFields on Issue { id }'
   assert.match(issueNodesQuery(fragment, ['fStatus']), /nodes\(ids: \$ids\) \{ __typename \.\.\. on Issue/)
   assert.match(epicItemsQuery(fragment, ['fStatus']), /content \{ __typename \.\.\. on Issue/)
+})
+
+// Epic move: a status update, or closing the Project. See ADR 0011.
+const seedUpdate = (fake, epic, status) => fake.seedStatusUpdate(epic, { status, startDate: '2026-11-17', targetDate: '2026-12-15', createdAt: '2026-11-10T00:00:00Z' })
+
+test('moveDeliverable publishes a status update with the mapped status, the dates carried forward and the fixed body', async () => {
+  const { fake, projects } = await epicSetup()
+  seedUpdate(fake, 'PVT_E12', 'INACTIVE')
+  const { before, after } = await projects.moveDeliverable('acme/12', 'in_progress', 'octocat')
+  assert.deepEqual(before.status, { name: 'Inactive', category: 'backlog' })
+  assert.deepEqual(mutationNames(fake), ['PmkitCreateStatusUpdate'])
+  assert.deepEqual(fake.mutations[0].input, { projectId: 'PVT_E12', status: 'ON_TRACK', body: 'Status changed to On track.', startDate: '2026-11-17', targetDate: '2026-12-15' })
+  assert.deepEqual(after.status, { name: 'On track', category: 'in_progress' })
+})
+
+test('moveDeliverable maps each named status to its update status, and an epic without updates sends no dates', async () => {
+  const { fake, projects } = await epicSetup()
+  await projects.moveDeliverable('acme/12', 'backlog', 'octocat')
+  await projects.moveDeliverable('acme/12', 'in_progress', 'octocat', { status: 'At risk' })
+  await projects.moveDeliverable('acme/12', 'in_progress', 'octocat', { status: 'Off track' })
+  await projects.moveDeliverable('acme/12', 'done', 'octocat')
+  assert.deepEqual(fake.mutations.map((call) => [call.input.status, call.input.body]), [
+    ['INACTIVE', 'Status changed to Inactive.'], ['AT_RISK', 'Status changed to At risk.'], ['OFF_TRACK', 'Status changed to Off track.'], ['COMPLETE', 'Status changed to Complete.'],
+  ])
+  assert.deepEqual(Object.keys(fake.mutations[0].input).sort(), ['body', 'projectId', 'status'])
+})
+
+test('moveDeliverable --status Closed closes the Project and publishes nothing', async () => {
+  const { fake, projects } = await epicSetup()
+  const { after } = await projects.moveDeliverable('acme/12', 'done', 'octocat', { status: 'Closed' })
+  assert.deepEqual(fake.mutations.map((call) => [call.name, call.input]), [['PmkitSetProjectClosed', { projectId: 'PVT_E12', closed: true }]])
+  assert.deepEqual(after.status, { name: 'Closed', category: 'done' })
+})
+
+test('moveDeliverable from Closed with --status Complete reopens the Project, then publishes Complete', async () => {
+  const { fake, projects } = await epicSetup()
+  const { before, after } = await projects.moveDeliverable('acme/9', 'done', 'octocat', { status: 'Complete' })
+  assert.deepEqual(before.status, { name: 'Closed', category: 'done' })
+  assert.deepEqual(mutationNames(fake), ['PmkitSetProjectClosed', 'PmkitCreateStatusUpdate'])
+  assert.deepEqual(fake.mutations[0].input, { projectId: 'PVT_E9', closed: false })
+  assert.equal(fake.mutations[1].input.status, 'COMPLETE')
+  assert.deepEqual(after.status, { name: 'Complete', category: 'done' })
+})
+
+test('moveDeliverable from Closed to in_progress reopens the Project, then publishes On track', async () => {
+  const { fake, projects } = await epicSetup()
+  const { after } = await projects.moveDeliverable('acme/9', 'in_progress', 'octocat')
+  assert.deepEqual(mutationNames(fake), ['PmkitSetProjectClosed', 'PmkitCreateStatusUpdate'])
+  assert.deepEqual(after.status, { name: 'On track', category: 'in_progress' })
+})
+
+test('moveDeliverable done without --status on a closed Project answers already in done', async () => {
+  const { fake, projects } = await epicSetup()
+  await assert.rejects(projects.moveDeliverable('acme/9', 'done', 'octocat'), { code: 'INVALID_INPUT', message: 'epic acme/9 is already in done' })
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('moveDeliverable refuses the current status name and the current category without --status', async () => {
+  const { fake, projects } = await epicSetup()
+  seedUpdate(fake, 'PVT_E12', 'ON_TRACK')
+  await assert.rejects(projects.moveDeliverable('acme/12', 'in_progress', 'octocat'), { code: 'INVALID_INPUT', message: 'epic acme/12 is already in in_progress' })
+  await assert.rejects(projects.moveDeliverable('acme/12', 'in_progress', 'octocat', { status: 'On track' }), { code: 'INVALID_INPUT', message: 'epic acme/12 is already in status On track' })
+  await assert.rejects(projects.moveDeliverable('acme/9', 'done', 'octocat', { status: 'Closed' }), { code: 'INVALID_INPUT', message: 'epic acme/9 is already in status Closed' })
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('moveDeliverable refuses todo, canceled, triage and in_review', async () => {
+  const { fake, projects } = await epicSetup()
+  for (const category of ['todo', 'canceled', 'triage', 'in_review']) {
+    await assert.rejects(projects.moveDeliverable('acme/12', category, 'octocat'), (error) => error.code === 'INVALID_INPUT' && error.message === `a GitHub epic cannot move to ${category}` && error.nextStep === 'Use one of: backlog, in_progress, done', category)
+  }
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('moveDeliverable checks the epic, the category, the status and the actor in order, before any mutation', async () => {
+  const { fake, projects } = await epicSetup()
+  await assert.rejects(projects.moveDeliverable('acme/99', 'bogus', 'octocat'), { code: 'NOT_FOUND' })
+  await assert.rejects(projects.moveDeliverable('acme/12', 'bogus', 'octocat'), { code: 'INVALID_INPUT', message: 'category must be one of triage, backlog, todo, in_progress, in_review, done, canceled' })
+  await assert.rejects(projects.moveDeliverable('acme/12', 'done', 'octocat', { status: 'On track' }), (error) => error.code === 'INVALID_INPUT' && error.message === 'status On track is not in category done' && error.nextStep === 'Use one of: Complete, Closed')
+  await assert.rejects(projects.moveDeliverable('acme/12', 'done', 'someone'), { code: 'INVALID_INPUT' })
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('moveDeliverable dry run from Closed to Complete sends no mutation', async () => {
+  const { fake, projects } = await epicSetup()
+  const { before, after } = await projects.moveDeliverable('acme/9', 'done', 'octocat', { status: 'Complete', dryRun: true })
+  assert.deepEqual(before.status, { name: 'Closed', category: 'done' })
+  assert.deepEqual(after.status, { name: 'Complete', category: 'done' })
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('moveDeliverable dry run shows the health of the target status, not the one it leaves', async () => {
+  const { fake, projects } = await epicSetup()
+  seedUpdate(fake, 'PVT_E12', 'ON_TRACK')
+  const toBacklog = (await projects.moveDeliverable('acme/12', 'backlog', 'octocat', { dryRun: true })).after
+  assert.equal('health' in toBacklog, false)
+  const toRisk = (await projects.moveDeliverable('acme/12', 'in_progress', 'octocat', { status: 'At risk', dryRun: true })).after
+  assert.equal(toRisk.health, 'at_risk')
+})
+
+test('moveDeliverable reports a reopen whose update failed, and the Project reads as open', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.failNext('PmkitCreateStatusUpdate')
+  await assert.rejects(
+    projects.moveDeliverable('acme/9', 'done', 'octocat', { status: 'Complete' }),
+    (error) => error.code === 'UPSTREAM' && error.message.includes('acme/9') && error.message.includes('reopened') && error.nextStep === 'Publish a status update on GitHub',
+  )
+  assert.deepEqual(mutationNames(fake), ['PmkitSetProjectClosed', 'PmkitCreateStatusUpdate'])
+  assert.equal(fake.state.projects.find((project) => project.id === 'PVT_E9').closed, false)
+  assert.notEqual((await projects.getDeliverable('acme/9')).status.name, 'Closed')
+})
+
+test('moveDeliverable propagates a failed update that follows no reopen', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.failNext('PmkitCreateStatusUpdate')
+  await assert.rejects(projects.moveDeliverable('acme/12', 'in_progress', 'octocat'), (error) => error.code !== 'INVALID_INPUT' && !error.message.includes('reopened'))
+})
+
+test('deliverableProgress lists the open issues by id', async () => {
+  const { fake, projects } = await epicSetup()
+  fake.seed({ number: 1, epics: ['acme/12'], item: { status: 'Done' } })
+  fake.seed({ number: 2, epics: ['acme/12'], item: { status: 'In Progress' } })
+  fake.seed({ number: 3, parent: 2, item: { status: 'Todo' } })
+  fake.seed({ number: 4, epics: ['acme/12'], state: 'CLOSED', stateReason: 'NOT_PLANNED', item: { status: 'Done' } })
+  fake.seed({ number: 5, epics: ['acme/12'], item: { status: 'Todo', archived: true } })
+  assert.deepEqual((await projects.deliverableProgress('acme/12')).open, ['2', '3'])
 })

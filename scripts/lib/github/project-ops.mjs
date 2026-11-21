@@ -10,7 +10,7 @@ import { parseProject } from './discovery.mjs'
 import { toIssue } from './issues.mjs'
 import { docsOf } from './requests.mjs'
 import {
-  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, EPICS_QUERY, STATUS_UPDATES_QUERY, UPDATE_PROJECT_README, epicItemsQuery, issueNodesQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
+  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, EPICS_QUERY, SET_PROJECT_CLOSED, STATUS_OF, STATUS_UPDATES_QUERY, UPDATE_PROJECT_README, epicItemsQuery, issueNodesQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -21,6 +21,8 @@ const blank = (value) => value === undefined || value === null || value === ''
 const fragmentOf = (document) => document.slice(document.indexOf('fragment PmkitIssueFields'))
 const notFoundEpic = (id) => new PmkitError('NOT_FOUND', `epic ${id} does not exist`, 'pmkit epic list')
 const EPIC_CREATE_KEYS = ['title', 'start', 'target', 'milestone', 'goal', 'description']
+/** The statuses a move can reach, defaults first within a category. update is the status update status that writes it, null for Closed, which closes the Project. */
+const MOVE_TARGETS = [...Object.entries(STATUS_OF).map(([update, [name, category]]) => ({ name, category, update })), { name: 'Closed', category: 'done', update: null }]
 const ITEM_PAGE = 100
 const ITEM_PAGES = 10
 const SUB_ISSUE_LEVELS = 10
@@ -203,11 +205,12 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
 
   /** The Local progress shape of a list of pmkit issues: archived ones left out, a canceled issue counted apart, an estimate added to the points. */
   function countProgress(issues) {
-    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])), open: [] }
     for (const issue of issues) {
       if (issue.archived) continue
       const { category } = issue.status
       if (category in progress.byCategory) progress.byCategory[category] += 1
+      if (category !== 'done' && category !== 'canceled') progress.open.push(issue.id)
       if (category === 'canceled') {
         progress.canceled += 1
         continue
@@ -311,6 +314,42 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     return { before: null, after: toEpic(read.project, read.latest) }
   }
 
+  async function moveDeliverable(id, category, actor, { status, dryRun = false } = {}) {
+    await ops.requireActor(actor)
+    const found = await findEpic(id)
+    if (!found) throw notFoundEpic(id)
+    if (!CATEGORIES.includes(category)) throw invalid(`category must be one of ${CATEGORIES.join(', ')}`)
+    const before = toEpic(found.project, found.latest)
+    const inCategory = MOVE_TARGETS.filter((item) => item.category === category)
+    if (inCategory.length === 0) throw invalid(`a GitHub epic cannot move to ${category}`, `Use one of: ${CATEGORIES.filter((name) => MOVE_TARGETS.some((item) => item.category === name)).join(', ')}`)
+    if (status !== undefined && !inCategory.some((item) => item.name === status)) throw invalid(`status ${status} is not in category ${category}`, `Use one of: ${inCategory.map((item) => item.name).join(', ')}`)
+    if (status === undefined && before.status.category === category) throw invalid(`epic ${before.id} is already in ${category}`)
+    const target = status === undefined ? inCategory[0] : inCategory.find((item) => item.name === status)
+    if (before.status.name === target.name) throw invalid(`epic ${before.id} is already in status ${target.name}`)
+    if (dryRun) {
+      const { health: _left, ...kept } = before
+      return { before, after: { ...kept, status: { name: target.name, category }, ...(HEALTH.includes(target.update?.toLowerCase()) ? { health: target.update.toLowerCase() } : {}) } }
+    }
+    const projectId = found.project.id
+    if (target.update === null) {
+      await client.request(SET_PROJECT_CLOSED, { input: { projectId, closed: true } })
+    } else {
+      const reopen = found.project.closed === true
+      if (reopen) await client.request(SET_PROJECT_CLOSED, { input: { projectId, closed: false } })
+      const { startDate, targetDate } = found.latest ?? {}
+      const update = { projectId, status: target.update, body: `Status changed to ${target.name}.`, ...(startDate ? { startDate } : {}), ...(targetDate ? { targetDate } : {}) }
+      try {
+        await client.request(CREATE_STATUS_UPDATE, { input: update })
+      } catch (error) {
+        if (!reopen || !(error instanceof PmkitError)) throw error
+        throw new PmkitError('UPSTREAM', `GitHub reopened the Project ${before.id} but could not publish its status update: ${error.message}`, 'Publish a status update on GitHub')
+      }
+    }
+    const read = await readEpic(before.id)
+    if (!read) throw new PmkitError('UPSTREAM', `GitHub moved the Project ${before.id} but a read of it found nothing`, 'pmkit epic list')
+    return { before, after: toEpic(read.project, read.latest) }
+  }
+
   async function publishStatusUpdate(input, actor, { dryRun = false } = {}) {
     if (!HEALTH.includes(input?.health)) throw invalid(`health must be one of ${HEALTH.join(', ')}`)
     if (typeof input.body !== 'string' || input.body.trim() === '') throw invalid('status update body must be a non-empty string')
@@ -338,6 +377,6 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
   return {
     listMilestones, getMilestone, createMilestone,
     epicProjects: () => epicProjects(client, scope),
-    listDeliverables, getDeliverable, deliverableProgress, createDeliverable, publishStatusUpdate, listStatusUpdates,
+    listDeliverables, getDeliverable, deliverableProgress, createDeliverable, moveDeliverable, publishStatusUpdate, listStatusUpdates,
   }
 }
