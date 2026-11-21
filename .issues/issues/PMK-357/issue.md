@@ -2,14 +2,14 @@
 id: PMK-357
 title: Report a GitHub discussion or comment deleted mid-read as not found
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-8
 branch: pmk-357-report-a-github-discussion-or-comment
 created: 2026-11-21T18:10:43.549Z
-updated: 2026-11-21T20:11:33Z
+updated: 2026-11-21T20:31:03Z
 ---
 
 ## Description
@@ -34,6 +34,6 @@ Left open by the Secure step of PMK-342 (PR #330). `github discussions get` now 
 
 ## Acceptance criteria
 
-- [ ] Reading a long discussion that is deleted before its further pages are read fails with NOT_FOUND and the same message as a discussion that does not exist
-- [ ] Reading a long discussion whose comment is deleted before its further replies are read fails with NOT_FOUND and names the comment
-- [ ] The Discussions runbook covers both cases
+- [x] Reading a long discussion that is deleted before its further pages are read fails with NOT_FOUND and the same message as a discussion that does not exist
+- [x] Reading a long discussion whose comment is deleted before its further replies are read fails with NOT_FOUND and names the comment
+- [x] The Discussions runbook covers both cases
