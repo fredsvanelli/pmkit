@@ -35,4 +35,9 @@ Helper names; whether `problemOf`'s split is a table or helpers.
 
 ## Interview
 
-Pending.
+Approved on 2026-11-21 by the pmkit PO on the owner's behalf: the issue's acceptance criteria and this design, with no open product question. The questions the grilling raised and the answers taken (the recommended ones):
+
+- `searchIssues` and `fieldValue` stay listed in PMK-336 instead of being split here: yes, the criterion allows it, and PMK-344 changes `searchIssues`' neighbors.
+- The capacity store moves with no re-export left at the old path: yes, every import is in this repository.
+- This issue lands after PMK-344: yes.
+- No new term for `CONTEXT.md` and no ADR.
