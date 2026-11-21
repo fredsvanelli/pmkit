@@ -1,6 +1,6 @@
 ---
 id: EPC-5
 title: Linear tracker adapter
-status: backlog
+status: in_progress
 ---
 

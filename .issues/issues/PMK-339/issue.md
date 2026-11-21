@@ -4,10 +4,11 @@ title: "Read priority, estimate and dates from labels on GitHub repositories wit
 type: feature
 status: backlog
 priority: low
+estimate: 3
 parent: EPC-8
 milestone: github-issues
 created: 2026-11-17T21:22:17.656Z
-updated: 2026-11-17T21:22:17Z
+updated: 2026-11-21T16:50:26Z
 ---
 
 ## Description

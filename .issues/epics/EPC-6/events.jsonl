@@ -1,1 +1,2 @@
 {"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"EPC-6","title":"Remaining generic commands","status":"backlog"}}
+{"at":"2026-11-21T16:45:24Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}

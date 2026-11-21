@@ -4,10 +4,11 @@ title: Run the scenario tests against the fake GitHub
 type: chore
 status: backlog
 priority: low
+estimate: 3
 parent: EPC-8
 milestone: github-issues
 created: 2026-11-17T22:21:23.192Z
-updated: 2026-11-17T22:21:23Z
+updated: 2026-11-21T16:50:26Z
 ---
 
 ## Description

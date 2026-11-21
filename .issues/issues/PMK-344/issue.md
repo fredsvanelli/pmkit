@@ -4,10 +4,11 @@ title: Read sprint issues faster on GitHub
 type: feature
 status: backlog
 priority: low
+estimate: 5
 parent: EPC-8
 milestone: github-issues
 created: 2026-11-18T00:15:22.814Z
-updated: 2026-11-18T00:15:22Z
+updated: 2026-11-21T16:50:26Z
 ---
 
 ## Description

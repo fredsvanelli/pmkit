@@ -4,10 +4,11 @@ title: Read GitHub discussion threads past 100 comments or 100 replies
 type: feature
 status: backlog
 priority: low
+estimate: 2
 parent: EPC-8
 milestone: github-issues
 created: 2026-11-17T22:21:23.349Z
-updated: 2026-11-17T22:21:23Z
+updated: 2026-11-21T16:50:26Z
 ---
 
 ## Description
