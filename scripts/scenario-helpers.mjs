@@ -610,7 +610,9 @@ const trackerCalls = (tracker) => statefulGhCalls(tracker).map((call) => `graphq
  * Prepares a run of a scenario in `scratch`: copies the fixture into `<scratch>/repo`, applies `github` and `git`,
  * runs `setup` and takes the baseline after it. For `github`, it adds a bare origin, puts the fake gh first on
  * `env.PATH` and sets `env.PMKIT_FAKE_GH`; `gh` is null otherwise. With `linear`, it points the user store at
- * `<scratch>/home`, sets LINEAR_API_KEY to FAKE_KEY and returns the in-process runner as `run`. The caller removes `scratch`.
+ * `<scratch>/home`, sets LINEAR_API_KEY to FAKE_KEY and returns the in-process runner as `run`. With `githubTracker` ({ seed(github) },
+ * no fixture), it runs the init of a GitHub Issues tracker on the stateful fake GitHub behind a fake gh first on `env.PATH`, and
+ * returns that fake gh as `tracker`. The caller removes `scratch`.
  */
 export async function prepareCopy(scenario, { scratch, fixturesDir, run: given = runPmkit }) {
   const root = path.join(scratch, 'repo')
