@@ -100,6 +100,16 @@ test('the runbook names the commands this test runs', () => {
     'epic update-status acme/13 --health at_risk --body-file tmp/update-1.md --json',
     'epic update-status acme/13 --health on_track --body-file tmp/update-2.md --json',
     'epic updates acme/13 --json',
+    'epic move acme/13 in_progress --json',
+    'epic move acme/13 in_progress --status "At risk" --json',
+    'epic move acme/13 done --dry-run --json',
+    'epic move acme/13 done --json',
+    'epic move acme/13 done --status Closed --json',
+    'epic move acme/13 canceled --json',
+    'warning: acme/13 still has open issues: 3',
+    'a GitHub epic cannot move to canceled',
+    'issues get acme/13 --json',
+    'issue acme/13 does not exist',
     'milestone create v2 --due 2026-12-31 --json',
     'milestone create v1.0 --name "Version one" --json',
     'issues update 3 --milestone v2 --json',
@@ -116,7 +126,7 @@ test('the runbook names the commands this test runs', () => {
   }
 })
 
-test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 14', () => {
+test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 20', () => {
   const { root, fake, pmkit } = runbookRepo()
 
   // Step 1: the sprint field is mapped, and the Project holds one sprint, which is active on 2026-11-17.
@@ -181,31 +191,82 @@ test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 14', (
   const after = json(pmkit('epic', 'get', 'acme/13', '--json'))
   assert.deepEqual([after.start, after.target], ['2026-11-17', '2026-12-15'])
 
-  // Step 10: create a milestone. GitHub has no GraphQL mutation for it, so the call is a REST POST.
+  // Step 10: the epic is On track after step 9, so in_progress alone is refused, and another status of the category is a real move.
+  // A move publishes a status update that carries the dates forward.
+  const stay = failure(pmkit('epic', 'move', 'acme/13', 'in_progress', '--json'))
+  assert.deepEqual([stay.code, stay.message], ['INVALID_INPUT', 'epic acme/13 is already in in_progress'])
+  const risk = json(pmkit('epic', 'move', 'acme/13', 'in_progress', '--status', 'At risk', '--json'))
+  assert.deepEqual([risk.before.status, risk.after.status], [{ name: 'On track', category: 'in_progress' }, { name: 'At risk', category: 'in_progress' }])
+  const atRisk = json(pmkit('epic', 'get', 'acme/13', '--json'))
+  assert.deepEqual([atRisk.status, atRisk.health, atRisk.start, atRisk.target], [{ name: 'At risk', category: 'in_progress' }, 'at_risk', '2026-11-17', '2026-12-15'])
+  assert.equal(json(pmkit('epic', 'updates', 'acme/13', '--json'))[0].body, 'Status changed to At risk.')
+
+  // Step 11: move to done. Issue 3 is still open, so both runs warn, and the dry run sends no mutation.
+  const mutations = () => calls(fake).filter((call) => /\bmutation\b/.test(call.input)).length
+  const mutationsBefore = mutations()
+  const preview = pmkit('epic', 'move', 'acme/13', 'done', '--dry-run', '--json')
+  assert.deepEqual(json(preview).after.status, { name: 'Complete', category: 'done' })
+  assert.equal(preview.stderr, 'warning: acme/13 still has open issues: 3\n')
+  assert.equal(mutations(), mutationsBefore, 'the dry run sent no mutation')
+  const complete = pmkit('epic', 'move', 'acme/13', 'done', '--json')
+  assert.deepEqual(json(complete).after.status, { name: 'Complete', category: 'done' })
+  assert.equal(complete.stderr, 'warning: acme/13 still has open issues: 3\n')
+  assert.ok(mutations() > mutationsBefore, 'the real run sent a mutation')
+  const finished = json(pmkit('epic', 'get', 'acme/13', '--json'))
+  assert.deepEqual(finished.status, { name: 'Complete', category: 'done' })
+  assert.equal(finished.health, undefined)
+  const completed = json(pmkit('epic', 'updates', 'acme/13', '--json'))
+  assert.equal(completed[0].body, 'Status changed to Complete.')
+
+  // Step 12: the other done status closes the Project and publishes no update.
+  const closed = json(pmkit('epic', 'move', 'acme/13', 'done', '--status', 'Closed', '--json'))
+  assert.deepEqual([closed.before.status.name, closed.after.status], ['Complete', { name: 'Closed', category: 'done' }])
+  assert.deepEqual(json(pmkit('epic', 'get', 'acme/13', '--json')).status, { name: 'Closed', category: 'done' })
+  assert.equal(json(pmkit('epic', 'updates', 'acme/13', '--json')).length, completed.length)
+
+  // Step 13: a move out of done reopens the Project, then publishes the update.
+  const reopened = json(pmkit('epic', 'move', 'acme/13', 'in_progress', '--json'))
+  assert.deepEqual([reopened.before.status.name, reopened.after.status], ['Closed', { name: 'On track', category: 'in_progress' }])
+  const back = json(pmkit('epic', 'get', 'acme/13', '--json'))
+  assert.deepEqual([back.status, back.health], [{ name: 'On track', category: 'in_progress' }, 'on_track'])
+  assert.equal(json(pmkit('epic', 'updates', 'acme/13', '--json'))[0].body, 'Status changed to On track.')
+
+  // Step 14: a category that GitHub cannot store is refused, and nothing is written.
+  const mutationsAfter = mutations()
+  const refused = failure(pmkit('epic', 'move', 'acme/13', 'canceled', '--json'))
+  assert.deepEqual([refused.code, refused.message, refused.nextStep], ['INVALID_INPUT', 'a GitHub epic cannot move to canceled', 'Use one of: backlog, in_progress, done'])
+  assert.equal(mutations(), mutationsAfter)
+
+  // Step 15: the calls of commands/issues/move.md for an epic ID. issues get does not find it, which is the fallback condition, and epic get does.
+  const asIssue = failure(pmkit('issues', 'get', 'acme/13', '--json'))
+  assert.deepEqual([asIssue.code, asIssue.message], ['NOT_FOUND', 'issue acme/13 does not exist'])
+  assert.equal(json(pmkit('epic', 'get', 'acme/13', '--json')).id, 'acme/13')
+
+  // Step 16: create a milestone. GitHub has no GraphQL mutation for it, so the call is a REST POST.
   const milestone = json(pmkit('milestone', 'create', 'v2', '--due', '2026-12-31', '--json'))
   assert.deepEqual(milestone.after, { id: 'v2', name: 'v2', due: '2026-12-31', status: 'open' })
   assert.ok(calls(fake).some((call) => call.args.includes('--method') && call.args.includes('POST') && call.args.includes('repos/acme/widgets/milestones')))
 
-  // Step 11: a milestone name that differs from its id is refused, and no REST call follows.
+  // Step 17: a milestone name that differs from its id is refused, and no REST call follows.
   const before = calls(fake).length
   const named = failure(pmkit('milestone', 'create', 'v1.0', '--name', 'Version one', '--json'))
   assert.equal(named.code, 'INVALID_INPUT')
   assert.match(named.message, /a GitHub milestone has one name, its title/)
   assert.equal(calls(fake).slice(before).filter((call) => call.args.includes('POST')).length, 0)
 
-  // Step 12: put issue 3 in the milestone, then read the milestone.
+  // Step 18: put issue 3 in the milestone, then read the milestone.
   assert.equal(json(pmkit('issues', 'update', '3', '--milestone', 'v2', '--json')).after.milestone, 'v2')
   assert.equal(json(pmkit('milestone', 'get', 'v2', '--json')).due, '2026-12-31')
   assert.deepEqual(githubState(fake).milestones.map((entry) => entry.title), ['v2'])
 
-  // Step 13: the capabilities.
+  // Step 19: the capabilities.
   const manifest = json(pmkit('capabilities', '--json'))
   const byId = Object.fromEntries(manifest.capabilities.map((entry) => [entry.id, entry]))
   assert.equal(byId.cycles.path, 'native')
   assert.deepEqual([byId.cycles.detail.field, byId.cycles.detail.open, byId.cycles.detail.close], ['Sprint', true, false])
   for (const id of ['capacity', 'deliverables', 'status_update']) assert.notEqual(byId[id].path, 'absent', id)
 
-  // Step 14: set a capacity in the current sprint. GitHub has no capacity, so pmkit writes .pmkit/capacity.yaml under the Project key.
+  // Step 20: set a capacity in the current sprint. GitHub has no capacity, so pmkit writes .pmkit/capacity.yaml under the Project key.
   const callsBefore = calls(fake).length
   const capacity = json(pmkit('cycle', 'capacity', 'current', '--set', 'octocat=5', '--json'))
   assert.deepEqual([capacity.before.capacity, capacity.after.id, capacity.after.capacity], [{}, '2026-11-16', { octocat: 5 }])

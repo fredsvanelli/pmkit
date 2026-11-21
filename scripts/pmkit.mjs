@@ -1444,6 +1444,27 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'epic move', summary: 'moves an epic to a status category; warns when it still has open issues on a move to done or canceled', usage: '<id> <category> [--status name]', write: true, args: ['id', 'category'], flags: ['status'],
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
+      const [id, category] = ctx.args
+      // The move runs first, so a refusal wins over the warning. The move does not change the epic's issues, so progress reads the same after it.
+      const result = await tracker.moveDeliverable(id, category, await ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })
+      const warnings = []
+      if (category === 'done' || category === 'canceled') {
+        // The write has landed: a failed read is a warning, never an error that would skip the commit.
+        try {
+          const progress = await tracker.deliverableProgress(id)
+          if (progress.open.length > 0) warnings.push(`${result.after.id} still has open issues: ${progress.open.join(', ')}`)
+          if (progress.hasMore === true) warnings.push(`${result.after.id}: the tracker has more issues in this epic than pmkit read, so the open issues listed may be partial`)
+        } catch (error) {
+          warnings.push(`could not read the open issues of ${result.after.id}: ${error.message}`)
+        }
+      }
+      return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id, warnings }
+    },
+  },
+  {
     name: 'goal list', summary: 'lists the strategic goals with their epics', flags: [],
     run: async (ctx) => {
       const { goals, problems } = await (await ctx.tracker()).listGoals()

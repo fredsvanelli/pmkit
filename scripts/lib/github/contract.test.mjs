@@ -32,6 +32,6 @@ function githubContract() {
 // GitHub comments have no threads, and documents, time, agents and releases wait for later issues.
 runTrackerContract({
   name: 'GitHub tracker contract over the fake',
-  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'milestone-writes'],
+  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'deliverable-writes', 'milestones', 'milestone-writes'],
   setup: githubContract,
 })

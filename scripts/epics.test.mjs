@@ -89,6 +89,7 @@ test('deliverableProgress counts the team epic through a two-level chain', () =>
   assert.deepEqual(tracker.deliverableProgress('EPC-2M9D'), {
     total: 5, done: 2, canceled: 0, points: 22, pointsDone: 8,
     byCategory: { triage: 0, backlog: 0, todo: 1, in_progress: 1, in_review: 1, done: 2, canceled: 0 },
+    open: ['ISS-2X6D', 'ISS-4M2S', 'ISS-8C4W'],
   })
 })
 
@@ -213,4 +214,96 @@ test('listDeliverables skips an epic whose file does not parse', () => {
   const broken = tracker.createDeliverable({ title: 'Broken' }, 'fred').after.id
   fs.writeFileSync(path.join(epicDir(issuesDir, broken), 'epic.md'), 'no frontmatter here\n')
   assert.deepEqual(tracker.listDeliverables().map((epic) => epic.id), [kept])
+})
+
+// The fixtures hold one status per category; the move tests add a second one to the backlog and done categories.
+function setupMove() {
+  const root = makeRepo('team')
+  const file = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8')
+    .replace('  backlog: { category: backlog }\n', '  backlog: { category: backlog }\n  ready: { category: backlog }\n')
+    .replace('  done: { category: done }\n', '  done: { category: done }\n  shipped: { category: done }\n'))
+  const tracker = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 6]) })
+  const id = tracker.createDeliverable({ title: 'Launch' }, 'fred').after.id
+  const dir = epicDir(path.join(root, '.issues'), id)
+  return { root, tracker, id, dir }
+}
+
+const readEpicEvents = (dir) => fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+
+test('moveDeliverable moves an epic to done, edits only the status line and appends a move event', () => {
+  const { tracker, id, dir } = setupMove()
+  const file = path.join(dir, 'epic.md')
+  const original = fs.readFileSync(file, 'utf8')
+  fs.writeFileSync(file, original.replace('status: backlog\n', 'status: backlog\n# kept note\ngoal: GOAL-1\n'))
+  const edited = fs.readFileSync(file, 'utf8')
+  const { before, after } = tracker.moveDeliverable(id, 'done', 'fred')
+  assert.equal(before.status.category, 'backlog')
+  assert.equal(after.status.category, 'done')
+  assert.deepEqual(after.status, { name: 'done', category: 'done' })
+  assert.equal(tracker.getDeliverable(id).status.category, 'done')
+  assert.equal(fs.readFileSync(file, 'utf8'), edited.replace('status: backlog\n', 'status: done\n'))
+  const last = readEpicEvents(dir).at(-1)
+  assert.deepEqual(last, { at: last.at, by: 'fred', op: 'move', field: 'status', from: 'backlog', to: 'done' })
+  assert.equal(typeof last.at, 'string')
+})
+
+test('moveDeliverable takes the category\'s first status, or the one named by status', () => {
+  const { tracker, id, dir } = setupMove()
+  assert.equal(tracker.moveDeliverable(id, 'done', 'fred').after.status.name, 'done')
+  assert.equal(tracker.moveDeliverable(id, 'done', 'fred', { status: 'shipped' }).after.status.name, 'shipped')
+  assert.deepEqual(readEpicEvents(dir).at(-1), { at: NOW, by: 'fred', op: 'move', field: 'status', from: 'done', to: 'shipped' })
+})
+
+test('moveDeliverable accepts a lowercase id', () => {
+  const { tracker, id } = setupMove()
+  const { after } = tracker.moveDeliverable(id.toLowerCase(), 'in_progress', 'fred')
+  assert.equal(after.id, id)
+  assert.equal(tracker.getDeliverable(id).status.category, 'in_progress')
+})
+
+test('moveDeliverable dry run writes nothing', () => {
+  const { tracker, id, dir } = setupMove()
+  const bytes = ['epic.md', 'events.jsonl'].map((name) => fs.readFileSync(path.join(dir, name)))
+  const { before, after } = tracker.moveDeliverable(id, 'done', 'fred', { dryRun: true })
+  assert.equal(before.status.category, 'backlog')
+  assert.deepEqual(after.status, { name: 'done', category: 'done' })
+  assert.deepEqual(['epic.md', 'events.jsonl'].map((name) => fs.readFileSync(path.join(dir, name))), bytes)
+})
+
+test('moveDeliverable refuses an unknown epic, an unknown category, an unknown status, the current category and the current status', () => {
+  const { tracker, id } = setupMove()
+  const refused = (code, message, nextStep) => (error) => {
+    assert.equal(error.code, code)
+    assert.equal(error.message, message)
+    if (nextStep !== undefined) assert.equal(error.nextStep, nextStep)
+    return true
+  }
+  assert.throws(() => tracker.moveDeliverable('EPC-ZZZZ', 'done', 'fred'), (error) => error.code === 'NOT_FOUND')
+  assert.throws(() => tracker.moveDeliverable(id, 'finished', 'fred'),
+    refused('INVALID_INPUT', 'category must be one of triage, backlog, todo, in_progress, in_review, done, canceled'))
+  assert.throws(() => tracker.moveDeliverable(id, 'done', 'fred', { status: 'ready' }),
+    refused('INVALID_INPUT', 'status ready is not in category done', 'Use one of: done, shipped'))
+  assert.throws(() => tracker.moveDeliverable(id, 'backlog', 'fred'), refused('INVALID_INPUT', `epic ${id} is already in backlog`))
+  assert.throws(() => tracker.moveDeliverable(id, 'backlog', 'fred', { status: 'backlog' }), refused('INVALID_INPUT', `epic ${id} is already in status backlog`))
+  assert.throws(() => tracker.moveDeliverable(id.toLowerCase(), 'backlog', 'fred'), refused('INVALID_INPUT', `epic ${id} is already in backlog`))
+  assert.equal(tracker.moveDeliverable(id, 'backlog', 'fred', { status: 'ready' }).after.status.name, 'ready')
+})
+
+test('moveDeliverable refuses a non-member actor and writes nothing', () => {
+  const { tracker, id, dir } = setupMove()
+  const bytes = fs.readFileSync(path.join(dir, 'epic.md'))
+  assert.throws(() => tracker.moveDeliverable(id, 'done', 'nobody'), (error) => error.code === 'INVALID_INPUT')
+  assert.deepEqual(fs.readFileSync(path.join(dir, 'epic.md')), bytes)
+})
+
+test('deliverableProgress lists the open issues by id', () => {
+  const { tracker } = setup()
+  const epic = tracker.createDeliverable({ title: 'Launch' }, 'fred').after.id
+  const todo = tracker.createIssue({ title: 'Open one', parent: epic }, 'fred').after.id
+  const done = tracker.createIssue({ title: 'Closed one', parent: epic }, 'fred').after.id
+  tracker.moveToCategory(done, 'done', 'fred')
+  const grandchild = tracker.createIssue({ title: 'Deep', parent: todo }, 'fred').after.id
+  tracker.moveToCategory(grandchild, 'in_progress', 'fred')
+  assert.deepEqual(tracker.deliverableProgress(epic).open, [todo, grandchild].sort())
 })

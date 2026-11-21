@@ -27,7 +27,7 @@ import { ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { PROBES } from './live-probes.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
-/** The families the Linear run covers. cycle-lifecycle, time, releases, milestone-writes and document-writes stay out. */
+/** The families the Linear run covers. cycle-lifecycle, time, releases, milestone-writes, document-writes and deliverable-writes stay out; the live write guard has no projectUpdate rule, so deliverable-writes (epic move) cannot run live. */
 export const LINEAR_FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'milestones', 'documents']
 
 /** The reason the live run cannot start, or false when the gate is open. */

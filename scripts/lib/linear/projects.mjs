@@ -104,6 +104,11 @@ mutation PmkitProjectCreate($input: ProjectCreateInput!) {
   projectCreate(input: $input) { success project { ...PmkitProjectFields } }
 }`
 
+export const PROJECT_SET_STATUS = `${PROJECT_FRAGMENT}
+mutation PmkitProjectSetStatus($id: String!, $input: ProjectUpdateInput!) {
+  projectUpdate(id: $id, input: $input) { success project { ...PmkitProjectFields } }
+}`
+
 const UPDATE_FIELDS = `id body health createdAt user { id } ${PROJECT_REF}`
 
 export const PROJECT_UPDATE_CREATE = `mutation PmkitProjectUpdateCreate($input: ProjectUpdateCreateInput!) {

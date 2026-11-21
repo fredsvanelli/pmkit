@@ -33,7 +33,12 @@ exit 0
     "in_review": 1,
     "done": 2,
     "canceled": 0
-  }
+  },
+  "open": [
+    "ISS-2X6D",
+    "ISS-4M2S",
+    "ISS-8C4W"
+  ]
 }
 --- stderr
 (empty)

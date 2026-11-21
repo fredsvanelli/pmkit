@@ -112,11 +112,70 @@ An epic on GitHub is a Project linked to the repository. Its id is `owner/number
 
    Expect three updates, newest first. The newest says `Indexing caught up.` and the second says `Indexing is two days behind.` The third is the `INACTIVE` update that `epic create` wrote. Each new update repeats the start and the target, so `epic get` still shows `2026-11-17` and `2026-12-15`.
 
+## Move an epic
+
+`epic move` changes the status of the epic. A Project has no status field, so pmkit writes a status update, or closes the Project for `Closed`. `docs/adr/0011-github-epic-moves-publish-status-updates.md` has the table. After the status updates of step 9, `acme/13` is `On track`, and issue 3 is still open in it.
+
+10. Move the epic to `in_progress`, which it already is, then to another status of that category:
+
+    ```
+    node scripts/pmkit.mjs epic move acme/13 in_progress --json
+    node scripts/pmkit.mjs epic move acme/13 in_progress --status "At risk" --json
+    node scripts/pmkit.mjs epic get acme/13 --json
+    ```
+
+    The first call exits with code 2 and `INVALID_INPUT`, `epic acme/13 is already in in_progress`. The second returns `before.status` `{ name: "On track", category: "in_progress" }` and `after.status` `{ name: "At risk", category: "in_progress" }`. `epic get` shows `At risk` and `health: "at_risk"`. pmkit published a status update with the body `Status changed to At risk.` that repeats the start and the target, so `epic get` still shows `2026-11-17` and `2026-12-15`.
+
+11. Move the epic to `done`:
+
+    ```
+    node scripts/pmkit.mjs epic move acme/13 done --dry-run --json
+    node scripts/pmkit.mjs epic move acme/13 done --json
+    node scripts/pmkit.mjs epic get acme/13 --json
+    ```
+
+    Expect `after.status` `{ name: "Complete", category: "done" }` in both calls, and the warning `warning: acme/13 still has open issues: 3` on the standard error of both. The dry run sends no mutation to GitHub. The warning does not block the move. `epic get` shows `Complete`, with no `health`, and the newest status update has the body `Status changed to Complete.`.
+
+12. Move the epic to the other `done` status, `Closed`:
+
+    ```
+    node scripts/pmkit.mjs epic move acme/13 done --status Closed --json
+    node scripts/pmkit.mjs epic get acme/13 --json
+    ```
+
+    Expect `before.status` `Complete` and `after.status` `{ name: "Closed", category: "done" }`. pmkit closes the Project and publishes no status update, so `epic updates acme/13 --json` still has the update of step 11 as its newest. `epic get` shows `Closed`.
+
+13. Reopen the epic by moving it out of `done`:
+
+    ```
+    node scripts/pmkit.mjs epic move acme/13 in_progress --json
+    node scripts/pmkit.mjs epic get acme/13 --json
+    ```
+
+    Expect `before.status` `Closed` and `after.status` `{ name: "On track", category: "in_progress" }`. pmkit reopens the Project, then publishes the update `Status changed to On track.`. `epic get` shows `On track` and `health: "on_track"`.
+
+14. Try a category that GitHub cannot store for an epic:
+
+    ```
+    node scripts/pmkit.mjs epic move acme/13 canceled --json
+    ```
+
+    The command exits with code 2 and `INVALID_INPUT`, `a GitHub epic cannot move to canceled`, with the next step `Use one of: backlog, in_progress, done`. `todo`, `triage` and `in_review` answer the same way. Nothing is written.
+
 ## Milestones
 
 A GitHub milestone has one name, its title, and pmkit uses that title as the milestone id.
 
-10. Create a milestone with a due date:
+15. Give the epic ID to `/pmkit:issues:move`. The command file reads the ID as an issue first, then as an epic, so run the two calls it makes:
+
+    ```
+    node scripts/pmkit.mjs issues get acme/13 --json
+    node scripts/pmkit.mjs epic get acme/13 --json
+    ```
+
+    The first call exits with code 2 and `NOT_FOUND`, `issue acme/13 does not exist`, which is the fallback condition of the command file (`NOT_FOUND` or `INVALID_INPUT`). The second call finds the epic and returns its `id` `acme/13`, so the command follows the epic path with `epic move`, as in steps 10 to 14.
+
+16. Create a milestone with a due date:
 
     ```
     node scripts/pmkit.mjs milestone create v2 --due 2026-12-31 --json
@@ -124,7 +183,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
     Expect `after` to be `{ id: "v2", name: "v2", due: "2026-12-31", status: "open" }`. GitHub has no GraphQL mutation for a milestone, so pmkit calls `gh api --method POST repos/acme/widgets/milestones`.
 
-11. Try a name that differs from the id:
+17. Try a name that differs from the id:
 
     ```
     node scripts/pmkit.mjs milestone create v1.0 --name "Version one" --json
@@ -132,7 +191,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
     The command exits with code 2 and `INVALID_INPUT`, `a GitHub milestone has one name, its title`. pmkit makes no REST call.
 
-12. Put issue 3 in the milestone and read the milestone:
+18. Put issue 3 in the milestone and read the milestone:
 
     ```
     node scripts/pmkit.mjs issues update 3 --milestone v2 --json
@@ -143,7 +202,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
 ## Capabilities
 
-13. Read the capabilities:
+19. Read the capabilities:
 
     ```
     node scripts/pmkit.mjs capabilities --json
@@ -153,7 +212,7 @@ A GitHub milestone has one name, its title, and pmkit uses that title as the mil
 
 ## Capacity
 
-14. Set the capacity of a member in the current sprint:
+20. Set the capacity of a member in the current sprint:
 
     ```
     node scripts/pmkit.mjs cycle capacity current --set octocat=5 --json

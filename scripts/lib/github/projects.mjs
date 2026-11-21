@@ -82,6 +82,9 @@ export const CREATE_PROJECT = `mutation PmkitCreateProject($input: CreateProject
 export const UPDATE_PROJECT_README = `mutation PmkitUpdateProjectReadme($input: UpdateProjectV2Input!) {
   updateProjectV2(input: $input) { projectV2 { id } }
 }`
+export const SET_PROJECT_CLOSED = `mutation PmkitSetProjectClosed($input: UpdateProjectV2Input!) {
+  updateProjectV2(input: $input) { projectV2 { id } }
+}`
 export const CREATE_STATUS_UPDATE = `mutation PmkitCreateStatusUpdate($input: CreateProjectV2StatusUpdateInput!) {
   createProjectV2StatusUpdate(input: $input) { statusUpdate { id } }
 }`

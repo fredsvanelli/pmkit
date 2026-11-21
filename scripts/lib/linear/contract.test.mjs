@@ -55,7 +55,7 @@ function linearContract({ cycles = [ACTIVE, PLANNED] } = {}) {
 // user-4 is the fake's app user, so the agents family runs native delegation (PMK-214).
 runTrackerContract({
   name: 'Linear tracker contract over the fake',
-  families: ['discovery', 'issues', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'milestones', 'documents', 'agents'],
+  families: ['discovery', 'issues', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'deliverable-writes', 'milestones', 'documents', 'agents'],
   setup: () => ({ ...linearContract(), agent: 'agent:user-4' }),
 })
 

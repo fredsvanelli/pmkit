@@ -1,0 +1,161 @@
+$ pmkit epic move EPC-4H7V done
+exit 0
+--- stdout
+EPC-4H7V  Reliable webhooks
+status: in_progress → done
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-4H7V done --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  },
+  "after": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-4H7V done --dry-run
+exit 0
+--- stdout
+EPC-4H7V  Reliable webhooks
+status: in_progress → done
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-4H7V done --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  },
+  "after": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-4H7V in_review
+exit 0
+--- stdout
+EPC-4H7V  Reliable webhooks
+status: in_progress → in_review
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-4H7V in_review --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  },
+  "after": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-4H7V in_review --dry-run
+exit 0
+--- stdout
+EPC-4H7V  Reliable webhooks
+status: in_progress → in_review
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit epic move EPC-4H7V in_review --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  },
+  "after": {
+    "id": "EPC-4H7V",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "start": "2026-09-28",
+    "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  }
+}
+--- stderr
+(empty)

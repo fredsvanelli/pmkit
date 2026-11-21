@@ -92,6 +92,7 @@ export const CASES = {
   'epic create': () => [['--title', 'Golden epic']],
   // The epic of no-sprints links to the goal, so the case removes the link there and is a refusal elsewhere.
   'epic goal': (a) => [[a.epic, 'none'], [a.epic, a.goal]],
+  'epic move': (a) => [[a.epic, 'done'], [a.epic, 'in_review']],
   'goal list': () => [[]],
   'goal get': (a) => [[a.goal]],
   'goal progress': (a) => [[a.goal]],
