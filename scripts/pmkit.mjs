@@ -3789,7 +3789,9 @@ const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: '
 /** Plans the migration, then writes it unless `dryRun`. `formatVersion` and `migrations` default to the real ones. */
 export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSION, migrations = MIGRATIONS } = {}) {
   const config = loadConfig(root, { checkFormat: false })
-  if (config.pmkitProblems.length > 0) throw pmkitWriteRefusal(config.pmkitProblems)
+  // migrate reads only tracker.system and tracker.path from .pmkit/config.yaml, which loadConfig checked, and writes only tracker
+  // files. Other problems warn, so a pmkit that reads the file's older shape as invalid can still migrate the tracker (PMK-158).
+  const warnings = config.pmkitProblems.length > 0 ? [pmkitConfigWarning(config.pmkitProblems)] : []
   const { version } = config.format
   const trackerPath = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
   const state = formatState(version, formatVersion)
@@ -3805,7 +3807,7 @@ export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSIO
           ...(commit !== undefined ? [`committed: ${commit}`] : []),
           ...(dryRun ? ['dry run: nothing was written'] : []),
         ]
-    return { data, text: lines.join('\n') }
+    return { data, text: lines.join('\n'), warnings }
   }
   if (state === 'current') return result([])
   const inside = gitIn(root, 'rev-parse', '--is-inside-work-tree')

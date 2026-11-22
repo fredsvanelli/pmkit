@@ -1736,7 +1736,7 @@ const REFUSAL = (...p) => `.pmkit/config.yaml is not valid, so writes are refuse
 const WARNING = (...p) => `warning: ${REFUSAL(...p)}; run pmkit validate`
 const errorOf = (result) => JSON.parse(result.stdout).error
 
-test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () => {
+test('every write but migrate refuses an invalid .pmkit/config.yaml and writes nothing', () => {
   const WRITES = {
     'issues create': ['--title', 'Second', '--type', 'task'],
     'issues update': ['ISS-5N1R', '--title', 'Renamed'],
@@ -1805,8 +1805,9 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
   const env = { PATH: `${fake.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: fake.responses }
   const before = hashTree(root)
   const expected = { code: 'INVALID_INPUT', message: REFUSAL(CONFIRM_MSG), nextStep: 'pmkit validate' }
+  // migrate warns instead (PMK-158): it reads only the tracker settings of the file. scripts/migrations.test.mjs covers it.
   const calls = [
-    ...Object.entries(WRITES).flatMap(([name, argv]) => [[...name.split(' '), ...argv, '--json'], [...name.split(' '), ...argv, '--dry-run', '--json']]),
+    ...Object.entries(WRITES).filter(([name]) => name !== 'migrate').flatMap(([name, argv]) => [[...name.split(' '), ...argv, '--json'], [...name.split(' '), ...argv, '--dry-run', '--json']]),
     ['cycle', 'capacity', '2026-10-12', '--days-off', 'fred=2026-10-20', '--json'],
   ]
   for (const args of calls) {
