@@ -213,6 +213,7 @@ test('every other row of the guard table passes with the run ids', async () => {
     [PROJECT_UPDATE_CREATE, { input: { projectId: 'p-1', body: 'x' } }],
     // PMK-356: the epic move sets the status of a project the run created.
     [PROJECT_SET_STATUS, { id: 'p-1', input: { statusId: 'status-done' } }],
+    [PROJECT_SET_STATUS, { id: 'p-1', input: { name: 'Edited', content: 'New purpose.' } }],
     [ISSUE_ARCHIVE, { id: 'i-1' }],
     [mutationOf('IssueDelete'), { id: 'i-2' }],
     [mutationOf('ProjectDelete'), { id: 'p-1' }],
@@ -240,10 +241,10 @@ test('rows that name an id the run does not own are refused', async () => {
   assert.equal(inner.calls.length, 0)
 })
 
-test('projectUpdate takes only the status of a project the run created (PMK-356)', async () => {
+test('projectUpdate takes only the status, name and content of a project the run created, as strings (PMK-356, PMK-348)', async () => {
   const { inner, ...guarded } = opened()
   guarded.guard.own('project', 'p-1')
-  for (const input of [{ statusId: 'status-done', name: 'renamed' }, { content: 'x' }, { statusId: 7 }, { statusId: null }]) {
+  for (const input of [{ statusId: 'status-done', teamIds: ['t'] }, { description: 'x' }, { statusId: 7 }, { statusId: null }, { name: null }]) {
     await assert.rejects(send(guarded, PROJECT_SET_STATUS, { id: 'p-1', input }), REFUSED, JSON.stringify(input))
   }
   assert.equal(inner.calls.length, 0)

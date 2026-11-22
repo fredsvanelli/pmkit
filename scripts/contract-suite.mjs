@@ -454,6 +454,25 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.moveDeliverable(epic.id, 'done', actor), 'INVALID_INPUT')
     })
 
+    it('edits the title and the description of an epic, and refuses an edit that changes nothing (PMK-348)', ['deliverables', 'deliverable-writes'], async ({ tracker, actor }) => {
+      const epic = (await tracker.createDeliverable({ title: 'Edits', description: 'First purpose.' }, actor)).after
+      const dry = await tracker.updateDeliverable(epic.id, { description: 'Second purpose.' }, actor, { dryRun: true })
+      assert.equal(dry.before.description, 'First purpose.')
+      assert.equal(dry.after.description, 'Second purpose.')
+      assert.equal((await tracker.getDeliverable(epic.id)).description, 'First purpose.')
+      const described = await tracker.updateDeliverable(epic.id, { description: 'Second purpose.' }, actor)
+      assert.equal(described.after.description, 'Second purpose.')
+      const renamed = await tracker.updateDeliverable(epic.id, { title: 'Edited' }, actor)
+      assert.equal(renamed.before.title, 'Edits')
+      assert.equal(renamed.after.title, 'Edited')
+      const read = await tracker.getDeliverable(epic.id)
+      assert.equal(read.title, 'Edited')
+      assert.equal(read.description, 'Second purpose.')
+      await rejects(() => tracker.updateDeliverable(epic.id, { title: 'Edited' }, actor), 'INVALID_INPUT')
+      await rejects(() => tracker.updateDeliverable(epic.id, {}, actor), 'INVALID_INPUT')
+      await rejects(() => tracker.updateDeliverable('NOPE-999999', { title: 'x' }, actor), 'NOT_FOUND')
+    })
+
     it('lists the status updates of an epic, newest first', ['deliverables'], async ({ tracker, actor }) => {
       const epic = (await tracker.createDeliverable({ title: 'Updates' }, actor)).after
       assert.deepEqual(await tracker.listStatusUpdates(epic.id), [])

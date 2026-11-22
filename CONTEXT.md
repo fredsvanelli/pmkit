@@ -33,7 +33,7 @@ An issue whose `parent` names another issue or an epic. The parent's `children` 
 _Avoid_: subtask, child ticket
 
 **Epic**:
-A larger body of work with a status that `epic move` changes, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
+A larger body of work with a title and a description that `epic update` edits, a status that `epic move` changes, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
 
 **Goal**:

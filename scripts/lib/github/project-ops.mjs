@@ -5,12 +5,12 @@ import { PmkitError } from '../errors.mjs'
 import { HEALTH, sortEpics } from '../local/epics.mjs'
 import { sortMilestones } from '../local/milestones.mjs'
 import { validDate } from '../local/sprints.mjs'
-import { CATEGORIES, pickMoveTarget } from '../model.mjs'
+import { CATEGORIES, epicEditInput, pickMoveTarget } from '../model.mjs'
 import { parseProject } from './discovery.mjs'
 import { toIssue } from './issues.mjs'
 import { docsOf } from './requests.mjs'
 import {
-  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, EPICS_QUERY, SET_PROJECT_CLOSED, STATUS_OF, STATUS_UPDATES_QUERY, UPDATE_PROJECT_README, epicItemsQuery, issueNodesQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
+  CREATE_PROJECT, CREATE_STATUS_UPDATE, EPIC_QUERY, EPICS_QUERY, SET_PROJECT_CLOSED, STATUS_OF, STATUS_UPDATES_QUERY, UPDATE_PROJECT, UPDATE_PROJECT_README, epicItemsQuery, issueNodesQuery, parseEpicId, readMilestoneNodes, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -362,6 +362,26 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
     return { before, after: toEpic(read.project, read.latest) }
   }
 
+  /** Edits the title and/or the readme of an epic's Project (PMK-348); createDeliverable writes the description into the readme, and the read takes it from there. */
+  async function updateDeliverable(id, input, actor, { dryRun = false } = {}) {
+    const fields = epicEditInput(input)
+    await ops.requireActor(actor)
+    const found = await findEpic(id)
+    if (!found) throw notFoundEpic(id)
+    const before = toEpic(found.project, found.latest)
+    const title = fields.title === undefined ? before.title : fields.title.trim()
+    const description = fields.description === undefined ? before.description : (fields.description ?? '').trim()
+    const update = {}
+    if (title !== before.title) update.title = title
+    if (description !== before.description) update.readme = description
+    if (Object.keys(update).length === 0) throw invalid(`epic ${before.id} already has this title and description`, `pmkit epic get ${before.id}`)
+    if (dryRun) return { before, after: { ...before, title, description } }
+    await client.request(UPDATE_PROJECT, { input: { projectId: found.project.id, ...update } })
+    const read = await readEpic(before.id)
+    if (!read) throw new PmkitError('UPSTREAM', `GitHub edited the Project ${before.id} but a read of it found nothing`, 'pmkit epic list')
+    return { before, after: toEpic(read.project, read.latest) }
+  }
+
   async function publishStatusUpdate(input, actor, { dryRun = false } = {}) {
     if (!HEALTH.includes(input?.health)) throw invalid(`health must be one of ${HEALTH.join(', ')}`)
     if (typeof input.body !== 'string' || input.body.trim() === '') throw invalid('status update body must be a non-empty string')
@@ -389,6 +409,6 @@ export function projectOperations({ client, ops, config, getContext, now = () =>
   return {
     listMilestones, getMilestone, createMilestone,
     epicProjects: () => epicProjects(client, scope),
-    listDeliverables, getDeliverable, deliverableProgress, createDeliverable, moveDeliverable, publishStatusUpdate, listStatusUpdates,
+    listDeliverables, getDeliverable, deliverableProgress, createDeliverable, moveDeliverable, updateDeliverable, publishStatusUpdate, listStatusUpdates,
   }
 }

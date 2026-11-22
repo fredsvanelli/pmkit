@@ -126,6 +126,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `epic progress <id>` | counts the issues under an epic |
 | `epic create --title t` | creates an epic; `--goal <id>` links it to a goal |
 | `epic goal <id> <goal\|none>` | links an epic to a goal, or removes the link with `none` (an empty goal is refused) |
+| `epic update <id> [--title-file t] [--description-file d]` | changes the title or the description of an epic |
 | `epic move <id> <category> [--status name]` | moves an epic to a status category; warns when it still has open issues on a move to done or canceled |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
 | `epic updates <id>` | lists the status updates of an epic, newest first |

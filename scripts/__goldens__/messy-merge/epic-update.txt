@@ -1,0 +1,118 @@
+$ pmkit epic update EPC-1 --title 'Golden epic, edited'
+exit 0
+--- stdout
+EPC-1  Golden epic, edited
+title: Reliable webhooks → Golden epic, edited
+--- stderr
+(empty)
+
+$ pmkit epic update EPC-1 --title 'Golden epic, edited' --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-1",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-10-05",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  },
+  "after": {
+    "id": "EPC-1",
+    "title": "Golden epic, edited",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-10-05",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic update EPC-1 --title 'Golden epic, edited' --dry-run
+exit 0
+--- stdout
+EPC-1  Golden epic, edited
+title: Reliable webhooks → Golden epic, edited
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit epic update EPC-1 --title 'Golden epic, edited' --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "EPC-1",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-10-05",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  },
+  "after": {
+    "id": "EPC-1",
+    "title": "Golden epic, edited",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-10-05",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic update EPC-1
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: epic update needs --title, --title-file or --description-file
+next: pmkit epic update EPC-1 --description-file description.md
+
+$ pmkit epic update EPC-1 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "epic update needs --title, --title-file or --description-file",
+    "nextStep": "pmkit epic update EPC-1 --description-file description.md"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic update EPC-1 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: epic update needs --title, --title-file or --description-file
+next: pmkit epic update EPC-1 --description-file description.md
+
+$ pmkit epic update EPC-1 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "epic update needs --title, --title-file or --description-file",
+    "nextStep": "pmkit epic update EPC-1 --description-file description.md"
+  }
+}
+--- stderr
+(empty)

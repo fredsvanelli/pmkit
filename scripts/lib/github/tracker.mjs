@@ -215,6 +215,7 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
     deliverableProgress: projects.deliverableProgress,
     createDeliverable: projects.createDeliverable,
     moveDeliverable: projects.moveDeliverable,
+    updateDeliverable: projects.updateDeliverable,
     publishStatusUpdate: projects.publishStatusUpdate,
     listStatusUpdates: projects.listStatusUpdates,
     listMilestones: projects.listMilestones,
