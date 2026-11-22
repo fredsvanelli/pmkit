@@ -4,6 +4,7 @@
 // Its behavior follows the schema facts of docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md.
 
 import { answerGhWith, projectReply, repoReply, withNamedLabels } from './fake-github-api.mjs'
+import { compareVersions, needsVersionCheck } from './lib/github/discovery.mjs'
 import { hostFeatures } from './lib/github/documents.mjs'
 import { discussionRoutes, initDiscussions } from './fake-github-discussions.mjs'
 import { draftRoutes, initDrafts } from './fake-github-drafts.mjs'
@@ -197,6 +198,11 @@ function build(state) {
   initDiscussions(state)
   initDrafts(state)
   const features = hostFeatures({ host: state.host, ghesVersion: state.ghesVersion })
+  // A schema fact kept apart from hostFeatures, so a wrong adapter threshold fails a test: the published GHES schemas have the
+  // Status change event from 3.20 (PMK-350), and 3.19 has neither the type nor its timeline item type.
+  const statusEventsSchema = !needsVersionCheck(state.host) || state.ghesVersion === null || compareVersions(state.ghesVersion, '3.20') >= 0
+  // ProjectV2.items(query:) is in the published schemas of github.com and GHES 3.20 and later, not 3.19 (PMK-344).
+  const itemQuerySchema = statusEventsSchema
   const mutations = []
   const reads = []
 
@@ -265,8 +271,9 @@ function build(state) {
         const option = field.options.find((candidate) => candidate.id === value.optionId)
         return [{ __typename: 'IssueFieldSingleSelectValue', optionId: value.optionId, name: option?.name ?? null, field: ref }]
       }
-      const typename = field.dataType === 'NUMBER' ? 'IssueFieldNumberValue' : 'IssueFieldDateValue'
-      return [{ __typename: typename, value: value.value, field: ref }]
+      // pmkit aliases the two values, as GitHub refuses one `value` of two types in a selection.
+      if (field.dataType === 'NUMBER') return [{ __typename: 'IssueFieldNumberValue', numberValue: value.value, field: ref }]
+      return [{ __typename: 'IssueFieldDateValue', dateValue: value.value, field: ref }]
     })
   }
 
@@ -424,7 +431,7 @@ function build(state) {
     // A draft or a pull request item takes the value too, and has no issue timeline to record it in.
     if (item.type !== 'ISSUE') return
     const record = issueById(item.issueId)
-    if (field.name === 'Status' && features.statusEvents && before !== statusName(item)) {
+    if (field.name === 'Status' && statusEventsSchema && before !== statusName(item)) {
       event(record, 'ProjectV2ItemStatusChangedEvent', { previousStatus: before, status: statusName(item), project: { id: item.projectId } }, at)
     }
     touch(at, record)
@@ -543,6 +550,20 @@ function build(state) {
         const content = contentOf(item, vars)
         return { ...itemNode(item, vars), status: projectValue(item, 'Status'), content: content && withTypename(content, typed) }
       })
+      return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
+    },
+    // One sprint's items through GitHub's Project filter (PMK-344): the fake knows <iteration field>:"<title>", matched by field name
+    // without case, and leaves archived items out, as items() does by default. Like GitHub, it returns drafts, pull requests and
+    // issues of any repository.
+    PmkitSprintItems(vars) {
+      const project = projectById(vars.project)
+      const terms = String(vars.query ?? '')
+      const [, fieldName, title] = /(?:^|\s)([^\s:]+):"([^"]*)"/.exec(terms) ?? []
+      const field = project.fields.find((candidate) => candidate.dataType === 'ITERATION' && candidate.name.toLowerCase() === fieldName)
+      const titleOf = (item) => iterationsOf(field ?? {}).find((iteration) => iteration.id === item.values[field?.id]?.iterationId)?.title
+      const items = state.items.filter((item) => item.projectId === project.id && !item.isArchived)
+        .filter((item) => !fieldName || (field && titleOf(item) === title))
+        .map((item) => ({ content: item.type === 'ISSUE' ? { __typename: 'Issue', ...issueNode(issueById(item.issueId), vars) } : contentOf(item, vars) }))
       return { node: { __typename: 'ProjectV2', items: connection(items, vars.first, vars.after) } }
     },
     // Issues by node id, in the order asked, null for an id that is no issue: the batched read of the epic progress.
@@ -766,6 +787,11 @@ function build(state) {
       if (typeof input.readme === 'string') project.readme = input.readme
       return { updateProjectV2: { projectV2: { id: project.id } } }
     },
+    PmkitSetProjectClosed: (input) => {
+      const project = projectById(input.projectId)
+      project.closed = input.closed === true
+      return { updateProjectV2: { projectV2: { id: project.id } } }
+    },
     PmkitCreateStatusUpdate: (input, at) => {
       const project = projectById(input.projectId)
       return { createProjectV2StatusUpdate: { statusUpdate: { id: addStatusUpdate(project, { ...input, createdAt: at }).id } } }
@@ -884,6 +910,9 @@ function build(state) {
   }
 
   /** The validation error GitHub gives a document that names a part of the schema the host lacks, or null. */
+  const ghes = needsVersionCheck(state.host)
+  const repositoryIssueFields = !ghes || state.ghesVersion === null || compareVersions(state.ghesVersion, '3.22') >= 0
+
   function schemaError(query, variables) {
     const checks = [
       [features.relatesTo, /\brelatesTo\s*\(/, "Field 'relatesTo' doesn't exist on type 'Issue'"],
@@ -891,15 +920,24 @@ function build(state) {
       [features.relatesTo, /\bremoveRelatesTo\s*\(/, "Field 'removeRelatesTo' doesn't exist on type 'Mutation'"],
       [features.issueFields, /\bissueFieldValues\s*\(/, "Field 'issueFieldValues' doesn't exist on type 'Issue'"],
       [features.issueFields, /\bsetIssueFieldValue\s*\(/, "Field 'setIssueFieldValue' doesn't exist on type 'Mutation'"],
-      [features.issueFields, /\bissueFields\s*\(/, "Field 'issueFields' doesn't exist on type 'Repository'"],
-      [features.issueFields, /\bisIssueField\b/, "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'"],
-      [features.statusEvents, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
+      // The facts of the published schemas, kept apart from hostFeatures so a wrong threshold in the adapter fails here: no GHES
+      // schema (3.19 to 3.22) has isIssueField or ProjectV2MultiSelectField, and Repository.issueFields and IssueFieldMultiSelect start in 3.22.
+      [repositoryIssueFields, /\bissueFields\s*\(/, "Field 'issueFields' doesn't exist on type 'Repository'"],
+      [repositoryIssueFields, /\bIssueFieldMultiSelect\b/, "No such type IssueFieldMultiSelect, so it can't be a fragment condition"],
+      [!ghes, /\bisIssueField\b/, "Field 'isIssueField' doesn't exist on type 'ProjectV2Field'"],
+      [!ghes, /\bProjectV2MultiSelectField\b/, "No such type ProjectV2MultiSelectField, so it can't be a fragment condition"],
+      [itemQuerySchema, /\bitems\([^)]*\bquery:/, "Unknown argument 'query' on field 'ProjectV2.items'"],
+      [statusEventsSchema, /\bProjectV2ItemStatusChangedEvent\b/, "No such type ProjectV2ItemStatusChangedEvent, so it can't be a fragment condition"],
       // ProjectV2Owner is an interface with id, projectV2 and projectsV2 only: a login needs an inline fragment on Organization or User.
       [false, /\bowner\s*\{\s*login\b/, "Field 'login' doesn't exist on type 'ProjectV2Owner'"],
+      // RepositoryOwner has no projectV2: the read needs an inline fragment on ProjectV2Owner (or Organization or User).
+      // IssueFieldNumberValue.value is Float! and IssueFieldDateValue.value is String!, so one selection of both does not merge.
+      [false, /\bon IssueField(?:Number|Date)Value\s*\{\s*value\b/, "Field 'value' has a return_type conflict: `Float!` or `String!`?"],
+      [false, /\brepositoryOwner\s*\([^)]*\)\s*\{\s*projectV2\b/, "Field 'projectV2' doesn't exist on type 'RepositoryOwner'"],
     ]
     const found = checks.find(([present, pattern]) => !present && pattern.test(query ?? ''))
     if (found) return found[2]
-    if (!features.statusEvents && variables.itemTypes?.includes?.('PROJECT_V2_ITEM_STATUS_CHANGED_EVENT')) {
+    if (!statusEventsSchema && variables.itemTypes?.includes?.('PROJECT_V2_ITEM_STATUS_CHANGED_EVENT')) {
       return 'Variable $itemTypes of type [IssueTimelineItemsItemType!] was provided invalid value'
     }
     return null
@@ -907,7 +945,7 @@ function build(state) {
 
   const discussions = discussionRoutes(state, { stamp, register, requireRepository, refuseWithData, unknownNode, connection, page })
   const userByLogin = (name) => state.users.find((user) => user.login === name) ?? null
-  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf })
+  const drafts = draftRoutes(state, { stamp, register, requireRepository, repositoryById, newIssue, refuseWithData, unknownNode, unprocessable, connection, userByLogin, setItemValues, contentOf, projectValue })
 
   /** Answers one operation: { data } or { errors }, as GitHub's JSON body. query may be omitted to skip the schema check. */
   function handle(name, variables = {}, query) {

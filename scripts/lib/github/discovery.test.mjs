@@ -105,12 +105,22 @@ test('fetchDiscovery leaves issue fields out of the query on GHES 3.19 and 3.20'
   assert.equal(raw.ghesVersion, '3.20.3')
 })
 
-test('fetchDiscovery asks for issue fields on GHES 3.21', async () => {
-  const fixture = standardFixture({ meta: { installed_version: '3.21.0' } })
-  const fake = fakeGhExec(fixture)
-  const client = createGithubClient({ root: '/repo', env: {}, exec: fake.exec, host: 'ghes.example.com' })
-  await fetchDiscovery(client, { host: 'ghes.example.com', repo: 'acme/widgets', project: 'none', exec: fake.exec })
-  assert.match(JSON.parse(fake.calls[1].input).query, /issueFields/)
+test('fetchDiscovery asks for issue fields on GHES 3.22 and not on 3.21, whose Repository has none', async () => {
+  for (const [version, asked] of [['3.21.0', false], ['3.22.0', true]]) {
+    const fixture = standardFixture({ meta: { installed_version: version } })
+    const fake = fakeGhExec(fixture)
+    const client = createGithubClient({ root: '/repo', env: {}, exec: fake.exec, host: 'ghes.example.com' })
+    await fetchDiscovery(client, { host: 'ghes.example.com', repo: 'acme/widgets', project: 'none', exec: fake.exec })
+    assert.equal(/issueFields/.test(JSON.parse(fake.calls[1].input).query), asked, version)
+  }
+})
+
+test('fetchDiscovery reads the Project of a GHES 3.22 host from the stateful fake', async () => {
+  const fake = fakeGithubIssues({ host: 'ghes.example.com', ghesVersion: '3.22.0' })
+  const client = createGithubClient({ exec: fake.exec, host: 'ghes.example.com', retries: 0, sleep: async () => {} })
+  const raw = await fetchDiscovery(client, { host: 'ghes.example.com', repo: 'acme/widgets', project: 'acme/7', exec: fake.exec })
+  assert.equal(raw.project.number, 7)
+  assert.ok(raw.issueFields.length > 0)
 })
 
 test('fetchDiscovery fails with AUTH and the project scope step when the Project read lacks the scope', async () => {
@@ -209,6 +219,10 @@ test('discoveryView reports open and closed when the repository has no Project',
   assert.ok(view.warnings.some((warning) => /tracker\.scope\.project is none/.test(warning)))
 })
 
+test('mappedLabelNames includes the priority and estimate labels (PMK-339)', () => {
+  assert.deepEqual(mappedLabelNames({ mappings: { status: { in_progress: 'label:Doing' }, priority: { high: 'label:P1', low: 'none' }, estimate: { 3: 'label:size: 3' } } }), ['Doing', 'P1', 'size: 3'])
+})
+
 test('discoveryView lists the mapped pmkit types and the estimate unit', async () => {
   const raw = await rawOf()
   assert.deepEqual(discoveryView(raw, pmkitWith({ types: { feature: 'Feature', bug: 'Bug' } })).types, ['feature', 'bug'])
@@ -294,7 +308,7 @@ test('fetchDiscovery with users reads the ids and pages the assignable users', a
   assert.deepEqual(raw.viewer, { id: 'U_1', login: 'octocat', name: 'The Octocat' })
   assert.deepEqual(raw.labels, [{ id: 'LA_1', name: 'bug' }, { id: 'LA_2', name: 'documentation' }])
   assert.deepEqual(raw.users, THREE_USERS)
-  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
+  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true, itemQuery: true })
   assert.match(JSON.parse(calls[0].input).query, /viewer \{ id login name \}/)
   assert.match(JSON.parse(calls[0].input).query, /labels\(first: 100\) \{ nodes \{ id name \}/)
   const view = discoveryView(raw, pmkitWith({}))
@@ -371,6 +385,15 @@ test('the repository query selects the owner id and the Project query selects th
   const query = projectQuery({ issueFields: true })
   assert.ok(query.includes('... on ProjectV2IterationField { id name dataType isIssueField configuration { duration startDay iterations { id title startDate duration } completedIterations { id title startDate duration } } }'))
   assert.ok(projectQuery({ issueFields: false }).includes('... on ProjectV2IterationField { id name dataType configuration {'))
+})
+
+test('the Project query asks for isIssueField and multi-select fields only off GHES, whose schemas have neither', () => {
+  const dotcom = projectQuery({ issueFields: true, ghes: false })
+  assert.match(dotcom, /isIssueField/)
+  assert.match(dotcom, /ProjectV2MultiSelectField/)
+  const ghes = projectQuery({ issueFields: true, ghes: true })
+  assert.doesNotMatch(ghes, /isIssueField/)
+  assert.doesNotMatch(ghes, /ProjectV2MultiSelectField/)
 })
 
 test('fetchDiscovery carries ownerId and the configuration of each iteration field', async () => {

@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fakeGithubIssues } from './fake-github-issues.mjs'
-import { statefulGhCalls, statefulGhOnPath } from './fake-gh-path.mjs'
+import { GITHUB_TRACKER_INIT, statefulGhCalls, statefulGhOnPath } from './fake-gh-path.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -18,13 +18,7 @@ const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'discussions-github
 const URL_1 = 'https://github.com/acme/widgets/discussions/1'
 const PAT_STEP = 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login'
 
-const SETUP = [
-  'init', '--tracker', 'github', '--git-host', 'github', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'acme/7',
-  ...['backlog=Backlog', 'todo=Todo', 'in_progress=In Progress', 'in_review=In Review', 'done=Done', 'canceled=none', 'blocked=none'].flatMap((item) => ['--status', item]),
-  ...['priority=issue:Priority', 'estimate=issue:Effort', 'start_date=issue:Start date', 'target_date=issue:Target date'].flatMap((item) => ['--field', item]),
-  ...['feature=Feature', 'bug=Bug', 'task=Task', 'chore=none'].flatMap((item) => ['--type-label', item]),
-  '--json',
-]
+const SETUP = [...GITHUB_TRACKER_INIT, '--json']
 
 const COMMANDS = {
   list: ['github', 'discussions', 'list', '--json'],
@@ -35,6 +29,7 @@ const COMMANDS = {
   commentDry: ['github', 'discussions', 'comment', '1', '--body-file', 'tmp/comment.txt', '--dry-run', '--json'],
   comment: ['github', 'discussions', 'comment', '1', '--body-file', 'tmp/comment.txt', '--json'],
   get9: ['github', 'discussions', 'get', '9', '--json'],
+  get2: ['github', 'discussions', 'get', '2', '--json'],
 }
 
 /** The state "Before you start" describes: setup done, two discussions on GitHub, the texts in tmp/. Returns { fake, pmkit }. */
@@ -46,7 +41,10 @@ function runbookRepo() {
     title: 'RFC: offline mode', body: 'Should the app work without a network?', category: 'Ideas', author: 'hubot', upvotes: 4, updatedAt: '2026-11-10T00:00:00.000Z',
     comments: [{ author: 'octocat', body: 'Yes, read-only first', upvotes: 2, replies: [{ author: 'hubot', body: 'And writes later?' }] }, { author: 'hubot', body: 'Sync conflicts worry me' }],
   })
-  github.seedDiscussion({ title: 'How do I reset my token?', category: 'Q&A', updatedAt: '2026-11-12T00:00:00.000Z', comments: [{ author: 'hubot', body: 'Run gh auth refresh', isAnswer: true }] })
+  // A long thread: the answer has 120 replies, and 1000 other comments follow it (PMK-342).
+  const replies = Array.from({ length: 120 }, (_, index) => ({ author: 'octocat', body: `Thanks ${index + 1}` }))
+  const others = Array.from({ length: 1000 }, (_, index) => ({ author: 'octocat', body: `Same here ${index + 1}` }))
+  github.seedDiscussion({ title: 'How do I reset my token?', category: 'Q&A', updatedAt: '2026-11-12T00:00:00.000Z', comments: [{ author: 'hubot', body: 'Run gh auth refresh', isAnswer: true, replies }, ...others] })
   const fake = statefulGhOnPath({ meta: null, issues: github.toJSON() })
   const env = { ...childEnv(), ...userStoreEnv().env, GH_TOKEN: TOKEN, PATH: `${fake.bin}${path.delimiter}${process.env.PATH}` }
   const pmkit = (args) => {
@@ -79,12 +77,12 @@ const mutationNames = (fake) => statefulGhCalls(fake).map((call) => /mutation (\
 test('the runbook names the commands this test runs', () => {
   const text = fs.readFileSync(RUNBOOK, 'utf8')
   for (const args of Object.values(COMMANDS)) assert.ok(text.includes(`node scripts/pmkit.mjs ${args.join(' ')}`), args.join(' '))
-  for (const expected of ['Turn on Discussions in the repository settings on GitHub', 'GitHub has no discussion #9 in acme/widgets', 'acme/widgets has Discussions turned off', `From discussion #1: ${URL_1}`, 'Tracked in #3', PAT_STEP]) {
+  for (const expected of ['Turn on Discussions in the repository settings on GitHub', 'GitHub has no discussion #9 in acme/widgets', 'acme/widgets has Discussions turned off', `From discussion #1: ${URL_1}`, 'Tracked in #3', PAT_STEP, 'discussion #2 has 1001 comments and pmkit read the first 1000', 'GitHub has no discussion #2 in acme/widgets', '; it was deleted while pmkit read the thread', 'pmkit github discussions get 2']) {
     assert.ok(text.includes(expected), expected)
   }
 })
 
-test('runbook: list, read, create an issue from a discussion and comment back, steps 1 to 9', () => {
+test('runbook: list, read, create an issue from a discussion and comment back, steps 1 to 10', () => {
   const { fake, pmkit } = runbookRepo()
 
   // Step 1: newest activity first.
@@ -139,6 +137,29 @@ test('runbook: list, read, create an issue from a discussion and comment back, s
   pat.issues.failures = { PmkitDiscussion: [{ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] }] }
   fs.writeFileSync(fake.fixtureFile, JSON.stringify(pat))
   assert.deepEqual(failure(pmkit(COMMANDS.get1)), { code: 'AUTH', message: 'GitHub refused the personal access token: Resource not accessible by personal access token', nextStep: PAT_STEP })
+
+  // Step 10: a thread past 100 comments, whose answer has past 100 replies, comes back whole up to 1000 comments, with a warning past that.
+  const long = json(pmkit(COMMANDS.get2))
+  assert.equal(long.discussion.commentsTotal, 1001)
+  assert.equal(long.discussion.comments.length, 1000)
+  assert.equal(long.discussion.comments.at(-1).body, 'Same here 999')
+  assert.deepEqual([long.discussion.comments[0].isAnswer, long.discussion.comments[0].repliesTotal, long.discussion.comments[0].replies.length], [true, 120, 120])
+  assert.equal(long.discussion.comments[0].replies.at(-1).body, 'Thanks 120')
+  assert.deepEqual(long.warnings, ['discussion #2 has 1001 comments and pmkit read the first 1000'])
+
+  // Steps 11 and 12: the discussion, then a comment, deleted between the first read and a further page. GitHub answers the node read NOT_FOUND once.
+  const goneOnce = (operation, id) => {
+    const fixture = JSON.parse(fs.readFileSync(fake.fixtureFile, 'utf8'))
+    fixture.issues.failures = { [operation]: [{ data: { node: null }, errors: [{ type: 'NOT_FOUND', path: ['node'], message: `Could not resolve to a node with the global id of '${id}'` }] }] }
+    fs.writeFileSync(fake.fixtureFile, JSON.stringify(fixture))
+  }
+  goneOnce('PmkitDiscussionComments', 'D_2')
+  assert.deepEqual(failure(pmkit(COMMANDS.get2)), { code: 'NOT_FOUND', message: 'GitHub has no discussion #2 in acme/widgets', nextStep: 'pmkit github discussions list' })
+  const answer = long.discussion.comments[0].id
+  goneOnce('PmkitDiscussionReplies', answer)
+  assert.deepEqual(failure(pmkit(COMMANDS.get2)), {
+    code: 'NOT_FOUND', message: `GitHub has no comment ${answer} in discussion #2 in acme/widgets; it was deleted while pmkit read the thread`, nextStep: 'pmkit github discussions get 2',
+  })
 
   // No call holds the token, and every call names the host.
   const made = statefulGhCalls(fake)

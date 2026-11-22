@@ -16,8 +16,11 @@ export default {
     { confirm: 'Step 5' },
     { step: '4', write: ['issues', 'move', 'ISS-2X6D', 'done'] },
   ],
-  skip: { '3 discover': 'done has one status in the team fixture, so step 3 does not ask' },
-  notHit: {},
+  skip: {
+    '1 epic get': 'the ID is an issue, so the epic fallback does not run',
+    '3 discover': 'done has one status in the team fixture, so step 3 does not ask',
+  },
+  notHit: { 'Epic path, step 2': 'the ID is an issue, so the epic path does not run' },
   expect(repo) {
     assert.equal(repo.issue('ISS-2X6D').status, 'done')
     assert.equal(repo.newEvents('ISS-2X6D').filter((event) => event.op === 'move').length, 1)

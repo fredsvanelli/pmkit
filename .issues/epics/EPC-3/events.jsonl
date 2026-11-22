@@ -1,1 +1,2 @@
 {"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"EPC-3","title":"Phase 2 commands","status":"backlog"}}
+{"at":"2026-11-21T16:44:23Z","by":"fred","op":"move","field":"status","from":"backlog","to":"done"}

@@ -113,23 +113,94 @@ test('get keeps shell and prompt text as plain text', async () => {
   assert.ok(fake.reads.every((call) => !JSON.stringify(call.variables).includes('rm -rf')))
 })
 
-test('get warns when comments or replies are cut', async () => {
+const discussionReads = (fake) => fake.reads.map((call) => call.name).filter((name) => name.startsWith('PmkitDiscussion') && name !== 'PmkitDiscussions')
+
+test('get reads every comment and reply of a long thread', async () => {
   const { fake, ops } = setup()
-  const replies = Array.from({ length: 101 }, (_, index) => ({ body: `reply ${index}` }))
-  fake.seedDiscussion({ title: 'Busy', comments: [{ body: 'root', replies }, ...Array.from({ length: 100 }, (_, index) => ({ body: `comment ${index}` }))] })
+  const comments = Array.from({ length: 250 }, (_, index) => ({ body: `comment ${index}` }))
+  comments[149].replies = Array.from({ length: 230 }, (_, index) => ({ body: `reply ${index}` }))
+  comments[199].author = null
+  fake.seedDiscussion({ title: 'Long RFC', comments })
   const { discussion, warnings } = await ops.get('1')
+  assert.deepEqual(warnings, [])
+  assert.equal(discussion.commentsTotal, 250)
+  assert.deepEqual(discussion.comments.map((comment) => comment.body), comments.map((comment) => comment.body))
+  assert.deepEqual(discussion.comments[149].replies.map((reply) => reply.body), comments[149].replies.map((reply) => reply.body))
+  assert.equal(discussion.comments[149].repliesTotal, 230)
+  assert.equal(discussion.comments[199].author, 'ghost')
+  assert.deepEqual(discussionReads(fake), ['PmkitDiscussion', ...Array(3).fill('PmkitDiscussionComments'), ...Array(3).fill('PmkitDiscussionReplies')])
+})
+
+test('get of a thread within 100 comments and 100 replies reads once', async () => {
+  const { fake, ops } = setup()
+  const comments = Array.from({ length: 100 }, (_, index) => ({ body: `comment ${index}` }))
+  comments[0].replies = Array.from({ length: 100 }, (_, index) => ({ body: `reply ${index}` }))
+  fake.seedDiscussion({ title: 'Full page', comments })
+  const { discussion, warnings } = await ops.get('1')
+  assert.deepEqual(warnings, [])
   assert.equal(discussion.comments.length, 100)
-  assert.equal(discussion.commentsTotal, 101)
   assert.equal(discussion.comments[0].replies.length, 100)
+  assert.deepEqual(discussionReads(fake), ['PmkitDiscussion'])
+})
+
+test('get warns past 1000 comments or 1000 replies', async () => {
+  const { fake, ops } = setup()
+  const replies = Array.from({ length: 1001 }, (_, index) => ({ body: `reply ${index}` }))
+  fake.seedDiscussion({ title: 'Busy', comments: [{ body: 'root', replies }, ...Array.from({ length: 1000 }, (_, index) => ({ body: `comment ${index}` }))] })
+  const { discussion, warnings } = await ops.get('1')
+  assert.equal(discussion.comments.length, 1000)
+  assert.equal(discussion.commentsTotal, 1001)
+  assert.equal(discussion.comments[0].replies.length, 1000)
   assert.deepEqual(warnings, [
-    'discussion #1 has 101 comments and pmkit read the first 100',
-    `comment ${discussion.comments[0].id} has 101 replies and pmkit read the first 100`,
+    'discussion #1 has 1001 comments and pmkit read the first 1000',
+    `comment ${discussion.comments[0].id} has 1001 replies and pmkit read the first 1000`,
   ])
 })
 
 test('get on a missing number fails with NOT_FOUND', async () => {
   const { ops } = seeded()
   await assert.rejects(ops.get('9'), { code: 'NOT_FOUND', message: 'GitHub has no discussion #9 in acme/widgets', nextStep: 'pmkit github discussions list' })
+})
+
+/** Removes state with remove(fake.state) right after GitHub answers the first read of a discussion, as a delete between reads would. */
+function deleteAfterFirstRead(remove) {
+  const fake = fakeGithubIssues()
+  let first = true
+  const exec = (...args) => {
+    const answer = fake.exec(...args)
+    if (first && String(args[2]?.input ?? '').includes('PmkitDiscussion(')) {
+      first = false
+      remove(fake.state)
+    }
+    return answer
+  }
+  const client = createGithubClient({ exec, retries: 0, sleep: async () => {} })
+  return { fake, ops: discussionOperations({ client, scope: SCOPE }) }
+}
+
+const many = (count, make) => Array.from({ length: count }, (_, index) => make(index))
+const MISSING_1 = { code: 'NOT_FOUND', message: 'GitHub has no discussion #1 in acme/widgets', nextStep: 'pmkit github discussions list' }
+
+test('get fails NOT_FOUND like a missing discussion when the discussion is deleted mid-read', async () => {
+  const { fake, ops } = deleteAfterFirstRead((state) => state.discussions.splice(0))
+  fake.seedDiscussion({ title: 'Long', category: 'Ideas', comments: many(150, (index) => ({ author: 'hubot', body: `c${index}` })) })
+  await assert.rejects(ops.get('1'), MISSING_1)
+})
+
+test('get fails NOT_FOUND naming the comment deleted mid-read', async () => {
+  const { fake, ops } = deleteAfterFirstRead((state) => state.discussions[0].comments.splice(0))
+  fake.seedDiscussion({ title: 'Long', category: 'Ideas', comments: [{ author: 'hubot', body: 'c', replies: many(150, (index) => ({ author: 'octocat', body: `r${index}` })) }] })
+  const id = fake.state.discussions[0].comments[0].id
+  await assert.rejects(ops.get('1'), {
+    code: 'NOT_FOUND', message: `GitHub has no comment ${id} in discussion #1 in acme/widgets; it was deleted while pmkit read the thread`, nextStep: 'pmkit github discussions get 1',
+  })
+})
+
+test('get maps a further page with a null node and no error to NOT_FOUND', async () => {
+  const { fake, ops } = setup()
+  fake.seedDiscussion({ title: 'Long', category: 'Ideas', comments: many(150, (index) => ({ author: 'hubot', body: `c${index}` })) })
+  fake.failNext('PmkitDiscussionComments', { data: { node: null } })
+  await assert.rejects(ops.get('1'), MISSING_1)
 })
 
 test('parseDiscussionNumber takes 12 and #12 and refuses anything else', () => {
@@ -206,8 +277,16 @@ test('list, get and comment refused for a fine-grained PAT name the Discussions 
     ['PmkitDiscussion', (ops) => ops.comment('1', 'Tracked in #4', { dryRun: true })],
     ['PmkitAddDiscussionComment', (ops) => ops.comment('1', 'Tracked in #4')],
   ]
-  for (const [operation, call] of calls) {
+  // A further page of comments or of replies is refused like the first read.
+  const long = (fake, comments) => fake.seedDiscussion({ number: 10, title: 'Long', comments })
+  const many = (count) => Array.from({ length: count }, (_, index) => ({ body: `item ${index}` }))
+  const further = [
+    ['PmkitDiscussionComments', (ops) => ops.get('10'), (fake) => long(fake, many(101))],
+    ['PmkitDiscussionReplies', (ops) => ops.get('10'), (fake) => long(fake, [{ body: 'root', replies: many(101) }])],
+  ]
+  for (const [operation, call, seed = () => {}] of [...calls, ...further]) {
     const { fake, ops } = seeded()
+    seed(fake)
     fake.failNext(operation, refused)
     await assert.rejects(call(ops), expected, operation)
   }

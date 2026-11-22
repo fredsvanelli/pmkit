@@ -99,3 +99,12 @@ test('CONTEXT.md defines GitHub Project', () => {
   assert.match(match[1], /tracker\.scope\.project/)
   assert.match(match[1], /Status field/)
 })
+
+test('ADR-0007 records the PMK-335 amendment: issue fields on GHES from 3.22', () => {
+  const text = adr()
+  const note = text.slice(text.indexOf('## Amendment, 2026-11-18 (PMK-335)'))
+  assert.ok(text.includes('## Amendment, 2026-11-18 (PMK-335)'))
+  for (const name of ['3.22', 'Repository.issueFields', 'Issue.issueFieldValues', 'isIssueField', 'ProjectV2MultiSelectField']) {
+    assert.ok(note.includes(name), `the amendment must name ${name}`)
+  }
+})

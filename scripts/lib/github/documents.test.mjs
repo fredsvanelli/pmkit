@@ -31,10 +31,17 @@ test('the metric issue read selects only what toEvents reads, and the Status var
 })
 
 test('hostFeatures per host', () => {
-  assert.deepEqual(GITHUB, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
-  assert.deepEqual(hostFeatures({ host: 'acme.ghe.com', ghesVersion: null }), { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true })
-  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.21.0' }), { issueFields: true, relatesTo: false, statusEvents: true, iterationIds: false })
-  assert.deepEqual(GHES, { issueFields: false, relatesTo: false, statusEvents: false, iterationIds: false })
+  assert.deepEqual(GITHUB, { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true, itemQuery: true })
+  assert.deepEqual(hostFeatures({ host: 'acme.ghe.com', ghesVersion: null }), { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true, itemQuery: true })
+  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.21.0' }), { issueFields: false, relatesTo: false, statusEvents: true, iterationIds: false, itemQuery: false })
+  assert.deepEqual(hostFeatures({ host: 'git.acme.dev', ghesVersion: '3.22.0' }), { issueFields: true, relatesTo: false, statusEvents: true, iterationIds: false, itemQuery: false })
+  assert.deepEqual(GHES, { issueFields: false, relatesTo: false, statusEvents: false, iterationIds: false, itemQuery: false })
+})
+
+test('hostFeatures reads Status change events from GHES 3.20, not 3.19', () => {
+  for (const [version, expected] of [['3.19.9', false], ['3.20.0', true], ['3.20.4', true]]) {
+    assert.equal(hostFeatures({ host: 'git.acme.dev', ghesVersion: version }).statusEvents, expected, version)
+  }
 })
 
 for (const [label, features] of [['github.com', GITHUB], ['GHES 3.19', GHES]]) {

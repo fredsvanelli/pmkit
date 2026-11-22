@@ -2,12 +2,16 @@
 id: PMK-339
 title: "Read priority, estimate and dates from labels on GitHub repositories without a Project"
 type: feature
-status: backlog
+status: done
 priority: low
+estimate: 3
+assignee: fred
 parent: EPC-8
+related: [PMK-358]
 milestone: github-issues
+branch: pmk-339-read-priority-estimate-and-dates-from
 created: 2026-11-17T21:22:17.656Z
-updated: 2026-11-17T21:22:17Z
+updated: 2026-11-21T22:11:22Z
 ---
 
 ## Description
@@ -16,4 +20,4 @@ Found while working PMK-89 (PR #312). Without a Project, statuses and types can 
 
 ## Acceptance criteria
 
-- [ ] An ADR or design doc records whether field roles may map to labels without a Project
+- [x] An ADR or design doc records whether field roles may map to labels without a Project

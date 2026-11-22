@@ -1078,6 +1078,12 @@ export function fakeLinearProjects({
       projects: { nodes: projects.filter((project) => (ids ?? []).includes(project.id)).map((project) => ({ ...refOf(project), updatedAt: project.updatedAt ?? project.createdAt })) },
     })),
     PmkitProjectStatuses: query('PmkitProjectStatuses', () => ({ projectStatuses: { nodes: PROJECT_STATUS_NODES } })),
+    PmkitProjectSetStatus: mutation('PmkitProjectSetStatus', ({ id, input }) => {
+      for (const key of Object.keys(input ?? {})) if (key !== 'statusId') throw new FakeValidationError(`Unknown input field ${key}`)
+      const project = requireProject(id)
+      project.statusId = input.statusId
+      return { projectUpdate: { success: true, project: projectNode(project, false) } }
+    }),
     PmkitProjectDelete: mutation('PmkitProjectDelete', ({ id }) => {
       const index = projects.findIndex((project) => project.id === id)
       if (index < 0) throw projectNotFound('Project')

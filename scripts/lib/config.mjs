@@ -4,7 +4,7 @@ import { ADAPTERS, adapterFor } from './adapters.mjs'
 import { PmkitError } from './errors.mjs'
 import { ID_STYLES } from './ids.mjs'
 import { FORMAT_VERSION, MIGRATIONS, formatError, formatState, migratedCopy } from './local/migrations.mjs'
-import { CATEGORIES, FIELD_ROLES, STATUS_MAPPING_KEYS, isCategory } from './model.mjs'
+import { CATEGORIES, FIELD_ROLES, PRIORITY_LABEL_LEVELS, STATUS_MAPPING_KEYS, isCategory } from './model.mjs'
 import { parseYaml } from './yaml.mjs'
 
 export const TRACKERS = ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops']
@@ -72,11 +72,23 @@ function scopeProblems(scope) {
   return problems
 }
 
+/** The problems of mappings.<name>, a map from a key (one of keys, when given) to a label name. */
+function labelMapProblems(name, map, keys, what) {
+  if (map === undefined) return []
+  if (!isObject(map)) return [`mappings.${name} must be a map from ${what} to a label`]
+  return Object.entries(map).flatMap(([key, value]) => [
+    ...(keys && !keys.includes(key) ? [`mappings.${name}.${key}: ${key} is not ${what}, use one of ${keys.join(', ')}`] : []),
+    ...(isName(value) ? [] : [`mappings.${name}.${key} must be a label`]),
+  ])
+}
+
 function mappingsProblems(mappings) {
   if (mappings === undefined) return []
   if (!isObject(mappings)) return ['mappings must be a map with status, fields or types']
   const problems = []
-  const { status, fields, types } = mappings
+  const { status, fields, types, priority, estimate } = mappings
+  // The priority and estimate labels of GitHub Issues without a Project (ADR 0012). The adapter's mapping check reads label:<name>.
+  problems.push(...labelMapProblems('priority', priority, PRIORITY_LABEL_LEVELS, 'a priority level'), ...labelMapProblems('estimate', estimate, null, 'an estimate value'))
   if (status !== undefined && !isObject(status)) {
     problems.push('mappings.status must be a map from a category or blocked to a status name')
   } else {

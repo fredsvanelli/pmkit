@@ -7,7 +7,7 @@ import {
   localConfigShapeProblems, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { ID_STYLES } from './lib/ids.mjs'
-import { CATEGORIES, FIELD_ROLES, STATUS_MAPPING_KEYS } from './lib/model.mjs'
+import { CATEGORIES, FIELD_ROLES, PRIORITY_LABEL_LEVELS, STATUS_MAPPING_KEYS } from './lib/model.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { existsSync } from 'node:fs'
@@ -309,6 +309,9 @@ const PINNED = {
     'mappings.status.<key> enum': [(s) => s.properties.mappings.properties.status.propertyNames.enum, STATUS_MAPPING_KEYS],
     'mappings.types.* pattern': [(s) => s.properties.mappings.properties.types.additionalProperties.pattern, NAME.source],
     'mappings.fields.<key> enum': [(s) => s.properties.mappings.properties.fields.propertyNames.enum, FIELD_ROLES],
+    'mappings.priority.* pattern': [(s) => s.properties.mappings.properties.priority.additionalProperties.pattern, NAME.source],
+    'mappings.priority.<key> enum': [(s) => s.properties.mappings.properties.priority.propertyNames.enum, PRIORITY_LABEL_LEVELS],
+    'mappings.estimate.* pattern': [(s) => s.properties.mappings.properties.estimate.additionalProperties.pattern, NAME.source],
   },
   issues: {
     'id_prefix pattern': [(s) => s.properties.id_prefix.pattern, PREFIX.source],
@@ -344,8 +347,8 @@ test('every key path of each template has a schema', () => {
   }
 })
 
-test('the user-keyed maps are tracker.scope, mappings.status, mappings.fields and mappings.types, and statuses, members and defaults', () => {
-  assert.deepEqual(mapPaths(loadSchema('pmkit')).map((keys) => keys.join('.')), ['tracker.scope', 'mappings.status', 'mappings.fields', 'mappings.types'])
+test('the user-keyed maps are tracker.scope and mappings.status, fields, priority, estimate and types, and statuses, members and defaults', () => {
+  assert.deepEqual(mapPaths(loadSchema('pmkit')).map((keys) => keys.join('.')), ['tracker.scope', 'mappings.status', 'mappings.fields', 'mappings.priority', 'mappings.estimate', 'mappings.types'])
   assert.deepEqual(mapPaths(loadSchema('issues')).map((keys) => keys.join('.')), ['statuses', 'members', 'defaults'])
 })
 
@@ -380,6 +383,8 @@ test('null for an optional key is invalid on both sides, and tracker.path null i
     ['pmkit', ['mappings', 'status'], false],
     ['pmkit', ['mappings', 'fields'], false],
     ['pmkit', ['mappings', 'types'], false],
+    ['pmkit', ['mappings', 'priority'], false],
+    ['pmkit', ['mappings', 'estimate'], false],
     ['issues', ['id_style'], false],
     ['issues', ['labels'], false],
     ['issues', ['estimate', 'scale'], false],

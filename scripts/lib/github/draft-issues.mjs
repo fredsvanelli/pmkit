@@ -35,7 +35,7 @@ const ITEM = `id type isArchived
 // Each document starts with its operation, as the fake GitHub reads only the first definition.
 export const DRAFT_DOCUMENTS = Object.freeze({
   PROJECT: `query PmkitDraftProject($owner: String!, $number: Int!) {
-  repositoryOwner(login: $owner) { projectV2(number: $number) { id title url } }
+  repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) { id title url } } }
 }`,
   ITEMS: `query PmkitDraftItems($project: ID!, $first: Int!, $after: String) {
   node(id: $project) {

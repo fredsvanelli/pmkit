@@ -1,6 +1,6 @@
 # Runbook: discussions on GitHub Issues
 
-The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub Issues: list the discussions, read one, create an issue from it, and comment back on the discussion. Then a missing discussion, a repository with Discussions turned off, and a fine-grained PAT without the Discussions permission. `scripts/runbook-discussions-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
+The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub Issues: list the discussions, read one, create an issue from it, and comment back on the discussion. Then a missing discussion, a repository with Discussions turned off, a fine-grained PAT without the Discussions permission, and a thread past the 1000 comments pmkit reads. `scripts/runbook-discussions-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
 
 ## Before you start
 
@@ -8,7 +8,7 @@ The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub 
 - `gh` is logged in to the host of the repository.
 - The repository `acme/widgets` has Discussions turned on and holds two discussions:
   - `#1` in Ideas, `RFC: offline mode`, by `hubot`, with two comments. The first, by `octocat`, has one reply by `hubot`.
-  - `#2` in Q&A, `How do I reset my token?`, whose answer is marked.
+  - `#2` in Q&A, `How do I reset my token?`, whose answer is marked. The answer, by `hubot`, has 120 replies (`Thanks 1` to `Thanks 120`), and 1000 other comments follow it (`Same here 1` to `Same here 1000`).
 - Texts go through files, as `skills/pmkit/references/conventions.md` requires. The steps write them in `tmp/` with the file tool:
   - `tmp/title.txt`: `Add an offline mode`
   - `tmp/description.md`: a `### Context` section whose first line is `From discussion #1: https://github.com/acme/widgets/discussions/1`
@@ -95,6 +95,32 @@ The flow of `/pmkit:github:discussions` on a repository whose tracker is GitHub 
    ```
 
    The command exits with code 2 and `AUTH`, `GitHub refused the personal access token: Resource not accessible by personal access token`, with the next step `Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login`. The other GitHub calls keep the step that names Projects and Issues.
+
+## A long thread
+
+10. Read discussion 2, whose thread is past 1000 comments and whose answer has past 100 replies:
+
+   ```
+   node scripts/pmkit.mjs github discussions get 2 --json
+   ```
+
+   pmkit reads up to 1000 comments, and up to 1000 replies per comment, 100 at a time. Expect `commentsTotal: 1001` and the first 1000 comments, the last one `Same here 999`; the answer first, with `repliesTotal: 120` and all 120 replies, the last one `Thanks 120`; and the warning `discussion #2 has 1001 comments and pmkit read the first 1000`. A thread within the limit comes back whole with no warning, as in step 3.
+
+11. Delete discussion 2 on GitHub right after pmkit's first read of it, before it reads the further pages of comments. The test makes GitHub answer the comments read with `NOT_FOUND` once. Read it:
+
+   ```
+   node scripts/pmkit.mjs github discussions get 2 --json
+   ```
+
+   The command exits with code 2 and `NOT_FOUND`, `GitHub has no discussion #2 in acme/widgets`, with the next step `pmkit github discussions list`: the same answer as a discussion that never existed (step 7).
+
+12. Delete the answer of discussion 2 right after the first read, before pmkit reads its further replies. The test makes GitHub answer the replies read with `NOT_FOUND` once. Read it again:
+
+   ```
+   node scripts/pmkit.mjs github discussions get 2 --json
+   ```
+
+   The command exits with code 2 and `NOT_FOUND`, `GitHub has no comment <id> in discussion #2 in acme/widgets; it was deleted while pmkit read the thread`, where `<id>` is the answer's id, with the next step `pmkit github discussions get 2` to read the thread again.
 
 ## What the fake `gh` checks
 

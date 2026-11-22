@@ -47,6 +47,7 @@ test('planWrite builds the create input, the field writes and the after of a new
   assert.equal(plan.after.type, 'bug')
   assert.equal(plan.after.priority, 'high')
   assert.equal(plan.after.estimate, 3)
+  assert.deepEqual(plan.fields[1].shown, { __typename: 'IssueFieldNumberValue', numberValue: 3 })
   assert.deepEqual(plan.after.labels, ['bug'])
   assert.deepEqual(plan.after.acceptanceCriteria, [{ text: 'x', done: false }])
 })
@@ -278,6 +279,43 @@ test('a labels patch keeps the status and type labels and refuses them', async (
   assert.deepEqual(labelIdsNamed(context, planWrite({ labels: null }, { mode: 'update', before, context }).input.labelIds).sort(), ['Doing', 'bug'])
   assert.throws(() => planWrite({ labels: ['doing'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label doing holds a status; use pmkit issues move' })
   assert.throws(() => planWrite({ labels: ['bug'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label bug holds a type; use --type' })
+})
+
+// Priority and estimate labels without a Project (PMK-339, ADR 0012).
+const VALUE_PMKIT = {
+  ...LABEL_PMKIT,
+  mappings: {
+    ...LABEL_PMKIT.mappings, fields: { priority: 'none', estimate: 'none' },
+    priority: { urgent: 'label:P0', high: 'label:P1', medium: 'none', low: 'none' }, estimate: { 1: 'label:size: 1', 3: 'label:size: 3' },
+  },
+}
+const valueContext = () => contextOf({ project: null, issueTypes: [], labels: [...LABEL_NAMES, 'P0', 'P1', 'size: 1', 'size: 3'], pmkit: VALUE_PMKIT })
+
+test('planWrite swaps priority and estimate labels without a Project, with no field write', async () => {
+  const { fake, context } = await valueContext()
+  fake.seed({ labels: ['P1', 'size: 3', 'x'] })
+  const before = nodeOf(fake, context, 1)
+  const urgent = planWrite({ priority: 'urgent' }, { mode: 'update', before, context })
+  assert.deepEqual(labelIdsNamed(context, urgent.input.labelIds).sort(), ['P0', 'size: 3', 'x'])
+  assert.deepEqual(urgent.fields, [])
+  assert.equal(urgent.after.priority, 'urgent')
+  const cleared = planWrite({ estimate: null, priority: null }, { mode: 'update', before, context })
+  assert.deepEqual(labelIdsNamed(context, cleared.input.labelIds).sort(), ['x'])
+  assert.deepEqual([cleared.after.priority, cleared.after.estimate], [undefined, undefined])
+  assert.deepEqual(planWrite({ priority: 'high', estimate: 3 }, { mode: 'update', before, context }).input, {})
+  const created = planWrite({ title: 'New', priority: 'high', estimate: 1 }, { mode: 'create', context })
+  assert.deepEqual(labelIdsNamed(context, created.input.labelIds).sort(), ['P1', 'size: 1'])
+  assert.deepEqual([created.after.priority, created.after.estimate], ['high', 1])
+})
+
+test('a priority or estimate no label stands for, and a labels patch naming one, are refused', async () => {
+  const { fake, context } = await valueContext()
+  fake.seed({ labels: ['P1'] })
+  const before = nodeOf(fake, context, 1)
+  assert.throws(() => planWrite({ estimate: 4 }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'estimate 4 has no label in mappings.estimate (1, 3)', nextStep: '/pmkit:setup' })
+  assert.throws(() => planWrite({ priority: 'low' }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'priority low has no label in mappings.priority (urgent, high)', nextStep: '/pmkit:setup' })
+  assert.throws(() => planWrite({ labels: ['P0'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label P0 holds a priority; use --priority' })
+  assert.throws(() => planWrite({ labels: ['size: 1'] }, { mode: 'update', before, context }), { code: 'INVALID_INPUT', message: 'label size: 1 holds an estimate; use --estimate' })
 })
 
 const ITERATIONS = [

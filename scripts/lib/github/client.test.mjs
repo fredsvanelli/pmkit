@@ -469,6 +469,14 @@ test('paginate joins pages and passes first and after', async () => {
   assert.deepEqual(calls.map((call) => JSON.parse(call.input).variables), [{ label: 'bug', first: 2, after: null }, { label: 'bug', first: 2, after: 'c1' }])
 })
 
+test('paginate passes permissions to each page request', async () => {
+  const refused = answer({ body: { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by personal access token' }] } })
+  const { client } = setup([page([1, 2], 'c1'), refused])
+  const error = await failure(client.paginate(ISSUES, {}, { select, pageSize: 2, permissions: 'Discussions' }))
+  assert.equal(error.code, 'AUTH')
+  assert.equal(error.nextStep, 'Give the token read and write access to Discussions in its GitHub settings, or unset GH_TOKEN to use the gh login')
+})
+
 test('paginate stops at limit and says there is more', async () => {
   const { client, calls } = setup([page([1, 2], 'c1'), page([3], 'c2')])
   const result = await client.paginate(ISSUES, {}, { select, pageSize: 2, limit: 3 })
@@ -577,6 +585,21 @@ test('rest maps other 4xx answers to UPSTREAM with the message of GitHub', async
   const error = await failure(client.rest('POST', REST_PATH, { title: 'v1', due_on: 'x' }))
   assert.equal(error.code, 'UPSTREAM')
   assert.match(error.message, /Validation Failed/)
+})
+
+test('rest GET with an unreadable 2xx body is UPSTREAM and not retried', async () => {
+  const { client, calls } = setup([restAnswer(200, 'not json'), restAnswer(200, { ok: true })])
+  const error = await failure(client.rest('GET', 'repos/acme/widgets'))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.equal(error.message, 'GitHub returned an unreadable answer (HTTP 200)')
+  assert.equal(calls.length, 1)
+})
+
+test('rest already_exists off /milestones is UPSTREAM with the message of GitHub, not CONFLICT', async () => {
+  const { client } = setup([restAnswer(422, { message: 'Validation Failed', errors: [{ resource: 'Label', code: 'already_exists', field: 'name' }] })])
+  const error = await failure(client.rest('POST', 'repos/acme/widgets/labels', { name: 'bug' }))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.match(error.message, /^GitHub answered with an error: .*Validation Failed/)
 })
 
 test('rest write is never retried: a timeout or 5xx is the unconfirmed-mutation error', async () => {

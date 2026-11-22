@@ -1,6 +1,7 @@
 // GitHub Discussions for the GitHub Issues tracker: list, get and comment, read through GraphQL with the gh client.
 // A discussion is text anyone who can post wrote, so it travels only as JSON data and GraphQL variables, never in a document.
-// See docs/specs/2026-11-17-pmk-90-github-discussions-design.md.
+// See docs/specs/2026-11-17-pmk-90-github-discussions-design.md, and for threads past 100 comments or replies
+// docs/superpowers/specs/2026-11-21-pmk-342-discussion-threads-past-100-design.md.
 
 import { PmkitError } from '../errors.mjs'
 
@@ -15,6 +16,9 @@ const ANSWERED = { yes: true, no: false }
 
 const AUTHOR = 'author { login }'
 const PAGE = 'pageInfo { hasNextPage endCursor }'
+const REPLY_FIELDS = `id body createdAt upvoteCount ${AUTHOR}`
+const COMMENT_FIELDS = `id body createdAt upvoteCount isAnswer ${AUTHOR}
+          replies(first: $replies) { totalCount nodes { ${REPLY_FIELDS} } ${PAGE} }`
 
 // Each document starts with its operation, as the fake GitHub reads only the first definition.
 export const DISCUSSION_DOCUMENTS = Object.freeze({
@@ -42,15 +46,16 @@ export const DISCUSSION_DOCUMENTS = Object.freeze({
       category { name isAnswerable }
       labels(first: 50) { nodes { name } }
       answer { id body ${AUTHOR} }
-      comments(first: $comments) {
-        totalCount
-        nodes {
-          id body createdAt upvoteCount isAnswer ${AUTHOR}
-          replies(first: $replies) { totalCount nodes { id body createdAt upvoteCount ${AUTHOR} } }
-        }
-      }
+      comments(first: $comments) { totalCount nodes { ${COMMENT_FIELDS} } ${PAGE} }
     }
   }
+}`,
+  // The further pages of a thread past 100 comments or 100 replies, by node id (PMK-342).
+  COMMENTS: `query PmkitDiscussionComments($id: ID!, $first: Int!, $after: String, $replies: Int!) {
+  node(id: $id) { ... on Discussion { comments(first: $first, after: $after) { totalCount nodes { ${COMMENT_FIELDS} } ${PAGE} } } }
+}`,
+  REPLIES: `query PmkitDiscussionReplies($id: ID!, $first: Int!, $after: String) {
+  node(id: $id) { ... on DiscussionComment { replies(first: $first, after: $after) { totalCount nodes { ${REPLY_FIELDS} } ${PAGE} } } }
 }`,
   COMMENT: `mutation PmkitAddDiscussionComment($input: AddDiscussionCommentInput!) {
   addDiscussionComment(input: $input) { comment { id url } }
@@ -143,6 +148,9 @@ export function discussionOperations({ client, scope }) {
   const off = (extra) => ({ available: false, reason: 'disabled', enableHint: ENABLE_HINT, repo: scope.repo, ...extra })
   // A fine-grained PAT needs the Discussions permission for these calls, so a PAT refusal names it (PMK-341).
   const request = (document, variables) => client.request(document, variables, { permissions: 'Discussions' })
+  const missingDiscussion = (number) => new PmkitError('NOT_FOUND', `GitHub has no discussion #${number} in ${scope.repo}`, 'pmkit github discussions list')
+  const deletedComment = (number, id) =>
+    new PmkitError('NOT_FOUND', `GitHub has no comment ${id} in discussion #${number} in ${scope.repo}; it was deleted while pmkit read the thread`, `pmkit github discussions get ${number}`)
 
   async function categoryId(category) {
     const { repository } = await request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
@@ -182,13 +190,45 @@ export function discussionOperations({ client, scope }) {
     // GitHub hides the discussions of a repository with Discussions off, so a miss asks which case it is.
     const { repository } = await request(DISCUSSION_DOCUMENTS.CATEGORIES, where)
     if (!repository.hasDiscussionsEnabled) return { enabled: false }
-    throw new PmkitError('NOT_FOUND', `GitHub has no discussion #${number} in ${scope.repo}`, 'pmkit github discussions list')
+    throw missingDiscussion(number)
+  }
+
+  /**
+   * Every node of a further read. paginate's default cap of 10 pages is the documented limit: 1000 comments, 1000 replies per
+   * comment, and cutWarnings names the rest. A node deleted since the first read, which GitHub answers NOT_FOUND or as a null
+   * node (paginate then calls the page broken), throws gone() instead (PMK-357).
+   */
+  async function allNodes(document, variables, pick, gone) {
+    let missing = false
+    const select = (data) => {
+      missing = data.node === null
+      return pick(data.node)
+    }
+    try {
+      return (await client.paginate(document, variables, { select, pageSize: READ_COMMENTS, permissions: 'Discussions' })).nodes
+    } catch (error) {
+      if (missing || error?.code === 'NOT_FOUND') throw gone()
+      throw error
+    }
+  }
+
+  /** Reads every page of a cut comments or replies connection, so a thread past 100 comes back whole up to the limit. */
+  async function completeThread(node) {
+    const { number } = node
+    if (node.comments.pageInfo?.hasNextPage === true) {
+      node.comments.nodes = await allNodes(DISCUSSION_DOCUMENTS.COMMENTS, { id: node.id, replies: READ_REPLIES }, (found) => found.comments, () => missingDiscussion(number))
+    }
+    for (const comment of node.comments.nodes) {
+      if (comment.replies.pageInfo?.hasNextPage !== true) continue
+      comment.replies.nodes = await allNodes(DISCUSSION_DOCUMENTS.REPLIES, { id: comment.id }, (found) => found.replies, () => deletedComment(number, comment.id))
+    }
+    return node
   }
 
   async function get(value) {
     const found = await read(parseDiscussionNumber(value))
     if (!found.enabled) return off({ discussion: null, warnings: [] })
-    const discussion = fullView(found.node)
+    const discussion = fullView(await completeThread(found.node))
     return { available: true, repo: scope.repo, discussion, warnings: cutWarnings(discussion) }
   }
 

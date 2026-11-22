@@ -393,8 +393,8 @@ const moveOnly = (steps, extra = {}) => ({
   command: 'issues/move',
   fixture: 'team',
   steps,
-  skip: { '1 issues get': 'test', '2 issues get': 'test', '3 discover': 'test' },
-  notHit: { 'Step 5': 'test' },
+  skip: { '1 issues get': 'test', '1 epic get': 'test', '2 issues get': 'test', '3 discover': 'test' },
+  notHit: { 'Step 5': 'test', 'Epic path, step 2': 'test' },
   ...extra,
 })
 const runMove = (scenario, run) =>
@@ -448,16 +448,16 @@ test('runScenario lets a dry run change files under .git', async () => {
 test('runScenario matches a write to its dry run on the args without --json and --dry-run', async () => {
   const write = (args) => ({ step: '4', write: args })
   const confirm = { confirm: 'Step 5' }
-  const same = await runMove(moveOnly([DRY_MOVE, confirm, write(DRY_MOVE.dryRun)], { notHit: {} }))
+  const same = await runMove(moveOnly([DRY_MOVE, confirm, write(DRY_MOVE.dryRun)], { notHit: { 'Epic path, step 2': 'test' } }))
   assert.deepEqual(same.problems, [])
-  const other = await runMove(moveOnly([DRY_MOVE, confirm, write([...DRY_MOVE.dryRun, '--status', 'done'])], { notHit: {} }))
+  const other = await runMove(moveOnly([DRY_MOVE, confirm, write([...DRY_MOVE.dryRun, '--status', 'done'])], { notHit: { 'Epic path, step 2': 'test' } }))
   assert.equal(other.problems.length, 1, other.problems.join('\n'))
   assert.match(other.problems[0], /^rule 9: .*--status done.*no earlier dry run/)
 })
 
 test('runScenario does not let a dry run that failed as expected cover a write', async () => {
   const failing = { step: '4', dryRun: ['issues', 'move', 'ISS-2X6D', 'finished'], expectError: 'INVALID_INPUT' }
-  const { problems, snapshot } = await runMove(moveOnly([failing, { confirm: 'Step 5' }, { step: '4', write: failing.dryRun, expectError: 'INVALID_INPUT' }], { notHit: {} }))
+  const { problems, snapshot } = await runMove(moveOnly([failing, { confirm: 'Step 5' }, { step: '4', write: failing.dryRun, expectError: 'INVALID_INPUT' }], { notHit: { 'Epic path, step 2': 'test' } }))
   assert.equal(problems.length, 1, problems.join('\n'))
   assert.match(problems[0], /^rule 9: write .*finished.*no earlier dry run/)
   assert.match(snapshot, /exit 2 \(expected INVALID_INPUT\)/)
@@ -648,6 +648,22 @@ test('a scenario with linear runs the CLI in process over the fake workspace', a
   assert.equal(data.team, 'ACME')
   const custom = await prepareCopy({ fixture: null, linear: { name: 'Other' }, setup }, { scratch: tempDir(), fixturesDir: FIXTURES })
   assert.equal(JSON.parse((await custom.run(['discover', '--json'], custom.root, { env: custom.env })).stdout).workspace.name, 'Other')
+})
+
+test('prepareCopy with githubTracker runs the CLI on the stateful fake GitHub', async () => {
+  const seed = (github) => github.seedDiscussion({ title: 'RFC: offline mode', category: 'Ideas' })
+  const { root, env, run, tracker } = await prepareCopy({ fixture: null, githubTracker: { seed } }, { scratch: tempDir(), fixturesDir: FIXTURES })
+  assert.ok(tracker, 'the prepared copy names its fake gh')
+  const capabilities = await run(['capabilities', '--json'], root, { env })
+  assert.equal(capabilities.code, 0, capabilities.stdout + capabilities.stderr)
+  assert.equal(JSON.parse(capabilities.stdout).tracker, 'github')
+  const listed = await run(['github', 'discussions', 'list', '--json'], root, { env })
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.deepEqual(JSON.parse(listed.stdout).discussions.map((item) => item.title), ['RFC: offline mode'])
+})
+
+test('prepareCopy refuses githubTracker with a fixture, whose config the init would not replace', async () => {
+  await assert.rejects(prepareCopy({ fixture: 'basic', githubTracker: {} }, { scratch: tempDir(), fixturesDir: FIXTURES }), /githubTracker: the scenario must have no fixture/)
 })
 
 test('a scenario without linear still runs the CLI as a child process', async () => {

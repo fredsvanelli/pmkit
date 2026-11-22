@@ -158,6 +158,28 @@ test('project none without issue types writes type labels', async () => {
   assert.match(read(context), /bug: "?label:bug"?/)
 })
 
+test('project none with the fields none takes priority and estimate labels, and an update keeps them (PMK-339)', async () => {
+  const context = fresh()
+  const fixture = () => standardFixture({ graphql: { PmkitRepo: repoReply({ labels: ['Doing', 'P0', 'P1', 'size: 3'], types: [] }), PmkitLinkedProjects: linkedReply() } })
+  const status = ['triage=none', 'backlog=none', 'in_progress=Doing', 'in_review=none'].flatMap((item) => ['--status', item])
+  const fields = ['priority=none', 'estimate=none', 'start_date=none', 'target_date=none'].flatMap((item) => ['--field', item])
+  const types = ['feature=none', 'bug=none', 'task=none', 'chore=none'].flatMap((item) => ['--type-label', item])
+  const base = [...INIT, '--project', 'none', ...status, ...fields, ...types]
+  const asked = dataOf(await cli(context, [...base, '--dry-run', '--json'], fixture()))
+  assert.deepEqual(asked.questions.map((q) => q.path), ['mappings.priority.urgent', 'mappings.priority.high', 'mappings.priority.medium', 'mappings.priority.low'])
+  const priority = ['urgent=P0', 'high=P1', 'medium=none', 'low=none'].flatMap((item) => ['--priority-label', item])
+  const data = dataOf(await cli(context, [...base, ...priority, '--estimate-label', '3=size: 3', '--json'], fixture()))
+  assert.deepEqual(data.questions, [])
+  const text = read(context)
+  assert.match(text, /priority:\n\s+urgent: "?label:P0"?\n\s+high: "?label:P1"?/)
+  assert.match(text, /estimate:\n\s+"?3"?: "?label:size: 3"?/)
+  const again = dataOf(await cli(context, ['init', '--update', '--dry-run', '--json'], fixture()))
+  assert.deepEqual(again.questions, [])
+  assert.equal(again.files[0].changed ?? false, false)
+  const withProject = await cli(fresh(), [...ALL, '--priority-label', 'high=P1', '--json'])
+  assert.equal(errorOf(withProject).code, 'INVALID_INPUT')
+})
+
 test('an update asks again for a held Project GitHub no longer returns', async () => {
   const context = fresh()
   dataOf(await cli(context, [...ALL, '--json']))

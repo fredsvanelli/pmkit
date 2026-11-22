@@ -114,7 +114,7 @@ test('resolveEpic returns the raw node or null with one request per call', async
 })
 
 const PID = '00000000-0000-4000-8000-0000000000a1'
-const LOCAL_PROGRESS_KEYS = ['byCategory', 'canceled', 'done', 'points', 'pointsDone', 'total']
+const LOCAL_PROGRESS_KEYS = ['byCategory', 'canceled', 'done', 'open', 'points', 'pointsDone', 'total']
 
 test('deliverableProgress counts through the parent chain with the Local rules', async () => {
   const { fake, issues, ops } = kit({ points: true })
@@ -131,7 +131,7 @@ test('deliverableProgress counts through the parent chain with the Local rules',
   assert.deepEqual(
     { ...progress, native: undefined },
     {
-      total: 4, done: 1, canceled: 1, points: 6, pointsDone: 2, native: undefined,
+      total: 4, done: 1, canceled: 1, points: 6, pointsDone: 2, native: undefined, open: ['ACME-2', 'ACME-5', 'ACME-6'],
       byCategory: { triage: 0, backlog: 0, todo: 2, in_progress: 1, in_review: 0, done: 1, canceled: 1 },
     },
   )
@@ -380,4 +380,83 @@ test('createMilestone and createDocument are NOT_SUPPORTED and send no request',
   await assert.rejects(ops.updateDocument('notes/plan.md', 'x', ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Edit the document in Linear' })
   await assert.rejects(ops.createMilestone({ id: 'm' }, ACTOR, { dryRun: true }), { code: 'NOT_SUPPORTED' })
   assert.equal(fetch.calls.length, before)
+})
+
+const statusNodes = () => [
+  { id: 'ps-backlog', name: 'Backlog', type: 'backlog', position: 0 },
+  { id: 'ps-started-b', name: 'Building', type: 'started', position: 3 },
+  { id: 'ps-started-a', name: 'Underway', type: 'started', position: 2 },
+  { id: 'ps-done', name: 'Completed', type: 'completed', position: 5 },
+]
+const withStatuses = (nodes) => (table) => ({
+  ...table,
+  PmkitProjectStatuses: () => json({ projectStatuses: { nodes } }),
+})
+
+test('deliverableProgress lists the open issues by identifier', async () => {
+  const { fake, issues, ops } = kit()
+  seedProject(fake, 'Launch', { id: PID })
+  const todo = issues.seed({ title: 'A', projectId: PID, stateId: 'state-2' })
+  const done = issues.seed({ title: 'B', projectId: PID, stateId: 'state-8' })
+  const canceled = issues.seed({ title: 'C', projectId: PID, stateId: 'state-9' })
+  const archived = issues.seed({ title: 'D', projectId: PID, stateId: 'state-2' })
+  issues.records.find((record) => record.id === archived.id).archivedAt = '2026-10-28T00:00:00.000Z'
+  const child = issues.seed({ title: 'E', parentId: done.id, stateId: 'state-3' })
+  const progress = await ops.deliverableProgress('P-ACM-1')
+  assert.deepEqual(progress.open.sort(), [todo.identifier, child.identifier].sort())
+  assert.ok(!progress.open.includes(canceled.identifier))
+})
+
+test('moveDeliverable sends projectUpdate with the status id and returns the epic in its new status', async () => {
+  const { fake, ops, sent, mutationsSent } = kit()
+  seedProject(fake, 'Launch')
+  const { before, after } = await ops.moveDeliverable('p-acm-1', 'done', ACTOR)
+  assert.deepEqual(before.status, { name: 'Backlog', category: 'backlog' })
+  assert.deepEqual(after.status, { name: 'Completed', category: 'done' })
+  assert.equal(after.id, 'P-ACM-1')
+  assert.equal(mutationsSent(), 1)
+  assert.deepEqual(sent('PmkitProjectSetStatus')[0].body.variables.input, { statusId: 'project-status-completed' })
+  assert.deepEqual((await ops.getDeliverable('P-ACM-1')).status, { name: 'Completed', category: 'done' })
+})
+
+test('moveDeliverable picks the first status by position and matches --status by name', async () => {
+  const { fake, ops } = kit()
+  seedProject(fake, 'Launch')
+  const paused = await ops.moveDeliverable('P-ACM-1', 'backlog', ACTOR, { status: 'Paused' })
+  assert.deepEqual(paused.after.status, { name: 'Paused', category: 'backlog' })
+  const started = await ops.moveDeliverable('P-ACM-1', 'in_progress', ACTOR)
+  assert.deepEqual(started.after.status, { name: 'In Progress', category: 'in_progress' })
+  // Two started statuses: the fake does not know them, so the statusId of each mutation tells which one was picked.
+  const two = kit({ routes: withStatuses(statusNodes()) })
+  seedProject(two.fake, 'Two')
+  await two.ops.moveDeliverable('P-ACM-1', 'in_progress', ACTOR)
+  await two.ops.moveDeliverable('P-ACM-1', 'in_progress', ACTOR, { status: 'Building' })
+  assert.deepEqual(two.sent('PmkitProjectSetStatus').map((call) => call.body.variables.input.statusId), ['ps-started-a', 'ps-started-b'])
+})
+
+test('moveDeliverable refuses triage and in_review, the current category and the current status, and sends no mutation', async () => {
+  const { fake, ops, mutationsSent } = kit()
+  seedProject(fake, 'Launch')
+  const refuse = (category, options, message, nextStep) =>
+    assert.rejects(ops.moveDeliverable('P-ACM-1', category, ACTOR, options), (error) => error.code === 'INVALID_INPUT' && error.message === message && error.nextStep === nextStep)
+  await refuse('triage', undefined, 'a Linear epic cannot move to triage', 'Use one of: backlog, todo, in_progress, done, canceled')
+  await refuse('in_review', undefined, 'a Linear epic cannot move to in_review', 'Use one of: backlog, todo, in_progress, done, canceled')
+  await refuse('urgent', undefined, 'category must be one of triage, backlog, todo, in_progress, in_review, done, canceled', undefined)
+  await refuse('backlog', undefined, 'epic P-ACM-1 is already in backlog', undefined)
+  await refuse('backlog', { status: 'Backlog' }, 'epic P-ACM-1 is already in status Backlog', undefined)
+  await refuse('done', { status: 'Paused' }, 'status Paused is not in category done', 'Use one of: Completed')
+  await assert.rejects(ops.moveDeliverable('P-ACM-9', 'done', ACTOR), { code: 'NOT_FOUND' })
+  await assert.rejects(ops.moveDeliverable('P-ACM-1', 'done', 'user-2'), { code: 'INVALID_INPUT' })
+  assert.equal(mutationsSent(), 0)
+})
+
+test('moveDeliverable dry run sends no projectUpdate', async () => {
+  const { fake, ops, mutationsSent } = kit()
+  seedProject(fake, 'Launch')
+  const { before, after } = await ops.moveDeliverable('P-ACM-1', 'done', ACTOR, { dryRun: true })
+  assert.deepEqual(before.status, { name: 'Backlog', category: 'backlog' })
+  assert.deepEqual(after.status, { name: 'Completed', category: 'done' })
+  assert.equal(after.title, 'Launch')
+  assert.equal(mutationsSent(), 0)
+  assert.deepEqual((await ops.getDeliverable('P-ACM-1')).status, { name: 'Backlog', category: 'backlog' })
 })

@@ -12,11 +12,11 @@ import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
-import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
+import { CATEGORIES, LINK_KINDS, TERMINAL, pickMoveTarget } from '../model.mjs'
 import { appendEvents, driftEvents, parseEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
-  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
+  HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
@@ -1433,17 +1433,48 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
+  /** The content of an epic file with its frontmatter passed through `edit`, so every other key, comment and the body stay as they are. */
+  function editEpicFrontmatter(file, edit) {
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited
+    try {
+      edited = edit(yaml)
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    return `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+  }
+
+  /**
+   * Moves an epic to a status category: the first status of the category, or `status` when given. Only the status line of the
+   * stored frontmatter is edited, so every other key, comment and the body stay as they are.
+   */
+  function moveDeliverable(epicId, category, actor, { status, dryRun = false } = {}) {
+    requireWriter(actor)
+    const { epic: before, dir } = readEpic(epicId)
+    const targets = Object.entries(local.statuses).map(([name, { category: own }]) => ({ name, category: own }))
+    const { name } = pickMoveTarget({ before, category, status, targets, tracker: 'Local' })
+    const file = path.join(dir, 'epic.md')
+    const content = editEpicFrontmatter(file, (yaml) => setScalar(yaml, ['status'], name))
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
+    if (dryRun) return { before, after }
+    writeFile(file, content)
+    append(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'move', field: 'status', from: before.status.name, to: name }])
+    return { before, after }
+  }
+
   const deliverableProgress = (id) => progressOf(getDeliverable(id).id, scanIssues())
 
   /** Counts the non-archived issues whose parent chain reaches the epic. Canceled issues are counted apart, outside `total`. */
   function progressOf(epic, issues) {
     const byId = new Map(issues.map((issue) => [issue.id, issue]))
     const parentOf = (key) => byId.get(key)?.parent
-    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])), open: [] }
     for (const issue of issues) {
       if (issue.archived || !walkParents(issue.id, parentOf).chain.includes(epic)) continue
       const { category } = issue.status
       if (category in progress.byCategory) progress.byCategory[category]++
+      if (category !== 'done' && category !== 'canceled') progress.open.push(issue.id)
       if (category === 'canceled') {
         progress.canceled++
         continue
@@ -1600,14 +1631,7 @@ export function createLocalTracker(root, {
     const next = goal === null ? undefined : requireGoal(goal)
     // Only the goal line of the stored frontmatter is edited, so every other key, comment and the body stay as they are.
     const file = path.join(dir, 'epic.md')
-    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
-    let edited
-    try {
-      edited = next === undefined ? removeKey(yaml, ['goal']) : setScalar(yaml, ['goal'], next)
-    } catch (error) {
-      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
-    }
-    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const content = editEpicFrontmatter(file, (yaml) => (next === undefined ? removeKey(yaml, ['goal']) : setScalar(yaml, ['goal'], next)))
     const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (before.goal === after.goal || dryRun) return { before, after }
     writeFile(file, content)
@@ -2379,7 +2403,7 @@ export function createLocalTracker(root, {
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
     listCustomers, getCustomer, createCustomer, updateCustomer, listRequests, getRequest, createRequest, updateRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
-    listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
+    listDeliverables, getDeliverable, createDeliverable, moveDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, unarchive, delete: deleteIssue, restore, link, unlink, setParent,

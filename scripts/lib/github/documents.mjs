@@ -3,14 +3,14 @@
 import { compareVersions, hasIssueFields, needsVersionCheck } from './discovery.mjs'
 
 /**
- * Which parts of the schema the host has: { issueFields, relatesTo, statusEvents, iterationIds }. github.com and GHE.com have all of them.
- * GHES has issue fields and Status events from 3.21 and never has relatesTo.
+ * Which parts of the schema the host has: { issueFields, relatesTo, statusEvents, iterationIds, itemQuery }. github.com and GHE.com have all of them.
+ * itemQuery (ProjectV2.items(query:)) is off on every GHES: its schema has the argument from 3.20, but its filter syntax is unchecked there (PMK-344).
+ * GHES has Status events from 3.20 (PMK-350), issue fields from 3.22, and never relatesTo.
  */
 export function hostFeatures({ host, ghesVersion }) {
-  if (!needsVersionCheck(host)) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true }
-  if (ghesVersion === null || ghesVersion === undefined) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: false }
-  const recent = hasIssueFields(ghesVersion) && compareVersions(ghesVersion, '3.21') >= 0
-  return { issueFields: recent, relatesTo: false, statusEvents: recent, iterationIds: false }
+  if (!needsVersionCheck(host)) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: true, itemQuery: true }
+  if (ghesVersion === null || ghesVersion === undefined) return { issueFields: true, relatesTo: true, statusEvents: true, iterationIds: false, itemQuery: false }
+  return { issueFields: hasIssueFields(ghesVersion), relatesTo: false, statusEvents: compareVersions(ghesVersion, '3.20') >= 0, iterationIds: false, itemQuery: false }
 }
 
 const ITEM_TYPE_NAMES = [
@@ -29,7 +29,8 @@ const PAGE = 'pageInfo { hasNextPage endCursor }'
 
 const PROJECT_VALUE = '{ __typename ... on ProjectV2ItemFieldSingleSelectValue { name optionId } ... on ProjectV2ItemFieldNumberValue { number } ... on ProjectV2ItemFieldDateValue { date } ... on ProjectV2ItemFieldIterationValue { iterationId title startDate duration } }'
 const ISSUE_FIELD_FIELD = 'field { ... on IssueFieldSingleSelect { id name } ... on IssueFieldNumber { id name } ... on IssueFieldDate { id name } }'
-const ISSUE_FIELD_VALUES = `issueFieldValues(first: 20) { nodes { __typename ... on IssueFieldSingleSelectValue { optionId name ${ISSUE_FIELD_FIELD} } ... on IssueFieldNumberValue { value ${ISSUE_FIELD_FIELD} } ... on IssueFieldDateValue { value ${ISSUE_FIELD_FIELD} } } ${PAGE} }`
+// The number and date values are aliased: GitHub refuses one selection of `value` as Float! and String! (fields that do not merge).
+const ISSUE_FIELD_VALUES = `issueFieldValues(first: 20) { nodes { __typename ... on IssueFieldSingleSelectValue { optionId name ${ISSUE_FIELD_FIELD} } ... on IssueFieldNumberValue { numberValue: value ${ISSUE_FIELD_FIELD} } ... on IssueFieldDateValue { dateValue: value ${ISSUE_FIELD_FIELD} } } ${PAGE} }`
 
 // Variable and alias of each configured Project field. Values reach the document through variables, never literals.
 const FIELD_ALIASES = [['status', 'status', 'fStatus'], ['priority', 'fPriority', 'fPriority'], ['estimate', 'fEstimate', 'fEstimate'], ['due', 'fDue', 'fDue'], ['sprint', 'fSprint', 'fSprint']]
@@ -131,6 +132,11 @@ ${fragment}`,
   repository(owner: $owner, name: $name) {
     issues(first: $first, after: $after, filterBy: $filterBy, orderBy: $orderBy) { nodes { ...PmkitIssueFields } ${PAGE} }
   }
+}
+${fragment}`,
+    // The issues of one sprint, read from the scope Project's items with GitHub's filter (PMK-344). Archived items are left out by default.
+    SPRINT_ITEMS: `query PmkitSprintItems(${declare('$project: ID!', '$first: Int!', '$after: String', '$query: String!', vars)}) {
+  node(id: $project) { ... on ProjectV2 { items(first: $first, after: $after, query: $query) { nodes { content { __typename ... on Issue { ...PmkitIssueFields } } } ${PAGE} } } }
 }
 ${fragment}`,
     // The issue read of metricEvents: only what toEvents reads, so a read of up to 1000 issues stays small.

@@ -190,22 +190,25 @@ function classify(answer, stderr, { mutation, host, permissions }) {
  * Reads the answer to a REST call. Returns { data } (the parsed body) or { error, retry }, like classify.
  * A taken milestone title is CONFLICT; any other 4xx is UPSTREAM with the message of GitHub.
  */
+/** The parsed body of a 2xx REST answer, null for an empty one; an unreadable body is unconfirmed for a write, UPSTREAM otherwise. */
+function restSuccess(answer, read, mutation, fail) {
+  if (answer.body.trim() === '') return { data: null }
+  try {
+    return { data: JSON.parse(answer.body) }
+  } catch {
+    // Falls through to the unreadable row.
+  }
+  if (mutation) return unconfirmed(`unreadable answer (HTTP ${answer.status})`, true, read.details)
+  return fail('UPSTREAM', `GitHub returned an unreadable answer (HTTP ${answer.status})`, 'Update the GitHub CLI and retry')
+}
+
 function classifyRest(answer, stderr, { mutation, host, path, body }) {
   const read = readReply(answer, stderr)
   const refused = refusal(read, answer, host)
   if (refused) return refused
   if (answer.status >= 500) return unconfirmed(`HTTP ${answer.status}`, mutation, read.details)
   const fail = (code, text, nextStep) => ({ error: new PmkitError(code, text, nextStep, read.details), retry: false })
-  if (answer.status >= 200 && answer.status < 300) {
-    if (answer.body.trim() === '') return { data: null }
-    try {
-      return { data: JSON.parse(answer.body) }
-    } catch {
-      // Falls through to the unreadable row.
-    }
-    if (mutation) return unconfirmed(`unreadable answer (HTTP ${answer.status})`, true, read.details)
-    return fail('UPSTREAM', `GitHub returned an unreadable answer (HTTP ${answer.status})`, 'Update the GitHub CLI and retry')
-  }
+  if (answer.status >= 200 && answer.status < 300) return restSuccess(answer, read, mutation, fail)
   const taken = Array.isArray(read.reply?.errors) && read.reply.errors.some((error) => error?.code === 'already_exists')
   if (taken && /\/milestones$/.test(path)) {
     return fail('CONFLICT', `GitHub already has a milestone titled ${body?.title}`, 'Use another title, or reuse the existing milestone')
@@ -302,8 +305,9 @@ export function createGithubClient({
     return send(document, variables, permissions)
   }
 
+  // options.permissions goes to each page's request, as request takes it.
   const paginate = (document, variables = {}, options = {}) =>
-    paginateConnection(request, document, variables, options, {
+    paginateConnection((query, vars) => request(query, vars, { permissions: options.permissions }), document, variables, options, {
       maxPageSize: MAX_PAGE,
       broken: (name) => new PmkitError('UPSTREAM', `GitHub returned a broken page for ${name}`, RETRY_STEP),
     })

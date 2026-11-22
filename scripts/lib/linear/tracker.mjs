@@ -245,6 +245,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     getDeliverable: projects.getDeliverable,
     deliverableProgress: projects.deliverableProgress,
     createDeliverable: projects.createDeliverable,
+    moveDeliverable: projects.moveDeliverable,
     publishStatusUpdate: projects.publishStatusUpdate,
     listStatusUpdates: projects.listStatusUpdates,
     listMilestones: projects.listMilestones,

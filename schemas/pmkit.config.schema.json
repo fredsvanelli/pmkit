@@ -124,6 +124,29 @@
             "pattern": "\\S"
           }
         },
+        "priority": {
+          "title": "Priority labels",
+          "description": "GitHub Issues without a Project only (tracker.scope.project: none, mappings.fields.priority: none): a pmkit priority level to label:<name>, the repository label that stands for it, such as high: label:P1, or none. See ADR 0012.",
+          "type": "object",
+          "propertyNames": { "enum": ["urgent", "high", "medium", "low"] },
+          "additionalProperties": {
+            "title": "Label",
+            "description": "label:<name> of a repository label, or none.",
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "estimate": {
+          "title": "Estimate labels",
+          "description": "GitHub Issues without a Project only (tracker.scope.project: none, mappings.fields.estimate: none): an estimate value to label:<name>, the repository label that stands for it, such as 3: label:size: 3. The keys, in order, are the estimate scale: points when every key is a number, sizes otherwise. See ADR 0012.",
+          "type": "object",
+          "additionalProperties": {
+            "title": "Label",
+            "description": "label:<name> of a repository label, or none.",
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
         "types": {
           "title": "Type mappings",
           "description": "A pmkit issue type to the name of one label of the tracker, or of one issue type on GitHub Issues, such as bug: Bug. On GitHub Issues with no enabled issue type, label:<name> names a repository label. A type without one is left out.",

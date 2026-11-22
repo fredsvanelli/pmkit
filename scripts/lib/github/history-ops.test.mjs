@@ -14,7 +14,7 @@ const PMKIT = {
 }
 const ME = 'octocat'
 const NO_THREADS = { code: 'NOT_SUPPORTED', message: 'GitHub issue comments have no threads', nextStep: 'Post a new comment with pmkit issues comment' }
-const STATUS_WARNING = 'on GitHub Enterprise Server before 3.21, Status option changes have no events, so moves show only as opens and closes'
+const STATUS_WARNING = 'on GitHub Enterprise Server before 3.20, Status option changes have no events, so moves show only as opens and closes'
 
 async function setup({ host = 'github.com', ghesVersion = null } = {}) {
   const fake = fakeGithubIssues({ host, ghesVersion })
@@ -65,8 +65,8 @@ test('getHistory maps a Status change and a close to moves', async () => {
   assert.equal(moves.at(-1).to, 'Closed')
 })
 
-test('getHistory on GHES 3.20 leaves the Status event type out and warns, without a JSON key', async () => {
-  const { fake, ops, history, clear } = await setup({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+test('getHistory on GHES 3.19 leaves the Status event type out and warns, without a JSON key', async () => {
+  const { fake, ops, history, clear } = await setup({ host: 'ghe.acme.test', ghesVersion: '3.19.0' })
   const { id } = (await ops.createIssue({ title: 'Old host' }, ME)).after
   clear()
   const events = await history.getHistory(id)
@@ -75,8 +75,19 @@ test('getHistory on GHES 3.20 leaves the Status event type out and warns, withou
   assert.equal(fake.reads.find((call) => call.name === 'PmkitTimeline').variables.itemTypes.includes('PROJECT_V2_ITEM_STATUS_CHANGED_EVENT'), false)
 })
 
-test('metricEvents on GHES 3.20 warns that Status changes have no events', async () => {
-  const { ops, history } = await setup({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+test('getHistory on GHES 3.20 reads a Status change with no warning', async () => {
+  const { fake, ops, history, clear } = await setup({ host: 'ghe.acme.test', ghesVersion: '3.20.0' })
+  const { id } = (await ops.createIssue({ title: 'Newer host' }, ME)).after
+  await ops.moveToCategory(id, 'in_progress', ME)
+  clear()
+  const events = await history.getHistory(id)
+  assert.ok(events.some((event) => event.op === 'move' && event.to === 'In Progress'))
+  assert.equal(events.warnings, undefined)
+  assert.ok(fake.reads.find((call) => call.name === 'PmkitTimeline').variables.itemTypes.includes('PROJECT_V2_ITEM_STATUS_CHANGED_EVENT'))
+})
+
+test('metricEvents on GHES 3.19 warns that Status changes have no events', async () => {
+  const { ops, history } = await setup({ host: 'ghe.acme.test', ghesVersion: '3.19.0' })
   await ops.createIssue({ title: 'Old host' }, ME)
   const events = await history.metricEvents()
   assert.deepEqual(events.warnings, [STATUS_WARNING])

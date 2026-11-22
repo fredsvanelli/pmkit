@@ -9,8 +9,9 @@ import { priorityRule } from './issues.mjs'
 import { brokenGithubMappings, fieldOf, labelOf, NONE, parseLabelValue } from './mappings.mjs'
 
 export const MINIMUM_GHES = '3.19'
-// Issue fields reach GHES in 3.21 (ADR 0007): older schemas have no issueFields and no isIssueField.
-const ISSUE_FIELDS_GHES = '3.21'
+// Issue fields reach GHES in 3.22 (ADR 0007, amended by PMK-335): the 3.21 schema has Issue.issueFieldValues but no
+// Repository.issueFields, so pmkit cannot discover them there. No GHES schema has isIssueField or ProjectV2MultiSelectField.
+const ISSUE_FIELDS_GHES = '3.22'
 const FIRST = 50
 const LABELS_FIRST = 100
 const USERS_PAGE = 100
@@ -40,7 +41,7 @@ export const repoQuery = ({ issueFields, named = 0 }) => {
  * or label:<name>), once each without case.
  */
 export function mappedLabelNames(pmkit, extra = []) {
-  const values = [...['status', 'types'].flatMap((group) => Object.values(pmkit?.mappings?.[group] ?? {})), ...extra.map((name) => parseLabelValue(name) ? name : `label:${name}`)]
+  const values = [...['status', 'types', 'priority', 'estimate'].flatMap((group) => Object.values(pmkit?.mappings?.[group] ?? {})), ...extra.map((name) => parseLabelValue(name) ? name : `label:${name}`)]
   const names = []
   for (const value of values) {
     const name = parseLabelValue(value)
@@ -49,12 +50,16 @@ export function mappedLabelNames(pmkit, extra = []) {
   return names
 }
 
-/** The Project query: the Project of an owner, user or organization, with its fields. */
-export const projectQuery = ({ issueFields }) => {
-  const flag = issueFields ? ' isIssueField' : ''
+/**
+ * The Project query: the Project of an owner, user or organization, with its fields. ghes leaves out isIssueField and the
+ * multi-select fragment, which no GHES schema has.
+ */
+export const projectQuery = ({ issueFields, ghes = false }) => {
+  const flag = issueFields && !ghes ? ' isIssueField' : ''
+  const multi = ghes ? '' : ` ... on ProjectV2MultiSelectField { id name dataType${flag} }`
   return 'query PmkitProject($owner: String!, $number: Int!) { repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) { id number title url ' +
     `fields(first: ${FIRST}) { nodes { __typename ... on ProjectV2Field { id name dataType${flag} } ... on ProjectV2IterationField { id name dataType${flag} configuration { duration startDay iterations { id title startDate duration } completedIterations { id title startDate duration } } } ` +
-    `... on ProjectV2SingleSelectField { id name dataType${flag} options { id name } } ... on ProjectV2MultiSelectField { id name dataType${flag} } } ${PAGE} } } } } }`
+    `... on ProjectV2SingleSelectField { id name dataType${flag} options { id name } }${multi} } ${PAGE} } } } } }`
 }
 
 const LINKED_PAGE = 100
@@ -155,9 +160,9 @@ export const hasIssueFields = (ghesVersion) => ghesVersion === null || compareVe
  * Reads one Project with its fields, as { project, truncated }. project is owner/number. A Project GitHub does not return is
  * NOT_FOUND; a missing scope is the client's AUTH.
  */
-export async function fetchProject(client, project, { issueFields = true } = {}) {
+export async function fetchProject(client, project, { issueFields = true, ghes = false } = {}) {
   const picked = parseProject(project)
-  const reply = await client.request(projectQuery({ issueFields }), picked)
+  const reply = await client.request(projectQuery({ issueFields, ghes }), picked)
   const node = reply?.repositoryOwner?.projectV2
   if (!node) throw new PmkitError('NOT_FOUND', `GitHub Project ${project} does not exist, or the gh account cannot see it`, 'Check tracker.scope.project, or run /pmkit:setup to pick another Project')
   return {
@@ -195,7 +200,7 @@ export async function fetchDiscovery(client, { host, repo, project, exec, users 
   const truncated = TRUNCATED_LISTS.filter(([key]) => repository[key]?.pageInfo?.hasNextPage).map(([, kind]) => kind)
   const features = hostFeatures({ host, ghesVersion })
   const assignable = users ? await readNested(fetchAssignableUsers(client, features, { owner, name }), 'assignable users', truncated) : { users: [] }
-  const projectRead = parseProject(project) ? await readNested(fetchProject(client, project, { issueFields }), 'Project fields', truncated) : { project: null }
+  const projectRead = parseProject(project) ? await readNested(fetchProject(client, project, { issueFields, ghes: needsVersionCheck(host) }), 'Project fields', truncated) : { project: null }
   return {
     version: 1,
     host,
@@ -253,11 +258,27 @@ export const statusFieldOf = (project) => project?.fields.find((item) => item.na
 
 const plainField = ({ name, dataType, options }) => ({ name, dataType, options: options.map((item) => item.name) })
 
-/** The estimate unit and scale of the mapped estimate field: sizes for a single select, points otherwise. */
+/** True when every estimate key is a number, so the estimate labels give points; otherwise they give sizes (ADR 0012). */
+export const isPointsScale = (keys) => keys.every((key) => /^\d+(?:\.\d+)?$/.test(key))
+
+/**
+ * The estimate values whose label the repository has, in mapping order, when estimate labels hold: no Project and no estimate
+ * field (ADR 0012). Empty otherwise.
+ */
+export function estimateLabelScale(raw, pmkit) {
+  if (raw.project !== null || ![undefined, null, '', NONE].includes(pmkit?.mappings?.fields?.estimate)) return []
+  return Object.entries(pmkit?.mappings?.estimate ?? {}).filter(([, value]) => {
+    const name = parseLabelValue(value)
+    return name !== null && labelOf(raw, name) !== null
+  }).map(([key]) => key)
+}
+
+/** The estimate unit and scale of the mapped estimate field (sizes for a single select, points otherwise), or of the estimate labels. */
 export function estimateOf(raw, pmkit) {
   const found = fieldOf(raw, pmkit?.mappings?.fields?.estimate)
   if (found?.dataType === 'SINGLE_SELECT') return { unit: 'sizes', scale: found.options.map((item) => item.name) }
-  return { unit: 'points', scale: [] }
+  const scale = found ? [] : estimateLabelScale(raw, pmkit)
+  return isPointsScale(scale) ? { unit: 'points', scale: scale.map(Number) } : { unit: 'sizes', scale }
 }
 
 // The names pmkit gives an issue's state when no Status option names it: history moves use them, so discover lists them.

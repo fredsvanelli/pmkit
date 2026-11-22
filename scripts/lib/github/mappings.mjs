@@ -5,6 +5,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { NONE } from '../mappings.mjs'
+import { PRIORITY_LABEL_LEVELS } from '../model.mjs'
 
 export { NONE }
 
@@ -33,7 +34,12 @@ const MATCHES = {
   start_date: ['start date', 'start'],
   target_date: ['target date', 'due date', 'end date'],
   sprint: ['iteration', 'sprint'],
+  urgent: ['urgent', 'p0'],
+  high: ['high', 'p1'],
+  medium: ['medium', 'p2'],
+  low: ['low', 'p3'],
 }
+
 
 const words = (key) => key.replace(/_/g, ' ')
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -99,42 +105,64 @@ function sprintProblem(raw, path, value) {
   return issueField || otherProjectField ? `${path} must name a Project iteration field` : null
 }
 
+/** Why a held mappings.status value is broken, or null. label is its label name, or null for a Status option. */
+function statusProblem(raw, path, value, label) {
+  if (raw.project === null) return label ? missingLabelProblem(raw, path, label) : `${path} names Status option ${value}, but tracker.scope.project is none`
+  if (label) return `${path} names label ${label}, but statuses come from the Status field of ${projectId(raw)}`
+  if (statusOptionsOf(raw).includes(value)) return null
+  return `${path} names ${value}, which the Status field of ${projectId(raw)} no longer has`
+}
+
+/** Why a held mappings.fields value is broken, or null. */
+function fieldProblem(raw, path, value) {
+  const parsed = parseFieldSource(value)
+  if (!parsed) return `${path} is ${value}, which is not issue:<name>, project:<name> or none`
+  const sprint = sprintProblem(raw, path, value)
+  if (sprint) return sprint
+  if (parsed.source === NONE || fieldOf(raw, value)) return null
+  if (parsed.source === 'issue') return `${path} names issue field ${parsed.name}, which ${raw.repo} no longer has`
+  if (raw.project === null) return `${path} names Project field ${parsed.name}, but tracker.scope.project is none`
+  return `${path} names Project field ${parsed.name}, which ${projectId(raw)} no longer has`
+}
+
+/** Why a held mappings.types value is broken, or null. */
+function typeProblem(raw, path, value, label) {
+  if (label) return raw.issueTypes.length > 0 ? `${path} names label ${label}, but ${raw.repo} has issue types` : missingLabelProblem(raw, path, label)
+  return raw.issueTypes.some((type) => type.name === value) ? null : `${path} names issue type ${value}, which ${raw.repo} does not have enabled`
+}
+
+/**
+ * Why a held mappings.priority or mappings.estimate value is broken, or null (ADR 0012): it must be label:<name> of a label the
+ * repository has, and holds only without a Project and while mappings.fields.<role> is none.
+ */
+function valueLabelProblem(raw, path, value, label, field) {
+  if (!label) return `${path} is ${value}, which is not label:<name> or none`
+  if (raw.project !== null) return `${path} names label ${label}, but the priority and the estimate come from fields when there is a Project (${projectId(raw)})`
+  if (isSet(field) && field !== NONE) return `${path} names label ${label}, but mappings.fields.${path.split('.')[1]} names a field, which holds the ${path.split('.')[1]}`
+  return missingLabelProblem(raw, path, label)
+}
+
+const missingLabelProblem = (raw, path, label) => (labelOf(raw, label) ? null : `${path} names label ${label}, which ${raw.repo} no longer has`)
+
 /** Why a held value is broken, or null when GitHub still has what it names. */
-function problemOf(raw, path, value) {
+function problemOf(raw, path, value, pmkit) {
   const group = path.split('.')[1]
   const label = parseLabelValue(value)
-  const missingLabel = () => (labelOf(raw, label) ? null : `${path} names label ${label}, which ${raw.repo} no longer has`)
-  if (group === 'status') {
-    if (raw.project === null) return label ? missingLabel() : `${path} names Status option ${value}, but tracker.scope.project is none`
-    if (label) return `${path} names label ${label}, but statuses come from the Status field of ${projectId(raw)}`
-    if (statusOptionsOf(raw).includes(value)) return null
-    return `${path} names ${value}, which the Status field of ${projectId(raw)} no longer has`
-  }
-  if (group === 'fields') {
-    const parsed = parseFieldSource(value)
-    if (!parsed) return `${path} is ${value}, which is not issue:<name>, project:<name> or none`
-    const sprint = sprintProblem(raw, path, value)
-    if (sprint) return sprint
-    if (parsed.source === NONE || fieldOf(raw, value)) return null
-    if (parsed.source === 'issue') return `${path} names issue field ${parsed.name}, which ${raw.repo} no longer has`
-    if (raw.project === null) return `${path} names Project field ${parsed.name}, but tracker.scope.project is none`
-    return `${path} names Project field ${parsed.name}, which ${projectId(raw)} no longer has`
-  }
-  if (group === 'types') {
-    if (label) return raw.issueTypes.length > 0 ? `${path} names label ${label}, but ${raw.repo} has issue types` : missingLabel()
-    return raw.issueTypes.some((type) => type.name === value) ? null : `${path} names issue type ${value}, which ${raw.repo} does not have enabled`
-  }
+  if (group === 'priority' || group === 'estimate') return valueLabelProblem(raw, path, value, label, pmkit?.mappings?.fields?.[group])
+  if (group === 'status') return statusProblem(raw, path, value, label)
+  if (group === 'fields') return fieldProblem(raw, path, value)
+  if (group === 'types') return typeProblem(raw, path, value, label)
   return null
 }
 
 /** Each mapping in config.pmkit that names something GitHub no longer has, as [{ path, value, problem }]. none never breaks. */
 export function brokenGithubMappings(raw, pmkit) {
   const items = []
-  for (const group of ['status', 'fields', 'types']) {
+  for (const group of ['status', 'fields', 'types', 'priority', 'estimate']) {
     for (const [key, value] of Object.entries(pmkit?.mappings?.[group] ?? {})) {
       if (!isSet(value) || value === NONE) continue
       const path = `mappings.${group}.${key}`
-      const problem = problemOf(raw, path, value)
+      const problem = problemOf(raw, path, value, pmkit)
       if (problem) items.push({ path, value, problem })
     }
   }
@@ -201,8 +229,8 @@ const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((ke
  * values.types is left out while a type is still a question.
  */
 export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) {
-  const held = { status: current.status ?? {}, fields: current.fields ?? {}, types: current.types }
-  const given = { status: answers.status ?? {}, fields: answers.fields ?? {}, types: answers.types ?? {} }
+  const held = { ...mapsOf(current, ['status', 'fields', 'priority', 'estimate']), types: current.types }
+  const given = mapsOf(answers, ['status', 'fields', 'types', 'priority', 'estimate'])
   const labels = raw.project === null
   const statusKeys = labels ? keysOf(LABEL_STATUS_KEYS, held.status) : keysOf(STATUS_KEYS, held.status)
   const fieldKeys = keysOf(FIELD_ROLES, held.fields)
@@ -215,6 +243,7 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
   checkKeys(given.status, labels ? LABEL_STATUS_KEYS : statusKeys, '--status')
   checkKeys(given.fields, fieldKeys, '--field')
   checkKeys(given.types, typeKeys, '--type-label')
+  checkValueLabelFlags(raw, given)
 
   const pmkit = { mappings: { status: held.status, fields: held.fields, ...(held.types === undefined ? {} : { types: held.types }) } }
   const state = {
@@ -252,8 +281,85 @@ export function proposeGithubSetup(raw, current = {}, answers = {}, types = []) 
   const result = () => ({ applied: state.applied, questions: state.questions, broken: state.broken, notes: state.notes, values })
   const typeValues = typesOf(state, typeKeys, values.status)
   if (typeValues !== undefined) values.types = typeValues
+  Object.assign(values, valueLabelsOf(state, values))
+  refuseSharedLabels(values)
   return result()
 }
+
+/** Refuses --priority-label and --estimate-label with a Project, and a priority level setup does not know (ADR 0012). */
+function checkValueLabelFlags(raw, given) {
+  for (const [role, flag] of [['priority', '--priority-label'], ['estimate', '--estimate-label']]) {
+    if (raw.project !== null && Object.keys(given[role]).length > 0) throw invalid(`${flag} needs a repository without a Project`, `Remove ${flag}; the Project's fields hold the ${role}`)
+  }
+  checkKeys(given.priority, PRIORITY_LABEL_LEVELS, '--priority-label')
+}
+
+/**
+ * The priority and estimate label maps, without a Project and once the role's field is none: a label per priority level, asked
+ * like the status labels; estimate labels from --estimate-label and the held ones, never asked, as their names vary too much.
+ */
+function valueLabelsOf(state, values) {
+  const out = {}
+  if (state.raw.project !== null) return out
+  if (values.fields.priority === NONE) {
+    const taken = new Set([...Object.values(values.status), ...Object.values(values.types ?? {})].map(parseLabelValue).filter(Boolean).map((name) => name.toLowerCase()))
+    const free = (state.raw.labels ?? []).map((label) => label.name).filter((name) => !taken.has(name.toLowerCase()))
+    const priority = {}
+    for (const level of PRIORITY_LABEL_LEVELS) {
+      const value = priorityLabelValue(state, level, free)
+      if (value !== undefined) priority[level] = value
+    }
+    out.priority = priority
+  }
+  if (values.fields.estimate === NONE) {
+    const estimate = { ...state.held.estimate }
+    for (const [key, answer] of Object.entries(state.given.estimate)) estimate[key] = labelAnswer(state.raw, answer, `--estimate-label ${key}=${answer}`)
+    if (Object.keys(estimate).length > 0) out.estimate = estimate
+  }
+  return out
+}
+
+/** label:<name> of an answer naming a repository label, or none. Any other answer is INVALID_INPUT naming the flag. */
+function labelAnswer(raw, answer, flag) {
+  if (answer === NONE) return NONE
+  const label = answeredLabel(raw, answer)
+  if (!label) throw invalid(`${flag} is not a label of ${raw.repo}`, `Pass one of: ${[...(raw.labels ?? []).map((item) => item.name), NONE].join(', ')}`)
+  return `${LABEL_PREFIX}${label.name}`
+}
+
+/** The label of one priority level: the answer, the held value, or undefined with a question recorded. */
+function priorityLabelValue(state, level, free) {
+  const answer = state.given.priority[level]
+  if (answer !== undefined) return labelAnswer(state.raw, answer, `--priority-label ${level}=${answer}`)
+  const match = matchOf(level, free, (name) => name.replace(/^priority:\s*/i, ''))
+  const question = {
+    path: `mappings.priority.${level}`,
+    flag: `--priority-label ${level}=<label>`,
+    candidates: recommendedFirst(free, match),
+    recommended: match ?? NONE,
+    none: `No label stands for ${level}`,
+  }
+  return heldOr(state, question.path, state.held.priority[level], question)
+}
+
+/** Refuses one label that answers two of the status categories, priority levels and estimate values. */
+function refuseSharedLabels(values) {
+  const usedBy = new Map()
+  const entries = [
+    ...Object.entries(values.status).map(([key, value]) => [key, value]),
+    ...Object.entries(values.priority ?? {}).map(([key, value]) => [`priority ${key}`, value]),
+    ...Object.entries(values.estimate ?? {}).map(([key, value]) => [`estimate ${key}`, value]),
+  ]
+  for (const [key, value] of entries) {
+    const label = parseLabelValue(value)?.toLowerCase()
+    if (!label) continue
+    if (usedBy.has(label)) throw invalid(`label ${parseLabelValue(value)} cannot answer both ${usedBy.get(label)} and ${key}`, `Pick another label for ${key}`)
+    usedBy.set(label, key)
+  }
+}
+
+/** The groups of a mappings object, each a map: an absent group is {}. */
+const mapsOf = (source, groups) => Object.fromEntries(groups.map((group) => [group, source[group] ?? {}]))
 
 /** The held value when it is set and not broken; otherwise it records the question, with the broken item when there is one. */
 function heldOr(state, path, value, question) {
