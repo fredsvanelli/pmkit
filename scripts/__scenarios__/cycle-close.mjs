@@ -11,6 +11,7 @@
 // leaves it out of the unfinished issues, as cycle close does (PMK-165), so it gets no decision and keeps its sprint. Step 8 runs the moves and the split, closes the sprint last,
 // then reads the sprint's issues again for the delivered numbers.
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import path from 'node:path'
 
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
@@ -30,7 +31,7 @@ const done = ['issues', 'move', 'ISS-2X6D', 'done']
 const close = ['cycle', 'close', '2026-10-12']
 const writeRetro = ['docs', 'create', 'retros/2026-10-12.md', '--body-file', retro]
 
-export default {
+const closeAndSplit = {
   command: 'cycle/close',
   fixture: 'team',
   github: true,
@@ -131,3 +132,46 @@ export default {
     assert.match(repo.file('.issues/docs/retros/2026-10-12.md'), /Delivered 2 of 3 planned issues, 10 of 16 points/)
   },
 }
+
+// PMK-159: with an invalid .pmkit/config.yaml every write refuses, so close is a report only. Setup breaks
+// write_policy.confirm. Step 1's sync dry run fails with INVALID_INPUT, steps 2 to 5 read, step 6 proposes nothing,
+// and the report is shown without a question: nothing is written, and the sprint stays active.
+const invalidConfig = {
+  command: 'cycle/close',
+  fixture: 'team',
+  github: true,
+  gh: { [`pr view feat-dlq --json ${VIEW}`]: { stdout: JSON.stringify(merged) } },
+  async setup({ pmkit, root }) {
+    await pmkit(['issues', 'update', 'ISS-8C4W', '--branch', 'feat-dlq'])
+    const file = path.join(root, '.pmkit', 'config.yaml')
+    const text = fs.readFileSync(file, 'utf8')
+    assert.ok(text.includes('confirm: single_writes'))
+    fs.writeFileSync(file, text.replace('confirm: single_writes', 'confirm: maybe'))
+  },
+  prompt: '/pmkit:cycle:close',
+  answers: [],
+  steps: [
+    { step: '1', dryRun: ['pr', 'sync'], expectError: 'INVALID_INPUT' },
+    { step: '2', read: ['cycle', 'current'], save: 'sprint' },
+    { step: '3', read: ['cycle', 'issues', '2026-10-12'], save: 'issues' },
+    { step: '4', read: ['events', '--since', '2026-10-12', '--until', '2026-10-25'] },
+    { step: '5', read: ['metrics', 'cycle-time', '--since', '2026-10-12', '--until', '2026-10-25'] },
+  ],
+  skip: {
+    '8 issues link': 'a write: with an invalid .pmkit/config.yaml close proposes no split (the first scenario runs it)',
+    '8 issues parent': 'a write: with an invalid .pmkit/config.yaml close proposes no split (the first scenario runs it)',
+  },
+  notHit: {
+    'Step 1': 'the sync dry run fails, so there is nothing to confirm',
+    'Step 7': 'the report is shown without a question: every write would refuse',
+    'Step 9': 'the retro is a write, so it waits for the file to be fixed',
+  },
+  expect(repo, saved) {
+    assert.equal(saved.sprint.id, '2026-10-12')
+    assert.equal(repo.sprint('2026-10-12').state, 'active', 'nothing closes the sprint')
+    assert.equal(repo.issue('ISS-8C4W').status, 'in_review', 'pr sync did not run')
+    assert.ok(saved.issues.length > 0, 'the report still reads the sprint')
+  },
+}
+
+export default [closeAndSplit, invalidConfig]
