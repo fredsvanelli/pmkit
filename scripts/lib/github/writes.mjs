@@ -12,6 +12,7 @@ import { CLOSED, CLOSED_NOT_PLANNED, OPEN } from './discovery.mjs'
 import { itemOf, optionForPriority, PRIORITIES, ROLES, statusOf, toIssue } from './issues.mjs'
 import { parseFieldSource } from './mappings.mjs'
 import { sprintsOf } from './cycles.mjs'
+import { closedSprint } from '../issue-filter.mjs'
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', message, nextStep)
@@ -132,6 +133,7 @@ function iterationOf(value, field, today) {
   const target = value === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === value)
   if (value === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
   if (!target) return null
+  if (target.state === 'closed') throw closedSprint(value)
   // sprintsOf keeps the first iteration of a start date, and so does this lookup.
   const all = [...(field.configuration?.completedIterations ?? []), ...(field.configuration?.iterations ?? [])]
   return all.find((iteration) => iteration.startDate === target.id)

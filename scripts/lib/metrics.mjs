@@ -94,7 +94,8 @@ export function velocity(sprints, issuesBySprint, { window, categoryOf }) {
   const perSprint = recent.map((sprint) => {
     const done = (issuesBySprint[sprint.id] ?? []).filter((issue) => (
       categoryOf(issue.status) === 'done' && issue.doneAt !== undefined && (
-        sprint.closed !== undefined ? Date.parse(issue.doneAt) <= Date.parse(sprint.closed) : issue.doneAt.slice(0, 10) <= sprint.end
+        // A closed time that does not parse counts by the end date, as a sprint with none does (PMK-166): NaN would drop every issue.
+        Number.isFinite(Date.parse(sprint.closed)) ? Date.parse(issue.doneAt) <= Date.parse(sprint.closed) : issue.doneAt.slice(0, 10) <= sprint.end
       )
     ))
     const points = done.reduce((sum, issue) => sum + (typeof issue.estimate === 'number' ? issue.estimate : 0), 0)

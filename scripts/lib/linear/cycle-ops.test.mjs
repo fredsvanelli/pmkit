@@ -197,6 +197,17 @@ test('current with no active cycle is INVALID_INPUT, and so is an unknown cycle'
   assert.equal(mutationCount(fetch), 0)
 })
 
+test('a past cycle as the target of a move or an update is CONFLICT and sends no mutation', async () => {
+  const { ops, fake, fetch, issues } = await setup()
+  const a = fake.seed({ title: 'A' }).identifier
+  await assert.rejects(ops.moveToCycle([a], '1', ACTOR), { code: 'CONFLICT', message: 'sprint 1 is closed', nextStep: 'pmkit cycle list --state planned' })
+  await assert.rejects(issues.updateIssue(a, { sprint: '1' }, ACTOR), { code: 'CONFLICT' })
+  assert.equal(mutationCount(fetch), 0)
+  // Reading a closed cycle stays allowed: only a write into one is refused.
+  assert.deepEqual((await issues.searchIssues({ sprint: '1' })).issues, [])
+  assert.deepEqual(await ops.cycleIssues('1'), [])
+})
+
 test('an unknown issue is NOT_FOUND and no issue moves', async () => {
   const { ops, issues, fake, fetch } = await setup()
   const a = fake.seed({ title: 'A' }).identifier

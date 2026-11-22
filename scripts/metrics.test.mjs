@@ -33,6 +33,13 @@ test('velocity falls back to issue counts when no issue has a numeric estimate',
   assert.equal(result.unit, 'issues')
 })
 
+test('velocity counts a sprint whose closed time does not parse by its end date, instead of dropping every issue (PMK-166)', () => {
+  const sprints = [{ id: 's1', state: 'closed', end: '2026-10-11', closed: 'not a time' }]
+  const issues = { s1: [{ id: 'A', estimate: 3, status: 'done', doneAt: '2026-10-10T10:00:00Z' }, { id: 'B', estimate: 5, status: 'done', doneAt: '2026-10-12T10:00:00Z' }] }
+  const result = velocity(sprints, issues, { window: 3, categoryOf: (status) => status })
+  assert.deepEqual(result.perSprint.map((sprint) => [sprint.id, sprint.points]), [['s1', 3]])
+})
+
 test('velocity with no closed sprint is zero', () => {
   assert.deepEqual(velocity([sprint('a', '2026-01-10', 'active')], {}, { window: 3, categoryOf }), { perSprint: [], average: 0, unit: 'issues' })
 })

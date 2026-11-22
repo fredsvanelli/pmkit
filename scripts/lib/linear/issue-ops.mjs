@@ -7,8 +7,8 @@ import { repoDocPath } from '../doc-path.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
-import { checkFilter, unknownSprint } from '../issue-filter.mjs'
-import { cycleKey } from './cycles.mjs'
+import { checkFilter, closedSprint, unknownSprint } from '../issue-filter.mjs'
+import { cycleKey, cycleState } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, docPaths, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
@@ -194,7 +194,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: (id) => cycleKey(id) !== null })
     if (current.scopeTeam && typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint)) {
       // A cycle number no cycle of the team has is a typo, not a sprint with no issues (Local refuses it the same way).
-      await cycleNodeFor(filter.sprint, current.scopeTeam)
+      await cycleNodeFor(filter.sprint, current.scopeTeam, { closedOk: true })
     }
     let epicProject
     if (filter.parent !== undefined && !isIssueId(filter.parent) && resolveEpic) {
@@ -260,9 +260,9 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   /**
    * The { id, number } node of the cycle a sprint value names in `team`: 'current' is the active cycle, else a cycle number.
    * Returns undefined for no value, for null and for a team with cycles off, where toInput decides. Reads the cycle, so a
-   * bad value fails before the write: INVALID_INPUT for an unknown cycle and for no active one.
+   * bad value fails before the write: INVALID_INPUT for an unknown cycle and for no active one, CONFLICT for a closed one unless `closedOk`.
    */
-  async function cycleNodeFor(sprint, team) {
+  async function cycleNodeFor(sprint, team, { closedOk = false } = {}) {
     if (sprint === undefined || sprint === null || team.cyclesEnabled !== true) return undefined
     if (typeof sprint !== 'string') throw new PmkitError('INVALID_INPUT', 'sprint must be a string')
     const teamClause = { team: { key: { eq: team.key } } }
@@ -278,6 +278,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const data = await client.request(CYCLE_BY_NUMBER_QUERY, { filter: { and: [teamClause, { number: { eq: number } }] } })
     const found = data?.cycles?.nodes?.[0]
     if (!found) throw missing
+    // A write never puts an issue into a closed cycle (PMK-166); a search of one is fine.
+    if (!closedOk && cycleState(found) === 'closed') throw closedSprint(sprint)
     return { id: found.id, number: found.number }
   }
 

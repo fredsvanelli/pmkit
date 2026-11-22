@@ -2381,7 +2381,12 @@ test('release-notes on a closed sprint leaves out an issue done after the sprint
   const ids = before.groups.flatMap((g) => g.issues.map((i) => i.id))
   assert.ok(ids.length > 0)
   const open = json(root, ['issues', 'create', '--title', 'Finished late', '--type', 'bug']).after.id
+  // A closed sprint takes no issue since PMK-166, so the setup reopens the sprint file for this one update.
+  const sprintFile = path.join(root, '.issues', 'sprints', '2026-09-28.yaml')
+  const closedText = fs.readFileSync(sprintFile, 'utf8')
+  fs.writeFileSync(sprintFile, closedText.replace(/^state: closed$/m, 'state: active'))
   json(root, ['issues', 'update', open, '--sprint', '2026-09-28'])
+  fs.writeFileSync(sprintFile, closedText)
   json(root, ['issues', 'move', open, 'done'])
   const after = notes(root, ['--sprint', '2026-09-28'])
   assert.ok(!after.groups.flatMap((g) => g.issues.map((i) => i.id)).includes(open))
@@ -2875,4 +2880,20 @@ test('goals overview carries each goal\'s own warnings, so a cut epic read makes
   assert.deepEqual(data.warnings, ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'])
   assert.match(text, /^incomplete: /m)
   assert.ok(data.items.every((item) => !('warnings' in item)))
+})
+
+test('cycle add into a closed sprint exits 2 with CONFLICT and moves nothing, dry run included (PMK-166)', () => {
+  const root = makeRepo('team')
+  try {
+    const id = json(root, ['issues', 'create', '--title', 'Late']).after.id
+    const before = hashTree(root)
+    for (const extra of [['--dry-run'], []]) {
+      const result = run(root, ['cycle', 'add', id, '--to', '2026-09-28', ...extra, '--json'])
+      assert.equal(result.status, 2, result.stdout)
+      assert.deepEqual(JSON.parse(result.stdout).error, { code: 'CONFLICT', message: 'sprint 2026-09-28 is closed', nextStep: 'pmkit cycle list --state planned' })
+      assert.equal(hashTree(root), before)
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
