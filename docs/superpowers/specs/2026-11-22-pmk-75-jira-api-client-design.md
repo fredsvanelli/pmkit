@@ -162,7 +162,7 @@ Rules for every row:
 ### Retries and timeouts
 
 - One attempt waits up to `timeoutMs`, 30 s by default.
-- A `GET` that fails with a network error, a timeout or HTTP 5xx is sent again, at most `retries` times (2 by default), after 500 ms and then 2000 ms through the injected `sleep`. When a 503 carries `Retry-After` of at most 5 s, the client waits that long instead; a longer wait ends the retries and throws `UPSTREAM` **(builder's call)**.
+- A `GET` that fails with a network error, a timeout or HTTP 5xx is sent again, at most `retries` times (2 by default), after 500 ms and then 2000 ms through the injected `sleep`. A `Retry-After` on a 503 is ignored: the fixed delays are short, and a longer wait belongs to the user **(builder's call)**.
 - `POST`, `PUT` and `DELETE` are sent once. After a timeout or a 5xx nobody can tell whether Jira applied the change, so the next step hands the choice to the user. Reads that Jira only offers as `POST` are not retried; PMK-77 uses `GET /rest/api/3/search/jql`, which is a `GET`.
 - The client never retries `AUTH`, `RATE_LIMITED`, `INVALID_INPUT`, `NOT_FOUND` or `CONFLICT`, and never sleeps until a rate-limit reset; the hourly quota has no gradual throttling.
 
