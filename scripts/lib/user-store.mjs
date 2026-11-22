@@ -87,16 +87,35 @@ const CACHE_VERSION = 1
 // The guard below catches accidents, such as a token pasted into a cache value.
 // It is not a security boundary: a determined caller can encode a secret past it.
 const CREDENTIAL_KEY = /token|secret|password|passwd|api[_-]?key|credential|authorization/i
-const CREDENTIAL_STRING = /^(lin_api_.{20,}|Bearer\s+\S+)/i
+const CREDENTIAL_STRING = /^(lin_api_.{20,}|ATATT.{20,}|Bearer\s+\S+|Basic\s+[A-Za-z0-9+/]{20,}={0,2}$)/i
 
 /** True when a key name looks like it holds a credential. */
 export function isCredentialKey(key) {
   return CREDENTIAL_KEY.test(key)
 }
 
-/** True when a string looks like a Linear API key or an Authorization bearer header. */
+/** True when a string looks like a Linear API key, an Atlassian API token, or a Bearer or Basic Authorization header. */
 export function isCredentialString(text) {
   return CREDENTIAL_STRING.test(text.trim())
+}
+
+/** The paths of secret-like keys and values in a tracker block, sorted. Values are never included. */
+export function secretKeyPaths(tracker) {
+  const paths = []
+  const walk = (value, label) => {
+    if (typeof value === 'string') {
+      if (isCredentialString(value)) paths.push(label)
+    } else if (Array.isArray(value)) {
+      value.forEach((item, index) => walk(item, `${label}[${index}]`))
+    } else if (value !== null && typeof value === 'object') {
+      for (const [key, item] of Object.entries(value)) {
+        if (isCredentialKey(key)) paths.push(`${label}.${key}`)
+        else walk(item, `${label}.${key}`)
+      }
+    }
+  }
+  walk(tracker, 'tracker')
+  return paths.sort()
 }
 
 function refuse(where) {

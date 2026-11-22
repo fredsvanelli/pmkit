@@ -1,32 +1,13 @@
 // The Linear GraphQL client. See docs/superpowers/specs/2026-10-27-pmk-30-linear-api-client-design.md.
 
 import { PmkitError } from '../errors.mjs'
-import { isCredentialKey, isCredentialString } from '../user-store.mjs'
+import { secretKeyPaths } from '../user-store.mjs'
 import { linearCredential } from './credential.mjs'
 import { isMutation, operationName, paginateConnection } from '../graphql.mjs'
 
-export { isMutation, operationName }
+export { isMutation, operationName, secretKeyPaths }
 
 export const LINEAR_ENDPOINT = 'https://api.linear.app/graphql'
-
-/** The paths of secret-like keys and values in the tracker block, sorted. Values are never included. */
-export function secretKeyPaths(tracker) {
-  const paths = []
-  const walk = (value, label) => {
-    if (typeof value === 'string') {
-      if (isCredentialString(value)) paths.push(label)
-    } else if (Array.isArray(value)) {
-      value.forEach((item, index) => walk(item, `${label}[${index}]`))
-    } else if (value !== null && typeof value === 'object') {
-      for (const [key, item] of Object.entries(value)) {
-        if (isCredentialKey(key)) paths.push(`${label}.${key}`)
-        else walk(item, `${label}.${key}`)
-      }
-    }
-  }
-  walk(tracker, 'tracker')
-  return paths.sort()
-}
 
 const SESSION_QUERY = 'query PmkitSession { viewer { id name } organization { urlKey name previousUrlKeys } }'
 const RETRY_STEP = 'Retry, and check status.linear.app if it keeps failing'
