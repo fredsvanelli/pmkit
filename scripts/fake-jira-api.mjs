@@ -1,6 +1,7 @@
 // A fake `fetch` for the Jira Cloud REST API. Routes are keyed by '<METHOD> <path>', without the query string.
 // A route is a response, a list of responses (the Nth call gets item N, the last repeats),
-// or a function of the recorded call that returns a response.
+// or a function of the recorded call that returns a response. A path segment written {name} matches any one segment,
+// and the function route then finds the decoded segments in call.params; an exact key wins over a template.
 // A response is { status, headers, json | text }, { throws: error } or { hang: true }.
 
 export const FAKE_EMAIL = 'pmkit-test@example.com'
@@ -16,6 +17,21 @@ const DEFAULTS = {
 
 function lowerHeaders(headers = {}) {
   return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]))
+}
+
+/** The route key that answers `key`, exact first, then the first template key whose segments match, with its params. */
+function routeOf(all, key) {
+  if (all[key] !== undefined) return { name: key, params: {} }
+  for (const name of Object.keys(all).filter((candidate) => candidate.includes('{'))) {
+    const names = []
+    const pattern = name.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{(\w+)\}/g, (_, param) => {
+      names.push(param)
+      return '([^/]+)'
+    })
+    const match = new RegExp(`^${pattern}$`).exec(key)
+    if (match) return { name, params: Object.fromEntries(names.map((param, index) => [param, decodeURIComponent(match[index + 1])])) }
+  }
+  return null
 }
 
 function toResponse(answer, signal) {
@@ -50,10 +66,12 @@ export function fakeJiraFetch(routes = {}) {
     const call = { url: String(url), method, headers: lowerHeaders(init.headers), body: init.body, redirect: init.redirect }
     calls.push(call)
     const key = `${method} ${parsed.pathname}`
-    const route = all[key]
-    if (route === undefined) throw new Error(`fake Jira: no route for ${key}`)
-    const index = counts.get(key) ?? 0
-    counts.set(key, index + 1)
+    const found = routeOf(all, key)
+    if (!found) throw new Error(`fake Jira: no route for ${key}`)
+    call.params = found.params
+    const route = all[found.name]
+    const index = counts.get(found.name) ?? 0
+    counts.set(found.name, index + 1)
     const answer = typeof route === 'function' ? route(call) : Array.isArray(route) ? route[Math.min(index, route.length - 1)] : route
     return toResponse(answer, init.signal)
   }
