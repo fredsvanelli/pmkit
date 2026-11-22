@@ -4,3 +4,4 @@
 {"at":"2026-11-22T07:19:07Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-265-keep-issue-docs-in-the-linear-to-local"}
 {"at":"2026-11-22T07:27:35Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T07:27:35Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T07:27:35Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

@@ -2,7 +2,7 @@
 id: PMK-265
 title: Keep issue docs in the Linear-to-Local migration
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
