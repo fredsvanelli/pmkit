@@ -10,8 +10,8 @@
 // Each scenario entry then runs on a fresh copy of its fixture (scenario-helpers.mjs, runScenario):
 //
 // Rule 5  every read, dry run and write matches a call of the same step
-// Rule 6  every call of the procedure is used by an entry or listed in skip
-// Rule 7  the confirmation points of the file are confirmed or listed in notHit
+// Rule 6  every call of the procedure is used by an entry or listed in skip, in any scenario of the command (PMK-355)
+// Rule 7  the confirmation points of the file are confirmed or listed in notHit, in any scenario of the command
 // Rule 8  every read and dry run exits 0 (or with its expectError), prints JSON and writes nothing outside .git
 // Rule 9  every write and edit comes after a confirm, and a write that repeats a dry run after that dry run
 // Rule 10 every confirm names a confirmation point of the file
@@ -32,7 +32,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { COMMANDS } from './pmkit.mjs'
 import {
-  compareScenarios, loadScenarios, parseCommandFile, runScenario, scenarioName, snapshotFile, staleSnapshots, unknownFlags,
+  compareScenarios, loadScenarios, parseCommandFile, runScenario, scenarioName, siblingCoverage, snapshotFile, staleSnapshots, unknownFlags,
 } from './scenario-helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -406,8 +406,9 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
         const command = FILES.find((f) => f.name === scenarioName(scenario.command))
         assert.ok(command, `rule 1: scenario ${name} names commands/${scenario.command}.md, which does not exist`)
         assert.equal(scenarioName(scenario.command), name, `rule 1: scenario ${name}.mjs names ${scenario.command}; the module name must be ${scenarioName(scenario.command)}`)
+        const siblings = siblingCoverage(entries, index, command.parsed, COMMANDS.map((c) => c.name))
         const { problems, snapshot } = await runScenario(scenario, {
-          name, parsed: command.parsed, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS,
+          name, parsed: command.parsed, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS, siblings,
         })
         assert.deepEqual(problems, [], `${file}:\n${problems.join('\n')}\nFix the scenario or the command file, then run ${REGENERATE}`)
         const target = path.join(SCENARIOS, file)

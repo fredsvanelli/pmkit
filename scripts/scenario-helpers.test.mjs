@@ -11,11 +11,12 @@ import { NOW, runPmkit } from './golden-helpers.mjs'
 import {
   scenarioName, snapshotFile, parseCommandFile, callKey, unknownFlags,
   matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
-  readTree, treeChanges, formatSnapshot, makeRepoView, prepareCopy, runScenario, traceFromLog, stopProblems, expectUntilSaved,
+  readTree, treeChanges, formatSnapshot, makeRepoView, prepareCopy, runScenario, siblingCoverage, traceFromLog, stopProblems, expectUntilSaved,
 } from './scenario-helpers.mjs'
-import moveScenario from './__scenarios__/issues-move.mjs'
+import moveScenarios from './__scenarios__/issues-move.mjs'
 import { tempDir } from './test-helpers.mjs'
 
+const [moveScenario] = moveScenarios
 const CLI_NAMES = COMMANDS.map((c) => c.name)
 const cli = (name) => COMMANDS.find((c) => c.name === name)
 const call = (rest) => `\`node "\${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" ${rest}\``
@@ -217,6 +218,26 @@ test('coverageProblems names unused keys, stale skips and empty reasons', () => 
   assert.match(problems[2], /skip `9 validate`.*matches no call/)
 })
 
+test('parseCommandFile reads a `## <name> path` section as steps with the heading as prefix (PMK-355)', () => {
+  const text = [
+    '## Steps', '', `1. Run ${call('issues get <id> --json')}.`, '',
+    '## Epic path', '', `1. Run ${call('epic move <id> <category> --dry-run --json')}.`, '2. Show it.', '3. Run it without `--dry-run`.', '',
+    '## Output', '', `See ${call('epic list --json')}.`,
+  ].join('\n')
+  assert.deepEqual(stepsOf(text), ['steps|1|issues get', 'steps|Epic path 1|epic move', 'other||epic list'])
+})
+
+test('a key or point another scenario of the command uses, confirms or excuses is covered (PMK-355)', () => {
+  const calls = parse(['## Steps', '', `1. Run ${call('issues get <id> --json')}.`, `2. Run ${call('discover --json')}.`, `3. Run ${call('validate --json')}.`].join('\n')).calls
+  const siblings = { usedKeys: new Set(['2 discover']), skip: { '3 validate': 'not run here' }, confirmed: ['Step 5'], notHit: { 'Step 7': 'no commits' } }
+  assert.deepEqual(coverageProblems(calls, new Set(['1 issues get']), {}, siblings), [])
+  assert.match(coverageProblems(calls, new Set(['1 issues get']), {}, { ...siblings, skip: {} })[0], /`3 validate` is not used by any entry and not in skip/)
+  assert.deepEqual(pointProblems(['Step 5', 'Step 7'], [], {}, siblings), [])
+  assert.match(pointProblems(['Step 5', 'Step 7'], [], {}, { ...siblings, notHit: {} })[0], /`Step 7` is neither confirmed nor in notHit/)
+  // A scenario's own entries are still checked on their own: a stale skip stays a problem.
+  assert.match(coverageProblems(calls, new Set(['1 issues get', '3 validate']), { '9 gone': 'x' }, siblings)[0], /skip `9 gone` matches no call/)
+})
+
 test('coverageProblems ignores calls in other sections', () => {
   const { calls } = parse(['## Parameters', '', `1. ${call('epic list --json')}`].join('\n'))
   assert.deepEqual(coverageProblems(calls, new Set(), {}), [])
@@ -393,12 +414,12 @@ const moveOnly = (steps, extra = {}) => ({
   command: 'issues/move',
   fixture: 'team',
   steps,
-  skip: { '1 issues get': 'test', '1 epic get': 'test', '2 issues get': 'test', '3 discover': 'test' },
+  skip: { '1 issues get': 'test', '1 epic get': 'test', '2 issues get': 'test', '3 discover': 'test', 'Epic path 1 epic move': 'test' },
   notHit: { 'Step 5': 'test', 'Epic path, step 2': 'test' },
   ...extra,
 })
-const runMove = (scenario, run) =>
-  runScenario(scenario, { name: 'issues-move', parsed: MOVE_FILE, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS, run })
+const runMove = (scenario, run, siblings) =>
+  runScenario(scenario, { name: 'issues-move', parsed: MOVE_FILE, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS, run, siblings })
 const DRY_MOVE = { step: '4', dryRun: ['issues', 'move', 'ISS-2X6D', 'done'] }
 
 test('runScenario fails a dry run that writes', async () => {
@@ -484,15 +505,17 @@ test('runScenario stops at an entry that fails and names it', async () => {
 test('runScenario gives the same snapshot twice and leaks no temp path, real date, user or git identity', async () => {
   // github: true adds git, the bare origin and the fake gh to the run, so their environment is checked too.
   const scenario = { ...moveScenario, github: true }
+  // The epic scenario of the same command covers the epic path, as in scenarios.test.mjs (PMK-355).
+  const siblings = siblingCoverage(moveScenarios, 0, MOVE_FILE, CLI_NAMES)
   const home = scratchDir()
   const keys = ['PMKIT_USER', 'HOME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_EMAIL', 'EMAIL']
   const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
   try {
-    const first = await runMove(scenario)
+    const first = await runMove(scenario, undefined, siblings)
     assert.deepEqual(first.problems, [])
     writeFile(home, '.gitconfig', '[user]\n\tname = Leak\n\temail = leak@example.com\n')
     Object.assign(process.env, { PMKIT_USER: 'other', HOME: home, GIT_AUTHOR_EMAIL: 'leak@example.com', GIT_COMMITTER_EMAIL: 'leak@example.com', EMAIL: 'leak@example.com' })
-    const second = await runMove(scenario)
+    const second = await runMove(scenario, undefined, siblings)
     assert.deepEqual(second.problems, [])
     assert.equal(second.snapshot, first.snapshot)
     for (const leak of [os.tmpdir(), fs.realpathSync(os.tmpdir()), 'pmkit-scn-', 'other', 'leak@']) {

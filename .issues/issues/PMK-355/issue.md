@@ -2,11 +2,12 @@
 id: PMK-355
 title: Cover the epic path of /pmkit:issues:move in the scenario tests
 type: feature
-status: backlog
+status: in_review
 parent: EPC-6
 related: [PMK-353]
+branch: pmk-355-cover-the-epic-path-of-pmkit-issues-move
 created: 2026-11-21T07:03:24.081Z
-updated: 2026-11-21T07:03:24Z
+updated: 2026-11-22T02:29:19Z
 ---
 
 ## Description
@@ -25,6 +26,6 @@ updated: 2026-11-21T07:03:24Z
 
 ## Acceptance criteria
 
-- [ ] A scenario runs the epic path of `/pmkit:issues:move` on a Local fixture epic and asserts the epic ends in the new status
-- [ ] The harness checks that the epic path's `epic move` dry run and its confirmation come before the real run
-- [ ] The `skip` and `notHit` entries for the epic path are removed from `scripts/__scenarios__/issues-move.mjs`
+- [x] A scenario runs the epic path of `/pmkit:issues:move` on a Local fixture epic and asserts the epic ends in the new status
+- [x] The harness checks that the epic path's `epic move` dry run and its confirmation come before the real run
+- [x] The `skip` and `notHit` entries for the epic path are removed from `scripts/__scenarios__/issues-move.mjs`
