@@ -2,7 +2,7 @@
 id: PMK-160
 title: Let a cycle close rerun find and finish every half-done split
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-121, PMK-123]
 milestone: local-gaps
 branch: pmk-160-let-a-cycle-close-rerun-find-and-finish
 created: 2026-10-28T00:11:39.878Z
-updated: 2026-11-22T05:44:46Z
+updated: 2026-11-22T05:44:52Z
 ---
 
 ## Description
