@@ -97,7 +97,9 @@ test('a create whose move fails is UPSTREAM naming the created key', async () =>
   await assert.rejects(tracker.createIssue({ title: 'First', status: 'done' }, ME), (error) => {
     assert.equal(error.code, 'UPSTREAM')
     assert.match(error.message, /^Jira created ENG-1, but the move to done failed: the transition to Done needs Resolution$/)
-    assert.equal(error.nextStep, 'pmkit issues move ENG-1 done')
+    assert.equal(error.nextStep, 'pmkit issues move ENG-1 done --field resolution=<value>')
+    assert.equal(error.details.created, 'ENG-1')
+    assert.deepEqual(error.details.requiredFields, [{ id: 'resolution', name: 'Resolution', type: 'resolution', allowed: ['Done', "Won't Do"] }])
     return true
   })
   assert.ok(fake.state.items['ENG-1'])

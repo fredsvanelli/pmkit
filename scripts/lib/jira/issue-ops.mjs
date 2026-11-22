@@ -164,7 +164,10 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
       try {
         await move(key, category, {})
       } catch (error) {
-        throw new PmkitError('UPSTREAM', `Jira created ${key}, but the move to ${category} failed: ${error.message}`, `pmkit issues move ${key} ${category}`, { created: key, cause: error.code ?? error.name })
+        // A transition that needs fields keeps its list and its --field next step, so the follow-up move can pass them.
+        const required = error.details?.requiredFields
+        const nextStep = required ? error.nextStep : `pmkit issues move ${key} ${category}`
+        throw new PmkitError('UPSTREAM', `Jira created ${key}, but the move to ${category} failed: ${error.message}`, nextStep, { created: key, cause: error.code ?? error.name, ...(required ? { requiredFields: required } : {}) })
       }
     }
     return { before: null, after: await afterOf(key) }
