@@ -502,7 +502,7 @@ test('with cycles off a sprint write is NOT_SUPPORTED, except null', async () =>
   assert.ok(!namesOf(fetch).some((name) => /Cycle/.test(name)))
 })
 
-test('searchIssues by sprint: a number, current and none, and an unknown cycle gives an empty list', async () => {
+test('searchIssues by sprint: a number, current and none, and an unknown cycle is INVALID_INPUT', async () => {
   const { tracker: linear } = cycling()
   const inTwo = (await linear.createIssue({ title: 'In two', sprint: '2' }, 'user-1')).after.id
   const inThree = (await linear.createIssue({ title: 'In three', sprint: '3' }, 'user-1')).after.id
@@ -512,7 +512,7 @@ test('searchIssues by sprint: a number, current and none, and an unknown cycle g
   assert.deepEqual(await found('2'), [inTwo])
   assert.deepEqual(await found('3'), [inThree])
   assert.deepEqual(await found('none'), [free])
-  assert.deepEqual(await found('99'), [])
+  await assert.rejects(linear.searchIssues({ sprint: '99' }), { code: 'INVALID_INPUT', message: 'sprint "99" is not current, none or an existing sprint id' })
   await assert.rejects(linear.searchIssues({ sprint: 'abc' }), { code: 'INVALID_INPUT' })
 })
 

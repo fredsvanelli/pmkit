@@ -39,8 +39,13 @@ function sprintStep(sprint, context, today) {
     throw new PmkitError('NOT_SUPPORTED', 'no iteration field of this GitHub Project is mapped to sprints', '/pmkit:setup')
   }
   if (sprint === 'none') return (issue) => issue.sprint === undefined
-  if (sprint !== 'current') return (issue) => issue.sprint === sprint
-  const active = sprintsOf(mapped.field.configuration, today).sprints.find((item) => item.state === 'active')
+  const { sprints } = sprintsOf(mapped.field.configuration, today)
+  if (sprint !== 'current') {
+    // A start date no iteration has is a typo, not a sprint with no issues. Stale, as below: the iteration may be new.
+    if (!sprints.some((item) => item.id === sprint)) throw new PmkitError('INVALID_INPUT', `sprint "${sprint}" is not current, none or an existing sprint id`, 'pmkit cycle list', { stale: true })
+    return (issue) => issue.sprint === sprint
+  }
+  const active = sprints.find((item) => item.state === 'active')
   // The configuration comes from the discovery cache, so the error is stale: the caller refreshes once and translates again.
   if (!active) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list', { stale: true })
   return (issue) => issue.sprint === active.id

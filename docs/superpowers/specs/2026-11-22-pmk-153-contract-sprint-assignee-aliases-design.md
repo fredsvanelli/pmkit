@@ -34,6 +34,7 @@ The contract suite covers the four cases on every tracker that runs it (Local, L
 
 - Does `me` mean the same in `assign` and `searchIssues`? Local resolves `me` in search from the git user and in `assign` from the actor argument; the CLI passes the git user as the actor, so they agree. The suite's Local setup uses `fred` for both. On Linear and GitHub `me` is the viewer in both.
 - Live Linear: assigning `me` assigns the key owner, which the suite already does (`assignee` is the key owner on a shared workspace).
+- Linear with cycles off: the filter keeps its `NOT_SUPPORTED` answer, since `cycleNodeFor` returns nothing for a team without cycles and `cycleClause` then refuses as today.
 - A Linear cycle of another team with the same number: the lookup is scoped to the team, as `cycleIssues` is.
 - Cost: one extra Linear request per search that names a cycle number. `cycleIssues` already pays the same request before its search; it is acceptable for a read the user typed.
 - The writes' rule (`createIssue` and `updateIssue` refuse an unknown sprint with `INVALID_INPUT` on Local but `NOT_FOUND` on Linear, `moveToCycle` gives `NOT_FOUND`) and what the string `none` does as a write value are PMK-152's decision, done right after this one.

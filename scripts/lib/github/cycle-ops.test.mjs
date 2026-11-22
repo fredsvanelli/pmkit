@@ -112,15 +112,15 @@ test('currentCycle is the active sprint, or null when none is active', async () 
   assert.equal(await later.cycles.currentCycle(), null)
 })
 
-test('cycleIssues returns the issues of an iteration, and nothing for an unknown date', async () => {
+test('cycleIssues returns the issues of an iteration, and NOT_FOUND for an unknown date or a malformed id', async () => {
   const { fake, cycles } = await setup()
   fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
   fake.seed({ number: 2, item: { status: 'Todo', values: { Sprint: '2026-11-02' } } })
   fake.seed({ number: 3, item: { status: 'Todo' } })
   assert.deepEqual(ids(await cycles.cycleIssues('2026-11-16')), ['1'])
   assert.deepEqual(ids(await cycles.cycleIssues('2026-11-02')), ['2'])
-  assert.deepEqual(await cycles.cycleIssues('2027-01-04'), [])
-  assert.deepEqual(await cycles.cycleIssues('x'), [])
+  await assert.rejects(cycles.cycleIssues('2027-01-04'), { code: 'NOT_FOUND', message: 'sprint 2027-01-04 does not exist' })
+  await assert.rejects(cycles.cycleIssues('x'), { code: 'NOT_FOUND' })
 })
 
 const readNames = (fake) => fake.reads.map((call) => call.name)
@@ -142,7 +142,7 @@ test('cycleIssues on github.com reads the sprint\'s Project items, not the repos
   assert.ok(!readNames(fake).includes('PmkitIssues'))
   assert.equal(fake.reads.find((call) => call.name === 'PmkitSprintItems').variables.query, 'sprint:"Sprint 2"')
   clear()
-  assert.deepEqual(await cycles.cycleIssues('2027-01-04'), [])
+  await assert.rejects(cycles.cycleIssues('2027-01-04'), { code: 'NOT_FOUND' })
   assert.ok(!readNames(fake).includes('PmkitSprintItems'), 'a date the cached field lacks scans, as before')
 })
 

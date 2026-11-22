@@ -192,6 +192,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const current = await context()
     const members = current.raw.users.filter((user) => !user.app).map((user) => user.id)
     checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: (id) => cycleKey(id) !== null })
+    if (current.scopeTeam && typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint)) {
+      // A cycle number no cycle of the team has is a typo, not a sprint with no issues (Local refuses it the same way).
+      await cycleNodeFor(filter.sprint, current.scopeTeam).catch((error) => {
+        if (error.code !== 'NOT_FOUND') throw error
+        throw new PmkitError('INVALID_INPUT', `sprint "${filter.sprint}" is not current, none or an existing sprint id`, 'pmkit cycle list')
+      })
+    }
     let epicProject
     if (filter.parent !== undefined && !isIssueId(filter.parent) && resolveEpic) {
       epicProject = await resolveEpic(filter.parent)

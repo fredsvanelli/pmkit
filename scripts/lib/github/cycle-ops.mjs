@@ -68,14 +68,20 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
 
   async function cycleIssues(id) {
     const { context, field } = await scope()
-    // An id that is not a date names no iteration, so it holds no issue, as an unknown sprint on Linear.
-    if (!validDate(id)) return []
+    // An id that is not a date names no iteration: NOT_FOUND, as getSprint on Local and an unknown cycle on Linear.
+    if (!validDate(id)) throw notFound(id)
     // github.com and GHE.com filter the Project's items on GitHub (PMK-344). A sprint the cached discovery lacks, a title or field
     // name the filter cannot quote, and GHES read the repository through searchIssues, which refreshes the cache when it must.
     const sprint = sprintsOf(field.configuration, today()).sprints.find((item) => item.id === id)
     const quotable = sprint && !sprint.name.includes('"') && !/[\s"]/.test(field.name)
     if (context.features?.itemQuery === true && quotable) return ops.sprintIssues(sprint, field.name)
-    return (await ops.searchIssues({ sprint: id })).issues
+    // searchIssues refreshes a stale cache, then refuses a date no iteration has with INVALID_INPUT: here the sprint is the subject.
+    try {
+      return (await ops.searchIssues({ sprint: id })).issues
+    } catch (error) {
+      if (error.code === 'INVALID_INPUT' && !sprint) throw notFound(id)
+      throw error
+    }
   }
 
   /** The checked { start, end, name } of an openCycle input. The default end needs the field's duration, so openCycle sets it after the read. */

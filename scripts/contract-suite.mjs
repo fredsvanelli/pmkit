@@ -2,7 +2,7 @@
 // that returns a fresh tracker; the suite uses contract operations only.
 //
 // setup() returns { tracker, actor, teardown, today? }. The tracker has every status category,
-// at least one member and no issues. `today` is the YYYY-MM-DD date the tracker treats as today
+// at least one member and no issues. `actor` is the member the tracker reads `me` as (the viewer on a hosted tracker). `today` is the YYYY-MM-DD date the tracker treats as today
 // (default: the real date); the suite opens its cycle on that day so the cycle starts active.
 // setup() may name `assignee`, the member id the suite assigns issues to (default: the first member). A shared workspace
 // returns the key owner so the suite never assigns a person who would be notified.
@@ -44,6 +44,8 @@ const DOC_PATH = 'contract/notes.md'
 
 const rejects = (fn, code) => assert.rejects(async () => fn(), (error) => error.code === code, `expected ${code}`)
 const ids = (issues) => issues.map((issue) => issue.id)
+// A sprint id in the same format as `id` that no sprint has: a cycle number far past it, or a far date. Null for another format.
+const unknownSprintLike = (id) => (/^\d+$/.test(id) ? String(Number(id) + 100000) : /^\d{4}-\d{2}-\d{2}$/.test(id) ? '2099-12-31' : null)
 const issueState = async (tracker, issueIds) => JSON.stringify({
   issues: await Promise.all(issueIds.map(async (id) => ({ issue: await tracker.getIssue(id), history: await tracker.getHistory(id) }))),
   all: (await tracker.searchIssues({ archived: true })).issues.map((issue) => issue.id),
@@ -136,6 +138,16 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.equal((await tracker.getIssue(id)).archived, true)
       assert.deepEqual((await tracker.searchIssues({})).issues, [])
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [id])
+    })
+
+    it('searchIssues with assignee me returns the issues assigned to the actor, and none the unassigned ones', ['issues'], async ({ tracker, actor, assignee }) => {
+      // `me` assigns the actor, so a setup that allows only another assignee skips the case.
+      if (assignee !== undefined && assignee !== actor) return
+      const mine = (await tracker.createIssue({ title: 'Mine' }, actor)).after.id
+      const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
+      await tracker.assign(mine, 'me', actor)
+      assert.deepEqual(ids((await tracker.searchIssues({ assignee: 'me' })).issues), [mine])
+      assert.deepEqual(ids((await tracker.searchIssues({ assignee: 'none' })).issues), [free])
     })
 
     it('deletes an issue, refuses while another issue references it, and a dry run changes nothing', ['issues'], async ({ tracker, actor }) => {
@@ -375,6 +387,36 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
 
       assert.deepEqual((await tracker.searchIssues({ sprint: 'current' })).issues, [])
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
+    })
+    it('sprint current with dryRun returns the active sprint id and writes nothing', ['cycles'], async ({ tracker, actor, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const dry = { dryRun: true }
+      const made = await tracker.createIssue({ title: 'Never current', sprint: 'current' }, actor, dry)
+      assert.equal(made.after.sprint, sprint.id)
+      const plain = (await tracker.createIssue({ title: 'Plain' }, actor)).after.id
+      assert.equal((await tracker.updateIssue(plain, { sprint: 'current' }, actor, dry)).after.sprint, sprint.id)
+      const moved = await tracker.moveToCycle([plain], 'current', actor, dry)
+      assert.deepEqual(moved.map((entry) => entry.after.sprint), [sprint.id])
+      assert.equal((await tracker.getIssue(plain)).sprint, undefined)
+      assert.deepEqual(await tracker.cycleIssues(sprint.id), [])
+      assert.deepEqual(ids((await tracker.searchIssues({ text: 'Never current' })).issues), [])
+    })
+
+    it('searchIssues with an unknown sprint id fails with INVALID_INPUT', ['cycles'], async ({ tracker, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const unknown = unknownSprintLike(sprint.id)
+      if (unknown !== null) await rejects(() => tracker.searchIssues({ sprint: unknown }), 'INVALID_INPUT')
+      await rejects(() => tracker.searchIssues({ sprint: 'not-a-sprint' }), 'INVALID_INPUT')
+    })
+
+    it('cycleIssues of an unknown sprint id fails with NOT_FOUND', ['cycles'], async ({ tracker, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const unknown = unknownSprintLike(sprint.id)
+      if (unknown !== null) await rejects(() => tracker.cycleIssues(unknown), 'NOT_FOUND')
+      await rejects(() => tracker.cycleIssues('not-a-sprint'), 'NOT_FOUND')
     })
 
     it('sets and reads cycle capacity', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {

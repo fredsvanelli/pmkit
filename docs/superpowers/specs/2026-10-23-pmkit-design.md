@@ -93,7 +93,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Issues | `searchIssues(filter)`, `getIssue(id)`, `createIssue(input, actor)`, `updateIssue(id, patch, actor)`, `moveToCategory(id, category, actor, { status })`, `assign(id, member, actor)`, `archive(id, actor)` |
 | Relations | `link(from, to, kind, actor)`, `unlink(from, to, kind, actor)` with kind `blocks`, `related` or `duplicate`; `setParent(id, parent, actor)` |
 | History and comments | `getHistory(id, { since })`, `listComments(id)`, `comment(id, body, actor, { replyTo })`, `resolveThread(id, commentId, actor)` |
-| Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
+| Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` with `sprint` a sprint id, `current` for the active sprint or `null` for no sprint |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)`, `listStatusUpdates(epic)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
 | Goals | `listGoals()`, `getGoal(id)`, `createGoal(input, actor)`, `goalProgress(id)`, `setEpicGoal(epic, goal, actor)` |
@@ -104,7 +104,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Documents | `readDocument(path)`, `createDocument(path, body, actor)`, `listDocuments()` |
 | Time | `logTime(id, minutes, actor)` |
 
-Natural-language queries are translated by the command, not by the contract **(builder's call)**. `/pmkit:issues:find` turns the question into CLI filter flags, shows the flags in one line, and runs them. The contract's `searchIssues` takes a structured filter: `text`, `categories`, `types`, `assignee` (member id, `me` or `none`), `labels`, `sprint` (id, `current` or `none`), `parent`, `blocked`, `updatedBefore`, `updatedAfter`, `sort` (`priority`, `updated`, `created`, `due`; `created` by default, oldest first), `limit`. Every issue table a command shows uses creation order, oldest first, unless the user asks for another order. The same order picks the next issue in `/pmkit:issues:work` and `/pmkit:issues:mine`, and the sprint scope in `/pmkit:cycle:plan`.
+Natural-language queries are translated by the command, not by the contract **(builder's call)**. `/pmkit:issues:find` turns the question into CLI filter flags, shows the flags in one line, and runs them. The contract's `searchIssues` takes a structured filter: `text`, `categories`, `types`, `assignee` (member id, `me` or `none`), `labels`, `sprint` (id, `current` or `none`; an id no sprint has fails with `INVALID_INPUT`, so a typo never reads as a sprint with no issues), `parent`, `blocked`, `updatedBefore`, `updatedAfter`, `sort` (`priority`, `updated`, `created`, `due`; `created` by default, oldest first), `limit`. Every issue table a command shows uses creation order, oldest first, unless the user asks for another order. The same order picks the next issue in `/pmkit:issues:work` and `/pmkit:issues:mine`, and the sprint scope in `/pmkit:cycle:plan`.
 
 Git host operations: `currentBranch()`, `createBranch(name, { from })`, `push(branch)`, `openPullRequest({ title, body, head, base, draft })`, `getPullRequest({ number | head })`, `markReady(number)`, `prChecks(number)`, `prReviews(number)`.
 
