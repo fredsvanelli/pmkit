@@ -8,10 +8,11 @@ estimate: 8
 assignee: fred
 parent: EPC-7
 blocked_by: [PMK-75]
+related: [PMK-366]
 milestone: jira
 branch: pmk-76-discover-a-jira-site-and-build-its
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-22T19:07:17Z
+updated: 2026-11-22T19:42:33Z
 ---
 
 ## Description
