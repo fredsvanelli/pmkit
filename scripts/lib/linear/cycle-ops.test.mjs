@@ -188,12 +188,12 @@ test('an issue already in the target cycle sends no mutation', async () => {
   assert.equal(mutationCount(fetch), 0)
 })
 
-test('current with no active cycle is INVALID_INPUT, and an unknown cycle is NOT_FOUND', async () => {
+test('current with no active cycle is INVALID_INPUT, and so is an unknown cycle', async () => {
   const { ops, fake, fetch } = await setup({ cycles: [CYCLES[0], CYCLES[2]] })
   const a = fake.seed({ title: 'A' }).identifier
   await assert.rejects(ops.moveToCycle([a], 'current', ACTOR), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
-  await assert.rejects(ops.moveToCycle([a], '99', ACTOR), { code: 'NOT_FOUND', message: 'sprint 99 does not exist' })
-  await assert.rejects(ops.moveToCycle([a], 'abc', ACTOR), { code: 'NOT_FOUND' })
+  await assert.rejects(ops.moveToCycle([a], '99', ACTOR), { code: 'INVALID_INPUT', message: 'sprint "99" is not current, none or an existing sprint id' })
+  await assert.rejects(ops.moveToCycle([a], 'abc', ACTOR), { code: 'INVALID_INPUT' })
   assert.equal(mutationCount(fetch), 0)
 })
 

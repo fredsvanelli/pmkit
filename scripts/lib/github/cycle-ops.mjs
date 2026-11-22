@@ -156,7 +156,8 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     const { sprints } = await readSprints(context, field, key)
     const target = to === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === to)
     if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
-    if (!target) throw notFound(to)
+    // The sprint is where the issues go, a value of the move: INVALID_INPUT, as in createIssue and updateIssue.
+    if (!target) throw invalid(`sprint ${to} does not exist`, 'pmkit cycle list')
     return target
   }
 
