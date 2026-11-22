@@ -56,7 +56,7 @@ export function historyOperations({ client, ops }) {
   }
 
   async function getHistory(id, { since } = {}) {
-    const node = await ops.readNode(id)
+    const node = await ops.readNode(id, { extras: false })
     const { entries, origin, hasMore: moreHistory } = await readHistory(node)
     const { nodes: comments, hasMore: moreComments } = await readCommentNodes(node)
     const events = toEvents({ node, origin, entries, comments }, await ops.contextFor([node]))
@@ -64,7 +64,7 @@ export function historyOperations({ client, ops }) {
   }
 
   async function listComments(id) {
-    const node = await ops.readNode(id)
+    const node = await ops.readNode(id, { extras: false })
     const { nodes, hasMore } = await readCommentNodes(node)
     return flagTruncated(nodes.map((item) => toComment(item, node.identifier)).sort(byCreated), hasMore)
   }
@@ -94,7 +94,7 @@ export function historyOperations({ client, ops }) {
     await ops.requireViewer(actor)
     const text = typeof body === 'string' ? body.trim() : ''
     if (text === '') throw new PmkitError('INVALID_INPUT', 'comment body must be a non-empty string')
-    const node = await ops.readNode(id)
+    const node = await ops.readNode(id, { extras: false })
     let parent
     if (replyTo !== undefined) {
       const target = await commentOnIssue(node, replyTo)
@@ -119,7 +119,7 @@ export function historyOperations({ client, ops }) {
   /** Resolves the thread that holds `commentId`: the root gets the resolution. A resolved root sends nothing. */
   async function resolveThread(id, commentId, actor, { dryRun = false } = {}) {
     await ops.requireViewer(actor)
-    const node = await ops.readNode(id)
+    const node = await ops.readNode(id, { extras: false })
     const found = await commentOnIssue(node, commentId)
     const root = found.parentId ? await commentOnIssue(node, found.parentId) : found
     const before = toComment(root, node.identifier)
@@ -190,7 +190,7 @@ export function historyOperations({ client, ops }) {
     // Once Linear has the delegate, the delegation succeeded: a read that fails while mapping the answer does not change that.
     const done = async (node) => {
       try {
-        return { before, after: await ops.mapped(node), comment: posted, run: 'native' }
+        return { before, after: await ops.mapped(ops.keep(node, beforeNode)), comment: posted, run: 'native' }
       } catch (error) {
         if (!isPmkitError(error)) throw error
         return { before, after: preview, comment: posted, run: 'native' }
