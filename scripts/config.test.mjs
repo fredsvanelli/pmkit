@@ -69,19 +69,19 @@ test('unsupportedTracker is null for local and for names outside TRACKERS, and g
   assert.equal(unsupportedTracker('local'), null)
   assert.equal(unsupportedTracker('trello'), null)
   assert.equal(unsupportedTracker('linear'), null)
-  assert.deepEqual(unsupportedTracker('jira'), {
-    message: 'tracker.system "jira" is not supported yet',
+  assert.deepEqual(unsupportedTracker('gitlab'), {
+    message: 'tracker.system "gitlab" is not supported yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml',
-    problem: 'tracker.system "jira" is not supported yet, set it to local',
+    problem: 'tracker.system "gitlab" is not supported yet, set it to local',
   })
   assert.equal(unsupportedTracker('linear', withLinear()), null)
 })
 
 test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitConfig', () => {
   assert.deepEqual(pmkitConfigMessages(template('pmkit.config.yaml')), [])
-  const jira = template('pmkit.config.yaml')
-  jira.tracker.system = 'jira'
-  assert.deepEqual(pmkitConfigMessages(jira), ['tracker.system "jira" is not supported yet, set it to local'])
+  const unsupported = template('pmkit.config.yaml')
+  unsupported.tracker.system = 'gitlab'
+  assert.deepEqual(pmkitConfigMessages(unsupported), ['tracker.system "gitlab" is not supported yet, set it to local'])
   const linear = template('pmkit.config.yaml')
   linear.tracker.system = 'linear'
   const trello = template('pmkit.config.yaml')
@@ -116,9 +116,9 @@ test('a hosted config with a bad mapping loads with the problem in pmkitProblems
   assert.deepEqual(loadConfig(root, { adapters: withLinear() }).pmkitProblems, ['mappings.status.reviewing: reviewing is not a category or blocked'])
 })
 
-test('jira throws NOT_SUPPORTED with linear registered', () => {
-  const root = basicWith(['system: local', 'system: jira'])
-  const expected = { code: 'NOT_SUPPORTED', message: 'tracker.system "jira" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }
+test('gitlab throws NOT_SUPPORTED with linear registered', () => {
+  const root = basicWith(['system: local', 'system: gitlab'])
+  const expected = { code: 'NOT_SUPPORTED', message: 'tracker.system "gitlab" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }
   assert.throws(() => loadConfig(root, { adapters: withLinear() }), expected)
   assert.throws(() => loadPmkitConfig(root, { adapters: withLinear() }), expected)
 })
@@ -206,12 +206,12 @@ test('pmkitWriteRefusal and pmkitConfigWarning word the refusal', () => {
   assert.equal(pmkitConfigWarning(['a', 'b']), '.pmkit/config.yaml is not valid, so writes are refused: a; b; run pmkit validate')
 })
 
-test('tracker.system jira throws NOT_SUPPORTED', () => {
+test('tracker.system gitlab throws NOT_SUPPORTED', () => {
   const root = tmp()
   mkdirSync(join(root, '.pmkit'))
-  writeFileSync(join(root, '.pmkit', 'config.yaml'), 'version: 1\ntracker:\n  system: jira\n')
+  writeFileSync(join(root, '.pmkit', 'config.yaml'), 'version: 1\ntracker:\n  system: gitlab\n')
   assert.throws(() => loadConfig(root), (error) => error.code === 'NOT_SUPPORTED' &&
-    error.message === 'tracker.system "jira" is not supported yet' &&
+    error.message === 'tracker.system "gitlab" is not supported yet' &&
     error.nextStep === 'Set tracker.system to local in .pmkit/config.yaml')
 })
 

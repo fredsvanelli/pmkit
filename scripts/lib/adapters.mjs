@@ -4,6 +4,7 @@
 // because no descriptor calls into config.mjs while the modules load.
 
 import { githubDescriptor } from './github/adapter.mjs'
+import { jiraDescriptor } from './jira/adapter.mjs'
 import { linearDescriptor } from './linear/adapter.mjs'
 
 /**
@@ -31,6 +32,7 @@ export const ADAPTERS = {
   },
   linear: linearDescriptor(),
   github: githubDescriptor(),
+  jira: jiraDescriptor(),
 }
 
 /** The descriptor of a system, or null when the registry has none. */
