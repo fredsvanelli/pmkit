@@ -2,14 +2,14 @@
 id: PMK-264
 title: Link issue docs on a GitHub Enterprise host
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-5
 branch: pmk-264-link-issue-docs-on-a-github-enterprise
 created: 2026-11-11T22:34:43.066Z
-updated: 2026-11-22T07:18:31Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description
