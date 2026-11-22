@@ -398,7 +398,10 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { add, remove }
   }
 
-  /** The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata. */
+  /**
+   * The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata.
+   * The CLI always passes the branch it resolved with origin/HEAD; the fallback to the config is for a caller without git.
+   */
   function docUrl(path, branch) {
     const host = config.pmkit?.git_host
     if (host?.system !== 'github' || !host.repo) {

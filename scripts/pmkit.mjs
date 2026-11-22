@@ -16,7 +16,7 @@ import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fi
 import {
   aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
 } from './lib/metrics.mjs'
-import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
+import { NOTES_CUT, buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { buildReadiness, chooseReadinessBasis } from './lib/release-readiness.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
@@ -728,8 +728,6 @@ async function unlinkMany(ctx, tracker, actor, from, targets) {
 
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
-const NOTES_CUT = 'Linear has more issues than the 1000 pmkit read, so the notes may be missing issues'
-
 /** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
 async function releasedWarnings(ctx, patch) {
   if (typeof patch.release !== 'string') return []
@@ -1131,10 +1129,12 @@ export const COMMANDS = [
       await tickCriteria(ctx, id, patch)
       await docLinks(ctx, id, patch)
       if (Object.keys(patch).length === 0) throw usageError('issues update needs at least one field flag', 'pmkit issues update <id> --priority high')
-      // Linear links a doc to the file on the default branch, resolved here as every reader does (PMK-228), with its note.
-      const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear'
-      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: defaultBranch(ctx) } : {}) }))
-      return { ...result, warnings: await releasedWarnings(ctx, patch), ...(linkDocs ? { notes: defaultBranchNotes(ctx) } : {}) }
+      // Linear links an added doc to the file on the default branch, resolved once here as every reader does (PMK-228), with its note.
+      // A change that only removes docs builds no link, so it reads no branch (PMK-266).
+      const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear' && ctx.list('add-doc').length > 0
+      const branch = linkDocs ? resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) }) : null
+      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: branch.branch } : {}) }))
+      return { ...result, warnings: await releasedWarnings(ctx, patch), ...(linkDocs ? { notes: branch.note === null ? [] : [branch.note] } : {}) }
     },
   },
   {
