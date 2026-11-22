@@ -371,7 +371,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return node
   }
 
-  async function updateIssue(id, patch, actor, { dryRun = false, docsBranch } = {}) {
+  async function updateIssue(id, patch, actor, { dryRun = false, docsBranch, docsHost } = {}) {
     await requireViewer(actor)
     const beforeNode = await readNode(id)
     const releaseNode = await releaseNodeFor(patch.release, beforeNode)
@@ -384,7 +384,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
-    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs, docsBranch)
+    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs, docsBranch, docsHost)
     let result = { before, after: before }
     if (Object.keys(linearInput).length > 0) result = await writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode })
     if (change === null) return result
@@ -406,7 +406,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   }
 
   /** The docs a write adds (paths) and removes (attachment nodes), or null when the list is the one the issue has. An unread list refuses. */
-  function docChange(beforeNode, docList, branch) {
+  function docChange(beforeNode, docList, branch, host) {
     if (beforeNode.attachmentsUnread) throw beforeNode.attachmentsUnread
     const docs = [...new Set(docList.map(repoDocPath))]
     const nodes = beforeNode.attachments?.nodes ?? []
@@ -417,7 +417,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     for (const item of nodes.filter((node) => isDoc(node) && docOf(node) !== node.metadata.pmkitDoc && docs.includes(docOf(node)))) {
       notes.push(`${beforeNode.identifier} links ${docOf(item)} as ${item.metadata.pmkitDoc}, written by another client; pmkit kept it as it is`)
     }
-    const add = docs.filter((path) => !current.includes(path)).map((path) => ({ path, url: docUrl(path, branch) }))
+    const add = docs.filter((path) => !current.includes(path)).map((path) => ({ path, url: docUrl(path, branch, host) }))
     // attachmentCreate upserts by url, so an attachment a person made with this link would be rewritten, and removed later as a doc.
     const taken = add.map((item) => nodes.find((node) => node.url === item.url && !isDoc(node))).filter(Boolean)
     if (taken.length > 0) {
@@ -432,13 +432,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    * The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata.
    * The CLI always passes the branch it resolved with origin/HEAD; the fallback to the config is for a caller without git.
    */
-  function docUrl(path, branch) {
-    const host = config.pmkit?.git_host
-    if (host?.system !== 'github' || !host.repo) {
+  function docUrl(path, branch, host = 'github.com') {
+    const gitHost = config.pmkit?.git_host
+    if (gitHost?.system !== 'github' || !gitHost.repo) {
       throw new PmkitError('NOT_CONFIGURED', 'a Linear doc is a link to the file on GitHub, and git_host has no GitHub repo', '/pmkit:link-repo')
     }
     const encode = (value) => value.split('/').map(encodeURIComponent).join('/')
-    return `https://github.com/${host.repo}/blob/${encode(branch ?? resolveDefaultBranch(config.pmkit).branch)}/${encode(path)}`
+    return `https://${host}/${gitHost.repo}/blob/${encode(branch ?? resolveDefaultBranch(config.pmkit).branch)}/${encode(path)}`
   }
 
   /** attachmentCreate for each added path, then attachmentDelete for each removed one. A failure names what was done and what was not. */

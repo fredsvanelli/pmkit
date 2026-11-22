@@ -37,7 +37,7 @@ import { validateRepo } from './lib/validate.mjs'
 import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
-import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
+import { chooseRemote, inferHost, parseRemoteUrl, webHost } from './lib/git-remote.mjs'
 import { HOST_NAME } from './lib/github/client.mjs'
 import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, mappedLabelNames, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
 import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
@@ -351,6 +351,12 @@ function originHead(ctx) {
     originHeads.set(ctx, ref.startsWith(prefix) ? ref.slice(prefix.length) : null)
   }
   return originHeads.get(ctx)
+}
+
+/** The web host of origin when origin is git_host.repo, or null (PMK-264). */
+function originWebHost(ctx) {
+  const result = readGit(ctx, ['remote', 'get-url', 'origin'])
+  return !result.error && result.status === 0 ? webHost(result.stdout.trim(), ctx.config().pmkit?.git_host?.repo) : null
 }
 
 /** Whether `ref` resolves to a commit. Reads local refs only. */
@@ -1135,7 +1141,9 @@ export const COMMANDS = [
       // A change that only removes docs builds no link, so it reads no branch (PMK-266).
       const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear' && ctx.list('add-doc').length > 0
       const branch = linkDocs ? resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) }) : null
-      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: branch.branch } : {}) }))
+      // The link goes to the GitHub host of origin when origin is the configured repo, as on GitHub Enterprise (PMK-264).
+      const docsHost = linkDocs ? (originWebHost(ctx) ?? 'github.com') : null
+      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: branch.branch, docsHost } : {}) }))
       return { ...result, warnings: [...(result.data.warnings ?? []), ...(await releasedWarnings(ctx, patch))], ...(linkDocs ? { notes: branch.note === null ? [] : [branch.note] } : {}) }
     },
   },
