@@ -4,3 +4,5 @@
 {"at":"2026-11-22T04:05:58Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T04:05:58Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-163-check-paragraph-indentation-after-list"}
 {"at":"2026-11-22T04:06:20Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:11:05Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:11:05Z","by":"fred","op":"update","field":"acceptance_criteria"}
