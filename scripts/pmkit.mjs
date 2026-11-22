@@ -43,7 +43,7 @@ import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDisc
 import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
-import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
+import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, moveOrRefuse, parseChange, valueError } from './lib/bulk.mjs'
 import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
@@ -734,6 +734,20 @@ async function unlinkMany(ctx, tracker, actor, from, targets) {
   return { data: { results }, text: results.map((item) => writeText(item, ctx)).join('\n\n'), commit: `${from} --remove ${targets.join(' ')}` }
 }
 
+/** The --field id=value options of issues move as an object, undefined when none was given. */
+const FIELD_IGNORED = "--field is ignored: this tracker's move needs no fields"
+
+function moveFields(values) {
+  if (values.length === 0) return undefined
+  const fields = {}
+  for (const value of values) {
+    const at = String(value).indexOf('=')
+    if (at < 1) throw usageError(`--field takes id=value, got ${value}`, 'Use --field <id>=<value>, for example --field resolution=Done')
+    fields[value.slice(0, at)] = value.slice(at + 1)
+  }
+  return fields
+}
+
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
 /** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
@@ -1161,8 +1175,17 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'issues move', summary: 'changes status by category', usage: '<id> <category> [--status name]', write: true, args: ['id', 'category'], flags: ['status'],
-    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })),
+    name: 'issues move', summary: 'changes status by category', usage: '<id> <category> [--status name] [--field id=value ...]', write: true, args: ['id', 'category'], flags: ['status', 'field'],
+    run: async (ctx) => {
+      const fields = moveFields(ctx.list('field'))
+      const result = await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), ...(fields === undefined ? {} : { fields }), dryRun: ctx.dryRun })
+      const needs = (result.requiredFields ?? []).map((field) => `needs: ${field.name} (${field.id}${field.allowed?.length > 0 ? `: ${field.allowed.join(', ')}` : ''})`)
+      // A tracker that sent the fields marks its result with the non-enumerable fieldsUsed; any other one ignored them.
+      const warnings = fields !== undefined && result.fieldsUsed !== true ? [FIELD_IGNORED] : []
+      const data = warnings.length > 0 ? { ...result, warnings } : result
+      if (!ctx.dryRun || needs.length === 0) return { ...issueWrite(ctx, data), warnings }
+      return { data, text: `${writeText(result, { dryRun: false })}\n${needs.join('\n')}\ndry run: nothing was written`, commit: result.after.id, warnings }
+    },
   },
   {
     name: 'issues assign', summary: 'assigns', usage: '<id> <member|me|none>', write: true, args: ['id', 'member'], flags: [],
@@ -2519,7 +2542,7 @@ export const COMMANDS = [
         try {
           const pr = host.getPullRequest({ head: issue.branch })
           if (pr?.mergedAt) {
-            await tracker.moveToCategory(issue.id, 'done', actor, { dryRun: ctx.dryRun })
+            await moveOrRefuse(tracker, issue.id, 'done', actor, { dryRun: ctx.dryRun })
             moved.push({ id: issue.id, pr: pr.number })
           }
         } catch (error) {

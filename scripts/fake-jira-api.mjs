@@ -1,6 +1,7 @@
 // A fake `fetch` for the Jira Cloud REST API. Routes are keyed by '<METHOD> <path>', without the query string.
 // A route is a response, a list of responses (the Nth call gets item N, the last repeats),
-// or a function of the recorded call that returns a response.
+// or a function of the recorded call that returns a response. A path segment written {name} matches any one segment,
+// and the function route then finds the decoded segments in call.params; an exact key wins over a template.
 // A response is { status, headers, json | text }, { throws: error } or { hang: true }.
 
 export const FAKE_EMAIL = 'pmkit-test@example.com'
@@ -16,6 +17,21 @@ const DEFAULTS = {
 
 function lowerHeaders(headers = {}) {
   return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]))
+}
+
+/** The route key that answers `key`, exact first, then the first template key whose segments match, with its params. */
+function routeOf(all, key) {
+  if (all[key] !== undefined) return { name: key, params: {} }
+  for (const name of Object.keys(all).filter((candidate) => candidate.includes('{'))) {
+    const names = []
+    const pattern = name.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{(\w+)\}/g, (_, param) => {
+      names.push(param)
+      return '([^/]+)'
+    })
+    const match = new RegExp(`^${pattern}$`).exec(key)
+    if (match) return { name, params: Object.fromEntries(names.map((param, index) => [param, decodeURIComponent(match[index + 1])])) }
+  }
+  return null
 }
 
 function toResponse(answer, signal) {
@@ -50,10 +66,12 @@ export function fakeJiraFetch(routes = {}) {
     const call = { url: String(url), method, headers: lowerHeaders(init.headers), body: init.body, redirect: init.redirect }
     calls.push(call)
     const key = `${method} ${parsed.pathname}`
-    const route = all[key]
-    if (route === undefined) throw new Error(`fake Jira: no route for ${key}`)
-    const index = counts.get(key) ?? 0
-    counts.set(key, index + 1)
+    const found = routeOf(all, key)
+    if (!found) throw new Error(`fake Jira: no route for ${key}`)
+    call.params = found.params
+    const route = all[found.name]
+    const index = counts.get(found.name) ?? 0
+    counts.set(found.name, index + 1)
     const answer = typeof route === 'function' ? route(call) : Array.isArray(route) ? route[Math.min(index, route.length - 1)] : route
     return toResponse(answer, init.signal)
   }
@@ -69,9 +87,16 @@ const STATUS = {
   review: { id: '4', name: 'Review', statusCategory: { key: 'indeterminate', name: 'In Progress' } },
   done: { id: '5', name: 'Done', statusCategory: { key: 'done', name: 'Done' } },
 }
+// extraStatuses adds these to every work type, so a space has a status for each of pmkit's seven categories.
+const EXTRA_STATUSES = [
+  { id: '6', name: 'Triage', statusCategory: { key: 'new', name: 'To Do' } },
+  { id: '7', name: 'Backlog', statusCategory: { key: 'new', name: 'To Do' } },
+  { id: '8', name: 'Canceled', statusCategory: { key: 'done', name: 'Done' } },
+]
 
-export function jiraSiteRoutes({ style = 'company-managed' } = {}) {
+export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false } = {}) {
   const team = style === 'team-managed'
+  const extra = extraStatuses ? EXTRA_STATUSES : []
   const scope = (id) => (team ? { scope: { type: 'PROJECT', project: { id } } } : {})
   const workTypes = [
     { id: '10000', name: 'Epic', subtask: false, hierarchyLevel: 1, ...scope('10001') },
@@ -100,10 +125,10 @@ export function jiraSiteRoutes({ style = 'company-managed' } = {}) {
     },
     'GET /rest/api/3/project/ENG/statuses': {
       json: [
-        { id: '10000', name: 'Epic', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done] },
-        { id: '10001', name: 'Story', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.review, STATUS.done] },
-        { id: '10002', name: 'Bug', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done] },
-        { id: '10003', name: 'Sub-task', subtask: true, statuses: [STATUS.todo, STATUS.done] },
+        { id: '10000', name: 'Epic', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] },
+        { id: '10001', name: 'Story', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.review, STATUS.done, ...extra] },
+        { id: '10002', name: 'Bug', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] },
+        { id: '10003', name: 'Sub-task', subtask: true, statuses: [STATUS.todo, STATUS.done, ...extra] },
       ],
     },
     'GET /rest/api/3/field': {
@@ -122,6 +147,31 @@ export function jiraSiteRoutes({ style = 'company-managed' } = {}) {
     'GET /rest/api/3/label': { json: { startAt: 0, maxResults: 100, total: 2, isLast: true, values: ['backend', 'frontend'] } },
     'GET /rest/api/3/instance/license': { json: { applications: [{ id: 'jira-software', plan: 'PAID' }] } },
     'GET /rest/api/3/configuration': { json: { issueLinkingEnabled: true, subTasksEnabled: true, timeTrackingEnabled: true, timeTrackingConfiguration: { defaultUnit: 'hour' } } },
+    'GET /rest/api/3/user/assignable/search': {
+      json: [
+        { accountId: 'acc-1', displayName: 'Test User', accountType: 'atlassian' },
+        { accountId: 'acc-2', displayName: 'Second User', accountType: 'atlassian' },
+        { accountId: 'app-1', displayName: 'Bot', accountType: 'app' },
+      ],
+    },
+    'GET /rest/api/3/priority': {
+      json: [
+        { id: '1', name: 'Highest' },
+        { id: '2', name: 'High' },
+        { id: '3', name: 'Medium' },
+        { id: '4', name: 'Low' },
+        { id: '5', name: 'Lowest' },
+      ],
+    },
+    'GET /rest/api/3/issueLinkType': {
+      json: {
+        issueLinkTypes: [
+          { id: '10000', name: 'Blocks', inward: 'is blocked by', outward: 'blocks' },
+          { id: '10002', name: 'Duplicate', inward: 'is duplicated by', outward: 'duplicates' },
+          { id: '10003', name: 'Relates', inward: 'relates to', outward: 'relates to' },
+        ],
+      },
+    },
     'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }, { id: 1, name: 'ENG board', type: 'scrum' }] } },
     'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', estimation: { type: 'field', field: { fieldId: 'customfield_10016', displayName: 'Story Points' } } } },
   }

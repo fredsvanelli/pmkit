@@ -30,8 +30,8 @@ import { teamMembers } from './lib/team-capacity.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
-// deliverable-writes covers moving an epic to a status category.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'deliverable-writes', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
+// deliverable-writes covers moving an epic to a status category. archive covers archiving an issue, which Jira leaves out.
+export const FAMILIES = ['discovery', 'issues', 'archive', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'deliverable-writes', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
 
 /** The members of the scope team: on Linear `discover().members` lists the whole workspace, and a capacity write refuses another team's user. */
 const scopeMembers = async (tracker) => {
@@ -107,7 +107,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       for (const entry of manifest.capabilities) assert.ok(entry.id && entry.path, `capability ${entry.id} has a path`)
     })
 
-    it('creates, gets, updates, moves through every category, assigns and archives an issue', ['issues'], async ({ tracker, actor, assignee }) => {
+    it('creates, gets, updates, moves through every category and assigns an issue', ['issues'], async ({ tracker, actor, assignee }) => {
       const { statuses, members, types } = await tracker.discover()
       const created = await tracker.createIssue({ title: 'First', type: types[0] }, actor)
       assert.equal(created.before, null)
@@ -133,7 +133,10 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ assignee: who })).issues), [id])
       await tracker.assign(id, null, actor)
       assert.equal((await tracker.getIssue(id)).assignee, undefined)
+    })
 
+    it('archives an issue', ['issues', 'archive'], async ({ tracker, actor }) => {
+      const { id } = (await tracker.createIssue({ title: 'Archived' }, actor)).after
       await tracker.archive(id, actor)
       assert.equal((await tracker.getIssue(id)).archived, true)
       assert.deepEqual((await tracker.searchIssues({})).issues, [])
@@ -611,7 +614,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(await tracker.listReleases(), [])
     })
 
-    it('lists the issues of a release and marks it released', ['releases'], async ({ tracker, actor }) => {
+    it('lists the issues of a release and marks it released', ['releases', 'archive'], async ({ tracker, actor }) => {
       await tracker.createRelease({ id: 'contract-2.0' }, actor)
       const first = (await tracker.createIssue({ title: 'In release one' }, actor)).after
       const second = (await tracker.createIssue({ title: 'In release two' }, actor)).after
@@ -646,7 +649,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
     })
 
-    it('archived issues drop out of search', ['issues'], async ({ tracker, actor }) => {
+    it('archived issues drop out of search', ['issues', 'archive'], async ({ tracker, actor }) => {
       const keep = (await tracker.createIssue({ title: 'Keep' }, actor)).after.id
       const drop = (await tracker.createIssue({ title: 'Drop' }, actor)).after.id
       await tracker.archive(drop, actor)

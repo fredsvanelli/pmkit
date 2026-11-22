@@ -350,7 +350,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `issues dependencies <id>` | the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |
 | `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]` | creates |
 | `issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
-| `issues move <id> <category> [--status name]` | changes status by category |
+| `issues move <id> <category> [--status name] [--field id=value ...]` | changes status by category |
 | `issues assign <id> <member\|me\|none>` | assigns |
 | `issues link <from> <to> --kind blocks\|related\|duplicate [--remove]` | links or unlinks; only the issue whose file changes has to exist, so a dangling reference can be removed **(builder's call)** |
 | `issues parent <id> <parent\|none>` | sets the parent |

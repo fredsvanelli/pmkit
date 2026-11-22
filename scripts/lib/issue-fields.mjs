@@ -32,3 +32,19 @@ export function checkKeys(input, allowed) {
     throw new PmkitError('INVALID_INPUT', `unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
   }
 }
+
+/** The value of a field that must stay on one line; a line break is refused. */
+export function oneLine(field, value) {
+  if (/[\r\n]/.test(value)) throw new PmkitError('INVALID_INPUT', `${field} must not contain a line break`)
+  return value
+}
+
+/** The acceptance criteria of a patch as {text, done} items. */
+export function criteriaOf(value) {
+  if (!Array.isArray(value)) throw new PmkitError('INVALID_INPUT', 'acceptanceCriteria must be a list')
+  return value.map((item) => {
+    const text = typeof item === 'string' ? item : item?.text
+    if (typeof text !== 'string' || text.trim() === '') throw new PmkitError('INVALID_INPUT', 'each acceptance criterion needs text')
+    return { text: oneLine('acceptance criterion', text.trim()), done: item?.done === true }
+  })
+}

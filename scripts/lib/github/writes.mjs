@@ -5,7 +5,7 @@
 import { buildDescription, CRITERIA_HEADING, parseDescription } from '../body-criteria.mjs'
 import { validBranch } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
-import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
+import { CREATE_KEYS, UPDATE_KEYS, checkKeys, criteriaOf, oneLine } from '../issue-fields.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { CATEGORIES, TERMINAL } from '../model.mjs'
 import { CLOSED, CLOSED_NOT_PLANNED, OPEN } from './discovery.mjs'
@@ -29,20 +29,6 @@ const sameText = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
 
 /** The Project as owner/number, as messages name it. */
 export const projectName = (context) => `${context.raw.project.owner}/${context.raw.project.number}`
-
-function oneLine(field, value) {
-  if (/[\r\n]/.test(value)) throw invalid(`${field} must not contain a line break`)
-  return value
-}
-
-function criteriaOf(value) {
-  if (!Array.isArray(value)) throw invalid('acceptanceCriteria must be a list')
-  return value.map((item) => {
-    const text = typeof item === 'string' ? item : item?.text
-    if (typeof text !== 'string' || text.trim() === '') throw invalid('each acceptance criterion needs text')
-    return { text: oneLine('acceptance criterion', text.trim()), done: item?.done === true }
-  })
-}
 
 function descriptionOf(value) {
   if (typeof value !== 'string') throw invalid('description must be a string')

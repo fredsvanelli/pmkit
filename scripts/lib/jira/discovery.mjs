@@ -16,10 +16,15 @@ const UNREAD = {
   license: 'sprints are judged from the boards alone',
   'global settings': 'issue linking and time tracking are assumed on',
   boards: 'sprints and the board estimate field are unknown',
+  'assignable users': 'discover lists the viewer as the only member',
+  priorities: 'the Jira priorities are unknown',
+  'link types': 'the Jira link types are unknown',
 }
 
 /** The pmkit category of a Jira status category key, or null for a key pmkit does not know. */
 export const categoryOfStatus = (key) => (typeof key === 'string' && Object.hasOwn(CATEGORY_OF_KEY, key) ? CATEGORY_OF_KEY[key] : null)
+
+const ASSIGNABLE_LIMIT = 1000
 
 const styleOf = (project) => (project.style === 'next-gen' || project.simplified === true ? 'team-managed' : 'company-managed')
 const spaceOf = (project) => ({ id: String(project.id), key: project.key, name: project.name, style: styleOf(project), type: project.projectTypeKey ?? null })
@@ -78,7 +83,7 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
     }
     throw error
   })
-  const [spaces, found, statusLists, fields, labels, license, config] = await Promise.all([
+  const [spaces, found, statusLists, fields, labels, license, config, users, priorityList, linkTypeList] = await Promise.all([
     client.paginate('/rest/api/3/project/search'),
     project,
     client.request('GET', `${path}/statuses`),
@@ -86,6 +91,9 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
     optional(() => client.paginate('/rest/api/3/label', { pageSize: 100 }), 'labels', unread),
     optional(() => client.request('GET', '/rest/api/3/instance/license'), 'license', unread),
     optional(() => client.request('GET', '/rest/api/3/configuration'), 'global settings', unread),
+    optional(() => client.request('GET', '/rest/api/3/user/assignable/search', { query: { project: space, maxResults: ASSIGNABLE_LIMIT } }), 'assignable users', unread),
+    optional(() => client.request('GET', '/rest/api/3/priority'), 'priorities', unread),
+    optional(() => client.request('GET', '/rest/api/3/issueLinkType'), 'link types', unread),
   ])
   const own = ownedBy(String(found.id))
   const board = found.projectTypeKey === 'software' ? await optional(() => readBoard(client, space), 'boards', unread) : null
@@ -118,8 +126,15 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
     license: licenseOf(license),
     settings: settingsOf(config),
     board,
+    members: users === null ? null : (Array.isArray(users) ? users : []).filter((user) => user.accountType === 'atlassian').map((user) => ({ id: user.accountId, name: user.displayName })),
+    priorities: priorityList === null ? null : (Array.isArray(priorityList) ? priorityList : []).map((item) => ({ id: String(item.id), name: item.name })),
+    linkTypes: linkTypeList === null ? null : (linkTypeList?.issueLinkTypes ?? []).map((item) => ({ id: String(item.id), name: item.name, inward: item.inward, outward: item.outward })),
     unread,
-    truncated: [...(spaces.hasMore ? ['spaces'] : []), ...(labels?.hasMore ? ['labels'] : [])],
+    truncated: [
+      ...(spaces.hasMore ? ['spaces'] : []),
+      ...(labels?.hasMore ? ['labels'] : []),
+      ...(Array.isArray(users) && users.length >= ASSIGNABLE_LIMIT ? ['assignable users'] : []),
+    ],
   }
 }
 
@@ -163,6 +178,9 @@ export function fieldRoles(raw, pmkit = {}) {
 const mappedStatuses = (pmkit) =>
   Object.entries(pmkit?.mappings?.status ?? {}).filter(([category, name]) => category !== 'blocked' && typeof name === 'string' && name !== 'none')
 
+/** The assignable users, the viewer first and added when Jira leaves it out; the viewer alone when the read was refused. */
+const membersOf = (raw, viewer) => [...(viewer ? [viewer] : []), ...(raw.members ?? []).filter((member) => member.id !== viewer?.id)]
+
 /** The discover result: auth first (ADR 0013), the site and space, then the common keys every command reads. */
 export function discoveryView(raw, pmkit = {}, { session } = {}) {
   const key = raw.space.key
@@ -199,7 +217,7 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
     types: Object.keys(pmkit?.mappings?.types ?? {}),
     priorities: [...PRIORITIES],
     labels: [...new Set(raw.labels ?? [])].sort(),
-    members: viewer ? [viewer] : [],
+    members: membersOf(raw, viewer),
     ...(viewer ? { viewer } : {}),
     estimate: { unit: fields.estimate?.id === 'timeoriginalestimate' ? 'hours' : 'points', scale: [] },
     discoveredAt: raw.discoveredAt,

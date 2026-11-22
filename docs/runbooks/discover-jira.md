@@ -2,7 +2,7 @@
 
 The flow of `pmkit discover` and `pmkit capabilities` on a repository whose tracker is Jira Cloud (PMK-76). `scripts/runbook-discover-jira.test.mjs` runs every step below with the real CLI and a fake Jira site in place of `fetch`, so `npm test` checks this runbook. Setup for Jira (`init --tracker jira` and `/pmkit:setup`) comes with PMK-365; until then the config is written by hand.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; a follow-up in EPC-14 holds it.
+Live check: skipped. No Jira credentials exist, so no step has run against a real site; PMK-366 in EPC-14 holds it.
 
 ## Before you start
 
@@ -50,7 +50,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs capabilities --json
    ```
 
-   Expect `tracker: jira`, the `site`, `space` and `plan`, and 20 entries. Until PMK-77 to PMK-80 implement the operations, every entry but `linked_code` is `absent`: one Jira offers on this site keeps the site's path in `detail.site` and names the issue that serves it; one the site lacks names what to change (for example `Sprints need a Scrum board in space ENG`).
+   Expect `tracker: jira`, the `site`, `space` and `plan`, and 20 entries. `linked_code`, `estimation`, `multilevel_hierarchy`, `dependencies` and `native_metrics` are served (PMK-77): each keeps the site's answer in `detail`, such as `detail.site` or the estimate field. Until PMK-78 to PMK-80 implement the other operations, every remaining entry is `absent`: one Jira offers on this site keeps the site's path in `detail.site` and names the issue that serves it; one the site lacks names what to change (for example `Sprints need a Scrum board in space ENG`).
 
 ## Failures
 

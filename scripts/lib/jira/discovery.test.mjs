@@ -32,7 +32,7 @@ test('the view leads with auth and names the viewer', async () => {
   assert.equal(Object.keys(view)[0], 'auth')
   assert.deepEqual(view.auth, { source: 'JIRA_API_TOKEN', viewer: { accountId: 'acc-1', displayName: 'Test User' }, site: 'acme.atlassian.net' })
   assert.deepEqual(view.viewer, { id: 'acc-1', name: 'Test User' })
-  assert.deepEqual(view.members, [{ id: 'acc-1', name: 'Test User' }])
+  assert.deepEqual(view.members, [{ id: 'acc-1', name: 'Test User' }, { id: 'acc-2', name: 'Second User' }])
   assert.equal(view.site, 'acme.atlassian.net')
   assert.deepEqual(view.plan, { software: 'paid' })
   assert.deepEqual(view.priorities, ['urgent', 'high', 'medium', 'low'])
@@ -156,4 +156,39 @@ test('the board read asks for the space and picks the Scrum board', async () => 
   const { raw, fetch } = await discover()
   assert.ok(fetch.calls.some((call) => call.url.includes('/rest/agile/1.0/board?') && call.url.includes('projectKeyOrId=ENG')))
   assert.deepEqual(raw.board, { id: 1, type: 'scrum', estimationField: 'customfield_10016' })
+})
+
+test('discovery reads the assignable users, the priorities and the link types', async () => {
+  const { raw, view } = await discover()
+  assert.deepEqual(raw.members, [{ id: 'acc-1', name: 'Test User' }, { id: 'acc-2', name: 'Second User' }])
+  assert.deepEqual(raw.priorities.map((p) => p.name), ['Highest', 'High', 'Medium', 'Low', 'Lowest'])
+  assert.deepEqual(raw.linkTypes.map((t) => t.name), ['Blocks', 'Duplicate', 'Relates'])
+  assert.deepEqual(raw.linkTypes[0], { id: '10000', name: 'Blocks', inward: 'is blocked by', outward: 'blocks' })
+  assert.deepEqual(view.priorities, ['urgent', 'high', 'medium', 'low'])
+})
+
+test('a refused assignable read leaves the viewer as the only member, with a warning', async () => {
+  const { raw, view } = await discover({ routes: { 'GET /rest/api/3/user/assignable/search': denied } })
+  assert.equal(raw.members, null)
+  assert.deepEqual(view.members, [{ id: 'acc-1', name: 'Test User' }])
+  assert.ok(view.warnings.some((w) => w.includes('assignable users')))
+})
+
+test('a refused priority or link type read gives null and a warning', async () => {
+  const { raw, view } = await discover({ routes: { 'GET /rest/api/3/priority': denied, 'GET /rest/api/3/issueLinkType': denied } })
+  assert.equal(raw.priorities, null)
+  assert.equal(raw.linkTypes, null)
+  assert.ok(view.warnings.some((w) => w.includes('priorities')))
+  assert.ok(view.warnings.some((w) => w.includes('link types')))
+})
+
+test('1000 assignable users give the truncation warning', async () => {
+  const users = Array.from({ length: 1000 }, (_, i) => ({ accountId: `u-${i}`, displayName: `User ${i}`, accountType: 'atlassian' }))
+  const { view } = await discover({ routes: { 'GET /rest/api/3/user/assignable/search': { json: users } } })
+  assert.ok(view.warnings.some((w) => w.includes('Jira has more assignable users than pmkit read')))
+})
+
+test('the viewer is added to the members when Jira leaves it out', async () => {
+  const { view } = await discover({ routes: { 'GET /rest/api/3/user/assignable/search': { json: [{ accountId: 'acc-9', displayName: 'Nine', accountType: 'atlassian' }] } } })
+  assert.deepEqual(view.members, [{ id: 'acc-1', name: 'Test User' }, { id: 'acc-9', name: 'Nine' }])
 })
