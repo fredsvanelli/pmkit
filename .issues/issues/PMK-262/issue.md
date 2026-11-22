@@ -2,7 +2,7 @@
 id: PMK-262
 title: Cut the extra release and docs reads on Linear
 type: task
-status: in_progress
+status: in_review
 priority: low
 estimate: 3
 assignee: fred
