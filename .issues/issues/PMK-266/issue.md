@@ -2,7 +2,7 @@
 id: PMK-266
 title: "Tidy the Linear release, docs and archive code"
 type: chore
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
