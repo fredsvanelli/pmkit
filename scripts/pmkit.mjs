@@ -43,7 +43,7 @@ import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDisc
 import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
-import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
+import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, moveOrRefuse, parseChange, valueError } from './lib/bulk.mjs'
 import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
@@ -2537,7 +2537,7 @@ export const COMMANDS = [
         try {
           const pr = host.getPullRequest({ head: issue.branch })
           if (pr?.mergedAt) {
-            await tracker.moveToCategory(issue.id, 'done', actor, { dryRun: ctx.dryRun })
+            await moveOrRefuse(tracker, issue.id, 'done', actor, { dryRun: ctx.dryRun })
             moved.push({ id: issue.id, pr: pr.number })
           }
         } catch (error) {
