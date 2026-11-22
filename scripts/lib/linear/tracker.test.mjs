@@ -1441,12 +1441,39 @@ test('restore brings a trashed issue back: a dry run sends no mutation, the real
   assert.equal((await linear.getIssue('ACME-3')).title, 'Three')
 })
 
-// PMK-250: unarchive is Local only.
-test('unarchive is NOT_SUPPORTED on Linear and sends no mutation', async () => {
+// PMK-259: unarchive brings an archived Linear issue back; one in the trash is restore's.
+test('unarchive brings an archived Linear issue back, and a dry run sends no mutation', async () => {
   const { tracker: linear, fake, fetch } = linearSetup()
   three(fake)
-  await assert.rejects(linear.unarchive('ACME-1', 'user-1'), { code: 'NOT_SUPPORTED' })
+  await linear.archive('ACME-1', 'user-1')
+  assert.equal((await linear.searchIssues({})).issues.some((issue) => issue.id === 'ACME-1'), false)
+  const before = mutationsIn(fetch)
+  const dry = await linear.unarchive('ACME-1', 'user-1', { dryRun: true })
+  assert.equal(dry.before.archived, true)
+  assert.equal(dry.after.archived, false)
+  assert.equal(mutationsIn(fetch), before)
+  const done = await linear.unarchive('ACME-1', 'user-1')
+  assert.equal(done.after.archived, false)
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssueUnarchive').length, 1)
+  assert.equal((await linear.searchIssues({})).issues.some((issue) => issue.id === 'ACME-1'), true)
+})
+
+test('unarchive of a Linear issue that is not archived changes nothing and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const result = await linear.unarchive('ACME-1', 'user-1')
+  assert.deepEqual(result.after, result.before)
   assert.equal(mutationsIn(fetch), 0)
+})
+
+test('unarchive of an issue in Linear\'s trash is refused and points to issues restore', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  await linear.delete('ACME-3', 'user-1')
+  const before = mutationsIn(fetch)
+  await assert.rejects(linear.unarchive('ACME-3', 'user-1'), { code: 'INVALID_INPUT', message: "ACME-3 is in Linear's trash, not archived", nextStep: 'pmkit issues restore ACME-3' })
+  await assert.rejects(linear.unarchive('ACME-99', 'user-1'), { code: 'NOT_FOUND' })
+  assert.equal(mutationsIn(fetch), before)
 })
 
 test('restore of an issue that is not in the trash is INVALID_INPUT and sends no mutation', async () => {
