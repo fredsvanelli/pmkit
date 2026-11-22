@@ -1757,6 +1757,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'goal delete': ['GOAL-8K2W'],
     'epic goal': ['EPC-2M9D', 'none'],
     'epic move': ['EPC-2M9D', 'done'],
+    'epic update': ['EPC-2M9D', '--title', 'Edited epic'],
     'customers create': ['--name', 'Acme'],
     'customers update': ['CUS-1', '--tier', 'gold'],
     'requests create': ['--title', 'CSV export'],

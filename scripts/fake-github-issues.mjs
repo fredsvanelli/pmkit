@@ -787,6 +787,12 @@ function build(state) {
       if (typeof input.readme === 'string') project.readme = input.readme
       return { updateProjectV2: { projectV2: { id: project.id } } }
     },
+    PmkitUpdateProject: (input) => {
+      const project = projectById(input.projectId)
+      if (typeof input.title === 'string') project.title = input.title
+      if (typeof input.readme === 'string') project.readme = input.readme
+      return { updateProjectV2: { projectV2: { id: project.id } } }
+    },
     PmkitSetProjectClosed: (input) => {
       const project = projectById(input.projectId)
       project.closed = input.closed === true

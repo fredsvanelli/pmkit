@@ -232,7 +232,7 @@ The team is named `pmkit-test`, has the key `PKT` and carries the marker `pmkit-
 
 ### The write guard
 
-The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `projectUpdate` (PMK-356: only `statusId`, only on a project the run created, for the epic move), `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
+The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `projectUpdate` (PMK-356 and PMK-348: only `statusId`, `name` and `content`, as strings, only on a project the run created, for the epic move and the epic edit), `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
 
 ### Request budget
 

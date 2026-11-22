@@ -12,7 +12,7 @@ import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
-import { CATEGORIES, LINK_KINDS, TERMINAL, pickMoveTarget } from '../model.mjs'
+import { CATEGORIES, LINK_KINDS, TERMINAL, epicEditInput, pickMoveTarget } from '../model.mjs'
 import { appendEvents, driftEvents, parseEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
@@ -1463,6 +1463,28 @@ export function createLocalTracker(root, {
     return { before, after }
   }
 
+  /**
+   * Edits the title and/or the description of an epic (PMK-348). The title is the one frontmatter line edited; the description is the body. Every other key and
+   * comment stays. One `update` event per changed field. An edit that changes nothing is refused, as a move to the status the epic already has.
+   */
+  function updateDeliverable(epicId, input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const fields = epicEditInput(input)
+    const { epic: before, dir } = readEpic(epicId)
+    const file = path.join(dir, 'epic.md')
+    const title = fields.title === undefined ? before.title : NORMALIZE.title(fields.title)
+    const description = fields.description === undefined ? before.description : (blank(fields.description) ? '' : plainText('description', fields.description))
+    const changed = [['title', before.title, title], ['description', before.description, description]].filter(([, from, to]) => from !== to)
+    if (changed.length === 0) throw invalid(`epic ${before.id} already has this title and description`, `pmkit epic get ${before.id}`)
+    const edited = editEpicFrontmatter(file, (yaml) => (title === before.title ? yaml : setScalar(yaml, ['title'], title)))
+    const content = `${edited.slice(0, edited.indexOf('\n---\n') + 5)}${description ? `${description}\n` : ''}`
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
+    if (dryRun) return { before, after }
+    writeFile(file, content)
+    append(path.join(dir, 'events.jsonl'), changed.map(([field, from, to]) => ({ at: stamp(), by: actor, op: 'update', field, from, to })))
+    return { before, after }
+  }
+
   const deliverableProgress = (id) => progressOf(getDeliverable(id).id, scanIssues())
 
   /** Counts the non-archived issues whose parent chain reaches the epic. Canceled issues are counted apart, outside `total`. */
@@ -2403,7 +2425,7 @@ export function createLocalTracker(root, {
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
     listCustomers, getCustomer, createCustomer, updateCustomer, listRequests, getRequest, createRequest, updateRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
-    listDeliverables, getDeliverable, createDeliverable, moveDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
+    listDeliverables, getDeliverable, createDeliverable, moveDeliverable, updateDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, unarchive, delete: deleteIssue, restore, link, unlink, setParent,

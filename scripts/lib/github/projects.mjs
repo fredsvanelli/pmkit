@@ -82,6 +82,10 @@ export const CREATE_PROJECT = `mutation PmkitCreateProject($input: CreateProject
 export const UPDATE_PROJECT_README = `mutation PmkitUpdateProjectReadme($input: UpdateProjectV2Input!) {
   updateProjectV2(input: $input) { projectV2 { id } }
 }`
+// PMK-348: the edit of an epic's title and readme, where epic create writes the title and the description.
+export const UPDATE_PROJECT = `mutation PmkitUpdateProject($input: UpdateProjectV2Input!) {
+  updateProjectV2(input: $input) { projectV2 { id } }
+}`
 export const SET_PROJECT_CLOSED = `mutation PmkitSetProjectClosed($input: UpdateProjectV2Input!) {
   updateProjectV2(input: $input) { projectV2 { id } }
 }`

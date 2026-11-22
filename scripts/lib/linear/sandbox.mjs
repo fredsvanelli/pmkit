@@ -282,8 +282,8 @@ export const SUITE_INPUT_KEYS = Object.freeze({
   commentCreate: ['id', 'issueId', 'body', 'parentId'],
   projectCreate: ['id', 'name', 'startDate', 'targetDate', 'content', 'teamIds'],
   projectUpdateCreate: ['id', 'projectId', 'body', 'health'],
-  // PMK-356: the epic move (PROJECT_SET_STATUS) sends only the status, so a rename, a content change or a team move is refused.
-  projectUpdate: ['statusId'],
+  // PMK-356: the epic move (PROJECT_SET_STATUS) sends the status; PMK-348: the epic edit (PROJECT_EDIT) sends the name and content. A team move is refused.
+  projectUpdate: ['statusId', 'name', 'content'],
 })
 
 /** Wraps a rule so it first refuses an input that is not an object or holds a key off the mutation's list, or any input when the list is absent. */
@@ -326,7 +326,8 @@ const SUITE_RULES = {
   projectUpdateCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
   // A workspace project status is not the run's, so only its shape is checked; the project must be one the run created (PMK-356).
   projectUpdate: (variables, ctx) =>
-    rules.owns(ctx, 'project', variables.id, 'project') ?? (typeof variables.input?.statusId === 'string' ? null : 'statusId is not a string'),
+    rules.owns(ctx, 'project', variables.id, 'project') ??
+    (Object.values(variables.input ?? {}).every((value) => typeof value === 'string') ? null : 'projectUpdate takes only strings'),
   // readMutation lets through no argument but id, so permanentlyDelete cannot be sent.
   issueDelete: (variables, ctx) => rules.owns(ctx, 'issue', variables.id, 'issue'),
   // PMK-222: the contract delete test restores the issue it trashed.

@@ -6,13 +6,13 @@ import { PmkitError } from '../errors.mjs'
 import { HEALTH, sortEpics } from '../local/epics.mjs'
 import { sortMilestones } from '../local/milestones.mjs'
 import { validDate } from '../local/sprints.mjs'
-import { CATEGORIES, pickMoveTarget } from '../model.mjs'
+import { CATEGORIES, epicEditInput, pickMoveTarget } from '../model.mjs'
 import { PARENT_CHAIN_DEPTH } from './documents.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 import { estimateOf, makeContext, stateCategory } from './issues.mjs'
 import {
   DOCUMENTS_QUERY, DOCUMENT_QUERY, EPIC_ISSUES_QUERY, HEALTH_TO_LINEAR, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY,
-  PROJECT_SET_STATUS, PROJECT_STATUSES, PROJECT_UPDATE_CREATE, STATUS_CATEGORY, epicId, epicKey, toDocument, toEpic, toMilestone, toStatusUpdate,
+  PROJECT_EDIT, PROJECT_SET_STATUS, PROJECT_STATUSES, PROJECT_UPDATE_CREATE, STATUS_CATEGORY, epicId, epicKey, toDocument, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
 const LIST_PAGE = 100
@@ -211,6 +211,24 @@ export function projectOperations({ client, discovery, config, now = () => new D
     return { before, after: toEpic(node) }
   }
 
+  /** Edits the name and/or the content of a project (PMK-348), the fields createDeliverable writes from the title and the description. */
+  async function updateDeliverable(id, input, actor, { dryRun = false } = {}) {
+    const fields = epicEditInput(input)
+    await requireViewer(actor)
+    const project = await findProject(id)
+    if (!project) throw notFound(id)
+    const before = toEpic(project)
+    const title = fields.title === undefined ? before.title : fields.title.trim()
+    const description = fields.description === undefined ? before.description : (fields.description ?? '').trim()
+    const update = {}
+    if (title !== before.title) update.name = title
+    if (description !== (before.description ?? '')) update.content = description
+    if (Object.keys(update).length === 0) throw invalid(`epic ${before.id} already has this title and description`, `pmkit epic get ${before.id}`)
+    if (dryRun) return { before, after: { ...before, title, description } }
+    const node = (await client.request(PROJECT_EDIT, { id: project.id, input: update })).projectUpdate.project
+    return { before, after: toEpic(node) }
+  }
+
   async function publishStatusUpdate(input, actor, { dryRun = false } = {}) {
     if (!HEALTH.includes(input?.health)) throw invalid(`health must be one of ${HEALTH.join(', ')}`)
     if (typeof input.body !== 'string' || input.body.trim() === '') throw invalid('status update body must be a non-empty string')
@@ -299,7 +317,7 @@ export function projectOperations({ client, discovery, config, now = () => new D
     throw new PmkitError('NOT_SUPPORTED', `the Linear adapter reads project ${what}s but does not create them`, `Create the ${what} in Linear`)
   }
 
-  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, moveDeliverable, listMilestones, getMilestone, resolveMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), updateDocument: async () => {
+  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, moveDeliverable, updateDeliverable, listMilestones, getMilestone, resolveMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), updateDocument: async () => {
     throw new PmkitError('NOT_SUPPORTED', 'the Linear adapter reads project documents but does not edit them', 'Edit the document in Linear')
   }, publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
 }

@@ -104,6 +104,11 @@ mutation PmkitProjectCreate($input: ProjectCreateInput!) {
   projectCreate(input: $input) { success project { ...PmkitProjectFields } }
 }`
 
+// PMK-348: the edit of an epic's name and content, the fields projectCreate writes.
+export const PROJECT_EDIT = `${PROJECT_FRAGMENT}
+mutation PmkitProjectEdit($id: String!, $input: ProjectUpdateInput!) {
+  projectUpdate(id: $id, input: $input) { success project { ...PmkitProjectFields } }
+}`
 export const PROJECT_SET_STATUS = `${PROJECT_FRAGMENT}
 mutation PmkitProjectSetStatus($id: String!, $input: ProjectUpdateInput!) {
   projectUpdate(id: $id, input: $input) { success project { ...PmkitProjectFields } }

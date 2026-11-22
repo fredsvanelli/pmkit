@@ -7,7 +7,7 @@ export const TRACKER_OPERATIONS = [
   'link', 'unlink', 'setParent',
   'getHistory', 'listComments', 'comment', 'resolveThread',
   'listCycles', 'currentCycle', 'cycleIssues', 'openCycle', 'closeCycle', 'moveToCycle',
-  'listDeliverables', 'getDeliverable', 'deliverableProgress', 'createDeliverable', 'moveDeliverable', 'publishStatusUpdate', 'listStatusUpdates',
+  'listDeliverables', 'getDeliverable', 'deliverableProgress', 'createDeliverable', 'moveDeliverable', 'updateDeliverable', 'publishStatusUpdate', 'listStatusUpdates',
   'listMilestones', 'getMilestone', 'createMilestone',
   'listReleases', 'getRelease', 'createRelease', 'releaseIssues', 'markReleased',
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',

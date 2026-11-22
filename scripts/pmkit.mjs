@@ -1437,6 +1437,18 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'epic update', summary: 'changes the title or the description of an epic', usage: '<id> [--title t | --title-file f] [--description-file f]', write: true, args: ['id'], flags: ['title', 'title-file', 'description-file'],
+    run: async (ctx) => {
+      const input = {}
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title !== undefined) input.title = title
+      if (ctx.opt('description-file') !== undefined) input.description = readInput(ctx.opt('description-file'))
+      if (Object.keys(input).length === 0) throw usageError('epic update needs --title, --title-file or --description-file', `pmkit epic update ${ctx.args[0]} --description-file description.md`)
+      const result = await (await ctx.tracker()).updateDeliverable(ctx.args[0], input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
+    },
+  },
+  {
     name: 'epic goal', summary: 'links an epic to a goal, or removes the link', usage: '<id> <goal|none>', write: true, args: ['id', 'goal'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).setEpicGoal(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
