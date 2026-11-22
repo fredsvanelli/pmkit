@@ -909,8 +909,8 @@ function liveWorld({ withTeam = true, cycles = [ACTIVE, PLANNED] } = {}) {
     PmkitSandboxIssues: (body) => json({ issues: connection(issues.records.map((record) => ({ id: record.id, identifier: record.identifier, trashed: record.trashed, archivedAt: record.archivedAt })), body) }),
     PmkitSandboxProjects: (body) => json({ projects: connection(projects.projects.map((project) => ({ id: project.id, name: project.name, trashed: false, archivedAt: null, teams: { nodes: project.teamIds.map((id) => ({ id })) } })), body) }),
     PmkitSandboxMilestoneCreate: (body) => {
-      const { id, projectId, name, targetDate } = body.variables.input
-      projects.seedMilestone(projectId, { id, name, targetDate })
+      const { id, projectId, name } = body.variables.input
+      projects.seedMilestone(projectId, { id, name })
       return json({ projectMilestoneCreate: { success: true, projectMilestone: { id } } })
     },
     PmkitSandboxIssueDelete: (body) => {

@@ -283,7 +283,7 @@ export const SUITE_INPUT_KEYS = Object.freeze({
   projectCreate: ['id', 'name', 'startDate', 'targetDate', 'content', 'teamIds'],
   projectUpdateCreate: ['id', 'projectId', 'body', 'health'],
   // PMK-255: the run makes its own milestone, since the adapter does not create one.
-  projectMilestoneCreate: ['id', 'projectId', 'name', 'targetDate'],
+  projectMilestoneCreate: ['id', 'projectId', 'name'],
   // PMK-356: the epic move (PROJECT_SET_STATUS) sends the status; PMK-348: the epic edit (PROJECT_EDIT) sends the name and content. A team move is refused.
   projectUpdate: ['statusId', 'name', 'content'],
 })
