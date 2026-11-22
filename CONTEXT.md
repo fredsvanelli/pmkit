@@ -24,6 +24,10 @@ _Avoid_: instance, server, workspace (Linear's)
 A Jira space, company-managed or team-managed, named by its key in `tracker.scope.space`, such as `ENG`. A repository uses one space.
 _Avoid_: project (Jira's old name for a space; reads GitHub Project or Epic), board
 
+**Work type**:
+A kind of Jira work item a space offers, such as Story, Bug, Epic or Sub-task, each with its own statuses and a hierarchy level. A pmkit type maps to one work type.
+_Avoid_: issue type (Jira's old name), type (alone; reads the pmkit type)
+
 **Adapter**:
 The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`. The CLI picks the tracker adapter by `tracker.system` from the registry in `scripts/lib/adapters.mjs`, and commands reach it only through the contract operations.
 _Avoid_: driver, connector, integration
