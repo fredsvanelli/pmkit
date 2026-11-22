@@ -31,6 +31,7 @@ Every reader of `current` either fails or warns, the warning reaches `--json`, a
 ## Design
 
 - `scripts/pmkit.mjs`, `issueSearchResult`: `data` is `{ ...found, warnings }` when `warnings` is not empty, else `found` as today. `issues list` and `views run` go through it.
+- `scripts/pmkit.mjs`, `runTeamLoad`: the same for `team load --json`, which printed the warning on stderr only (found while building; `team load` is a `current` reader).
 - `scripts/pmkit.mjs`, `runBulk`: when the filter (or the view's filter) has `sprint: 'current'`, no issue matched and `currentCycle()` is null, push the same line, `there is no active sprint, so --sprint current matches no issues; run pmkit cycle list`, to `warnings` and `data.warnings`. One constant holds the line for both places.
 - `skills/pmkit/references/conventions.md`, a rule after rule 4: show every warning. The CLI prints each as `warning:` on stderr; with `--json`, a result that has warnings also holds them in `warnings`. Repeat them as printed. An empty result that comes with a warning is not "nothing matches": say what the warning says.
 - `commands/issues/find.md`, step 6: when the result has `warnings`, show them under the table; with the no-active-sprint line, say there is no active sprint instead of "no issues", and offer `pmkit cycle list`.
@@ -40,7 +41,7 @@ Every reader of `current` either fails or warns, the warning reaches `--json`, a
 
 ## Interview
 
-- Does `found.warnings` already exist? Linear search results can carry `warnings`; `issueSearchResult` already merges them into the printed lines, so the JSON now shows them too. That is the point: they were stderr-only.
+- Does `found.warnings` already exist? The GitHub search returns `warnings` (fields it could not read on an issue), so on GitHub the JSON already holds those. `issueSearchResult` merges them with the problems, the cut read and the sprint line into the printed lines; the `warnings` key becomes that full list, which keeps GitHub's lines and adds the rest. Local and Linear results have no `warnings` key today.
 - Are `problems` and `hasMore` duplicated? They stay where they are in the JSON; the `warnings` lines are their printed form, as on stderr. The conventions rule says to repeat them once.
 - A view run of a Linear native view: `runView` returns the same shape and goes through `issueSearchResult`.
 - New terms: none. ADR: none, the JSON key is additive.

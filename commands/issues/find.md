@@ -26,7 +26,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 3. When a person or a label in the question matches more than one value from step 1, or none exactly, show the closest matches and ask with `AskUserQuestion` which one the user means. When the user declines to choose, drop that filter and say so.
 4. Show the flags in one line, for example "Filter: --type bug --sprint current --sort priority", so the user can correct them. Do not wait for an answer. When the user corrects the filter, rerun from step 3 with the correction.
 5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list <flags> --json`.
-6. Show the result as an issue table and the count.
+6. Show the result as an issue table and the count, then each line of `warnings` when the result has it. When a warning says there is no active sprint, say that instead of "no issues", and offer `pmkit cycle list` to see the sprints or `/pmkit:cycle:plan` to open one.
 7. When the user has asked this kind of question before in this conversation, offer to save it as a view, but only when `capabilities --json` reports `saved_views` as `native` and `saveView` is not in its `detail.unsupported` (on Linear, views are created in Linear). Otherwise offer only the flags to reuse. Ask for a name, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" views save <name> <flags> --dry-run --json`, show the filter, and ask once following "How to show a write" in the conventions. After approval, run it without `--dry-run`. Tell the user that `views run <name>` runs the view again and `views list` lists the views.
 
 ## Confirmation points

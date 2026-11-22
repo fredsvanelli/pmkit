@@ -1612,13 +1612,30 @@ test('issues list --sprint current says there is no active sprint and still list
   }
 })
 
-test('issues list --sprint current --json keeps parseable stdout and puts the reason in a warning line', () => {
+test('issues list --sprint current --json keeps parseable stdout and puts the reason in a warning line and in warnings', () => {
   const root = makeRepo('basic')
   try {
     assert.equal(run(root, ['issues', 'create', '--title', 'First']).status, 0)
     const result = run(root, ['issues', 'list', '--sprint', 'current', '--json'])
     assert.equal(result.status, 0)
-    assert.deepEqual(JSON.parse(result.stdout), { issues: [], problems: [] })
+    // The agent reads the JSON, so the warning is there too (PMK-154).
+    assert.deepEqual(JSON.parse(result.stdout), { issues: [], problems: [], warnings: [NO_SPRINT_WARNING.slice('warning: '.length)] })
+    assert.equal(result.stderr, `${NO_SPRINT_WARNING}\n`)
+    // A search with nothing to warn about keeps its shape.
+    assert.deepEqual(Object.keys(json(root, ['issues', 'list'])), ['issues', 'problems'])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('views run of a view with sprint current gives the no-active-sprint warning on stderr and in warnings', () => {
+  const root = makeRepo('basic')
+  try {
+    assert.equal(run(root, ['views', 'save', 'now', '--sprint', 'current']).status, 0)
+    const result = run(root, ['views', 'run', 'now', '--json'])
+    assert.equal(result.status, 0)
+    const body = JSON.parse(result.stdout)
+    assert.deepEqual([body.issues, body.warnings], [[], [NO_SPRINT_WARNING.slice('warning: '.length)]])
     assert.equal(result.stderr, `${NO_SPRINT_WARNING}\n`)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })

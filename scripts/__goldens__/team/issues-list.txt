@@ -347,6 +347,9 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
+  ],
+  "warnings": [
+    "ISS-3Q6T: CONFLICT The issue file contains git conflict markers."
   ]
 }
 --- stderr
@@ -501,6 +504,9 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
+  ],
+  "warnings": [
+    "ISS-3Q6T: CONFLICT The issue file contains git conflict markers."
   ]
 }
 --- stderr
@@ -563,6 +569,9 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
+  ],
+  "warnings": [
+    "ISS-3Q6T: CONFLICT The issue file contains git conflict markers."
   ]
 }
 --- stderr
@@ -688,6 +697,9 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
+  ],
+  "warnings": [
+    "ISS-3Q6T: CONFLICT The issue file contains git conflict markers."
   ]
 }
 --- stderr

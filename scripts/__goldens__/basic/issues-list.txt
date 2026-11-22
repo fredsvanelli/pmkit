@@ -27,7 +27,10 @@ exit 0
 --- stdout
 {
   "issues": [],
-  "problems": []
+  "problems": [],
+  "warnings": [
+    "there is no active sprint, so --sprint current matches no issues; run pmkit cycle list"
+  ]
 }
 --- stderr
 warning: there is no active sprint, so --sprint current matches no issues; run pmkit cycle list
