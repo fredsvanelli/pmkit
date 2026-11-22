@@ -376,12 +376,12 @@ test('a bad .pmkit/config.yaml with .issues/config.yaml missing still throws NOT
   assert.throws(() => validateRepo(root), { code: 'NOT_CONFIGURED' })
 })
 
-const MSG = 'tracker.system "jira" is not supported yet, set it to local'
+const MSG = 'tracker.system "azure-devops" is not supported yet, set it to local'
 const messages = (result) => result.problems.map((problem) => problem.message)
 
-test('tracker.system jira alone is one config problem, not a throw', () => {
+test('tracker.system azure-devops alone is one config problem, not a throw', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: jira')
+  editPmkit(root, 'system: local', 'system: azure-devops')
   let result
   assert.doesNotThrow(() => {
     result = validateRepo(root)
@@ -389,7 +389,7 @@ test('tracker.system jira alone is one config problem, not a throw', () => {
   assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
   assert.equal(result.problems[0].message, MSG)
   assert.deepEqual([result.checked, result.skipped], [null, 'the tracker config could not be loaded; see the problems'])
-  assert.ok(MSG.startsWith(unsupportedTracker('jira').message))
+  assert.ok(MSG.startsWith(unsupportedTracker('azure-devops').message))
 })
 
 test('every known tracker without an adapter is listed', () => {
@@ -416,16 +416,16 @@ test('a valid hosted config has no problems', () => {
   assert.deepEqual(validateRepo(root, { adapters: withLinear() }).problems, [])
 })
 
-test('jira and git_host.system gitlab list both problems', () => {
+test('azure-devops and git_host.system gitlab list both problems', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: jira')
+  editPmkit(root, 'system: local', 'system: azure-devops')
   editPmkit(root, 'system: none', 'system: gitlab')
   assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github or none', MSG])
 })
 
-test('jira and breakPmkit list three problems', () => {
+test('azure-devops and breakPmkit list three problems', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: jira')
+  editPmkit(root, 'system: local', 'system: azure-devops')
   breakPmkit(root)
   const result = validateRepo(root)
   assert.ok(result.problems.every((problem) => problem.path === '.pmkit/config.yaml' && problem.code === 'config'))
@@ -436,9 +436,9 @@ test('jira and breakPmkit list three problems', () => {
   ])
 })
 
-test('jira with a broken .issues/config.yaml lists only the tracker problem', () => {
+test('azure-devops with a broken .issues/config.yaml lists only the tracker problem', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: jira')
+  editPmkit(root, 'system: local', 'system: azure-devops')
   fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\nthis line has no colon\n')
   assert.deepEqual(brief(validateRepo(root)), ['config .pmkit/config.yaml'])
 })
@@ -498,11 +498,11 @@ test('no tracker.system with tracker.path .pmkit is listed once', () => {
 
 test('validate and loadConfig share one rule list', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: jira')
+  editPmkit(root, 'system: local', 'system: azure-devops')
   breakPmkit(root)
   const listed = validateRepo(root).problems.filter((p) => p.path === '.pmkit/config.yaml').map((p) => p.message)
   assert.deepEqual(listed, pmkitConfigMessages(parseYaml(fs.readFileSync(pmkitFile(root), 'utf8'))))
-  assert.equal(listed.at(-1), unsupportedTracker('jira').problem)
+  assert.equal(listed.at(-1), unsupportedTracker('azure-devops').problem)
 })
 
 function writeRelease(root, name, text = '---\nname: R\n---\n') {
