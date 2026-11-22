@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The `docs adr-status` refusal keeps the status line the reader sees past a quote that holds only link reference definitions, as it does past a paragraph of them (PMK-329). `> [a]: /u`, blank, `> Date: x`, `> Accepted` keeps `> Accepted` and names every other line, with or without a later `> Proposed`; before, it kept `> Proposed` or the hidden definition. With no line that reads as a status, the refusal keeps the first line shown, never a hidden definition: `[a]: /u`, blank, `Date: x`, `Foo` keeps `Date: x`. Only the names in the refusal change; what is refused, written or read is the same. A list item of definitions still counts as shown, since its bullet is.
 - `docs adr-status` and `docs adr-get` read an ordered list item (`1. Proposed`, `1) Proposed`, `10. Proposed`, in a quote or indented too) as a status when its text reads as one, as they read a bullet item (PMK-328). A status followed by such an item is two statuses: the write refuses and names the item, and `adr-get` reads the section whole, where before the status was written in place and the item stayed as a second status the reader sees. A first item that reads as a status is kept as the status in the refusal's names. `1.Accepted` (no space after the marker), `see 1. Proposed` and `**1. Accepted**` read as before.
 
 ## 0.7.0 - 2026-11-21

@@ -2133,7 +2133,8 @@ for (const [name, text, dropped, kept] of [
   // A definition over two lines: its destination line is part of it, not a line glued to the first line's paragraph.
   ['a definition over two lines as the first line', '## Status\n\n[Draft]:\nRejected\n\n> Proposed\n\n## Context\n', ['[Draft]:', 'Rejected'], '> Proposed'],
   // Review cycle 2: unchanged by the fix above, the destination line of a definition is part of it and never a glued line.
-  ['a definition over two lines with no later status', '## Status\n\n[Draft]:\nRejected\n\nsee ADR 3\n\n## Context\n', ['Rejected', 'see ADR 3'], '[Draft]:'],
+  // PMK-329 changed this row on purpose: with no line that reads as a status, the fallback keeps the first line shown, never the hidden definition (PMK-322 kept `[Draft]:`).
+  ['a definition over two lines with no later status', '## Status\n\n[Draft]:\nRejected\n\nsee ADR 3\n\n## Context\n', ['[Draft]:', 'Rejected'], 'see ADR 3'],
   // A definition is not shown, so the paragraph after it is the first one the reader sees in its item or quote.
   ['an item that opens with a definition', '## Status\n\n- [Accepted]: /u\n\n  Proposed\n\n## Context\n', ['- [Accepted]: /u'], 'Proposed'],
   // Review cycle 2: a definition is hidden, so the first paragraph the reader sees starts after it, and its glued line is chosen as for a plain first line (as on develop).
@@ -2258,6 +2259,38 @@ for (const [name, other] of [['1.Accepted', '1.Accepted'], ['see 1. Proposed', '
     assert.deepEqual(adrStatusDropped(text), [])
     assert.equal(adrInfo(text).status, 'Accepted')
     assert.equal(setAdrStatus(text, 'deprecated').text, `## Status\n\nDeprecated\n\n${other}\n\n## Context\n`)
+  })
+}
+
+// PMK-329: a quote that holds only definitions shows nothing, so the paragraph after it is the first one shown, as after a paragraph of definitions (PMK-325);
+// and with no line that reads as a status, the fallback keeps the first line shown, never a hidden definition.
+for (const [name, text, dropped, kept] of [
+  ['a quote of definitions before a quote with a glued status and a later status', '## Status\n\n> [a]: /u\n\n> Date: x\n> Accepted\n\n> Proposed\n\n## Context\n', ['> [a]: /u', '> Date: x', '> Proposed'], '> Accepted'],
+  ['a quote of definitions before a quote with a glued status', '## Status\n\n> [a]: /u\n\n> Date: x\n> Accepted\n\n## Context\n', ['> [a]: /u', '> Date: x'], '> Accepted'],
+  ['a quote of a quote of definitions before an inner quote with a glued status', '## Status\n\n> > [a]: /u\n\n> > Date: x\n> > Accepted\n\n## Context\n', ['> > [a]: /u', '> > Date: x'], '> > Accepted'],
+  ['a definitions block and no line that reads as a status', '## Status\n\n[a]: /u\n\nDate: x\nFoo\n\n## Context\n', ['[a]: /u', 'Foo'], 'Date: x'],
+]) {
+  test(`the refusal for ${name} keeps the line the reader sees and names every other line (PMK-329)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message } = result.data.error
+      assert.ok(message.includes(`the other text of the Status section, ${dropped.map((line) => `"${line}"`).join(', ')}; nothing`), message)
+      assert.ok(!message.includes(`"${kept}"`), message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+}
+// PMK-329, unchanged: a list item of definitions shows its bullet, and a thematic break after a quote of definitions is shown, so the first line stays the fallback.
+for (const [name, text, dropped] of [
+  ['a list item of definitions before an item with a glued status', '## Status\n\n- [a]: /u\n\n- Date: x\n  Accepted\n\n> Proposed\n\n## Context\n', ['- [a]: /u', '- Date: x', 'Accepted']],
+  ['a quote of definitions and a thematic break before a paragraph', '## Status\n\n> [a]: /u\n\n---\nDate: x\nFoo\n\n## Context\n', ['---', 'Date: x', 'Foo']],
+]) {
+  test(`with ${name} the choice of the status line is as before (PMK-329)`, () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
   })
 }
 

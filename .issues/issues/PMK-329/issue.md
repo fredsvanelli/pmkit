@@ -2,13 +2,14 @@
 id: PMK-329
 title: Skip a quote of definitions and keep a shown line in the adr-status fallback
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-329-skip-a-quote-of-definitions-and-keep-a
 created: 2026-11-15T23:21:51.096Z
-updated: 2026-11-15T23:21:51Z
+updated: 2026-11-22T01:46:52Z
 ---
 
 ## Description
