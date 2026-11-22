@@ -2,7 +2,7 @@
 id: PMK-164
 title: Offer in-review issues sent back to no sprint in cycle plan
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-122]
 milestone: local-gaps
 branch: pmk-164-offer-in-review-issues-sent-back-to-no
 created: 2026-10-28T00:11:40.739Z
-updated: 2026-11-22T05:22:28Z
+updated: 2026-11-22T05:22:45Z
 ---
 
 ## Description
