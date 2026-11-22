@@ -1,12 +1,20 @@
 const kids = (node) => node.content ?? [];
 
+// An ADF date is a ms epoch string; it reads as its UTC day.
+const dayOf = (timestamp) => {
+  const ms = Number(timestamp);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : String(timestamp ?? '');
+};
+
 function inline(node) {
   switch (node.type) {
     case 'text': return node.text ?? '';
     case 'hardBreak': return '\n';
-    case 'mention': return node.attrs?.text ?? '';
+    case 'date': return dayOf(node.attrs?.timestamp);
+    case 'emoji': return node.attrs?.text ?? node.attrs?.shortName ?? '';
+    case 'mention': return node.attrs?.text ?? node.attrs?.id ?? '';
     case 'inlineCard': return node.attrs?.url ?? '';
-    default: return kids(node).map(inline).join('');
+    default: return node.attrs?.text ?? kids(node).map(inline).join('');
   }
 }
 
@@ -84,7 +92,7 @@ function readBlock(lines, i, content, counter) {
   if (fence) return readFence(lines, i, fence[1], content);
   const heading = HEADING.exec(line);
   if (heading) {
-    content.push({ type: 'heading', attrs: { level: heading[1].length }, content: [text(heading[2])] });
+    content.push({ type: 'heading', attrs: { level: heading[1].length }, content: heading[2] ? [text(heading[2])] : [] });
     return i + 1;
   }
   if (TASK.test(line)) return readRun(lines, i, TASK, content, (m) => taskItem(m, counter), 'taskList');

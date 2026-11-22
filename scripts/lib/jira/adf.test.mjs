@@ -49,6 +49,33 @@ test('mention and inlineCard read as text', () => {
   assert.equal(adfToText(d), '@Ana see https://x.test/a');
 });
 
+test('leaf inline nodes keep their words', () => {
+  const d = doc(p(
+    t('Ship by '),
+    { type: 'date', attrs: { timestamp: String(Date.UTC(2026, 0, 15)) } },
+    t(' '),
+    { type: 'emoji', attrs: { shortName: ':tada:', text: '🎉' } },
+    t(' '),
+    { type: 'status', attrs: { text: 'BLOCKED', color: 'red' } },
+  ));
+  assert.equal(adfToText(d), 'Ship by 2026-01-15 🎉 BLOCKED');
+});
+
+test('emoji without text, mention without text, and an unknown leaf with text', () => {
+  const d = doc(p(
+    { type: 'emoji', attrs: { shortName: ':smile:' } },
+    t(' '),
+    { type: 'mention', attrs: { id: 'acc-1' } },
+    t(' '),
+    { type: 'placeholder', attrs: { text: 'fill me' } },
+  ));
+  assert.equal(adfToText(d), ':smile: acc-1 fill me');
+});
+
+test('an empty heading line writes a heading with no content', () => {
+  assert.deepEqual(textToAdf('# ').content, [{ type: 'heading', attrs: { level: 1 }, content: [] }]);
+});
+
 test('table keeps its cell text', () => {
   const cell = (s) => ({ type: 'tableCell', content: [p(t(s))] });
   const d = doc({ type: 'table', content: [{ type: 'tableRow', content: [cell('a'), cell('b')] }] });
