@@ -2,12 +2,14 @@
 id: PMK-258
 title: Fix Linear write edge cases for docs and releases
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-5
+branch: pmk-258-fix-linear-write-edge-cases-for-docs-and
 created: 2026-11-11T22:34:42.607Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-22T06:58:28Z
 ---
 
 ## Description
