@@ -2083,3 +2083,16 @@ test('a release write reads the releases again after it, and a docs write the at
   assert.ok(listReads(fetch, indexOf(fetch, 'PmkitAttachmentCreate')).includes('PmkitIssuesAttachments'))
   assert.equal(linked.after.release, REL.two)
 })
+
+test('one issue whose release page read fails is unknown, and the rest of its chunk keeps its releases', async () => {
+  const many = Array.from({ length: BATCH_RELEASES_PAGE + 1 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `R${i}`, version: `1.${i}`, pipeline: 'pipe-acme' }))
+  const routes = () => ({ PmkitIssueReleases: failingReleases().PmkitIssueReleases })
+  const { tracker: linear, fake } = releaseSetup({ issues: { pipelines: PIPELINES, releases: [...RELEASES, ...many] }, routes })
+  seed(fake, { title: 'Many', releaseIds: many.map((item) => item.id) })
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  const { issues } = await linear.searchIssues({})
+  const byId = Object.fromEntries(issues.map((issue) => [issue.id, issue]))
+  assert.match(byId['ACME-1'].releaseUnknown, /Query too complex/)
+  assert.equal(byId['ACME-2'].release, REL.two)
+  assert.equal('releaseUnknown' in byId['ACME-2'], false)
+})

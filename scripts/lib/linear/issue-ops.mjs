@@ -89,31 +89,53 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    * whose list has a next page. With releases off it sends nothing and toIssue shows no release.
    */
   async function attachReleasesTo(all) {
-    const nodes = all.filter((node) => node.releases === undefined && !node.releasesUnread)
-    if (nodes.length === 0 || !(await releasesOn())) return all
+    if (!all.some((node) => node.releases === undefined && !node.releasesUnread) || !(await releasesOn())) return all
+    return attachInBatches(all, { query: ISSUES_RELEASES_QUERY, field: 'releases', unreadKey: 'releasesUnread', readOne: attachReleases, unknown: unknownReleases })
+  }
+
+  const idList = (ids) => (ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', '))
+
+  /**
+   * The batch read of one list (releases or attachments) for every node that lacks it: one request per 100 issues. An issue whose list
+   * has a next page is read alone with `readOne`, and a failure of that read marks only that issue; a failure of the batch request marks
+   * the chunk's issues not read yet. An incomplete read (lessons) leaves the list unknown with a note, never empty (PMK-262).
+   */
+  async function attachInBatches(all, { query, field, unreadKey, readOne, unknown }) {
+    const nodes = all.filter((node) => node[field] === undefined && !node[unreadKey])
+    const unread = (list) => list.filter((node) => node[field] === undefined && !node[unreadKey])
     for (let at = 0; at < nodes.length; at += 100) {
       const chunk = nodes.slice(at, at + 100)
       try {
-        const data = await client.request(ISSUES_RELEASES_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
-        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.releases]))
+        const data = await client.request(query, { ids: chunk.map((node) => node.id), first: chunk.length })
+        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item[field]]))
         for (const node of chunk) {
           const connection = byId.get(node.id)
-          if (connection && connection.pageInfo?.hasNextPage !== true) node.releases = { nodes: connection.nodes }
-          else await attachReleases(node)
+          if (connection && connection.pageInfo?.hasNextPage !== true) {
+            node[field] = { nodes: connection.nodes }
+            continue
+          }
+          try {
+            await readOne(node)
+          } catch (error) {
+            if (!unreadable(error)) throw error
+            unknown([node], error)
+          }
         }
       } catch (error) {
         if (!unreadable(error)) throw error
-        // An incomplete read (lessons): the issue still comes back, its release is unknown, and a note says why.
-        const unread = chunk.filter((node) => node.releases === undefined)
-        for (const node of unread) node.releasesUnread = error
-        const ids = unread.map((node) => node.identifier).filter(Boolean)
-        notes.push(`the release of ${ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', ')} ${ids.length === 1 ? 'is' : 'are'} unknown, because pmkit could not read it: ${error.message}`)
+        unknown(unread(chunk), error)
       }
     }
     return all
   }
 
-  const idList = (ids) => (ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', '))
+  /** The note and the mark of issues whose release is unknown. */
+  function unknownReleases(nodes, error) {
+    if (nodes.length === 0) return
+    for (const node of nodes) node.releasesUnread = error
+    const ids = nodes.map((node) => node.identifier).filter(Boolean)
+    notes.push(`the release of ${idList(ids)} ${ids.length === 1 ? 'is' : 'are'} unknown, because pmkit could not read it: ${error.message}`)
+  }
 
   /** Puts one issue's attachments on its node, every page. A list the page cap cut is UPSTREAM, so part of it never reads as the whole. */
   async function attachDocs(node) {
@@ -128,23 +150,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    * next page. A refused or failed read leaves them unknown on the node (attachmentsUnread) with a note, never an empty list.
    */
   async function attachDocsTo(all) {
-    const nodes = all.filter((node) => node.attachments === undefined && !node.attachmentsUnread)
-    for (let at = 0; at < nodes.length; at += 100) {
-      const chunk = nodes.slice(at, at + 100)
-      try {
-        const data = await client.request(ISSUES_ATTACHMENTS_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
-        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.attachments]))
-        for (const node of chunk) {
-          const connection = byId.get(node.id)
-          if (connection && connection.pageInfo?.hasNextPage !== true) node.attachments = { nodes: connection.nodes }
-          else await readDocsAlone(node)
-        }
-      } catch (error) {
-        if (!unreadable(error)) throw error
-        unknownDocs(chunk.filter((node) => node.attachments === undefined && !node.attachmentsUnread), error)
-      }
-    }
-    return all
+    return attachInBatches(all, { query: ISSUES_ATTACHMENTS_QUERY, field: 'attachments', unreadKey: 'attachmentsUnread', readOne: attachDocs, unknown: unknownDocs })
   }
 
   /** The note and the mark of issues whose docs are unknown: never an empty list. */
@@ -155,15 +161,6 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     notes.push(`the docs of ${idList(ids)} are unknown, because pmkit could not read them: ${error.message}`)
   }
 
-  /** The one-issue read of a list the batch cut. Its failure marks only that issue, the rest of the batch keeps what it read. */
-  async function readDocsAlone(node) {
-    try {
-      await attachDocs(node)
-    } catch (error) {
-      if (!unreadable(error)) throw error
-      unknownDocs([node], error)
-    }
-  }
 
   /**
    * The node of an issue id, archived ones included. A malformed id or a trashed issue is NOT_FOUND, and a malformed one sends no request.
