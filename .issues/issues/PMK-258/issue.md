@@ -2,7 +2,7 @@
 id: PMK-258
 title: Fix Linear write edge cases for docs and releases
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
