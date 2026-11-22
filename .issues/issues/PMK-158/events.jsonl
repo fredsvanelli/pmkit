@@ -5,3 +5,5 @@
 {"at":"2026-11-22T04:33:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T04:33:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-158-make-next-steps-runnable-and-keep"}
 {"at":"2026-11-22T04:34:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:48:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:48:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
