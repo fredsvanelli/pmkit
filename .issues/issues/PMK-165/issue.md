@@ -2,7 +2,7 @@
 id: PMK-165
 title: Treat canceled issues the same way in cycle close and closeCycle
 type: bug
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-121, PMK-122]
 milestone: local-gaps
 branch: pmk-165-treat-canceled-issues-the-same-way-in
 created: 2026-10-28T00:11:40.872Z
-updated: 2026-11-22T05:16:00Z
+updated: 2026-11-22T05:16:16Z
 ---
 
 ## Description
