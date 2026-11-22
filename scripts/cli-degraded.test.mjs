@@ -27,7 +27,7 @@ function linear(args, { teams, cycles, calls, gitHost, seed, routes = {}, prepar
   const fake = fakeLinearIssues({ ...(teams ? { teams } : {}), ...(cycles ? { cycles } : {}) })
   const projects = fakeLinearProjects({ issues: fake, ...(teams ? { teams } : {}) })
   seed?.(fake)
-  const fetch = fakeLinearFetch({ ...fakeWorkspace(teams ? { teams } : {}), ...fake.routes, ...projects.routes, ...routes })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(teams ? { teams } : {}), ...fake.routes, ...projects.routes, ...(typeof routes === 'function' ? routes(fake) : routes) })
   if (calls) calls.fetch = fetch
   return run(args, { cwd: root, env, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) } })
 }
@@ -155,6 +155,29 @@ test('issues update --remove-doc alone on Linear prints no default-branch note',
   assert.equal(JSON.parse(result.stdout).notes, undefined)
 })
 
+// PMK-258: --remove-doc matches a doc another client stored as ./docs/a.md.
+test('issues update --remove-doc on Linear removes a doc stored as ./docs/a.md', async () => {
+  const doc = { id: 'att-1', url: 'https://github.com/acme/app/blob/main/docs/a.md', title: 'docs/a.md', metadata: { pmkitDoc: './docs/a.md' }, createdAt: '2026-10-27T12:00:01.000Z' }
+  const calls = {}
+  const result = await linear(['issues', 'update', 'ACME-1', '--remove-doc', 'docs/a.md', '--json'], { calls, gitHost: 'acme/app', seed: (fake) => fake.seed({ title: 'One' }, { attachments: [doc] }) })
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(calls.fetch.calls.filter((call) => /PmkitAttachmentDelete/.test(call.body.query)).length, 1)
+})
+
+// PMK-258: a write whose final read-back fails exits 0, says the write was done and that the issue could not be read back.
+test('issues update --add-doc on Linear exits 0 with a warning when the read-back after the write fails', async () => {
+  let linked = false
+  const routes = (fake) => ({
+    PmkitAttachmentCreate: (body) => { linked = true; return fake.routes.PmkitAttachmentCreate(body) },
+    PmkitIssueById: (body) => (linked ? { status: 200, json: { data: null, errors: [{ message: 'Rate limited', extensions: { code: 'RATELIMITED' } }] } } : fake.routes.PmkitIssueById(body)),
+  })
+  const result = await linear(['issues', 'update', 'ACME-1', '--title', 'Renamed', '--add-doc', 'docs/a.md', '--json'], { gitHost: 'acme/app', routes, seed: (fake) => fake.seed({ title: 'One' }) })
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual(data.after.docs, ['docs/a.md'])
+  assert.match(result.stderr, /warning: ACME-1 is updated and its docs are linked, but reading it back failed/)
+})
+
 // The step 6 of /pmkit:spec:record-decision on Linear (PMK-252 review): the comment and the docs link of each related issue.
 test('record-decision step 6 on Linear: a comment and a docs link per issue, and the link is the comment alone without a GitHub repo', async () => {
   const seed = (fake) => { fake.seed({ title: 'One' }); fake.seed({ title: 'Two' }) }
@@ -169,6 +192,13 @@ test('record-decision step 6 on Linear: a comment and a docs link per issue, and
   assert.deepEqual(JSON.parse(linked.stdout).after.docs, ['docs/adr/0001-a.md'])
   const without = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--dry-run', '--json'], { seed })
   assert.equal(JSON.parse(without.stdout).error.code, 'NOT_CONFIGURED')
+  // PMK-258: an issue with a hand-made attachment of the ADR's link answers CONFLICT on the dry run, which step 6 skips; the next issue still links.
+  const handMade = { id: 'att-hand', url: 'https://github.com/acme/app/blob/main/docs/adr/0001-a.md', title: 'Design notes', metadata: {}, createdAt: '2026-10-27T12:00:01.000Z' }
+  const seedHandMade = (fake) => { fake.seed({ title: 'One' }, { attachments: [handMade] }); fake.seed({ title: 'Two' }) }
+  const conflict = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--dry-run', '--json'], { gitHost: 'acme/app', seed: seedHandMade })
+  assert.equal(JSON.parse(conflict.stdout).error.code, 'CONFLICT')
+  const next = await linear(['issues', 'update', 'ACME-2', '--add-doc', 'docs/adr/0001-a.md', '--dry-run', '--json'], { gitHost: 'acme/app', seed: seedHandMade })
+  assert.deepEqual(JSON.parse(next.stdout).after.docs, ['docs/adr/0001-a.md'])
 })
 
 const METRICS = [

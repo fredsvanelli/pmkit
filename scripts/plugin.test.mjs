@@ -194,6 +194,8 @@ test('record-decision.md covers the three places, the numbering, the bulk commen
   assert.match(step(5), /--dry-run/)
   assert.match(step(6), /no commit yet/, 'the preview warns that the repository file has no commit')
   assert.match(step(6), /bulk change/)
+  // PMK-258: a hand-made attachment with the ADR's link answers CONFLICT: that issue is skipped and named, and the step goes on.
+  assert.match(step(6), /answers `CONFLICT`[^.]*skip the link of that issue/)
   assert.match(step(6), /unless `write_policy\.confirm` is `none`/, 'step 6 says what the Confirmation points say')
   assert.match(step(3), /only a valid branch name/)
   assert.match(step(2), /replaces older ADRs/, 'step 2 finds every replaced ADR the user names')

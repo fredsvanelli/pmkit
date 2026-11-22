@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
-import { repoDocPath } from './lib/doc-path.mjs'
+import { repoDocPath, storedDocPath } from './lib/doc-path.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
@@ -334,7 +334,9 @@ async function docLinks(ctx, id, patch) {
   // An unread list (Linear, PMK-252) is not an empty one: writing the whole new list from it could unlink docs the read never saw.
   if (issue.docsUnknown !== undefined) throw new PmkitError('UPSTREAM', `the docs of ${id} are unknown, because pmkit could not read them: ${issue.docsUnknown}`, `Run pmkit issues get ${id} again`)
   const current = issue.docs ?? []
-  const kept = current.filter((item) => !removes.includes(item))
+  // On Linear a doc another client stored as ./docs/a.md is docs/a.md, so --remove-doc docs/a.md finds it (PMK-258).
+  const linear = ctx.config().system === 'linear'
+  const kept = current.filter((item) => !removes.includes(linear ? storedDocPath(item) : item))
   patch.docs = [...kept, ...adds.filter((item) => !kept.includes(item))]
 }
 
@@ -1134,7 +1136,7 @@ export const COMMANDS = [
       const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear' && ctx.list('add-doc').length > 0
       const branch = linkDocs ? resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) }) : null
       const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: branch.branch } : {}) }))
-      return { ...result, warnings: await releasedWarnings(ctx, patch), ...(linkDocs ? { notes: branch.note === null ? [] : [branch.note] } : {}) }
+      return { ...result, warnings: [...(result.data.warnings ?? []), ...(await releasedWarnings(ctx, patch))], ...(linkDocs ? { notes: branch.note === null ? [] : [branch.note] } : {}) }
     },
   },
   {
