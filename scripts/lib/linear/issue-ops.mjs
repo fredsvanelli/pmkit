@@ -102,7 +102,6 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    */
   async function attachInBatches(all, { query, field, unreadKey, readOne, unknown }) {
     const nodes = all.filter((node) => node[field] === undefined && !node[unreadKey])
-    const unread = (list) => list.filter((node) => node[field] === undefined && !node[unreadKey])
     for (let at = 0; at < nodes.length; at += 100) {
       const chunk = nodes.slice(at, at + 100)
       try {
@@ -123,7 +122,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
         }
       } catch (error) {
         if (!unreadable(error)) throw error
-        unknown(unread(chunk), error)
+        unknown(chunk.filter((node) => node[field] === undefined && !node[unreadKey]), error)
       }
     }
     return all
