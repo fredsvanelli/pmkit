@@ -10,7 +10,7 @@ parent: EPC-7
 milestone: jira
 branch: pmk-74-decide-jira-authentication-and-cloud-or
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-22T18:22:35Z
+updated: 2026-11-22T18:33:05Z
 ---
 
 ## Description
@@ -19,4 +19,4 @@ Source: Jira tab, Open questions (Cloud vs. Data Center; personal API token or O
 
 ## Acceptance criteria
 
-- [ ] An ADR in `docs/adr/` records the choices
+- [x] An ADR in `docs/adr/` records the choices
