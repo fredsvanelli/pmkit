@@ -27,5 +27,7 @@ CHANGELOG line for point 1.
 - Point 6, "calls git twice": `originHead` already reads git once per run (PMK-228's memo), so the double call is only `resolveDefaultBranch` twice; resolving once removes it.
 - Point 6, `--remove-doc` alone today prints the default-branch note although no link is built. After the change it prints none: a note that was wrong goes away. Kept, as the issue asks for it.
 - Point 1 on `resolveRelease`: with no team it answered `INVALID_INPUT` (no pipeline matched `undefined`) after a request; `NOT_CONFIGURED` before any request says what is wrong.
-- New terms or ADRs: none.
+- Does a doc link come from anywhere but `issues update`? No: `createIssue` with docs is `INVALID_INPUT` on Linear (`tracker.test.mjs`), and `/pmkit:spec:record-decision` runs `issues update --add-doc`.
+- Point 2 with more than 20 releases on an issue: the batch read sees `hasNextPage` and reads that issue page by page (`ISSUE_RELEASES_QUERY`), so the fake's page of 20 only takes that path sooner.
+- New terms or ADRs: none (Release is in `CONTEXT.md`; nothing here is hard to reverse).
 - Approval: no product question; the acceptance criteria are the approval. pmkit PO approves.
