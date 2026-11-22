@@ -528,3 +528,14 @@ test('cycle/close says once what it does with an invalid .pmkit/config.yaml: a r
   for (const part of [/skip step 6/, /without a proposal or a question/, /pmkit validate/, /\/pmkit:local:doctor/, /stop/]) assert.match(bullet, part)
   assert.doesNotMatch(stepText('cycle/close.md', '1'), /Steps 2 to 6 only read, so go on with them/)
 })
+
+test('cycle/close marks a split\'s new issue with its origin and finds a half-done split by that mark (PMK-160)', () => {
+  const calls = FILES.find((file) => file.rel === 'cycle/close.md').parsed.calls
+  const create = calls.find((call) => call.step === '7' && call.command === 'issues create')
+  assert.match(create.text, /--description-file <description file>/)
+  assert.match(stepText('cycle/close.md', '7'), /Remaining work of <original id>, split when sprint <sprint id> closed\./)
+  const search = calls.find((call) => call.step === '6' && call.command === 'issues list')
+  assert.ok(search, 'step 6 searches for the mark')
+  assert.match(search.text, /--text "split when sprint <sprint id> closed"/)
+  assert.match(stepText('cycle/close.md', '8'), /estimate update only when step 7 kept it/)
+})

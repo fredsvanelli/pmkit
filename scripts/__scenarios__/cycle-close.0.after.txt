@@ -13,12 +13,14 @@ $ pmkit metrics cycle-time --since 2026-10-12 --until 2026-10-25 --json  [step 5
 exit 0
 $ pmkit cycle list --state planned --json  [step 6, read]
 exit 0
+$ pmkit issues list --text 'split when sprint 2026-10-12 closed' --json  [step 6, read]
+exit 0
 $ pmkit issues get ISS-0G5E --json  [step 6, read]
 exit 0
 ? Step 7  [confirmed]
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --dry-run --json  [step 7, dry run]
 exit 0
-$ pmkit issues create --title-file <inputs>/title-finish-the-billing-export-to-csv.md --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --criteria-file <inputs>/remaining-criteria.md --dry-run --json  [step 7, dry run]
+$ pmkit issues create --title-file <inputs>/title-finish-the-billing-export-to-csv.md --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --criteria-file <inputs>/remaining-criteria.md --description-file <inputs>/split-description.md --dry-run --json  [step 7, dry run]
 exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --dry-run --json  [step 7, dry run]
 exit 0
@@ -29,7 +31,7 @@ exit 0
 ? Step 7  [confirmed]
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --json  [step 7, write]
 exit 0
-$ pmkit issues create --title-file <inputs>/title-finish-the-billing-export-to-csv.md --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --criteria-file <inputs>/remaining-criteria.md --json  [step 7, write]
+$ pmkit issues create --title-file <inputs>/title-finish-the-billing-export-to-csv.md --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --criteria-file <inputs>/remaining-criteria.md --description-file <inputs>/split-description.md --json  [step 7, write]
 exit 0
 $ pmkit issues link ISS-Y8KQ ISS-2X6D --kind related --json  [step 8, write]
 exit 0
@@ -208,6 +210,10 @@ exit 0
 +created: 2026-10-23T12:00:00.000Z
 +updated: 2026-10-23T12:00:00Z
 +---
++
++## Description
++
++Remaining work of ISS-2X6D, split when sprint 2026-10-12 closed.
 +
 +## Acceptance criteria
 +

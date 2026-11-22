@@ -22,10 +22,14 @@ const merged = {
 const retro = path.join(import.meta.dirname, '_inputs', 'retro.md')
 const splitCriteria = path.join(import.meta.dirname, '_inputs', 'split-criteria.md')
 const remainingCriteria = path.join(import.meta.dirname, '_inputs', 'remaining-criteria.md')
+// PMK-160: the create marks the new issue with its origin, so a second run finds a half-done split even without its link.
+const splitDescription = path.join(import.meta.dirname, '_inputs', 'split-description.md')
+const titleFile = path.join(import.meta.dirname, '_inputs', 'title-finish-the-billing-export-to-csv.md')
+const marked = ['issues', 'list', '--text', 'split when sprint 2026-10-12 closed']
 const toBacklog = ['cycle', 'add', 'ISS-4M2S', 'ISS-5N1R', '--to', 'none']
 // The split keeps the type, priority and labels of ISS-2X6D (feature, high, billing and backend), and carries its
 // unchecked criterion.
-const split = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-finish-the-billing-export-to-csv.md'), '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend', '--criteria-file', remainingCriteria]
+const split = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-finish-the-billing-export-to-csv.md'), '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend', '--criteria-file', remainingCriteria, '--description-file', splitDescription]
 const shrink = ['issues', 'update', 'ISS-2X6D', '--estimate', '5']
 const done = ['issues', 'move', 'ISS-2X6D', 'done']
 const close = ['cycle', 'close', '2026-10-12']
@@ -55,6 +59,7 @@ const closeAndSplit = {
     { step: '4', read: ['events', '--since', '2026-10-12', '--until', '2026-10-25'] },
     { step: '5', read: ['metrics', 'cycle-time', '--since', '2026-10-12', '--until', '2026-10-25'] },
     { step: '6', read: ['cycle', 'list', '--state', 'planned'], save: 'planned' },
+    { step: '6', read: marked, save: 'marked' },
     { step: '6', read: ['issues', 'get', 'ISS-0G5E'], save: 'related' },
     // Step 7: the decision per unfinished issue, the dry runs, then one approval for the whole preview.
     { confirm: 'Step 7' },
@@ -91,6 +96,8 @@ const closeAndSplit = {
     assert.equal(saved.sprint.id, '2026-10-12')
     assert.deepEqual(saved.planned, [], 'no planned sprint, so the moves go to the backlog')
     assert.equal(saved.related.status.category, 'canceled', 'the related issue outside the sprint is no half-done split')
+    assert.deepEqual(saved.marked.issues, [], 'no earlier split of this sprint carries the mark')
+    assert.match(repo.file(`.issues/issues/${saved.remaining.after.id}/issue.md`), /^Remaining work of ISS-2X6D, split when sprint 2026-10-12 closed\.$/m, 'the create marks the new issue')
     const unfinished = saved.issues.filter((issue) => !['done', 'canceled'].includes(issue.status.category)).map((issue) => issue.id).sort()
     assert.deepEqual(unfinished, ['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R'])
     // The canceled issue gets no decision: no move names it, and it keeps its sprint and status through the close.
@@ -174,4 +181,61 @@ const invalidConfig = {
   },
 }
 
-export default [closeAndSplit, invalidConfig]
+// PMK-160: a second run finishes a split a failed step 8 left half done. Setup leaves the worst case: the estimate update
+// of ISS-2X6D ran (8 to 5) and the create ran with its mark, but no link, no blocker link, no sub-issue move and no move
+// to done. Step 6 finds the new issue by its mark, the user says it is the remaining work and gives 5, the current
+// estimate, so step 8 runs the related link, the blocker link, the sub-issue move and the move to done: no second create
+// and no estimate update. The git host is none, so the sync answers NOT_SUPPORTED and the close goes on without PR data.
+const allToBacklog = ['cycle', 'add', 'ISS-4M2S', 'ISS-5N1R', 'ISS-8C4W', '--to', 'none']
+const finishHalfDoneSplit = {
+  command: 'cycle/close',
+  fixture: 'team',
+  async setup({ pmkit }) {
+    await pmkit(['issues', 'update', 'ISS-2X6D', '--estimate', '5'])
+    await pmkit(['issues', 'create', '--title-file', titleFile, '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend', '--description-file', splitDescription])
+  },
+  prompt: '/pmkit:cycle:close',
+  answers: ['Yes, it is the remaining work of ISS-2X6D', 'Finish the split of ISS-2X6D with 5 delivered, move ISS-4M2S, ISS-5N1R and ISS-8C4W to the backlog', 'Yes'],
+  steps: [
+    { step: '1', dryRun: ['pr', 'sync'], expectError: 'NOT_SUPPORTED' },
+    { step: '2', read: ['cycle', 'current'] },
+    { step: '3', read: ['cycle', 'issues', '2026-10-12'], save: 'issues' },
+    { step: '4', read: ['events', '--since', '2026-10-12', '--until', '2026-10-25'] },
+    { step: '5', read: ['metrics', 'cycle-time', '--since', '2026-10-12', '--until', '2026-10-25'] },
+    { step: '6', read: ['cycle', 'list', '--state', 'planned'] },
+    { step: '6', read: marked, save: 'marked' },
+    { step: '6', read: ['issues', 'get', 'ISS-0G5E'] },
+    { confirm: 'Step 7' },
+    { step: '7', dryRun: allToBacklog },
+    { step: '7', dryRun: done },
+    { step: '7', dryRun: close },
+    { confirm: 'Step 7' },
+    { step: '7', write: allToBacklog },
+    { step: '8', write: ({ marked: found }) => ['issues', 'link', found.issues[0].id, 'ISS-2X6D', '--kind', 'related'] },
+    { step: '8', write: ({ marked: found }) => ['issues', 'link', 'ISS-5N1R', found.issues[0].id, '--kind', 'blocks'] },
+    { step: '8', write: ({ marked: found }) => ['issues', 'parent', 'ISS-4M2S', found.issues[0].id] },
+    { step: '8', write: done },
+    { step: '8', write: close },
+    { step: '8', read: ['cycle', 'issues', '2026-10-12'], save: 'after' },
+  ],
+  skip: {},
+  notHit: {
+    'Step 1': 'the git host is none, so the sync answers NOT_SUPPORTED and has nothing to confirm',
+    'Step 9': 'this scenario ends at the close; the first scenario covers the retro',
+  },
+  expect(repo, saved) {
+    assert.equal(saved.marked.issues.length, 1, 'the mark finds the one remaining-work issue')
+    const remaining = saved.marked.issues[0]
+    assert.ok(!saved.issues.find((issue) => issue.id === 'ISS-2X6D').related.includes(remaining.id), 'the link had not run')
+    const original = repo.issue('ISS-2X6D')
+    assert.deepEqual([original.estimate, original.status, original.sprint], [5, 'done', '2026-10-12'])
+    assert.ok(original.related.includes(remaining.id), 'the rerun ran the related link')
+    const after = repo.issue(remaining.id)
+    assert.deepEqual([after.estimate, after.sprint, after.blocked_by], [3, undefined, ['ISS-5N1R']])
+    assert.ok(after.related.includes('ISS-2X6D'))
+    assert.equal(repo.issue('ISS-4M2S').parent, remaining.id, 'the open sub-issue moves to the remaining work')
+    assert.equal(repo.sprint('2026-10-12').state, 'closed')
+  },
+}
+
+export default [closeAndSplit, invalidConfig, finishHalfDoneSplit]
