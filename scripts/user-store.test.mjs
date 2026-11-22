@@ -350,3 +350,13 @@ test('defaultsSet refuses a store path inside a repository', () => {
   assert.throws(() => defaultsSet('output', 'json', { env: { PMKIT_HOME: path.join(repo, 'store') }, homedir: () => home }), (error) => error.code === 'INVALID_INPUT')
   assert.equal(fs.existsSync(path.join(repo, 'store')), false)
 })
+
+test('isCredentialString matches Atlassian tokens and Basic headers', async () => {
+  const { isCredentialString, secretKeyPaths } = await import('./lib/user-store.mjs')
+  assert.equal(isCredentialString(`ATATT${'x'.repeat(20)}`), true)
+  assert.equal(isCredentialString('Basic dXNlckBleGFtcGxlLmNvbTp0b2tlbg=='), true)
+  assert.equal(isCredentialString('ATATT'), false)
+  assert.equal(isCredentialString('acme.atlassian.net'), false)
+  assert.equal(isCredentialString('Basic support review'), false)
+  assert.deepEqual(secretKeyPaths({ scope: { site: 'acme.atlassian.net', token: 'x' } }), ['tracker.scope.token'])
+})
