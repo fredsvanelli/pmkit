@@ -10,7 +10,7 @@ related: [PMK-123]
 milestone: local-gaps
 branch: pmk-161-handle-nested-splits-in-one-cycle-close
 created: 2026-10-28T00:11:40.126Z
-updated: 2026-11-22T05:46:19Z
+updated: 2026-11-22T05:52:16Z
 ---
 
 ## Description
@@ -19,6 +19,6 @@ Found in PMK-123. When a carried blocker or sub-issue is itself split in the sam
 
 ## Acceptance criteria
 
-- [ ] `/pmkit:cycle:close` has a rule for a carried blocker or sub-issue that is split in the same close: the new issue is blocked by the blocker's remaining work, and the sub-issue's remaining work moves under the new issue
-- [ ] Step 8 runs every split's create before the links, so each link can name any new issue of the close
-- [ ] A cycle-close scenario runs nested splits and the remaining work and blockers point to the right issues
+- [x] `/pmkit:cycle:close` has a rule for a carried blocker or sub-issue that is split in the same close: the new issue is blocked by the blocker's remaining work, and the sub-issue's remaining work moves under the new issue
+- [x] Step 8 runs every split's create before the links, so each link can name any new issue of the close
+- [x] A cycle-close scenario runs nested splits and the remaining work and blockers point to the right issues
