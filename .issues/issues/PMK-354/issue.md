@@ -2,11 +2,12 @@
 id: PMK-354
 title: Test that every remote tracker routes the operations its adapters implement
 type: feature
-status: backlog
+status: in_progress
 parent: EPC-6
 related: [PMK-353]
+branch: pmk-354-test-that-every-remote-tracker-routes
 created: 2026-11-21T07:03:23.598Z
-updated: 2026-11-21T07:03:23Z
+updated: 2026-11-22T02:12:35Z
 ---
 
 ## Description
