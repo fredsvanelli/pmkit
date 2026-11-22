@@ -30,7 +30,7 @@ import { teamMembers } from './lib/team-capacity.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
-// deliverable-writes covers moving an epic to a status category: the live Linear run leaves it out, because its write guard has no projectUpdate rule.
+// deliverable-writes covers moving an epic to a status category.
 export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'deliverable-writes', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
 
 /** The members of the scope team: on Linear `discover().members` lists the whole workspace, and a capacity write refuses another team's user. */

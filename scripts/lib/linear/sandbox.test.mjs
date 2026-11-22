@@ -15,7 +15,7 @@ import {
 } from './documents.mjs'
 import { PROBES, commentProbe, cycleProbe, descriptionProbe, relationProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
-import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
+import { PROJECT_CREATE, PROJECT_SET_STATUS, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import {
   CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, STATE_CREATE, SUITE_ALLOWLIST, TEAM_CREATE, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight,
   readMutation, trashTestTeamItems, waitForCycles,
@@ -211,6 +211,8 @@ test('every other row of the guard table passes with the run ids', async () => {
     [COMMENT_CREATE, { input: { id: 'cm-9', issueId: 'i-1', body: 'x', parentId: 'cm-1' } }],
     [COMMENT_RESOLVE, { id: 'cm-1' }],
     [PROJECT_UPDATE_CREATE, { input: { projectId: 'p-1', body: 'x' } }],
+    // PMK-356: the epic move sets the status of a project the run created.
+    [PROJECT_SET_STATUS, { id: 'p-1', input: { statusId: 'status-done' } }],
     [ISSUE_ARCHIVE, { id: 'i-1' }],
     [mutationOf('IssueDelete'), { id: 'i-2' }],
     [mutationOf('ProjectDelete'), { id: 'p-1' }],
@@ -229,11 +231,21 @@ test('rows that name an id the run does not own are refused', async () => {
     [COMMENT_CREATE, { input: { issueId: 'i-9', body: 'x' } }],
     [COMMENT_RESOLVE, { id: 'cm-9' }],
     [PROJECT_UPDATE_CREATE, { input: { projectId: 'p-9' } }],
+    [PROJECT_SET_STATUS, { id: 'p-9', input: { statusId: 'status-done' } }],
     [ISSUE_ARCHIVE, { id: 'i-9' }],
     [mutationOf('IssueDelete'), { id: 'i-9' }],
     [mutationOf('ProjectDelete'), { id: 'p-9' }],
   ]
   for (const [query, variables] of rows) await assert.rejects(send(guarded, query, variables), REFUSED)
+  assert.equal(inner.calls.length, 0)
+})
+
+test('projectUpdate takes only the status of a project the run created (PMK-356)', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('project', 'p-1')
+  for (const input of [{ statusId: 'status-done', name: 'renamed' }, { content: 'x' }, { statusId: 7 }, { statusId: null }]) {
+    await assert.rejects(send(guarded, PROJECT_SET_STATUS, { id: 'p-1', input }), REFUSED, JSON.stringify(input))
+  }
   assert.equal(inner.calls.length, 0)
 })
 
@@ -250,7 +262,7 @@ test('after stop(), suite mutations are refused and the deletes of owned ids sti
   assert.equal(inner.calls.length, 3)
 })
 
-test('a caller passes its own allowlist, and the suite list has the 15 mutations of the spec table', async () => {
+test('a caller passes its own allowlist, and the suite list has the 16 mutations of the spec table', async () => {
   const own = { teamUpdate: (variables) => (variables.input?.name === 'ok' ? null : 'wrong name') }
   const { inner, ...guarded } = opened({ allowlist: own })
   const update = 'mutation Update($input: TeamUpdateInput!) { teamUpdate(input: $input) { success } }'
@@ -258,7 +270,7 @@ test('a caller passes its own allowlist, and the suite list has the 15 mutations
   await assert.rejects(send(guarded, update, { input: { name: 'bad' } }), /refusing Update: wrong name/)
   await assert.rejects(send(guarded, ISSUE_CREATE, { input: { teamId: TEAM } }), REFUSED)
   assert.equal(inner.calls.length, 1)
-  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 15)
+  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 16)
 })
 
 /** Sends each [document, variables] attack through a guard that owns i-1, and checks that none reaches the fetch. */
@@ -326,7 +338,7 @@ test('issueDelete refuses permanentlyDelete passed through a variable default', 
 test('every mutation document the adapter and the run send has the shape the guard accepts', () => {
   const documents = [
     ISSUE_CREATE, ISSUE_UPDATE, ISSUE_ARCHIVE, RELATION_CREATE, RELATION_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, PROJECT_CREATE,
-    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, ISSUE_UNARCHIVE,
+    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, ISSUE_UNARCHIVE, PROJECT_SET_STATUS,
   ]
   const roots = documents.map((document) => {
     const read = readMutation(document)
