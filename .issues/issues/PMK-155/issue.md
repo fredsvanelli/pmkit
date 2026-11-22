@@ -10,7 +10,7 @@ related: [PMK-117]
 milestone: local-gaps
 branch: pmk-155-check-the-design-spec-cli-table-against
 created: 2026-10-28T00:11:38.781Z
-updated: 2026-11-22T03:10:25Z
+updated: 2026-11-22T03:16:05Z
 ---
 
 ## Description
@@ -19,5 +19,5 @@ Found in PMK-117. The `cycle add` row of the CLI table in `docs/superpowers/spec
 
 ## Acceptance criteria
 
-- [ ] The `cycle add` row of the design spec CLI table shows `<sprint|current|none>`, and the other rows that drift from the usage are fixed
-- [ ] A test fails when a row names a command, a flag or a set of values that differs from the CLI usage strings
+- [x] The `cycle add` row of the design spec CLI table shows `<sprint|current|none>`, and the other rows that drift from the usage are fixed
+- [x] A test fails when a row names a command, a flag or a set of values that differs from the CLI usage strings

@@ -4,3 +4,5 @@
 {"at":"2026-11-22T03:09:06Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T03:09:10Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-155-check-the-design-spec-cli-table-against"}
 {"at":"2026-11-22T03:10:25Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:16:05Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:16:05Z","by":"fred","op":"update","field":"acceptance_criteria"}
