@@ -2,7 +2,7 @@
 id: PMK-158
 title: Make next steps runnable and keep upgrade working across config shapes
 type: task
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-118, PMK-120]
 milestone: local-gaps
 branch: pmk-158-make-next-steps-runnable-and-keep
 created: 2026-10-28T00:11:39.454Z
-updated: 2026-11-22T04:48:34Z
+updated: 2026-11-22T04:48:50Z
 ---
 
 ## Description
