@@ -71,13 +71,13 @@ test('jira exits 2 with NOT_SUPPORTED with linear registered', async () => {
   })
 })
 
-test('validate with a hosted config checks only .pmkit/config.yaml', async () => {
+test('validate with a hosted config checks only .pmkit/config.yaml, and says it skipped the tracker files', async () => {
   const result = await call(mirrorRepo('team'), ['validate', '--json'], { adapters: withLinear(mirrorLinear()) })
   assert.equal(result.code, 0, result.stderr)
-  assert.deepEqual(JSON.parse(result.stdout), {
-    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 },
-    problems: [],
-  })
+  const skipped = 'the tracker is linear, so validate checks only .pmkit/config.yaml and the ADRs'
+  assert.deepEqual(JSON.parse(result.stdout), { checked: null, skipped, problems: [] })
+  const text = await call(mirrorRepo('team'), ['validate'], { adapters: withLinear(mirrorLinear()) })
+  assert.equal(text.stdout, `tracker files not checked: ${skipped}\nno problems\n`)
 })
 
 test('a hosted actor that cannot be resolved names PMKIT_USER and pmkit discover', async () => {

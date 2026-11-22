@@ -388,7 +388,7 @@ test('tracker.system jira alone is one config problem, not a throw', () => {
   })
   assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
   assert.equal(result.problems[0].message, MSG)
-  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
+  assert.deepEqual([result.checked, result.skipped], [null, 'the tracker config could not be loaded; see the problems'])
   assert.ok(MSG.startsWith(unsupportedTracker('jira').message))
 })
 
@@ -404,7 +404,8 @@ test('a hosted config lists only .pmkit/config.yaml problems and checks no track
   const root = useLinear(makeRepo('team'), 'mappings:\n  status:\n    reviewing: Review\n')
   const before = hashTree(root)
   assert.deepEqual(validateRepo(root, { adapters: withLinear() }), {
-    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 },
+    checked: null,
+    skipped: 'the tracker is linear, so validate checks only .pmkit/config.yaml and the ADRs',
     problems: [{ path: '.pmkit/config.yaml', code: 'config', message: 'mappings.status.reviewing: reviewing is not a category or blocked' }],
   })
   assert.equal(hashTree(root), before)

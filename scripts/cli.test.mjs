@@ -658,7 +658,7 @@ test('validate lists tracker.system linear as a problem and exits 0', () => {
   useUnsupported(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 goals, 0 comments, 0 views')
+  assert.equal(text.stdout.split('\n')[0], 'tracker files not checked: the tracker config could not be loaded; see the problems')
   assert.match(text.stdout, UNSUPPORTED_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])

@@ -82,7 +82,7 @@ const formatProblem = (root, file, error) => ({ path: relative(root, file), code
 function brokenConfigProblem(root, error) {
   const format = error?.details?.format !== undefined
   const migration = error?.details?.migration !== undefined
-  if (error?.code !== 'INVALID_INPUT' && !format) throw error
+  if (error?.code !== 'INVALID_INPUT' && !format && !migration) throw error
   if (error?.details?.pmkitConfig !== undefined) throw error
   let trackerPath
   try {
@@ -129,6 +129,10 @@ function pmkitConfigProblems(root, adapters) {
   return messages.map((message) => ({ path: at, code: 'config', message }))
 }
 
+// When the tracker files are not checked, `checked` is null and `skipped` says why, so nothing reads as an empty tracker (PMK-157).
+const NOT_LOADED = 'the tracker config could not be loaded; see the problems'
+const skippedTracker = (skipped, problems) => ({ checked: null, skipped, problems: problems.sort(byPathThenCode) })
+
 export function validateRepo(root, { config, migrations, adapters = ADAPTERS } = {}) {
   const pmkit = pmkitConfigProblems(root, adapters)
   if (!config) {
@@ -139,18 +143,18 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
       try {
         broken = brokenConfigProblem(root, error)
       } catch (rethrown) {
-        if (pmkit.length > 0 && rethrown.code !== 'NOT_CONFIGURED') return { checked: noneChecked(), problems: pmkit }
+        if (pmkit.length > 0 && rethrown.code !== 'NOT_CONFIGURED') return skippedTracker(NOT_LOADED, pmkit)
         throw rethrown
       }
-      return { checked: noneChecked(), problems: [...pmkit, broken].sort(byPathThenCode) }
+      return skippedTracker(NOT_LOADED, [...pmkit, broken])
     }
   }
   // A hosted tracker has no tracker files here, and validate stays offline: .pmkit/config.yaml and the repository's ADRs are all it checks.
-  if (config.hosted) return { checked: noneChecked(), problems: [...pmkit, ...adrProblems(root, null)].sort(byPathThenCode) }
+  if (config.hosted) return skippedTracker(`the tracker is ${config.system}, so validate checks only .pmkit/config.yaml and the ADRs`, [...pmkit, ...adrProblems(root, null)])
   const { local, issuesDir } = config
   // An older format is one problem: the other checks assume the current shape.
   if (config.format && config.format.state !== 'current') {
-    return { checked: noneChecked(), problems: [...pmkit, formatProblem(root, path.join(issuesDir, 'config.yaml'), formatError(config.format))].sort(byPathThenCode) }
+    return skippedTracker(`the tracker files are in format ${config.format.version}, not ${config.format.current}; see the problems`, [...pmkit, formatProblem(root, path.join(issuesDir, 'config.yaml'), formatError(config.format))])
   }
   const problems = [...pmkit]
   const rel = (file) => relative(root, file)

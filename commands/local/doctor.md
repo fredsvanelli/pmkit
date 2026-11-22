@@ -16,7 +16,7 @@ None.
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. The result has `checked` and `problems`, each with `path`, `code` and `message`. Group the problems by `code` and show them with their paths. When there are none, go to step 6.
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. The result has `checked` and `problems`, each problem with `path`, `code` and `message`. When `checked` is `null`, validate did not check the tracker files, and `skipped` says why (the tracker config does not load, the tracker is hosted, or the files are in another format): say so, never "0 files checked". Group the problems by `code` and show them with their paths. When there are none, go to step 6.
 2. Resolve the conflicts first. For each problem with the code `conflict`, one file at a time:
    1. Read the file. Show both sides of every conflict block, labeled "ours" and "theirs", and show the lines around it. For an issue file, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <id> --history --json` as well when it parses, and say which value is newer.
    2. Propose the resolved content and show it as the whole result for that file.
@@ -48,7 +48,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 ## Output
 
-A health report. It has the files checked (from `checked`), the problems found, the problems fixed, the problems left with the manual step for each, and the index rebuild (how many issues it indexed, or why it could not write the index). Say when the problem count is zero.
+A health report. It has the files checked (from `checked`, or `skipped` when `checked` is `null`), the problems found, the problems fixed, the problems left with the manual step for each, and the index rebuild (how many issues it indexed, or why it could not write the index). Say when the problem count is zero.
 
 ## If something is missing
 
