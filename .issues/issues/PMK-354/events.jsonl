@@ -2,3 +2,8 @@
 {"at":"2026-11-21T07:03:23Z","by":"fred","op":"link","field":"related","to":"PMK-353"}
 {"at":"2026-11-22T02:12:35Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T02:12:35Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-354-test-that-every-remote-tracker-routes"}
+{"at":"2026-11-22T02:17:14Z","by":"fred","op":"comment","to":"2026-11-22T02-17-14Z-fred.md"}
+{"at":"2026-11-22T02:17:14Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T02:17:14Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T02:17:14Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T02:17:14Z","by":"fred","op":"update","field":"acceptance_criteria"}
