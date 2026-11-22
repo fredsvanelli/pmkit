@@ -6,6 +6,7 @@ import { FAKE_ENV, TRACKER, fakeJiraFetch } from '../../fake-jira-api.mjs'
 import { fakeJiraIssues } from '../../fake-jira-issues.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { textToAdf } from './adf.mjs'
+import { groupEventsByIssue, throughput } from '../metrics.mjs'
 import { createJiraTracker } from './tracker.mjs'
 
 globalThis.fetch = () => {
@@ -131,6 +132,16 @@ test('metricEvents tags the issue, filters by since and until, and sorts by time
   const cut = await tracker.metricEvents({ since: times[2], until: times[2] })
   assert.deepEqual(cut.map((e) => [e.issue, e.op]), [['ENG-2', 'update']])
   assert.deepEqual((await tracker.metricEvents({ until: '2000-01-01' })), [])
+})
+
+test('metricEvents feed throughput per pmkit type', async () => {
+  const { fake, tracker } = setup()
+  seed(fake.state, 1)
+  seed(fake.state, 1, { status: STATUS.done, issuetype: { id: '10004', name: 'Bug' } })
+  seed(fake.state, 1, { status: STATUS.done })
+  const byIssue = groupEventsByIssue(await tracker.metricEvents())
+  const categoryOf = (name) => ({ 'To Do': 'todo', 'In Progress': 'in_progress', Done: 'done' })[name] ?? null
+  assert.deepEqual(throughput(byIssue, { categoryOf }).byType, { bug: 1, story: 1 })
 })
 
 test('metricEvents searches the space by update date, newest first, with the changelog', async () => {

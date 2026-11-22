@@ -56,12 +56,33 @@ const eventsOf = (history, context) => {
   return (history.items ?? []).flatMap((change) => changesOf(change, context)).map(([op, field, from, to]) => ({ ...meta, op, field, from, to }))
 }
 
+/** The `fromString` of the earliest change of the field `id`, or `current` when the changelog never changes it. */
+function startOf(histories, id, current) {
+  const ordered = [...histories].sort((a, b) => (jiraTime(a.created) < jiraTime(b.created) ? -1 : jiraTime(a.created) > jiraTime(b.created) ? 1 : 0))
+  for (const history of ordered) {
+    const change = (history.items ?? []).find((item) => (item.fieldId ?? item.field) === id)
+    if (change) return change.fromString ?? null
+  }
+  return current ?? null
+}
+
+/** The item as it was created: its key, and its title, pmkit type (else the Jira name) and status before any change. */
+function createdAs(item, histories, context) {
+  const type = startOf(histories, 'issuetype', item.fields.issuetype?.name)
+  return {
+    id: item.key,
+    title: startOf(histories, 'summary', item.fields.summary),
+    type: type === null ? null : (context.typeOfName(type) ?? type),
+    status: startOf(histories, 'status', item.fields.status?.name),
+  }
+}
+
 /**
- * The events of one work item: a `create` event, one event per changelog item (one per label added or removed), and a
+ * The events of one work item: a `create` event (its `to` is the item as created), one event per changelog item (one per label added or removed), and a
  * `comment` event per raw comment node, sorted by `at` (equal times keep the changelog order, then the comments).
  */
 export function toEvents(item, histories, context, comments = []) {
-  const create = { at: jiraTime(item.fields.created), by: accountOf(item.fields.creator), op: 'create' }
+  const create = { at: jiraTime(item.fields.created), by: accountOf(item.fields.creator), op: 'create', to: createdAs(item, histories, context) }
   const noted = comments.map((node) => ({ at: jiraTime(node.created), by: accountOf(node.author), op: 'comment' }))
   const all = [create, ...histories.flatMap((history) => eventsOf(history, context)), ...noted]
   return all.map((event, index) => ({ event, index })).sort((a, b) => (a.event.at < b.event.at ? -1 : a.event.at > b.event.at ? 1 : a.index - b.index)).map(({ event }) => event)

@@ -18,15 +18,30 @@ async function context({ edit } = {}) {
   return makeContext(raw, { tracker: TRACKER, mappings: { types: { story: 'Story', bug: 'Bug' } } }, await client.session())
 }
 
-const ITEM = { key: 'ENG-1', fields: { created: '2026-11-20T10:00:00.000+0000', creator: { accountId: 'acc-1' } } }
+const ITEM = {
+  key: 'ENG-1',
+  fields: { created: '2026-11-20T10:00:00.000+0000', creator: { accountId: 'acc-1' }, summary: 'Now', issuetype: { name: 'Bug' }, status: { name: 'Done' } },
+}
 let n = 0
 const history = (items, created = '2026-11-21T10:00:00.000+0000', author = { accountId: 'acc-2' }) => ({ id: String(++n), author, created, items })
 const one = async (change, ctx) => (await toEvents(ITEM, [history([change])], ctx ?? (await context())))[1]
-const CREATE = { at: '2026-11-20T10:00:00.000Z', by: 'acc-1', op: 'create' }
+const CREATE = { at: '2026-11-20T10:00:00.000Z', by: 'acc-1', op: 'create', to: { id: 'ENG-1', title: 'Now', type: 'bug', status: 'Done' } }
 
 test('the item gives the create event first', async () => {
   const events = toEvents(ITEM, [], await context())
   assert.deepEqual(events, [CREATE])
+})
+
+test('the create event starts from the first change of title, type and status', async () => {
+  const events = toEvents(ITEM, [
+    history([{ field: 'summary', fieldId: 'summary', fromString: 'Later', toString: 'Now' }], '2026-11-22T10:00:00.000+0000'),
+    history([
+      { field: 'summary', fieldId: 'summary', fromString: 'First', toString: 'Later' },
+      { field: 'issuetype', fieldId: 'issuetype', fromString: 'Task', toString: 'Bug' },
+      { field: 'status', fieldId: 'status', fromString: 'To Do', toString: 'Done' },
+    ]),
+  ], await context())
+  assert.deepEqual(events[0].to, { id: 'ENG-1', title: 'First', type: 'Task', status: 'To Do' })
 })
 
 test('status is a move with the status names', async () => {
@@ -108,7 +123,7 @@ test('events sort by at, ties keep the changelog order, and comments join in', a
     history([{ field: 'summary', toString: 'early' }], '2026-11-21T10:00:00.000+0000'),
     history([{ field: 'summary', toString: 'tie' }], same),
   ], ctx, [{ id: 7, author: { accountId: 'acc-3' }, created: '2026-11-21T12:00:00.000+0000', body: textToAdf('hi') }])
-  assert.deepEqual(events.map((e) => e.to ?? e.op), ['create', 'early', 'comment', 'late', 'tie'])
+  assert.deepEqual(events.map((e) => (e.op === 'create' ? e.op : e.to ?? e.op)), ['create', 'early', 'comment', 'late', 'tie'])
   assert.deepEqual(events.map((e) => e.op), ['create', 'update', 'comment', 'update', 'update'])
   assert.deepEqual(events[2], { at: '2026-11-21T12:00:00.000Z', by: 'acc-3', op: 'comment' })
 })
