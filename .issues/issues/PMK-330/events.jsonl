@@ -1,1 +1,3 @@
 {"at":"2026-11-15T23:21:51Z","by":"fred","op":"create","to":{"id":"PMK-330","title":"Lock the PMK-326 CRLF cases against fences and share the HTML openers","type":"chore","status":"backlog","priority":"low","estimate":1,"assignee":"fred","labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-15T23:21:51.203Z","updated":"2026-11-15T23:21:51Z"}}
+{"at":"2026-11-22T01:57:15Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T01:57:15Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-330-lock-the-pmk-326-crlf-cases-against"}
