@@ -734,6 +734,18 @@ async function unlinkMany(ctx, tracker, actor, from, targets) {
   return { data: { results }, text: results.map((item) => writeText(item, ctx)).join('\n\n'), commit: `${from} --remove ${targets.join(' ')}` }
 }
 
+/** The --field id=value options of issues move as an object, undefined when none was given. */
+function moveFields(values) {
+  if (values.length === 0) return undefined
+  const fields = {}
+  for (const value of values) {
+    const at = String(value).indexOf('=')
+    if (at < 1) throw usageError(`--field takes id=value, got ${value}`, 'Use --field <id>=<value>, for example --field resolution=Done')
+    fields[value.slice(0, at)] = value.slice(at + 1)
+  }
+  return fields
+}
+
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
 /** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
@@ -1161,8 +1173,14 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'issues move', summary: 'changes status by category', usage: '<id> <category> [--status name]', write: true, args: ['id', 'category'], flags: ['status'],
-    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })),
+    name: 'issues move', summary: 'changes status by category', usage: '<id> <category> [--status name] [--field id=value ...]', write: true, args: ['id', 'category'], flags: ['status', 'field'],
+    run: async (ctx) => {
+      const fields = moveFields(ctx.list('field'))
+      const result = await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), ...(fields === undefined ? {} : { fields }), dryRun: ctx.dryRun })
+      const needs = (result.requiredFields ?? []).map((field) => `needs: ${field.name} (${field.id}${field.allowed?.length > 0 ? `: ${field.allowed.join(', ')}` : ''})`)
+      if (!ctx.dryRun || needs.length === 0) return issueWrite(ctx, result)
+      return { data: result, text: `${writeText(result, { dryRun: false })}\n${needs.join('\n')}\ndry run: nothing was written`, commit: result.after.id }
+    },
   },
   {
     name: 'issues assign', summary: 'assigns', usage: '<id> <member|me|none>', write: true, args: ['id', 'member'], flags: [],
