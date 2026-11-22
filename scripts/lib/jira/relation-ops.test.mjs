@@ -151,3 +151,14 @@ test('setParent refuses a self parent, a loop with the path, a bad key and a wro
   await assert.rejects(tracker.setParent('ENG-1', 'ENG-2', 'acc-9'), { code: 'INVALID_INPUT' })
   assert.equal(fake.writes().length, 2)
 })
+
+test('unlink refuses a wrong actor, a self link and an unknown kind, sending nothing', async () => {
+  const { fake, tracker } = setup()
+  seed(fake.state, 2)
+  await tracker.link('ENG-1', 'ENG-2', 'blocks', ME)
+  const sent = fake.writes().length
+  await assert.rejects(tracker.unlink('ENG-1', 'ENG-2', 'blocks', 'acc-9'), { code: 'INVALID_INPUT' })
+  await assert.rejects(tracker.unlink('ENG-1', 'eng-1', 'blocks', ME), { code: 'INVALID_INPUT', message: 'ENG-1 cannot be linked to itself' })
+  await assert.rejects(tracker.unlink('ENG-1', 'ENG-2', 'likes', ME), { code: 'INVALID_INPUT' })
+  assert.equal(fake.writes().length, sent)
+})

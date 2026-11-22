@@ -181,3 +181,11 @@ test('metricEvents reads the full changelog of an item whose search copy Jira cu
   await tracker.updateIssue('ENG-1', { title: 'A' }, ME)
   assert.deepEqual((await tracker.metricEvents()).map((e) => e.op), ['create', 'update'])
 })
+
+test('metricEvents with two events at the same time on two issues sorts by issue key', async () => {
+  const { fake, tracker } = setup()
+  seed(fake.state, 2, { created: '2026-11-01T00:00:00.000+0000', updated: '2026-11-01T00:00:00.000+0000' })
+  const events = await tracker.metricEvents()
+  assert.deepEqual(events.map((e) => [e.issue, e.op]), [['ENG-1', 'create'], ['ENG-2', 'create']])
+  assert.equal(events[0].at, events[1].at)
+})
