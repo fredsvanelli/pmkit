@@ -2,12 +2,12 @@
 id: PMK-356
 title: Verify Linear projectUpdate with statusId against a live workspace
 type: feature
-status: in_review
+status: done
 parent: EPC-6
 related: [PMK-353]
 branch: pmk-356-verify-linear-projectupdate-with
 created: 2026-11-21T07:03:24.308Z
-updated: 2026-11-22T02:39:23Z
+updated: 2026-11-22T02:55:24Z
 ---
 
 ## Description

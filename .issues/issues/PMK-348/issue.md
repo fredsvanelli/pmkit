@@ -2,14 +2,14 @@
 id: PMK-348
 title: Adicionar epic update para editar o título e a descrição de um épico existente
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 8
 assignee: fred
 parent: EPC-6
 branch: pmk-348-adicionar-epic-update-para-editar-o
 created: 2026-11-18T01:40:58.684Z
-updated: 2026-11-22T02:54:58Z
+updated: 2026-11-22T02:55:22Z
 ---
 
 ## Description

@@ -6,3 +6,5 @@
 {"at":"2026-11-22T01:56:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T01:56:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T01:56:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T02:55:21Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-11-22T02:56:03Z","by":"fred","op":"link","field":"related","to":"PMK-359"}

@@ -2,14 +2,14 @@
 id: PMK-331
 title: Tally the corpus HTML ends apart and guard the one-space write in npm test
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-331-tally-the-corpus-html-ends-apart-and
 created: 2026-11-15T23:21:51.307Z
-updated: 2026-11-22T02:12:22Z
+updated: 2026-11-22T02:55:22Z
 ---
 
 ## Description
