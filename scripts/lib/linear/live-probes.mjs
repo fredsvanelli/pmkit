@@ -1,7 +1,7 @@
 // The live probes of the Linear run (PMK-39): facts the PMK-35 to PMK-38 specs left open. Each probe is
 // probe({ tracker, client, actor, team }) and returns { asserted, recorded }. It asserts only what pmkit relies on and
 // records the rest, so the run's output grows the verification notes. `npm test` runs them over the fake only.
-// The probes create at most 7 issues in all (1 + 1 + 2 + 3).
+// The probes create at most 8 issues in all (1 + 1 + 2 + 3 + 1).
 
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
@@ -113,10 +113,21 @@ export async function milestoneProbe({ tracker, client, actor }) {
   }
 }
 
+/** PMK-259: issues unarchive on Linear sends issueUnarchive for an archived issue, through the guard, and the issue is back. */
+export async function unarchiveProbe({ tracker, actor }) {
+  const { after: issue } = await tracker.createIssue({ title: 'Probe unarchive' }, actor)
+  const archived = (await tracker.archive(issue.id, actor)).after.archived === true
+  await tracker.unarchive(issue.id, actor)
+  const back = (await tracker.searchIssues({})).issues.some((item) => item.id === issue.id && !item.archived)
+  assert.equal(archived && back, true, 'the issue did not come back from the archive')
+  return { asserted: ['archive then unarchive', 'the issue is listed again'], recorded: { archived, back } }
+}
+
 export const PROBES = [
   ['description round trip', descriptionProbe],
   ['comment body and updatedAt', commentProbe],
   ['relation history codes', relationProbe],
   ['cycle dates', cycleProbe],
   ['milestone writes', milestoneProbe],
+  ['unarchive', unarchiveProbe],
 ]

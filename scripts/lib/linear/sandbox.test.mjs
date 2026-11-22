@@ -13,7 +13,7 @@ import { createLinearClient, isMutation } from './client.mjs'
 import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UNARCHIVE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
-import { PROBES, commentProbe, cycleProbe, descriptionProbe, milestoneProbe, relationProbe } from './live-probes.mjs'
+import { PROBES, commentProbe, cycleProbe, descriptionProbe, milestoneProbe, relationProbe, unarchiveProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_SET_STATUS, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import {
@@ -1108,8 +1108,17 @@ test('the milestone probe sends the three milestone writes through the guard (PM
   })
 })
 
-test('the probes are five and each has a name', () => {
-  assert.equal(PROBES.length, 5)
+test('the unarchive probe archives an issue and brings it back through the guard (PMK-259)', async () => {
+  await withProbeContext(async (context, w) => {
+    const { asserted, recorded } = await unarchiveProbe(context)
+    assert.equal(asserted.length, 2)
+    assert.deepEqual(recorded, { archived: true, back: true })
+    assert.deepEqual(w.run.guard.stats().refused, [])
+  })
+})
+
+test('the probes are six and each has a name', () => {
+  assert.equal(PROBES.length, 6)
   assert.ok(PROBES.every(([name, probe]) => typeof name === 'string' && typeof probe === 'function'))
 })
 
