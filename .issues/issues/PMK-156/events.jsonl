@@ -5,3 +5,6 @@
 {"at":"2026-11-22T04:25:01Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T04:25:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-156-guide-setup-and-doctor-through-a-failing"}
 {"at":"2026-11-22T04:26:48Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:32:23Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:32:23Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:32:23Z","by":"fred","op":"update","field":"acceptance_criteria"}
