@@ -2,14 +2,14 @@
 id: PMK-254
 title: Verify Linear issue docs against a live workspace
 type: task
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-5
 branch: pmk-254-verify-linear-issue-docs-against-a-live
 created: 2026-11-11T22:34:42.296Z
-updated: 2026-11-22T17:29:33Z
+updated: 2026-11-22T17:29:34Z
 ---
 
 ## Description
