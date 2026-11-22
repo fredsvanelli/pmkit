@@ -1,1 +1,4 @@
 {"at":"2026-11-11T22:34:43Z","by":"fred","op":"create","to":{"id":"PMK-266","title":"Tidy the Linear release, docs and archive code","type":"chore","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-11T22:34:43.213Z","updated":"2026-11-11T22:34:43Z"}}
+{"at":"2026-11-22T06:26:03Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T06:26:03Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T06:26:03Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-266-tidy-the-linear-release-docs-and-archive"}
