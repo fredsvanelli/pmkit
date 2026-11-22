@@ -2,7 +2,7 @@
 id: PMK-76
 title: Discover a Jira site and build its capability manifest
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 8
 assignee: fred
@@ -12,7 +12,7 @@ related: [PMK-366]
 milestone: jira
 branch: pmk-76-discover-a-jira-site-and-build-its
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-22T19:42:33Z
+updated: 2026-11-22T19:43:21Z
 ---
 
 ## Description
