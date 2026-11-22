@@ -192,6 +192,13 @@ test('record-decision step 6 on Linear: a comment and a docs link per issue, and
   assert.deepEqual(JSON.parse(linked.stdout).after.docs, ['docs/adr/0001-a.md'])
   const without = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--dry-run', '--json'], { seed })
   assert.equal(JSON.parse(without.stdout).error.code, 'NOT_CONFIGURED')
+  // PMK-258: an issue with a hand-made attachment of the ADR's link answers CONFLICT on the dry run, which step 6 skips; the next issue still links.
+  const handMade = { id: 'att-hand', url: 'https://github.com/acme/app/blob/main/docs/adr/0001-a.md', title: 'Design notes', metadata: {}, createdAt: '2026-10-27T12:00:01.000Z' }
+  const seedHandMade = (fake) => { fake.seed({ title: 'One' }, { attachments: [handMade] }); fake.seed({ title: 'Two' }) }
+  const conflict = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--dry-run', '--json'], { gitHost: 'acme/app', seed: seedHandMade })
+  assert.equal(JSON.parse(conflict.stdout).error.code, 'CONFLICT')
+  const next = await linear(['issues', 'update', 'ACME-2', '--add-doc', 'docs/adr/0001-a.md', '--dry-run', '--json'], { gitHost: 'acme/app', seed: seedHandMade })
+  assert.deepEqual(JSON.parse(next.stdout).after.docs, ['docs/adr/0001-a.md'])
 })
 
 const METRICS = [
