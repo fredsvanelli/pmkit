@@ -1,6 +1,7 @@
 // Reads one Linear team as a migration snapshot, from bulk reads only. See the PMK-41 spec, "The snapshot".
 
-import { CYCLES_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
+import { storedDocPath } from '../doc-path.mjs'
+import { CYCLES_QUERY, ISSUE_ATTACHMENTS_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUES_ATTACHMENTS_QUERY, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
 import { toEvents } from './history.mjs'
 import { makeContext, toIssue } from './issues.mjs'
 import { HEALTH_FROM_LINEAR, PROJECTS_QUERY, PROJECT_UPDATES_QUERY, toEpic } from './projects.mjs'
@@ -62,6 +63,19 @@ export async function readLinearSnapshot({ client: given, discovery, teamKey, pm
       node[field] = { nodes: collected }
     }
   }
+  // The docs (PMK-265): the attachments pmkit made, one request per 100 issues and the rest of a long list alone. A failed read fails
+  // the snapshot, so no issue arrives with fewer docs than it has.
+  for (let at = 0; at < nodes.length; at += 100) {
+    const chunk = nodes.slice(at, at + 100)
+    const data = await client.request(ISSUES_ATTACHMENTS_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
+    const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.attachments]))
+    for (const node of chunk) {
+      const connection = byId.get(node.id)
+      node.attachments = connection && connection.pageInfo?.hasNextPage !== true
+        ? { nodes: connection.nodes }
+        : { nodes: (await client.paginate(ISSUE_ATTACHMENTS_QUERY, { id: node.id }, { select: (page) => page.issue.attachments, pageSize: 50, maxPages: 100000 })).nodes }
+    }
+  }
   const inTeam = new Set(nodes.map((node) => node.identifier))
   const outside = { parents: 0, links: 0 }
 
@@ -79,6 +93,8 @@ export async function readLinearSnapshot({ client: given, discovery, teamKey, pm
       parent, sprint: issue.sprint ?? null, milestone: issue.milestone ?? null, release: null, due: issue.due ?? null, branch: issue.branch ?? null,
       description: issue.description, acceptanceCriteria: issue.acceptanceCriteria, archived: issue.archived, created: issue.created,
       completed: node.completedAt ?? null, events,
+      // A Local docs list takes each path once, in normal form.
+      docs: [...new Set((issue.docs ?? []).map(storedDocPath))],
     }
   })
 
