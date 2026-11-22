@@ -133,7 +133,7 @@ test('a POST sends JSON, and an empty 204 resolves null', async () => {
 
 test('a path outside REST v3 and Agile, a full URL or an unknown method throws TypeError with no request', async () => {
   const { fetch, client } = setup()
-  for (const [method, path] of [['GET', '/wiki/x'], ['GET', 'https://evil.example/rest/api/3/x'], ['GET', '//evil.example/rest/api/3/x'], ['GET', '/rest/api/3/x?y=1'], ['PATCH', '/rest/api/3/x']]) {
+  for (const [method, path] of [['GET', '/wiki/x'], ['GET', 'https://evil.example/rest/api/3/x'], ['GET', '//evil.example/rest/api/3/x'], ['GET', '/rest/api/3/x?y=1'], ['GET', '/rest/api/3/../../wiki/x'], ['GET', '/rest/agile/1.0/./board'], ['PATCH', '/rest/api/3/x']]) {
     await assert.rejects(client.request(method, path), TypeError)
   }
   assert.equal(fetch.calls.length, 0)
@@ -158,6 +158,16 @@ test('a failed session check fails every later call the same way', async () => {
   const second = await failure(() => client.request('GET', '/rest/api/3/issue/ENG-1'))
   assert.equal(first, second)
   assert.equal(fetch.calls.length, 1)
+})
+
+test('a viewer with no displayName has null', async () => {
+  const { client } = setup({ 'GET /rest/api/3/myself': { json: { accountId: 'acc-2' } } })
+  assert.deepEqual((await client.session()).viewer, { accountId: 'acc-2', displayName: null })
+})
+
+test('an unreadable Retry-After falls back to X-RateLimit-Reset', async () => {
+  const { client } = setup({ [ISSUE]: { status: 429, headers: { 'Retry-After': 'soon', 'X-RateLimit-Reset': '2025-10-08T15:00:00Z' }, text: '' } })
+  assertError(await failure(() => client.request('GET', '/rest/api/3/issue/ENG-1')), 'RATE_LIMITED', "Jira's rate limit for this account is used up", 'Wait until 2025-10-08T15:00:00.000Z and retry')
 })
 
 test('myself without an accountId is UPSTREAM', async () => {

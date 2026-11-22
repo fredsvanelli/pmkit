@@ -28,7 +28,7 @@ function checkSite(tracker) {
 
 function checkCall(method, path) {
   if (!METHODS.has(method)) throw new TypeError(`unsupported method ${method}`)
-  if (typeof path !== 'string' || !API_PATH.test(path)) throw new TypeError('path must start with /rest/api/3/ or /rest/agile/1.0/ and hold no query string')
+  if (typeof path !== 'string' || !API_PATH.test(path) || /\/\.\.?(?:\/|$)/.test(path)) throw new TypeError('path must start with /rest/api/3/ or /rest/agile/1.0/ and hold no query string or dot segment')
 }
 
 function queryString(query = {}) {
@@ -53,6 +53,27 @@ function jiraErrors(body) {
 function jiraMessage({ errorMessages, errors }) {
   const first = [...errorMessages, ...Object.values(errors)].find((value) => typeof value === 'string' && value.trim() !== '')
   return first === undefined ? 'no message' : first.replace(/\s+/g, ' ').trim().slice(0, 200)
+}
+
+const brokenPage = (path) => new PmkitError('UPSTREAM', `Jira returned a broken page for ${path}`, RETRY_STEP)
+
+function checkPageOptions({ pageSize, limit, maxPages }) {
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new TypeError('pageSize must be an integer from 1 to 100')
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw new TypeError('limit must be an integer of at least 1')
+  if (maxPages !== undefined && (!Number.isInteger(maxPages) || maxPages < 1)) throw new TypeError('maxPages must be an integer of at least 1')
+}
+
+/**
+ * Reads where a page leaves the walk: { more, token, startAt, broken }. A page with nextPageToken is a token list;
+ * a token list ends with the token; an offset list ends at isLast, an empty page or total.
+ */
+function nextPosition(page, list, { token, startAt }) {
+  const next = page.nextPageToken
+  if (typeof next === 'string' && next !== '') return { more: page.isLast !== true, token: next, startAt, broken: next === token }
+  if (token !== undefined) return { more: false, token, startAt, broken: false }
+  const offset = startAt + list.length
+  const atTotal = typeof page.total === 'number' && offset >= page.total
+  return { more: page.isLast !== true && list.length > 0 && !atTotal, token, startAt: offset, broken: false }
 }
 
 /** The rate-limit reset as an ISO time: Retry-After seconds first, then X-RateLimit-Reset. Null when neither reads. */
@@ -204,36 +225,23 @@ export function createJiraClient({
   /** Reads one Jira list, offset (startAt) or token (nextPageToken), into { items, hasMore }. */
   async function paginate(path, { query = {}, key = 'values', pageSize = 50, limit, maxPages } = {}) {
     checkCall('GET', path)
-    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new TypeError('pageSize must be an integer from 1 to 100')
-    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw new TypeError('limit must be an integer of at least 1')
-    if (maxPages !== undefined && (!Number.isInteger(maxPages) || maxPages < 1)) throw new TypeError('maxPages must be an integer of at least 1')
+    checkPageOptions({ pageSize, limit, maxPages })
     // Without a limit, a careless call stops at 10 requests, as on Linear (PMK-30).
     const pageCap = maxPages ?? (limit === undefined ? 10 : Infinity)
-    const broken = () => new PmkitError('UPSTREAM', `Jira returned a broken page for ${path}`, RETRY_STEP)
     const items = []
-    let startAt = 0
-    let token
+    let position = { token: undefined, startAt: 0 }
     for (let pages = 1; ; pages += 1) {
-      const maxResults = limit === undefined ? pageSize : Math.min(pageSize, limit - items.length)
+      const maxResults = Math.min(pageSize, (limit ?? Infinity) - items.length)
       // startAt 0 is every offset list's default, so the first request also suits a token list.
-      const position = token !== undefined ? { nextPageToken: token } : startAt > 0 ? { startAt } : {}
-      const page = await request('GET', path, { query: { ...query, maxResults, ...position } })
+      const where = position.token !== undefined ? { nextPageToken: position.token } : position.startAt > 0 ? { startAt: position.startAt } : {}
+      const page = await request('GET', path, { query: { ...query, maxResults, ...where } })
       const list = page?.[key]
-      if (!Array.isArray(list)) throw broken()
+      if (!Array.isArray(list)) throw brokenPage(path)
       items.push(...list)
-      let more
-      if (typeof page.nextPageToken === 'string' && page.nextPageToken !== '') {
-        if (page.nextPageToken === token) throw broken()
-        token = page.nextPageToken
-        more = page.isLast !== true
-      } else if (token !== undefined) {
-        more = false
-      } else {
-        startAt += list.length
-        more = page.isLast !== true && list.length > 0 && !(typeof page.total === 'number' && startAt >= page.total)
-      }
-      const full = limit !== undefined && items.length >= limit
-      if (!more || full || pages >= pageCap) return { items: limit === undefined ? items : items.slice(0, limit), hasMore: more }
+      const next = nextPosition(page, list, position)
+      if (next.broken) throw brokenPage(path)
+      position = next
+      if (!next.more || items.length >= (limit ?? Infinity) || pages >= pageCap) return { items: items.slice(0, limit), hasMore: next.more }
     }
   }
 
