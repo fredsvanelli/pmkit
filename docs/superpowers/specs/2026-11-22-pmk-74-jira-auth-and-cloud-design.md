@@ -1,6 +1,6 @@
 # PMK-74 design: Jira authentication, Cloud or Data Center, and spaces
 
-Issue PMK-74, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: owner decisions applied (2026-11-22). Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-74, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: approved by the owner on 2026-11-22, with the answers in "Decisions from the owner". Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -130,3 +130,16 @@ Every write appears in Jira as the token's owner. The adapter resolves `me` and 
 ## Left to the builder
 
 - The exact wording of the ADR and the glossary terms, inside the rules above.
+
+## Decisions from the owner (2026-11-22)
+
+1. Cloud or Data Center: Cloud only (1A).
+2. Credential: personal API token from `JIRA_EMAIL` and `JIRA_API_TOKEN`, Basic auth (2A).
+3. Spaces: one space per repository in `tracker.scope.space`, site in `tracker.scope.site` (3A).
+
+Interview answers, all as recommended:
+
+- Q1. `tracker.scope.site` holds the full host, such as `acme.atlassian.net`, not a URL key in `tracker.scope.workspace`, so a custom Atlassian domain works.
+- Q2. The glossary gains **Site** and **Space**, and lists "project" under _Avoid_ for Space, because `CONTEXT.md` already uses project for a GitHub Project and a Linear project.
+- Q3. Classic (unscoped) API tokens only for now. Scoped and service-account tokens need `api.atlassian.com/ex/jira/<cloudId>`. PMK-75 checks them on a live site; no credentials exist today, so that check is recorded as skipped, and a new ADR decides it if needed.
+- Q4. The Bitbucket Cloud credential (PMK-81) stays out of ADR 0013.

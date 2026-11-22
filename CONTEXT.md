@@ -16,6 +16,14 @@ _Avoid_: forge, remote, provider
 The Linear organization that a personal API key belongs to, named by its URL key in `tracker.scope.workspace`. The key comes from `LINEAR_API_KEY`, and pmkit stores it nowhere.
 _Avoid_: organization, account
 
+**Site**:
+The Jira Cloud site a repository uses, named by its host in `tracker.scope.site`, such as `acme.atlassian.net`. The API token comes from `JIRA_EMAIL` and `JIRA_API_TOKEN`, and pmkit stores it nowhere. pmkit supports Jira Cloud only (ADR 0013).
+_Avoid_: instance, server, workspace (Linear's)
+
+**Space**:
+A Jira space, company-managed or team-managed, named by its key in `tracker.scope.space`, such as `ENG`. A repository uses one space.
+_Avoid_: project (Jira's old name for a space; reads GitHub Project or Epic), board
+
 **Adapter**:
 The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`. The CLI picks the tracker adapter by `tracker.system` from the registry in `scripts/lib/adapters.mjs`, and commands reach it only through the contract operations.
 _Avoid_: driver, connector, integration
