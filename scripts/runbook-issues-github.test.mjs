@@ -266,7 +266,7 @@ test('runbook: the issue flows on GitHub Issues, steps 1 to 11 and 13 to 16', ()
   assert.equal(unarchive.code, 2)
   assert.deepEqual(JSON.parse(unarchive.stdout).error, {
     code: 'NOT_SUPPORTED',
-    message: 'unarchive works on the Local tracker only',
+    message: 'unarchive works on the Local tracker and Linear, not on GitHub',
     nextStep: 'Restore the item from the archived items of the Project on GitHub',
   })
 

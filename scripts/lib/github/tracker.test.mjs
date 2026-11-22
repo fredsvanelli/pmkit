@@ -206,7 +206,7 @@ test('the tracker serves the issue, relation and history operations through one 
 test('unarchive, restore, delegate, logTime and listTimeEntries answer NOT_SUPPORTED after the mapping check', async () => {
   const fake = fakeGithubIssues()
   const tracker = githubTracker(issuesContext(), fake)
-  await assert.rejects(tracker.unarchive('1', 'octocat'), { code: 'NOT_SUPPORTED', message: 'unarchive works on the Local tracker only', nextStep: 'Restore the item from the archived items of the Project on GitHub' })
+  await assert.rejects(tracker.unarchive('1', 'octocat'), { code: 'NOT_SUPPORTED', message: 'unarchive works on the Local tracker and Linear, not on GitHub', nextStep: 'Restore the item from the archived items of the Project on GitHub' })
   await assert.rejects(tracker.restore('1', 'octocat'), { code: 'NOT_SUPPORTED', message: 'GitHub has no trash, so a deleted issue cannot come back', nextStep: 'pmkit issues create' })
   const delegation = 'The GitHub adapter does not delegate to agents yet'
   await assert.rejects(tracker.delegate('1', 'agent:bot', 'octocat'), { code: 'NOT_SUPPORTED', message: delegation, nextStep: delegation })

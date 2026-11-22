@@ -1296,7 +1296,7 @@ export const COMMANDS = [
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).archive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
-    name: 'issues unarchive', summary: 'brings an archived issue back (Local tracker)', usage: '<id>', write: true, args: ['id'], flags: [],
+    name: 'issues unarchive', summary: 'brings an archived issue back (Local tracker and Linear)', usage: '<id>', write: true, args: ['id'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).unarchive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
       // A call that changes nothing has no commit and says so in both the text and the JSON.
@@ -3078,8 +3078,8 @@ const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
 
 async function runBulk(ctx) {
   const [kind, value] = ctx.args
-  // PMK-256: Linear refuses unarchive before anything else is read or checked, whatever the other flags are.
-  if (kind === 'unarchive' && ctx.config().system !== 'local') throw unarchiveNotSupported(ctx.config().system)
+  // PMK-256: GitHub refuses unarchive before anything else is read or checked, whatever the other flags are. Linear unarchives (PMK-259).
+  if (kind === 'unarchive' && ctx.config().system === 'github') throw unarchiveNotSupported()
   const tracker = await ctx.tracker()
   const view = ctx.opt('view')
   // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
@@ -4859,10 +4859,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     }
     const { options } = parsed
     const root = path.resolve(typeof options.root === 'string' ? options.root : findRoot(cwd))
-    // PMK-267: Linear refuses bulk unarchive before the flag check, so a flag the command does not take answers NOT_SUPPORTED too.
+    // PMK-267: GitHub refuses bulk unarchive before the flag check, so a flag the command does not take answers NOT_SUPPORTED too. Linear unarchives (PMK-259).
     if (command.name === 'issues bulk' && parsed.positionals[0] === 'unarchive') {
       const { system } = loadPmkitConfig(root, { adapters })
-      if (system !== 'local') throw unarchiveNotSupported(system)
+      if (system === 'github') throw unarchiveNotSupported()
     }
     checkUsage(command, parsed)
     const dryRun = last(options['dry-run']) === true
