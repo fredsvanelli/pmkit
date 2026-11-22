@@ -8,6 +8,7 @@ import { validDate } from '../local/sprints.mjs'
 import { estimateScale } from './discovery.mjs'
 import { cyclesOff } from './cycles.mjs'
 import { CRITERIA_HEADING, PRIORITY_TO_LINEAR, buildDescription, parseDescription } from './issues.mjs'
+import { activeReleases } from './releases.mjs'
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 // A name discovery may not know yet. The caller refreshes the discovery once and builds the input again.
@@ -197,7 +198,7 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
   return input
 }
 
-const activeReleaseIds = (node) => (node?.releases?.nodes ?? []).filter((item) => item.stage?.type !== 'canceled').map((item) => item.id)
+const activeReleaseIds = (node) => activeReleases(node?.releases?.nodes ?? []).map((item) => item.id)
 
 /**
  * The release input of a patch (PMK-246, one release per issue): add the new release and remove the current one. The caller has

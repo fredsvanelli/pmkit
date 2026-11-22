@@ -7,6 +7,7 @@ import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
 import { isMutation, operationName } from './client.mjs'
+import { BATCH_RELEASES_PAGE, ISSUES_RELEASES_QUERY, RELEASES_QUERY, RELEASE_QUERY } from './documents.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
 const START = new Date('2026-10-27T12:00:00Z')
@@ -1541,6 +1542,14 @@ test('listReleases lists the scope team releases, oldest version first, without 
   assert.deepEqual((await linear.listReleases({ state: 'released' })).map((release) => release.name), ['One'])
 })
 
+// PMK-266: without a scope team the release filter would match every team's releases.
+test('release list and release get on Linear without tracker.scope.team answer NOT_CONFIGURED before any request', async () => {
+  const { tracker: linear, fetch } = releaseSetup({ scope: { workspace: 'acme' } })
+  await assert.rejects(linear.listReleases(), { code: 'NOT_CONFIGURED', message: 'tracker.scope.team is not set' })
+  await assert.rejects(linear.getRelease(REL.two), { code: 'NOT_CONFIGURED' })
+  assert.deepEqual(namesOf(fetch).filter((name) => name === 'PmkitReleases' || name === 'PmkitRelease'), [])
+})
+
 test('listReleases with more releases than one page reads every page', async () => {
   const many = Array.from({ length: 120 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `R${i}`, version: `1.${i}`, pipeline: 'pipe-acme' }))
   const { tracker: linear, fetch } = releaseSetup({ issues: { pipelines: PIPELINES, releases: many } })
@@ -1705,8 +1714,25 @@ test('an unknown release on an issue in two releases is NOT_FOUND, not the count
 
 // Review cycle 2 of PR #208: Linear refuses a query above 10000 complexity points (PMK-41 hit it with nested lists).
 // By Linear's rule (field 0.1, object 1, a connection times its page) the release lists cost: PmkitReleases 100 x ~3.8,
-// PmkitIssueReleases 100 x ~2.1, PmkitIssuesReleases 100 issues x 20 releases x ~2.1 (about 4300). Only PmkitRelease reads
+// PmkitIssueReleases 100 x ~2.1, PmkitIssuesReleases 100 issues x 20 releases x ~2.2 (about 4650). Only PmkitRelease reads
 // the pipeline's teams (250 x 1.1, one release). These page sizes and selections must not grow.
+// PMK-266: the one-release read builds on the list fields without a text replace, and keeps the pipeline teams.
+test('RELEASE_QUERY reads the pipeline teams and every list field of a release', () => {
+  assert.ok(RELEASE_QUERY.includes('pipeline { id teams(first: 250) { nodes { key } } }'))
+  const listFields = RELEASES_QUERY.match(/nodes \{ (.*) pipeline \{ id \} \}/)[1]
+  assert.ok(RELEASE_QUERY.includes(listFields))
+})
+
+test('the fake pages an issue\'s releases in the batch read by BATCH_RELEASES_PAGE', async () => {
+  const many = Array.from({ length: BATCH_RELEASES_PAGE + 1 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `R${i}`, version: `1.${i}`, pipeline: 'pipe-acme' }))
+  const { fake, fetch } = releaseSetup({ issues: { pipelines: PIPELINES, releases: many } })
+  seed(fake, { title: 'Many', releaseIds: many.map((item) => item.id) })
+  const answer = JSON.parse(await (await fetch('https://api.linear.app/graphql', { method: 'POST', body: JSON.stringify({ query: ISSUES_RELEASES_QUERY, variables: { ids: [fake.records[0].id], first: 100 } }) })).text())
+  const releases = answer.data.issues.nodes[0].releases
+  assert.equal(releases.nodes.length, BATCH_RELEASES_PAGE)
+  assert.equal(releases.pageInfo.hasNextPage, true)
+})
+
 test('the release queries keep their page sizes, and only PmkitRelease reads the pipeline teams', async () => {
   const { tracker: linear, fake, fetch } = releaseSetup()
   seed(fake, { title: 'One', releaseIds: [REL.two] })

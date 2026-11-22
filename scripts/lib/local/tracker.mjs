@@ -592,24 +592,17 @@ export function createLocalTracker(root, {
     return left
   }
 
-  function archive(id, actor, { dryRun } = {}) {
+  /** `archive` and its way back `unarchive` (PMK-250): an issue already in that state writes nothing. */
+  const setArchived = (archived, op) => (id, actor, { dryRun } = {}) => {
     requireWriter(actor)
     return change(id, actor, { dryRun }, (issue, meta, before) => {
-      if (before.archived) return []
-      issue.archived = true
-      return [{ ...meta, op: 'archive' }]
+      if (Boolean(before.archived) === archived) return []
+      issue.archived = archived
+      return [{ ...meta, op }]
     })
   }
-
-  /** The way back of `archive` (PMK-250): an issue that is not archived writes nothing. */
-  function unarchive(id, actor, { dryRun } = {}) {
-    requireWriter(actor)
-    return change(id, actor, { dryRun }, (issue, meta, before) => {
-      if (!before.archived) return []
-      issue.archived = false
-      return [{ ...meta, op: 'unarchive' }]
-    })
-  }
+  const archive = setArchived(true, 'archive')
+  const unarchive = setArchived(false, 'unarchive')
 
   const commentTexts = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.md')).map((name) => fs.readFileSync(path.join(dir, name), 'utf8')) : [])
   const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })

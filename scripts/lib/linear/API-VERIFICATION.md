@@ -63,7 +63,7 @@ Checked 2026-11-10 against Linear's public SDK schema (`packages/sdk/src/schema.
 | `name`, `target`, `released`, `description` | `name`, `targetDate`, `completedAt`, `description` |
 | `state` | `released` when `completedAt` is set, else `planned`. `stage.type` (`planned`, `started`, `completed`, `canceled`) decides only that a canceled release is left out. |
 | `release list` | `releases(filter: { pipeline: { teams: { some: { key: { eq: <team> } } } } })`, page by page (`ReleaseFilter.pipeline` is a `ReleasePipelineFilter`, whose `teams` is a `TeamCollectionFilter`). |
-| an issue's `release` / `releases` | `issues(filter: { id: { in } }) { id releases(first: 50) }` for up to 100 issues at once, and `issue(id) { releases(first, after) }` for an issue with more than 50. Sent only when `Organization.releasesEnabled` is true. |
+| an issue's `release` / `releases` | `issues(filter: { id: { in } }) { id releases(first: 20) }` for up to 100 issues at once, and `issue(id) { releases(first, after) }` for an issue with more than 20. Sent only when `Organization.releasesEnabled` is true. |
 | a release of another team | `Release.pipeline.teams` (a `TeamConnection`); a release whose pipeline does not list the scope team is refused. |
 | `issues update --release` | `issueUpdate` with `IssueUpdateInput.addedReleaseIds` and `removedReleaseIds`. |
 | the `release` filter | `IssueFilter.releases: { some: { id: { eq } } }` (`ReleaseCollectionFilter`). |
@@ -74,7 +74,7 @@ Open until a workspace with releases runs them (acceptance criterion 5 of PMK-24
 - `Release.stage { type }`, `version`, `targetDate` and `completedAt` come back with the values the table assumes; in particular, whether a completed release always has `completedAt` set.
 - `Issue.releases` lists a release the issue was added to in the Linear app, and leaves a release the issue was removed from, also inside `issues(filter: { id: { in } })`.
 - `ReleasePipeline.teams` lists the teams a pipeline is linked to in the app.
-- The `x-complexity` header of `PmkitReleases` (page 100), `PmkitIssuesReleases` (100 issues x 20 releases) and `PmkitRelease` stays under Linear's limit of 10000 points. By the documented rule they cost about 380, 4300 and 280.
+- The `x-complexity` header of `PmkitReleases` (page 100), `PmkitIssuesReleases` (100 issues x 20 releases) and `PmkitRelease` stays under Linear's limit of 10000 points. By the documented rule they cost about 380, 4650 and 280.
 - `issueUpdate` accepts `addedReleaseIds` and `removedReleaseIds` from a personal API key, and the issue then shows in the release in the app.
 - `issues(filter: { releases: { some: { id: { eq } } } })` answers the release's issues.
 - A pipeline with no team linked: whether its releases should count for the scope team. pmkit leaves them out today.

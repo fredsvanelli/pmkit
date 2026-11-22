@@ -20,6 +20,8 @@ const oneLabel = (value, { allowComma = false } = {}) => {
   return label
 }
 const patchOf = (patch) => (tracker, issue, actor, options) => tracker.updateIssue(issue.id, patch, actor, options)
+// archive and unarchive: the change's name is its text and the tracker method it calls.
+const archiveChange = (method) => ({ text: method, apply: (tracker, issue, actor, options) => tracker[method](issue.id, actor, options) })
 
 // Per change: how to read the value into `text` and an `apply(tracker, issue, actor, { dryRun })` that returns { before, after }.
 const BUILDERS = {
@@ -53,8 +55,8 @@ const BUILDERS = {
   },
   due: (value) => ({ text: `set due to ${value}`, apply: patchOf({ due: orNull(value) }) }),
   type: (value) => ({ text: `set type to ${value}`, apply: patchOf({ type: orNull(value) }) }),
-  archive: () => ({ text: 'archive', apply: (tracker, issue, actor, options) => tracker.archive(issue.id, actor, options) }),
-  unarchive: () => ({ text: 'unarchive', apply: (tracker, issue, actor, options) => tracker.unarchive(issue.id, actor, options) }),
+  archive: () => archiveChange('archive'),
+  unarchive: () => archiveChange('unarchive'),
   milestone: (value) => ({ text: `set milestone to ${value}`, apply: patchOf({ milestone: orNull(value) }) }),
   release: (value) => ({ text: `set release to ${value}`, apply: patchOf({ release: orNull(value) }) }),
   sprint: (value) => ({

@@ -12,7 +12,7 @@ import { cycleKey, cycleState } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, docPaths, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
-import { allReleases, releasesOff } from './releases.mjs'
+import { activeReleases, allReleases, releasesOff } from './releases.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
 
 const SEARCH_PAGE = 100
@@ -335,7 +335,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     // The one-release rule needs the real count: an unknown list refuses the write, and a node without one reads it.
     if (beforeNode.releasesUnread) throw beforeNode.releasesUnread
     if (beforeNode.releases === undefined) await attachReleases(beforeNode)
-    const count = beforeNode.releases.nodes.filter((item) => item.stage?.type !== 'canceled').length
+    const count = activeReleases(beforeNode.releases.nodes).length
     if (count > 1) throw new PmkitError('INVALID_INPUT', `the issue is in ${count} Linear releases, and pmkit sets one release per issue`, 'Change the releases of the issue in Linear')
     return target
   }
@@ -398,7 +398,10 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { add, remove }
   }
 
-  /** The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata. */
+  /**
+   * The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata.
+   * The CLI always passes the branch it resolved with origin/HEAD; the fallback to the config is for a caller without git.
+   */
   function docUrl(path, branch) {
     const host = config.pmkit?.git_host
     if (host?.system !== 'github' || !host.repo) {

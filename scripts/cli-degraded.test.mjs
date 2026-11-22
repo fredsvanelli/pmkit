@@ -136,6 +136,25 @@ test('issues update --add-doc on Linear links the default branch of origin/HEAD 
   assert.ok(noteLines(result.stderr).some((line) => /origin\/HEAD \(trunk\)/.test(line)), result.stderr)
 })
 
+// PMK-266: --remove-doc alone builds no link, so it reads no default branch and prints no note about it.
+test('issues update --remove-doc alone on Linear prints no default-branch note', async () => {
+  const git = (root, ...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' })
+  const prepare = (root) => {
+    git(root, 'init', '-q')
+    git(root, 'add', '-A')
+    git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'x')
+    git(root, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD')
+    git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+  }
+  const doc = { id: 'att-1', url: 'https://github.com/acme/app/blob/trunk/docs/a.md', title: 'docs/a.md', metadata: { pmkitDoc: 'docs/a.md' }, createdAt: '2026-10-27T12:00:01.000Z' }
+  const calls = {}
+  const result = await linear(['issues', 'update', 'ACME-1', '--remove-doc', 'docs/a.md', '--json'], { calls, gitHost: 'acme/app', prepare, seed: (fake) => fake.seed({ title: 'One' }, { attachments: [doc] }) })
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).after.docs ?? [], [])
+  assert.deepEqual(noteLines(result.stderr).filter((line) => /origin\/HEAD/.test(line)), [])
+  assert.equal(JSON.parse(result.stdout).notes, undefined)
+})
+
 // The step 6 of /pmkit:spec:record-decision on Linear (PMK-252 review): the comment and the docs link of each related issue.
 test('record-decision step 6 on Linear: a comment and a docs link per issue, and the link is the comment alone without a GitHub repo', async () => {
   const seed = (fake) => { fake.seed({ title: 'One' }); fake.seed({ title: 'Two' }) }

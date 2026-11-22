@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 
 import { branchName } from './lib/ids.mjs'
 import { operationName } from './lib/linear/client.mjs'
+import { BATCH_RELEASES_PAGE } from './lib/linear/documents.mjs'
 
 export const FAKE_KEY = 'lin_api_TESTKEYTESTKEYTESTKEY'
 
@@ -815,7 +816,7 @@ export function fakeLinearIssues({
     return { release: releaseNode(found) }
   })
   routes.PmkitIssuesReleases = query('PmkitIssuesReleases', ({ ids = [], first = 50 }) => ({
-    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, releases: connection(record.releaseIds.map((rid) => releaseNode(requireRelease(rid))), nestedPage) })), first),
+    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, releases: connection(record.releaseIds.map((rid) => releaseNode(requireRelease(rid))), BATCH_RELEASES_PAGE) })), first),
   }))
   routes.PmkitIssueReleases = query('PmkitIssueReleases', ({ id, first, after }) => ({
     issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
