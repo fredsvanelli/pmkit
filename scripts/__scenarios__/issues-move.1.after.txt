@@ -1,0 +1,25 @@
+$ pmkit issues get EPC-2M9D --json  [step 1, read]
+exit 2 (expected NOT_FOUND)
+$ pmkit epic get EPC-2M9D --json  [step 1, read]
+exit 0
+$ pmkit epic move EPC-2M9D done --dry-run --json  [step Epic path 1, dry run]
+exit 0
+? Epic path, step 2  [confirmed]
+$ pmkit epic move EPC-2M9D done --json  [step Epic path 1, write]
+exit 0
+
+--- changed .issues/epics/EPC-2M9D/epic.md
+  ---
+  id: EPC-2M9D
+  title: Reliable webhooks and billing export
+-status: in_progress
++status: done
+  start: 2026-09-28
+  target: 2026-11-13
+  ---
+
+  Customers lose events when a delivery fails, and finance cannot export invoices.
+  This epic covers retries, signing and the CSV export.
+--- changed .issues/epics/EPC-2M9D/events.jsonl
+  {"at":"2026-09-25T09:00:00Z","by":"fred","op":"create","to":{"id":"EPC-2M9D","title":"Reliable webhooks and billing export","status":"in_progress","start":"2026-09-28","target":"2026-11-13"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}

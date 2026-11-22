@@ -13,9 +13,10 @@ import {
   matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
   readTree, treeChanges, formatSnapshot, makeRepoView, prepareCopy, runScenario, traceFromLog, stopProblems, expectUntilSaved,
 } from './scenario-helpers.mjs'
-import moveScenario from './__scenarios__/issues-move.mjs'
+import moveScenarios from './__scenarios__/issues-move.mjs'
 import { tempDir } from './test-helpers.mjs'
 
+const [moveScenario] = moveScenarios
 const CLI_NAMES = COMMANDS.map((c) => c.name)
 const cli = (name) => COMMANDS.find((c) => c.name === name)
 const call = (rest) => `\`node "\${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" ${rest}\``
@@ -215,6 +216,26 @@ test('coverageProblems names unused keys, stale skips and empty reasons', () => 
   assert.match(problems[0], /`4 issues move`.*not used/)
   assert.match(problems[1], /skip `5 issues list`.*reason/)
   assert.match(problems[2], /skip `9 validate`.*matches no call/)
+})
+
+test('parseCommandFile reads a `## <name> path` section as steps with the heading as prefix (PMK-355)', () => {
+  const text = [
+    '## Steps', '', `1. Run ${call('issues get <id> --json')}.`, '',
+    '## Epic path', '', `1. Run ${call('epic move <id> <category> --dry-run --json')}.`, '2. Show it.', '3. Run it without `--dry-run`.', '',
+    '## Output', '', `See ${call('epic list --json')}.`,
+  ].join('\n')
+  assert.deepEqual(stepsOf(text), ['steps|1|issues get', 'steps|Epic path 1|epic move', 'other||epic list'])
+})
+
+test('a key or point another scenario of the command uses, confirms or excuses is covered (PMK-355)', () => {
+  const calls = parse(['## Steps', '', `1. Run ${call('issues get <id> --json')}.`, `2. Run ${call('discover --json')}.`, `3. Run ${call('validate --json')}.`].join('\n')).calls
+  const siblings = { usedKeys: new Set(['2 discover']), skip: { '3 validate': 'not run here' }, confirmed: ['Step 5'], notHit: { 'Step 7': 'no commits' } }
+  assert.deepEqual(coverageProblems(calls, new Set(['1 issues get']), {}, siblings), [])
+  assert.match(coverageProblems(calls, new Set(['1 issues get']), {}, { ...siblings, skip: {} })[0], /`3 validate` is not used by any entry and not in skip/)
+  assert.deepEqual(pointProblems(['Step 5', 'Step 7'], [], {}, siblings), [])
+  assert.match(pointProblems(['Step 5', 'Step 7'], [], {}, { ...siblings, notHit: {} })[0], /`Step 7` is neither confirmed nor in notHit/)
+  // A scenario's own entries are still checked on their own: a stale skip stays a problem.
+  assert.match(coverageProblems(calls, new Set(['1 issues get', '3 validate']), { '9 gone': 'x' }, siblings)[0], /skip `9 gone` matches no call/)
 })
 
 test('coverageProblems ignores calls in other sections', () => {

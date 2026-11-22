@@ -2,11 +2,12 @@
 id: PMK-355
 title: Cover the epic path of /pmkit:issues:move in the scenario tests
 type: feature
-status: backlog
+status: in_progress
 parent: EPC-6
 related: [PMK-353]
+branch: pmk-355-cover-the-epic-path-of-pmkit-issues-move
 created: 2026-11-21T07:03:24.081Z
-updated: 2026-11-21T07:03:24Z
+updated: 2026-11-22T02:17:28Z
 ---
 
 ## Description
