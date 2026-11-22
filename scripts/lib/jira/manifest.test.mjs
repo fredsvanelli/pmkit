@@ -9,7 +9,7 @@ const raw = (overrides = {}) => ({
   workTypes: [{ name: 'Epic', level: 'epic' }, { name: 'Story', level: 'standard' }, { name: 'Sub-task', level: 'subtask' }],
   fields: [{ id: 'customfield_10016', name: 'Story Points', customType: 'com.pyxis.greenhopper.jira:jsw-story-points' }],
   license: { software: 'paid' },
-  settings: { issueLinking: true, subTasks: true, timeTracking: true },
+  settings: { issueLinking: true, timeTracking: true },
   board: { id: 1, type: 'scrum', estimationField: 'customfield_10016' },
   site: 'acme.atlassian.net',
   ...overrides,
@@ -46,7 +46,7 @@ test('a capability the site lacks gives the site hint and no site path', () => {
   assert.deepEqual(entry(unlicensed, 'capacity'), { id: 'capacity', path: 'absent', enableHint: 'Capacity needs cycles' })
   const kanban = buildJiraCapabilities(raw({ board: { id: 2, type: 'kanban', estimationField: null } }), GIT)
   assert.equal(entry(kanban, 'cycles').enableHint, 'Sprints need a Scrum board in space ENG')
-  const off = buildJiraCapabilities(raw({ settings: { issueLinking: false, subTasks: true, timeTracking: false } }), GIT)
+  const off = buildJiraCapabilities(raw({ settings: { issueLinking: false, timeTracking: false } }), GIT)
   assert.equal(entry(off, 'time_tracking').enableHint, "Turn on time tracking in Jira's global settings")
   assert.equal(entry(off, 'dependencies').enableHint, "Turn on issue linking in Jira's global settings")
   const flat = buildJiraCapabilities(raw({ workTypes: [{ name: 'Task', level: 'standard' }], fields: [], board: null }), GIT)

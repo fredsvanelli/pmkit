@@ -63,7 +63,6 @@ function settingsOf(config) {
   if (config === null) return null
   return {
     issueLinking: config.issueLinkingEnabled !== false,
-    subTasks: config.subTasksEnabled !== false,
     timeTracking: config.timeTrackingConfiguration !== undefined || config.timeTrackingEnabled === true,
   }
 }
@@ -112,7 +111,6 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
     fields: (Array.isArray(fields) ? fields : []).filter(own).map((field) => ({
       id: field.id,
       name: field.name,
-      custom: field.custom === true,
       system: field.schema?.system ?? null,
       customType: field.schema?.custom ?? null,
     })),
