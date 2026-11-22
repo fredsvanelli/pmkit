@@ -35,17 +35,6 @@ test('the tracker passes assertTracker', () => {
   assert.doesNotThrow(() => assertTracker(tracker(setup()).tracker))
 })
 
-test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
-  const { fetch, tracker: linear } = tracker(setup(), { fetch: fakeLinearFetch(fakeWorkspace({ releasesEnabled: true })) })
-  await assert.rejects(linear.createRelease({ id: '1.0' }, 'user-1'), {
-    code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement createRelease yet',
-    nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
-  })
-  assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
-  assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
-})
-
 test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   const { tracker: linear } = tracker(setup({ scope: {} }))
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
@@ -2197,4 +2186,40 @@ test('a docs write whose read-back fails says the write was done and that the is
   assert.deepEqual(result.after.docs, ['docs/a.md'])
   assert.match(result.warnings[0], /^ACME-1 is updated and its docs are linked, but reading it back failed \(.+\), so this record is the one pmkit expected: pmkit issues get ACME-1 shows it as it is now$/)
   assert.equal(fake.records[0].title, 'Renamed')
+})
+
+// PMK-261: create and mark releases on Linear, in the scope team's one pipeline.
+test('createRelease makes a release in the scope team\'s pipeline and prints the Local record', async () => {
+  const { tracker: linear, fetch } = releaseSetup()
+  const dry = await linear.createRelease({ id: '2.0', name: 'Two point oh', target: '2027-01-15' }, 'user-1', { dryRun: true })
+  assert.deepEqual(dry, { before: null, after: { id: null, name: 'Two point oh', target: '2027-01-15', state: 'planned', description: '' } })
+  assert.equal(mutationsIn(fetch), 0)
+  const made = await linear.createRelease({ id: '2.0', name: 'Two point oh', target: '2027-01-15' }, 'user-1')
+  assert.equal(made.before, null)
+  assert.deepEqual({ ...made.after, id: typeof made.after.id }, { id: 'string', name: 'Two point oh', target: '2027-01-15', state: 'planned', description: '' })
+  assert.deepEqual(lastVariables(fetch, 'PmkitReleaseCreate').input.pipelineId, 'pipe-acme')
+  assert.ok((await linear.listReleases()).some((release) => release.id === made.after.id))
+  await assert.rejects(linear.createRelease({ id: '2.0' }, 'user-1'), { code: 'CONFLICT' })
+  await assert.rejects(linear.createRelease({ id: '3.0', tag: 'v3.0' }, 'user-1'), { code: 'INVALID_INPUT', message: 'Linear releases have no git tag' })
+})
+
+test('createRelease refuses a team with two pipelines and names them', async () => {
+  const { tracker: linear, fetch } = releaseSetup({ issues: { pipelines: [...PIPELINES, { id: 'pipe-ios', name: 'iOS', teams: ['team-acme'] }], releases: RELEASES } })
+  await assert.rejects(linear.createRelease({ id: '2.0' }, 'user-1'), { code: 'INVALID_INPUT', message: 'team ACME has 2 release pipelines (Web, iOS), and pmkit creates a release only in a team with one' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('markReleased marks a Linear release released, and a released one is a CONFLICT', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'Open', releaseIds: [REL.two] })
+  const dry = await linear.markReleased(REL.two, 'user-1', { dryRun: true })
+  assert.equal(dry.after.state, 'released')
+  assert.equal(mutationsIn(fetch), 0)
+  const done = await linear.markReleased(REL.two, 'user-1')
+  assert.equal(done.after.state, 'released')
+  assert.deepEqual(done.unfinished.map((issue) => issue.id), ['ACME-1'])
+  assert.equal(lastVariables(fetch, 'PmkitReleaseUpdate').input.stageId, 'pipe-acme-done')
+  assert.equal((await linear.getRelease(REL.two)).state, 'released')
+  await assert.rejects(linear.markReleased(REL.one, 'user-1'), { code: 'CONFLICT', message: `release ${REL.one} was released at 2026-10-01T00:00:00.000Z` })
+  await assert.rejects(linear.markReleased(REL.ten, 'user-1', { tag: 'v1' }), { code: 'INVALID_INPUT', message: 'Linear releases have no git tag' })
 })
