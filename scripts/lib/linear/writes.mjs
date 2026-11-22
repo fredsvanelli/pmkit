@@ -198,7 +198,6 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
   return input
 }
 
-const activeReleaseIds = (node) => activeReleases(node?.releases?.nodes ?? []).map((item) => item.id)
 
 /**
  * The release input of a patch (PMK-246, one release per issue): add the new release and remove the current one. The caller has
@@ -211,10 +210,12 @@ function releaseInput(release, { mode, beforeNode, releaseNode }) {
   }
   if (release !== null && !releaseNode) throw invalid(`release ${release} was not resolved to a Linear release`)
   const target = release === null ? null : releaseNode.id
-  const current = activeReleaseIds(beforeNode)
+  const current = activeReleases(beforeNode?.releases?.nodes ?? [])
   const input = {}
-  if (target !== null && !current.includes(target)) input.addedReleaseIds = [target]
-  const removed = current.filter((id) => id !== target)
+  if (target !== null && !current.some((item) => item.id === target)) input.addedReleaseIds = [target]
+  // `none` clears every release; a target replaces only the release of its own pipeline (PMK-260). An unknown pipeline counts as the same.
+  const samePipeline = (item) => !item.pipeline?.id || !releaseNode?.pipeline?.id || item.pipeline.id === releaseNode.pipeline.id
+  const removed = current.filter((item) => item.id !== target && (target === null || samePipeline(item))).map((item) => item.id)
   if (removed.length > 0) input.removedReleaseIds = removed
   return input
 }

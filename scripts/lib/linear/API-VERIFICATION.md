@@ -65,7 +65,7 @@ Checked 2026-11-10 against Linear's public SDK schema (`packages/sdk/src/schema.
 | `release list` | `releases(filter: { pipeline: { teams: { some: { key: { eq: <team> } } } } })`, page by page (`ReleaseFilter.pipeline` is a `ReleasePipelineFilter`, whose `teams` is a `TeamCollectionFilter`). |
 | an issue's `release` / `releases` | `issues(filter: { id: { in } }) { id releases(first: 20) }` for up to 100 issues at once, and `issue(id) { releases(first, after) }` for an issue with more than 20. Sent only when `Organization.releasesEnabled` is true. |
 | a release of another team | `Release.pipeline.teams` (a `TeamConnection`); a release whose pipeline does not list the scope team is refused. |
-| `issues update --release` | `issueUpdate` with `IssueUpdateInput.addedReleaseIds` and `removedReleaseIds`. |
+| `issues update --release` | `issueUpdate` with `IssueUpdateInput.addedReleaseIds` and `removedReleaseIds`. One release per pipeline (PMK-260): `none` removes every release, an id removes only the other releases of its pipeline, read with `issue(id) { releases { pipeline { id } } }` for the write only. |
 | the `release` filter | `IssueFilter.releases: { some: { id: { eq } } }` (`ReleaseCollectionFilter`). |
 
 Open until a workspace with releases runs them (acceptance criterion 5 of PMK-246):

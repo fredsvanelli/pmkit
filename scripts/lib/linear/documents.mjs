@@ -196,6 +196,11 @@ export const ISSUES_RELEASES_QUERY = `query PmkitIssuesReleases($ids: [ID!], $fi
   issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id releases(first: ${BATCH_RELEASES_PAGE}) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } } }
 }`
 
+// PMK-260: an issue's releases with their pipelines, read only for a release write, so the list reads keep their cost.
+export const ISSUE_RELEASE_PIPELINES_QUERY = `query PmkitIssueReleasePipelines($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { releases(first: $first, after: $after) { nodes { ${ISSUE_RELEASE_FIELDS} pipeline { id } } ${PAGE_INFO} } }
+}`
+
 export const ISSUE_RELEASES_QUERY = `query PmkitIssueReleases($id: String!, $first: Int!, $after: String) {
   issue(id: $id) { releases(first: $first, after: $after) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } }
 }`
