@@ -349,7 +349,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]` | creates |
 | `issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
 | `issues move <id> <category> [--status name]` | changes status by category |
-| `issues assign <id> <member\|none>` | assigns |
+| `issues assign <id> <member\|me\|none>` | assigns |
 | `issues link <from> <to> --kind blocks\|related\|duplicate [--remove]` | links or unlinks; only the issue whose file changes has to exist, so a dangling reference can be removed **(builder's call)** |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | comments |
@@ -359,8 +359,8 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `cycle list [--state s]`, `cycle current`, `cycle issues <id>` | reads sprints |
 | `cycle open --start d [--end d] [--goal g] [--name n]` | opens a sprint; the end defaults from `sprint_length_days` |
 | `cycle close <id>` | closes and prints the unfinished issues |
-| `cycle add <id...> --to <sprint\|none>` | moves issues into or out of a sprint |
-| `cycle capacity <id> [--set member=n,..]` | reads or sets capacity |
+| `cycle add <id...> --to <sprint\|current\|none>` | moves issues into or out of a sprint |
+| `cycle capacity <id\|current> [--set member=n,..]` | reads or sets capacity |
 | `epic list`, `epic get <id>`, `epic progress <id>` | reads epics |
 | `epic create --title t [--start d] [--target d]` | creates an epic |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
@@ -369,7 +369,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `milestone create <id> [--name n] [--due YYYY-MM-DD]` | creates a milestone |
 | `release list [--state planned\|released]`, `release get <id>`, `release issues <id> [--archived]` | reads releases |
 | `release create <id> [--name n] [--tag t] [--target YYYY-MM-DD]`, `release mark-released <id> [--tag t]` | creates a release, marks it released |
-| `release-notes [--release id\|--sprint id\|current\|--since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
+| `release-notes [--release id \| --sprint id\|current \| --since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time [--since d] [--until d]` | median and p85 days from first `in_progress` to `done` |
