@@ -506,3 +506,13 @@ test('setup Existing config step 2 reads the problems by code, and only config a
   assert.match(step, /\/pmkit:upgrade/)
   assert.doesNotMatch(step, /A problem in `\.issues\/config\.yaml` or `\.pmkit\/config\.yaml` makes `init --update` refuse/)
 })
+
+test('cycle/close step 3 leaves canceled issues out of the unfinished ones, as closeCycle does (PMK-165)', () => {
+  const step = stepText('cycle/close.md', '3')
+  assert.match(step, /`canceled`[^\n]*left out/)
+  assert.match(step, /[Tt]he rest are unfinished/)
+})
+
+test('cycle/close step 6 asks whether an issue is the remaining work of an earlier split with AskUserQuestion (PMK-165)', () => {
+  assert.match(stepText('cycle/close.md', '6'), /Ask with `AskUserQuestion` whether that issue is the remaining work of an earlier split/)
+})
