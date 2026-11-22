@@ -97,7 +97,12 @@ exit 0
   "unknownLoad": [],
   "imbalances": [],
   "suggestions": [],
-  "noMoves": null
+  "noMoves": null,
+  "warnings": [
+    "ISS-4: CONFLICT The issue file contains git conflict markers.",
+    "ISS-5: CONFLICT The issue file contains git conflict markers.",
+    "the delivered count is not verified: an issue file did not parse"
+  ]
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.

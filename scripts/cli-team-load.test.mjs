@@ -180,6 +180,8 @@ test('team load --sprint current with no active sprint reads nothing and warns, 
   assert.deepEqual(data.rows.map((row) => row.issues), [0, 0])
   assert.equal(data.unassigned.issues, 0)
   assert.match(stderr, new RegExp(warning))
+  // The JSON holds the warning too (PMK-154).
+  assert.ok(data.warnings.includes(warning.slice('warning: '.length)), JSON.stringify(data.warnings))
   assert.ok(!notes.some((line) => line.startsWith('note: no active sprint')), notes.join('\n'))
 })
 

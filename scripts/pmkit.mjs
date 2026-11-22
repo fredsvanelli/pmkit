@@ -251,17 +251,25 @@ const filterText = (filter) => Object.entries(filter).filter(([, value]) => valu
 /** The filter line of a stored view, or what made its file unreadable. */
 const storedViewText = (view) => (view.unreadable === undefined ? `filter: ${filterText(view.filter)}` : `a file that could not be read (${view.unreadable})`)
 
-/** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
+const NO_ACTIVE_SPRINT = 'there is no active sprint, so --sprint current matches no issues; run pmkit cycle list'
+
+/** The no-active-sprint warning for a search with `sprint: current` that found nothing, or []. */
+async function noActiveSprintWarning(tracker, found, sprint) {
+  return sprint === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null ? [NO_ACTIVE_SPRINT] : []
+}
+
+/**
+ * The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values.
+ * The warnings are in the JSON too, as `warnings`, when there is one: the agent reads the JSON (PMK-154).
+ */
 async function issueSearchResult(tracker, found, { sort, sprint }) {
   const warnings = [...found.problems.map(problemLine), ...(found.warnings ?? [])]
   if (found.hasMore === true) {
     const order = (sort ?? 'created') === 'created' ? '' : '; the order covers the issues read'
     warnings.push(`Linear has more matching issues than the 1000 pmkit read; narrow the filter${order}`)
   }
-  if (sprint === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null) {
-    warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
-  }
-  return { data: found, text: issueTable(found.issues, { sprint: sprint === undefined }), warnings }
+  warnings.push(...await noActiveSprintWarning(tracker, found, sprint))
+  return { data: warnings.length === 0 ? found : { ...found, warnings }, text: issueTable(found.issues, { sprint: sprint === undefined }), warnings }
 }
 
 /** The create or update input from field flags and body files. */
@@ -3104,8 +3112,9 @@ async function runBulk(ctx) {
   const preview = buildPreview({ change, found, results })
   const releaseWarnings = kind === 'release' && value !== 'none' ? await releasedWarnings(ctx, { release: value }) : []
   const archiveWarnings = kind === 'archive' && preview.writes > 0 ? ['archived issues leave every list and are never matched by a bulk change again'] : []
-  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: [...releaseWarnings, ...archiveWarnings] }
-  const warnings = [...found.problems.map(problemLine), ...releaseWarnings, ...archiveWarnings]
+  const sprintWarnings = await noActiveSprintWarning(tracker, found, filter.sprint)
+  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: [...sprintWarnings, ...releaseWarnings, ...archiveWarnings] }
+  const warnings = [...found.problems.map(problemLine), ...sprintWarnings, ...releaseWarnings, ...archiveWarnings]
   if (ctx.dryRun) return { data, text: bulkText(preview, { dryRun: true }), warnings }
 
   if (preview.blockers.length > 0) {
@@ -3448,7 +3457,8 @@ async function runGoalsOverview(ctx) {
 /** The load per member for the active sprint, or for all open work without one. Writes nothing. */
 async function runTeamLoad(ctx) {
   const { data, warnings, notes } = await teamLoadReport(ctx, { wanted: ctx.opt('sprint') })
-  return { data, text: teamLoadText(data), warnings, notes }
+  // The warnings are in the JSON too when there is one, as in issues list (PMK-154).
+  return { data: warnings.length === 0 ? data : { ...data, warnings }, text: teamLoadText(data), warnings, notes }
 }
 
 /**
@@ -3492,7 +3502,7 @@ async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = 
     if (sprint === null) throw new PmkitError('NOT_FOUND', `sprint ${wanted} does not exist`, 'pmkit cycle list')
   }
   const found = noSprintNamed ? { issues: [], problems: [], hasMore: false } : await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
-  if (noSprintNamed) warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
+  if (noSprintNamed) warnings.push(NO_ACTIVE_SPRINT)
   warnings.push(...found.problems.map(problemLine))
   const truncated = found.hasMore === true
   if (truncated) warnings.push('the issue read was cut before the end, so the load covers only part of the scope and no move is proposed')
