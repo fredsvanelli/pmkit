@@ -4,3 +4,6 @@
 {"at":"2026-11-22T03:37:56Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T03:37:56Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-152-decide-what-none-and-an-unknown-sprint"}
 {"at":"2026-11-22T03:38:49Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:52:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:52:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:52:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
