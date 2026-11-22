@@ -8,3 +8,5 @@
 {"at":"2026-11-22T03:37:10Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T03:37:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T03:37:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:37:25Z","by":"fred","op":"comment","to":"2026-11-22T03-37-25Z-fred.md"}
+{"at":"2026-11-22T03:37:26Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
