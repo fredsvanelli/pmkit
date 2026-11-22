@@ -2,7 +2,7 @@
 id: PMK-259
 title: Unarchive issues on Linear
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
