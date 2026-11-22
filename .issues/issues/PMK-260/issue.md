@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-5
 branch: pmk-260-show-and-set-several-linear-releases-per
 created: 2026-11-11T22:34:42.770Z
-updated: 2026-11-22T17:30:22Z
+updated: 2026-11-22T17:38:41Z
 ---
 
 ## Description
@@ -36,7 +36,7 @@ A Linear issue can be in several releases, one per release pipeline (for example
 
 ## Acceptance criteria
 
-- [ ] `issues get` in text shows each release of a Linear issue that is in two releases
-- [ ] `issues update --release none` clears an issue that is in two releases
-- [ ] `issues update --release <id>` on an issue in releases of two pipelines changes only the release of that id's pipeline
-- [ ] `issues bulk release` follows the same rule, with the same preview
+- [x] `issues get` in text shows each release of a Linear issue that is in two releases
+- [x] `issues update --release none` clears an issue that is in two releases
+- [x] `issues update --release <id>` on an issue in releases of two pipelines changes only the release of that id's pipeline
+- [x] `issues bulk release` follows the same rule, with the same preview

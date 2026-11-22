@@ -2,3 +2,7 @@
 {"at":"2026-11-22T17:30:22Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-22T17:30:22Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T17:30:22Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-260-show-and-set-several-linear-releases-per"}
+{"at":"2026-11-22T17:38:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:38:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:38:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:38:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
