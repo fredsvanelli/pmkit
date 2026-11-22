@@ -468,3 +468,41 @@ test('no paragraph in commands, skills or docs is glued to the list item above i
     .flatMap((file) => lazyContinuations(fs.readFileSync(file, 'utf8')).map((line) => `${path.relative(root, file)}:${line}`))
   assert.deepEqual(found, [], 'add a blank line before the paragraph, or indent it to the list item\'s text')
 })
+
+// PMK-156: the text of a numbered step, sub-items included, inside an optional `### <section>`.
+function stepText(rel, step, section) {
+  let text = fs.readFileSync(path.join(COMMANDS_DIR, rel), 'utf8')
+  if (section) text = text.split(`\n### ${section}\n`)[1].split(/\n### /)[0]
+  const lines = text.split('\n')
+  const start = lines.findIndex((line) => line.startsWith(`${step}. `))
+  assert.ok(start >= 0, `${rel} has a step ${step}`)
+  const end = lines.findIndex((line, i) => i > start && /^(\d+\. |#)/.test(line))
+  return lines.slice(start, end === -1 ? undefined : end).join('\n')
+}
+
+test('local/doctor step 3 settles migration problems before any fix', () => {
+  const step = stepText('local/doctor.md', '3')
+  const bullet = step.split('\n').find((line) => line.startsWith('   - `migration` problems'))
+  assert.ok(bullet, 'step 3 has a bullet for migration problems')
+  assert.match(bullet, /this pmkit has no migration from tracker format/)
+  assert.match(bullet, /\/pmkit:upgrade/)
+  assert.match(bullet, /migration <n> to <m> failed: <reason>/)
+  assert.match(bullet, /validate --json/)
+  assert.match(bullet, /go to step 6/)
+})
+
+test('local/doctor step 3 checks the tracker folder before setting tracker.system to local', () => {
+  const bullet = stepText('local/doctor.md', '3').split('\n').find((line) => line.startsWith('   - `config` problems'))
+  assert.match(bullet, /is not supported yet, set it to local/)
+  assert.match(bullet, /<tracker path>\/config\.yaml/)
+  assert.match(bullet, /move `\.pmkit\/config\.yaml` aside and run `\/pmkit:setup`/)
+})
+
+test('setup Existing config step 2 reads the problems by code, and only config and conflict make init --update refuse', () => {
+  const step = stepText('setup.md', '2', 'Existing config')
+  assert.match(step, /`config` or `conflict`[^\n]*make `init --update` refuse/)
+  assert.match(step, /`FORMAT` or `migration`[^\n]*do not stop the update/)
+  assert.match(step, /\/pmkit:local:doctor/)
+  assert.match(step, /\/pmkit:upgrade/)
+  assert.doesNotMatch(step, /A problem in `\.issues\/config\.yaml` or `\.pmkit\/config\.yaml` makes `init --update` refuse/)
+})
