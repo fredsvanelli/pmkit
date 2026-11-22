@@ -10,7 +10,7 @@ related: [PMK-123]
 milestone: local-gaps
 branch: pmk-162-cover-a-blocker-already-in-the-planned
 created: 2026-10-28T00:11:40.357Z
-updated: 2026-11-22T05:23:43Z
+updated: 2026-11-22T05:29:19Z
 ---
 
 ## Description
@@ -19,4 +19,4 @@ Found in PMK-123. `/pmkit:cycle:plan` step 5 counts a blocker as selected when i
 
 ## Acceptance criteria
 
-- [ ] A cycle-plan scenario plans an existing planned sprint that holds an open blocker, and the issue it blocks stays in the scope and lands in that sprint
+- [x] A cycle-plan scenario plans an existing planned sprint that holds an open blocker, and the issue it blocks stays in the scope and lands in that sprint
