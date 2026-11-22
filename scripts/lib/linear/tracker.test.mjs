@@ -1541,6 +1541,14 @@ test('listReleases lists the scope team releases, oldest version first, without 
   assert.deepEqual((await linear.listReleases({ state: 'released' })).map((release) => release.name), ['One'])
 })
 
+// PMK-266: without a scope team the release filter would match every team's releases.
+test('release list and release get on Linear without tracker.scope.team answer NOT_CONFIGURED before any request', async () => {
+  const { tracker: linear, fetch } = releaseSetup({ scope: { workspace: 'acme' } })
+  await assert.rejects(linear.listReleases(), { code: 'NOT_CONFIGURED', message: 'tracker.scope.team is not set' })
+  await assert.rejects(linear.getRelease(REL.two), { code: 'NOT_CONFIGURED' })
+  assert.deepEqual(namesOf(fetch).filter((name) => name === 'PmkitReleases' || name === 'PmkitRelease'), [])
+})
+
 test('listReleases with more releases than one page reads every page', async () => {
   const many = Array.from({ length: 120 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `R${i}`, version: `1.${i}`, pipeline: 'pipe-acme' }))
   const { tracker: linear, fetch } = releaseSetup({ issues: { pipelines: PIPELINES, releases: many } })

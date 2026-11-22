@@ -42,9 +42,14 @@ export async function allReleases(client, document, variables, select) {
 
 export function releaseOperations({ client, config }) {
   const team = config.pmkit?.tracker?.scope?.team
+  // Without a team the pipeline filter would be { eq: undefined }, which matches every team's releases (PMK-266).
+  const requireTeam = () => {
+    if (!team) throw new PmkitError('NOT_CONFIGURED', 'tracker.scope.team is not set', '/pmkit:setup')
+  }
 
   /** The raw release node of an id, or NOT_FOUND: unknown, malformed (no request) or canceled. */
   async function resolveRelease(id) {
+    requireTeam()
     const missing = () => new PmkitError('NOT_FOUND', `release ${id} does not exist`, 'pmkit release list')
     if (typeof id !== 'string' || !UUID.test(id)) throw missing()
     let node
@@ -64,6 +69,7 @@ export function releaseOperations({ client, config }) {
   }
 
   async function listReleases({ state } = {}) {
+    requireTeam()
     if (state !== undefined && !['planned', 'released'].includes(state)) throw new PmkitError('INVALID_INPUT', 'state must be planned or released', 'pmkit release list')
     const filter = { pipeline: { teams: { some: { key: { eq: team } } } } }
     const nodes = await allReleases(client, RELEASES_QUERY, { filter }, (data) => data.releases)
