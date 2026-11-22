@@ -2,7 +2,7 @@
 id: PMK-353
 title: "Add epic move to change an epic's status"
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 8
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-6
 related: [PMK-354, PMK-355, PMK-356]
 branch: pmk-353-add-epic-move-to-change-an-epic-s-status
 created: 2026-11-21T02:24:06.919Z
-updated: 2026-11-21T07:03:24Z
+updated: 2026-11-22T00:23:24Z
 ---
 
 ## Description
