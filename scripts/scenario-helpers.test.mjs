@@ -11,7 +11,7 @@ import { NOW, runPmkit } from './golden-helpers.mjs'
 import {
   scenarioName, snapshotFile, parseCommandFile, callKey, unknownFlags,
   matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
-  readTree, treeChanges, formatSnapshot, makeRepoView, prepareCopy, runScenario, traceFromLog, stopProblems, expectUntilSaved,
+  readTree, treeChanges, formatSnapshot, makeRepoView, prepareCopy, runScenario, siblingCoverage, traceFromLog, stopProblems, expectUntilSaved,
 } from './scenario-helpers.mjs'
 import moveScenarios from './__scenarios__/issues-move.mjs'
 import { tempDir } from './test-helpers.mjs'
@@ -414,12 +414,12 @@ const moveOnly = (steps, extra = {}) => ({
   command: 'issues/move',
   fixture: 'team',
   steps,
-  skip: { '1 issues get': 'test', '1 epic get': 'test', '2 issues get': 'test', '3 discover': 'test' },
+  skip: { '1 issues get': 'test', '1 epic get': 'test', '2 issues get': 'test', '3 discover': 'test', 'Epic path 1 epic move': 'test' },
   notHit: { 'Step 5': 'test', 'Epic path, step 2': 'test' },
   ...extra,
 })
-const runMove = (scenario, run) =>
-  runScenario(scenario, { name: 'issues-move', parsed: MOVE_FILE, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS, run })
+const runMove = (scenario, run, siblings) =>
+  runScenario(scenario, { name: 'issues-move', parsed: MOVE_FILE, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS, run, siblings })
 const DRY_MOVE = { step: '4', dryRun: ['issues', 'move', 'ISS-2X6D', 'done'] }
 
 test('runScenario fails a dry run that writes', async () => {
@@ -505,15 +505,17 @@ test('runScenario stops at an entry that fails and names it', async () => {
 test('runScenario gives the same snapshot twice and leaks no temp path, real date, user or git identity', async () => {
   // github: true adds git, the bare origin and the fake gh to the run, so their environment is checked too.
   const scenario = { ...moveScenario, github: true }
+  // The epic scenario of the same command covers the epic path, as in scenarios.test.mjs (PMK-355).
+  const siblings = siblingCoverage(moveScenarios, 0, MOVE_FILE, CLI_NAMES)
   const home = scratchDir()
   const keys = ['PMKIT_USER', 'HOME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_EMAIL', 'EMAIL']
   const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
   try {
-    const first = await runMove(scenario)
+    const first = await runMove(scenario, undefined, siblings)
     assert.deepEqual(first.problems, [])
     writeFile(home, '.gitconfig', '[user]\n\tname = Leak\n\temail = leak@example.com\n')
     Object.assign(process.env, { PMKIT_USER: 'other', HOME: home, GIT_AUTHOR_EMAIL: 'leak@example.com', GIT_COMMITTER_EMAIL: 'leak@example.com', EMAIL: 'leak@example.com' })
-    const second = await runMove(scenario)
+    const second = await runMove(scenario, undefined, siblings)
     assert.deepEqual(second.problems, [])
     assert.equal(second.snapshot, first.snapshot)
     for (const leak of [os.tmpdir(), fs.realpathSync(os.tmpdir()), 'pmkit-scn-', 'other', 'leak@']) {
