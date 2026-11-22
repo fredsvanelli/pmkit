@@ -1,7 +1,8 @@
 // /pmkit:cycle:plan on the team fixture. No sprint is planned, so step 1 does not ask. The active sprint 2026-10-12
 // ends on 2026-10-25, so the next one runs from Monday 2026-10-26 to 2026-11-08 (14 days). The formula of step 4
 // gives fred=6 and ana=4 (velocity 10, 10 working days, availability 1 and 0.8); in step 6 the user raises them to
-// fred=8 and ana=6. The scope is every todo, backlog or in_progress issue without a sprint. Setup links two
+// fred=8 and ana=6. The scope is every todo, backlog, in_progress or in_review issue without a sprint; setup adds
+// Review the retry policy (in_review, 2 points, no sprint), which a sprint close leaves that way (PMK-164). Setup links two
 // blockers: ISS-5N1R blocks ISS-6J0B and is in the selection, and ISS-8C4W (in_review, in the active sprint)
 // blocks ISS-3F7H. Step 5 reads ISS-8C4W, the one blocker outside its list, and leaves ISS-3F7H out because
 // ISS-8C4W is open and not selected. Capacity 14 covers 3 + 1 points, and ISS-6J0B has no estimate and is flagged
@@ -24,6 +25,8 @@ export default {
     await pmkit(['cycle', 'add', 'ISS-5N1R', 'ISS-4M2S', '--to', 'none'])
     await pmkit(['issues', 'link', 'ISS-5N1R', 'ISS-6J0B', '--kind', 'blocks'])
     await pmkit(['issues', 'link', 'ISS-8C4W', 'ISS-3F7H', '--kind', 'blocks'])
+    const review = await pmkit(['issues', 'create', '--title', 'Review the retry policy', '--estimate', '2'])
+    await pmkit(['issues', 'move', review.after.id, 'in_review'])
   },
   steps: [
     // Step 1: the sprints and the members.
@@ -32,8 +35,8 @@ export default {
     // Step 3: velocity from the last 3 sprints.
     { step: '3', read: ['metrics', 'velocity', '--window', '3'], save: 'velocity' },
     // Step 5: the draft scope.
-    { step: '5', read: ['issues', 'list', '--category', 'todo,backlog,in_progress', '--sprint', 'none'], save: 'scope' },
-    { step: '5', read: ['issues', 'list', '--category', 'todo,backlog,in_progress', '--sprint', 'none', '--blocked'], save: 'blocked' },
+    { step: '5', read: ['issues', 'list', '--category', 'todo,backlog,in_progress,in_review', '--sprint', 'none'], save: 'scope' },
+    { step: '5', read: ['issues', 'list', '--category', 'todo,backlog,in_progress,in_review', '--sprint', 'none', '--blocked'], save: 'blocked' },
     // ISS-8C4W blocks ISS-3F7H and is not in the first list. ISS-5N1R blocks ISS-6J0B but is in the first list.
     { step: '5', read: ['issues', 'get', 'ISS-8C4W'], save: 'blocker' },
     // Steps 6 and 7: approve the capacity inputs, then open the sprint and set the capacity.
@@ -55,7 +58,11 @@ export default {
     assert.deepEqual(sprint.capacity, { fred: 8, ana: 6 })
     assert.equal(saved.velocity.average, 10, 'the plan says the velocity comes from one closed sprint')
     // The order is the CLI's creation order (10-05, 10-07, 10-08, 10-13).
-    assert.deepEqual(saved.scope.issues.map((issue) => issue.id), ['ISS-5N1R', 'ISS-3F7H', 'ISS-6J0B', 'ISS-4M2S'])
+    // The in_review issue of setup comes last: it was created after the fixture's issues.
+    const review = saved.scope.issues.at(-1)
+    assert.deepEqual([review.title, review.status.category], ['Review the retry policy', 'in_review'])
+    assert.deepEqual(saved.scope.issues.slice(0, -1).map((issue) => issue.id), ['ISS-5N1R', 'ISS-3F7H', 'ISS-6J0B', 'ISS-4M2S'])
+    assert.equal(repo.issue(review.id).sprint, '2026-10-26', 'step 9 plans the sprintless in_review issue')
     assert.deepEqual(saved.blocked.issues.map((issue) => issue.id), ['ISS-3F7H', 'ISS-6J0B'])
     assert.equal(saved.blocker.status.category, 'in_review', 'ISS-8C4W is open, so ISS-3F7H stays out')
     assert.equal(repo.issue('ISS-3F7H').sprint, undefined, 'step 5 leaves out ISS-3F7H for its open blocker')

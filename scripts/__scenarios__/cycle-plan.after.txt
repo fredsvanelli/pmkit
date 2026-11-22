@@ -4,9 +4,9 @@ $ pmkit discover --json  [step 1, read]
 exit 0
 $ pmkit metrics velocity --window 3 --json  [step 3, read]
 exit 0
-$ pmkit issues list --category todo,backlog,in_progress --sprint none --json  [step 5, read]
+$ pmkit issues list --category todo,backlog,in_progress,in_review --sprint none --json  [step 5, read]
 exit 0
-$ pmkit issues list --category todo,backlog,in_progress --sprint none --blocked --json  [step 5, read]
+$ pmkit issues list --category todo,backlog,in_progress,in_review --sprint none --blocked --json  [step 5, read]
 exit 0
 $ pmkit issues get ISS-8C4W --json  [step 5, read]
 exit 0
@@ -17,10 +17,10 @@ $ pmkit cycle open --start 2026-10-26 --end 2026-11-08 --goal 'Dashboard empty s
 exit 0
 $ pmkit cycle capacity 2026-10-26 --set fred=8,ana=6 --json  [step 7, write]
 exit 0
-$ pmkit cycle add ISS-5N1R ISS-6J0B ISS-4M2S --to 2026-10-26 --dry-run --json  [step 8, dry run]
+$ pmkit cycle add ISS-5N1R ISS-6J0B ISS-4M2S ISS-M0GZ --to 2026-10-26 --dry-run --json  [step 8, dry run]
 exit 0
 ? Step 8  [confirmed]
-$ pmkit cycle add ISS-5N1R ISS-6J0B ISS-4M2S --to 2026-10-26 --json  [step 8, write]
+$ pmkit cycle add ISS-5N1R ISS-6J0B ISS-4M2S ISS-M0GZ --to 2026-10-26 --json  [step 8, write]
 exit 0
 
 --- changed .issues/issues/ISS-4M2S/events.jsonl
@@ -92,6 +92,22 @@ exit 0
   ## Description
 
   Move to the current LTS of the build runner.
+--- changed .issues/issues/ISS-M0GZ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Review the retry policy","type":"feature","status":"backlog","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_review"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":null,"to":"2026-10-26"}
+--- changed .issues/issues/ISS-M0GZ/issue.md
+  ---
+  id: ISS-M0GZ
+  title: Review the retry policy
+  type: feature
+  status: in_review
+  estimate: 2
++sprint: 2026-10-26
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
 --- added .issues/sprints/2026-10-26.yaml
 +name: Sprint 2026-10-26
 +start: 2026-10-26
