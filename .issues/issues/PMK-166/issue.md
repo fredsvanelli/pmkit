@@ -10,7 +10,7 @@ related: [PMK-121]
 milestone: local-gaps
 branch: pmk-166-refuse-cycle-add-into-a-closed-sprint
 created: 2026-10-28T00:11:41.052Z
-updated: 2026-11-22T04:50:15Z
+updated: 2026-11-22T05:05:47Z
 ---
 
 ## Description
@@ -19,5 +19,5 @@ Found in PMK-121. `cycle add` accepts an issue into a sprint whose state is `clo
 
 ## Acceptance criteria
 
-- [ ] `cycle add`, `issues create --sprint` and `issues update --sprint` into a closed sprint fail with `CONFLICT` and write nothing on Local, Linear and GitHub
-- [ ] Velocity counts a sprint whose `closed` time does not parse by its end date instead of dropping every issue
+- [x] `cycle add`, `issues create --sprint` and `issues update --sprint` into a closed sprint fail with `CONFLICT` and write nothing on Local, Linear and GitHub
+- [x] Velocity counts a sprint whose `closed` time does not parse by its end date instead of dropping every issue
