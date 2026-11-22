@@ -2,7 +2,7 @@
 id: PMK-166
 title: Refuse cycle add into a closed sprint and check closed in adapters
 type: bug
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-121]
 milestone: local-gaps
 branch: pmk-166-refuse-cycle-add-into-a-closed-sprint
 created: 2026-10-28T00:11:41.052Z
-updated: 2026-11-22T05:05:47Z
+updated: 2026-11-22T05:06:03Z
 ---
 
 ## Description
