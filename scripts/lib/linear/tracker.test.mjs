@@ -2118,3 +2118,16 @@ test('unlink, a comment, resolving a thread, delegate and restore read no list a
   await linear.restore('ACME-2', 'user-1')
   assert.deepEqual(after('PmkitIssueUnarchive', from), [])
 })
+
+// PMK-258: a doc stored by another client as ./docs/a.md is the doc docs/a.md, never upserted and deleted in one change.
+test('a docs change keeps a doc whose stored path is not in normal form, and says so', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [{ ...docAttachment('docs/a.md', 1), metadata: { pmkitDoc: './docs/a.md' } }] })
+  const { after } = await linear.updateIssue('ACME-1', { docs: ['./docs/a.md', 'docs/b.md'] }, 'user-1', { docsBranch: 'develop' })
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitAttachmentCreate').length, 1)
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitAttachmentDelete').length, 0)
+  assert.deepEqual(after.docs, ['./docs/a.md', 'docs/b.md'])
+  assert.ok(linear.takeNotes().includes('ACME-1 links docs/a.md as ./docs/a.md, written by another client; pmkit kept it as it is'))
+  await linear.updateIssue('ACME-1', { docs: ['docs/b.md'] }, 'user-1', { docsBranch: 'develop' })
+  assert.deepEqual((await linear.getIssue('ACME-1')).docs, ['docs/b.md'])
+})

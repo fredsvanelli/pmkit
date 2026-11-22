@@ -3,7 +3,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { resolveDefaultBranch } from '../config.mjs'
-import { repoDocPath } from '../doc-path.mjs'
+import { repoDocPath, storedDocPath } from '../doc-path.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
@@ -11,7 +11,7 @@ import { checkFilter, closedSprint, unknownSprint } from '../issue-filter.mjs'
 import { cycleKey, cycleState } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
-import { blockedOpen, docPaths, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
+import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { activeReleases, allReleases, releasesOff } from './releases.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
 
@@ -403,14 +403,19 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const docs = [...new Set(docList.map(repoDocPath))]
     const nodes = beforeNode.attachments?.nodes ?? []
     const isDoc = (item) => typeof item.metadata?.pmkitDoc === 'string'
-    const current = docPaths(nodes)
+    // Compared in normal form: a doc another client stored as ./docs/a.md is docs/a.md, kept as it is (PMK-258).
+    const docOf = (item) => storedDocPath(item.metadata.pmkitDoc)
+    const current = nodes.filter(isDoc).map(docOf)
+    for (const item of nodes.filter((node) => isDoc(node) && docOf(node) !== node.metadata.pmkitDoc && docs.includes(docOf(node)))) {
+      notes.push(`${beforeNode.identifier} links ${docOf(item)} as ${item.metadata.pmkitDoc}, written by another client; pmkit kept it as it is`)
+    }
     const add = docs.filter((path) => !current.includes(path)).map((path) => ({ path, url: docUrl(path, branch) }))
     // attachmentCreate upserts by url, so an attachment a person made with this link would be rewritten, and removed later as a doc.
     const taken = add.map((item) => nodes.find((node) => node.url === item.url && !isDoc(node))).filter(Boolean)
     if (taken.length > 0) {
       throw new PmkitError('CONFLICT', `${beforeNode.identifier} already has an attachment with the link ${taken[0].url} that pmkit did not create, so pmkit leaves it alone and does not link ${add.find((item) => item.url === taken[0].url).path}`, 'Remove that attachment in Linear, then run the command again')
     }
-    const remove = nodes.filter((item) => isDoc(item) && !docs.includes(item.metadata.pmkitDoc))
+    const remove = nodes.filter((item) => isDoc(item) && !docs.includes(docOf(item)))
     if (add.length === 0 && remove.length === 0) return null
     return { add, remove }
   }

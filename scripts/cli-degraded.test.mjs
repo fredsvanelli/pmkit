@@ -155,6 +155,15 @@ test('issues update --remove-doc alone on Linear prints no default-branch note',
   assert.equal(JSON.parse(result.stdout).notes, undefined)
 })
 
+// PMK-258: --remove-doc matches a doc another client stored as ./docs/a.md.
+test('issues update --remove-doc on Linear removes a doc stored as ./docs/a.md', async () => {
+  const doc = { id: 'att-1', url: 'https://github.com/acme/app/blob/main/docs/a.md', title: 'docs/a.md', metadata: { pmkitDoc: './docs/a.md' }, createdAt: '2026-10-27T12:00:01.000Z' }
+  const calls = {}
+  const result = await linear(['issues', 'update', 'ACME-1', '--remove-doc', 'docs/a.md', '--json'], { calls, gitHost: 'acme/app', seed: (fake) => fake.seed({ title: 'One' }, { attachments: [doc] }) })
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(calls.fetch.calls.filter((call) => /PmkitAttachmentDelete/.test(call.body.query)).length, 1)
+})
+
 // The step 6 of /pmkit:spec:record-decision on Linear (PMK-252 review): the comment and the docs link of each related issue.
 test('record-decision step 6 on Linear: a comment and a docs link per issue, and the link is the comment alone without a GitHub repo', async () => {
   const seed = (fake) => { fake.seed({ title: 'One' }); fake.seed({ title: 'Two' }) }
