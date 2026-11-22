@@ -28,6 +28,14 @@ _Avoid_: project (Jira's old name for a space; reads GitHub Project or Epic), bo
 A kind of Jira work item a space offers, such as Story, Bug, Epic or Sub-task, each with its own statuses and a hierarchy level. A pmkit type maps to one work type.
 _Avoid_: issue type (Jira's old name), type (alone; reads the pmkit type)
 
+**Transition**:
+A move of a Jira work item from one status to another that the space's workflow allows. On Jira, `issues move` runs the one transition that reaches the target status, never a chain of them.
+_Avoid_: status change (on Jira, alone), workflow step
+
+**Screen field**:
+A field a Jira transition asks for on its screen before it moves the work item, such as Resolution on a move to Done. pmkit asks the user for each required one that has no default, and never fills one itself.
+_Avoid_: transition field, required field (alone)
+
 **Adapter**:
 The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`. The CLI picks the tracker adapter by `tracker.system` from the registry in `scripts/lib/adapters.mjs`, and commands reach it only through the contract operations.
 _Avoid_: driver, connector, integration

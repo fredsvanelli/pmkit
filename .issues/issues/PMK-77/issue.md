@@ -8,10 +8,11 @@ estimate: 8
 assignee: fred
 parent: EPC-7
 blocked_by: [PMK-76]
+related: [PMK-367]
 milestone: jira
 branch: pmk-77-implement-work-items-transitions-links
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-22T19:50:15Z
+updated: 2026-11-22T19:57:54Z
 ---
 
 ## Description

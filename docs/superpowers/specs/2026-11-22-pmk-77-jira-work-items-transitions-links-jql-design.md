@@ -1,6 +1,6 @@
 # PMK-77 design: work items, transitions, links and JQL for Jira
 
-Issue PMK-77, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: draft for the Interview step. Written on 2026-11-22 by a dispatched worker with no live user dialogue, from the issue, ADR 0003, ADR 0013, ADR 0014, the PMK-75 and PMK-76 specs, the PMK-35 (Linear) and PMK-87 (GitHub) specs, which solved the same issue for their trackers, and the code. Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Questions only the owner can answer are in "Open questions", each with a recommendation the rest of this spec assumes. No Jira credentials exist, so nothing here was checked against a live site.
+Issue PMK-77, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: approved by the owner (Orca coordinator) on 2026-11-22, with the four answers in "Resolved questions". Written on 2026-11-22 by a dispatched worker with no live user dialogue, from the issue, ADR 0003, ADR 0013, ADR 0014, the PMK-75 and PMK-76 specs, the PMK-35 (Linear) and PMK-87 (GitHub) specs, which solved the same issue for their trackers, and the code. Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. The owner's answers are in "Resolved questions". No Jira credentials exist, so nothing here was checked against a live site.
 
 ## Problem
 
@@ -115,12 +115,12 @@ iii. **Fill defaults.** Pick the first allowed value. Writes a value nobody chos
 | `scripts/lib/jira/manifest.mjs` | `SERVED` gains `estimation`, `multilevel_hierarchy`, `dependencies`, `native_metrics`. |
 | `scripts/pmkit.mjs` | `issues move` takes `--field <id>=<value>`, repeatable, passed as `fields`; its text output names the required fields of a dry run. |
 | `commands/issues/move.md` | A step that asks for each required field before the confirmation. |
-| `scripts/contract-suite.mjs` | An `archive` family split out of `issues` (see open question 1); Linear and GitHub list it. |
+| `scripts/contract-suite.mjs` | An `archive` family split out of `issues` (resolved question 1); Linear and GitHub list it. |
 | `scripts/fake-jira-issues.mjs` | New. A stateful fake Jira for pmkit's calls, JSON state the E2E launcher saves between runs. |
 | `scripts/lib/jira/*.test.mjs`, `scripts/lib/jira/contract.test.mjs` | Unit tests per module and the contract suite. |
 | `docs/runbooks/issues-jira.md`, `scripts/runbook-issues-jira.test.mjs` | New. The issue flows on Jira and their E2E test. |
 | `docs/runbooks/discover-jira.md`, its test | The capabilities step: the four served entries are no longer absent. |
-| `CONTEXT.md`, `docs/adr/` | **Transition** and **Screen field**; an ADR if the owner keeps the branch property (open question 2). |
+| `CONTEXT.md`, `docs/adr/` | **Transition** and **Screen field**; ADR 0015 (the branch property). |
 
 ### Ids
 
@@ -142,7 +142,7 @@ The tracker keeps the raw discovery as GitHub's does: a memo per run, then the u
 
 ### The work-item model
 
-Every read asks for one field list: `summary, status, issuetype, priority, assignee, labels, parent, subtasks, issuelinks, duedate, description, created, updated, creator`, the estimate role's field and the acceptance-criteria role's field when set, and the property `pmkit.branch` (open question 2).
+Every read asks for one field list: `summary, status, issuetype, priority, assignee, labels, parent, subtasks, issuelinks, duedate, description, created, updated, creator`, the estimate role's field and the acceptance-criteria role's field when set, and the property `pmkit.branch` (ADR 0015).
 
 | pmkit field | From Jira |
 |---|---|
@@ -160,9 +160,9 @@ Every read asks for one field list: `summary, status, issuetype, priority, assig
 | `blocks` | the same type with `outwardIssue` |
 | `related` | the relates type, both directions, without duplicates |
 | `duplicateOf` | the duplicate type with `outwardIssue` (this item duplicates the other) |
-| `archived` | `false` (open question 1) |
+| `archived` | `false` (resolved question 1) |
 | `due` | `duedate` |
-| `branch` | the `pmkit.branch` property (open question 2) |
+| `branch` | the `pmkit.branch` property (ADR 0015) |
 | `description`, `acceptanceCriteria` | `adfToText(description)` through the shared `parseDescription`, or the criteria field when the role has one (below) |
 | `created`, `updated` | ISO UTC with `Z`, from Jira's `+0000` offsets |
 | `sprint`, `milestone`, `release` | Unset (PMK-78, PMK-79) |
@@ -191,7 +191,7 @@ Every check runs before any request; a dry run runs the same checks and returns 
 | `assignee` | yes | owned by `issues assign` | `assignee: { accountId }`, a discovered member; an unknown id refreshes once |
 | `parent` | an issue key | owned by `issues parent` | `parent: { key }` |
 | `status` | yes | owned by `issues move` | the transition below, after the create |
-| `branch` | no | yes | the property (open question 2) |
+| `branch` | no | yes | `PUT .../properties/pmkit.branch`; the same name sends nothing |
 | `sprint`, `milestone`, `release` | `null` only | `null` only | a value: `NOT_SUPPORTED` naming PMK-78 or PMK-79 |
 
 `createIssue` posts the item, then the transition when `status` is set. A transition failure after the create fails with `UPSTREAM`, `Jira created <key>, but the move to <status> failed: ...`, next step `pmkit issues move <key> <category>`. A required create-screen field Jira wants comes back as Jira's 400 message (`INVALID_INPUT`). Jira has no client-chosen id, so an unconfirmed create keeps the client's error, whose next step says to check Jira first. `updateIssue` sends one `PUT` with only the changed fields, and nothing when nothing changes.
@@ -241,7 +241,7 @@ Both items are read first; an existing link or an empty unlink sends nothing and
 | `parent` | `parent = "ENG-1"` | |
 | `blocked` | none | `true`: keep items with a blocker whose category is not terminal (the blocker's status comes inline in `issuelinks`); `false`: drop them |
 | `updatedAfter`, `updatedBefore` | `updated >= "<date − 1 day>"`, `updated < "<date + 1 day>"` (`yyyy-MM-dd`) | The exact instant compare, because JQL dates are minutes in the user's time zone |
-| `archived` | none (open question 1) | |
+| `archived` | none (resolved question 1) | |
 | `sort` | `ORDER BY created ASC, key ASC` | The shared comparator |
 | `limit` | `limit` of `paginate` when no client step applies and the sort is `created` | Otherwise cut after sorting |
 | `sprint`, `release` | | `NOT_SUPPORTED` (PMK-78, PMK-79) |
@@ -283,14 +283,16 @@ Events sort by `at`; `since` drops the earlier ones. `listComments(id)` gives `{
 
 ### Live checks
 
-Skipped: no credentials. A follow-up in EPC-14 lists them: the link direction on create, `parent: null`, the ADF task list in descriptions, `text ~`, the assignable-users read, the changelog in search, the property read in `search/jql`, and one move through a Resolution screen.
+Skipped: no credentials. PMK-367 in EPC-14 (`EPC-7 follow-ups`) lists them: the link direction on create, `parent: null`, the ADF task list in descriptions, `text ~`, the assignable-users read, the changelog in search, the property read in `search/jql`, one move through a Resolution screen, and the development panel's match of a lower-case key.
 
-## Open questions
+## Resolved questions
 
-1. **Archive.** Jira archives only on Premium and Enterprise, and an archived item leaves JQL, so pmkit could never list it with `--archived`. Recommended: `archive` and `unarchive` answer `NOT_SUPPORTED`, `Jira archives work items only on Premium; archive it in Jira, and it leaves pmkit's searches`; the contract suite splits an `archive` family out of `issues`, which Local, Linear and GitHub list. Alternative: call Jira's archive API and accept that `--archived` never shows the item.
-2. **Where the branch lives.** Jira has no branch field; `pr open` needs `issue.branch`. Recommended: a work-item property `pmkit.branch` (Jira's documented store for app data, read in the same request, invisible in the Jira UI), recorded as an ADR because it is a stored format. Alternative: no record, and `issues branch` on Jira answers `NOT_SUPPORTED` for the record, which breaks `/pmkit:issues:work` on Jira.
-3. **Required screen fields.** Recommended: approach i (the dry run lists them, `--field`, the command asks). Alternative: approach ii, refuse and send the user to Jira.
-4. **Branch name case.** pmkit names branches `eng-12-slug`. Jira's development panel matches the key in the branch name; whether it matches a lower-case key is unverified. Recommended: keep pmkit's name now and check it live in EPC-14. Alternative: keep the key upper case (`ENG-12-slug`) on Jira through a `settings()` flag.
+The owner accepted each recommendation on 2026-11-22.
+
+1. **Archive.** `archive` and `unarchive` answer `NOT_SUPPORTED` on Jira, `Jira archives work items only on Premium; archive it in Jira, and it leaves pmkit's searches`. The contract suite splits an `archive` family out of `issues`; Local, Linear and GitHub list it, Jira does not. `archived` always reads `false`, and the `archived` filter adds nothing.
+2. **Where the branch lives.** The work-item property `pmkit.branch`, read in the same request as the item. ADR 0015 records it.
+3. **Required screen fields.** Approach i: the dry run lists them in `requiredFields`, the real run refuses without them, `issues move` takes `--field <id>=<value>`, and `commands/issues/move.md` asks for each value.
+4. **Branch name case.** pmkit's `eng-12-slug` stays. The live check of Jira's development panel with a lower-case key is in PMK-367 (EPC-14), with the other live checks.
 
 ## Acceptance criteria map
 
