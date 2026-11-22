@@ -53,9 +53,10 @@ const HANDLERS = {
   blocked(filter, out) {
     out.steps.add('blocked')
   },
-  // JQL dates are minutes in the user's time zone, so the clause is widened by a day and the exact compare runs on the client.
+  // JQL dates are minutes in the user's time zone (UTC-12 to UTC+14), so the clause is widened past any zone (two days
+  // ahead for the upper bound, one behind for the lower) and the exact compare runs on the client.
   updatedBefore(filter, out) {
-    out.clauses.push(`updated < ${jqlString(dayOf(filter.updatedBefore, 1))}`)
+    out.clauses.push(`updated < ${jqlString(dayOf(filter.updatedBefore, 2))}`)
     out.steps.add('updated')
   },
   updatedAfter(filter, out) {

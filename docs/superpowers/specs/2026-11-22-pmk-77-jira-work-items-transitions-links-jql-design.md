@@ -240,7 +240,7 @@ Both items are read first; an existing link or an empty unlink sends nothing and
 | `labels` | `labels = "x"` per label | |
 | `parent` | `parent = "ENG-1"` | |
 | `blocked` | none | `true`: keep items with a blocker whose category is not terminal (the blocker's status comes inline in `issuelinks`); `false`: drop them |
-| `updatedAfter`, `updatedBefore` | `updated >= "<date − 1 day>"`, `updated < "<date + 1 day>"` (`yyyy-MM-dd`) | The exact instant compare, because JQL dates are minutes in the user's time zone |
+| `updatedAfter`, `updatedBefore` | `updated >= "<date − 1 day>"`, `updated < "<date + 2 days>"` (`yyyy-MM-dd`) | The exact instant compare, because JQL dates are minutes in the user's time zone (UTC-12 to UTC+14) |
 | `archived` | none (resolved question 1) | |
 | `sort` | `ORDER BY created ASC, key ASC` | The shared comparator |
 | `limit` | `limit` of `paginate` when no client step applies and the sort is `created` | Otherwise cut after sorting |

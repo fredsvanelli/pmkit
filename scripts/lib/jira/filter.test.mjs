@@ -69,11 +69,16 @@ test('blocked adds only the blocked step', async () => {
   assert.deepEqual(out.clientSteps, ['blocked'])
 })
 
-test('updated dates widen by one day on the UTC date and add the updated step once', async () => {
+test('updated dates widen past any time zone and add the updated step once', async () => {
   const ctx = await context()
   const out = translateFilter({ updatedAfter: '2026-11-10T12:00:00Z', updatedBefore: '2026-11-30T23:59:00Z' }, ctx)
-  assert.equal(out.jql, `project = "ENG" AND updated < "2026-12-01" AND updated >= "2026-11-09"${TAIL}`)
+  assert.equal(out.jql, `project = "ENG" AND updated < "2026-12-02" AND updated >= "2026-11-09"${TAIL}`)
   assert.deepEqual(out.clientSteps, ['updated'])
+})
+
+test('a late-in-day updatedBefore is not cut for users east of UTC', async () => {
+  const out = translateFilter({ updatedBefore: '2026-01-02T20:00:00Z' }, await context())
+  assert.equal(out.jql, `project = "ENG" AND updated < "2026-01-04"${TAIL}`)
 })
 
 test('archived adds nothing; sort other than created adds the sort step', async () => {
