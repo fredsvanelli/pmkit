@@ -131,6 +131,20 @@ test('updateIssue sends only the changed fields, and nothing when nothing change
   assert.deepEqual(fake.writes(), [{ method: 'PUT', path: '/rest/api/3/issue/ENG-1', body: { fields: { summary: 'Renamed' } } }])
 })
 
+test('updateIssue refuses an assignee, which issues assign owns, with no stale hint and no refresh', async () => {
+  const { fake, fetch, tracker } = setup()
+  seed(fake.state)
+  await assert.rejects(tracker.updateIssue('ENG-1', { assignee: 'stranger' }, ME), (error) => {
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, 'assignee cannot be set here')
+    assert.equal(error.nextStep, 'pmkit issues assign')
+    assert.equal(error.details?.stale, undefined)
+    return true
+  })
+  assert.equal(callsTo(fetch, 'GET', '/rest/api/3/project/ENG').length, 1)
+  assert.deepEqual(fake.writes(), [])
+})
+
 test('updateIssue writes the pmkit.branch property once, and the same name sends nothing', async () => {
   const { fake, tracker } = setup()
   seed(fake.state)
@@ -169,6 +183,9 @@ test('moveToCategory sends nothing when the item is at the target already', asyn
   seed(fake.state)
   const result = await tracker.moveToCategory('ENG-1', 'todo', ME)
   assert.deepEqual(result.after, result.before)
+  const dryAtTarget = await tracker.moveToCategory('ENG-1', 'todo', ME, { dryRun: true })
+  assert.deepEqual(dryAtTarget.after, dryAtTarget.before)
+  assert.deepEqual(dryAtTarget.requiredFields, [])
   const dry = await tracker.moveToCategory('ENG-1', 'in_progress', ME, { dryRun: true })
   assert.deepEqual(dry.requiredFields, [])
   assert.deepEqual(fake.writes(), [])

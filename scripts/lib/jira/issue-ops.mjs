@@ -199,7 +199,8 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
   async function move(id, category, { status, fields = {}, dryRun = false }) {
     const { item, issue: before, context } = await readItem(id)
     const target = pickTarget({ item, category, status, context })
-    if (String(item.fields.status?.id) === target.id) return { before, after: before }
+    // A dry run always carries requiredFields, so the confirmation reads one shape.
+    if (String(item.fields.status?.id) === target.id) return dryRun ? { before, after: before, requiredFields: [] } : { before, after: before }
     const { transitions } = await client.request('GET', issuePath(before.id, '/transitions'), { query: { expand: 'transitions.fields' } })
     const transition = pickTransition(transitions ?? [], target, item)
     const required = requiredFields(transition)

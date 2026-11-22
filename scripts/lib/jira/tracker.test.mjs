@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { assertTracker } from '../contract.mjs'
 import { ADAPTERS } from '../adapters.mjs'
-import { FAKE_ENV, TRACKER, fakeJiraFetch, jiraSiteRoutes } from '../../fake-jira-api.mjs'
+import { FAKE_EMAIL, FAKE_ENV, FAKE_TOKEN, TRACKER, fakeJiraFetch, jiraSiteRoutes } from '../../fake-jira-api.mjs'
 import { fakeJiraIssues } from '../../fake-jira-issues.mjs'
 import { makeRepo, tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
@@ -145,4 +145,13 @@ test('archive, unarchive, restore and delegate are NOT_SUPPORTED with what Jira 
   await assert.rejects(tracker.restore('ENG-1', 'acc-1'), { code: 'NOT_SUPPORTED', message: 'Jira has no trash, so a deleted work item cannot come back' })
   await assert.rejects(tracker.delegate('ENG-1', 'agent', 'acc-1'), { code: 'NOT_SUPPORTED', message: 'The Jira adapter does not serve agent_delegation yet' })
   assert.deepEqual(fake.writes(), [])
+})
+
+test('the discovery cache file holds no credential', async () => {
+  const { tracker, at } = issuesSetup()
+  await tracker.discover({ refresh: true })
+  const file = path.join(at.env.PMKIT_HOME, 'cache', repoHash(at.root), 'jira-acme.atlassian.net-eng.json')
+  const text = fs.readFileSync(file, 'utf8')
+  assert.ok(text.includes('"members"'))
+  for (const secret of [FAKE_TOKEN, FAKE_EMAIL]) assert.ok(!text.includes(secret), 'a credential reached the cache')
 })
