@@ -2,14 +2,14 @@
 id: PMK-330
 title: Lock the PMK-326 CRLF cases against fences and share the HTML openers
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-330-lock-the-pmk-326-crlf-cases-against
 created: 2026-11-15T23:21:51.203Z
-updated: 2026-11-22T02:03:34Z
+updated: 2026-11-22T02:55:21Z
 ---
 
 ## Description

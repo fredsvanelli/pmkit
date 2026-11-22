@@ -2,14 +2,14 @@
 id: PMK-328
 title: "Read an ordered list item as a status in adr-status, as a bullet item"
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-328-read-an-ordered-list-item-as-a-status-in
 created: 2026-11-15T23:21:50.971Z
-updated: 2026-11-22T01:46:26Z
+updated: 2026-11-22T02:55:20Z
 ---
 
 ## Description
