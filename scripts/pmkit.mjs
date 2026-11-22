@@ -2655,7 +2655,7 @@ export const COMMANDS = [
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.goals} goals, ${c.comments} comments, ${c.views} views`
+      const head = c === null ? `tracker files not checked: ${result.skipped}` : `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.goals} goals, ${c.comments} comments, ${c.views} views`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },

@@ -52,13 +52,15 @@ function snapshot(dir) {
   return files
 }
 
+// The details name the versions asked for, so validate lists the error as a migration problem (PMK-157).
 function chain(from, to, migrations) {
-  if (from > to) throw new PmkitError('NOT_SUPPORTED', `tracker format ${from} cannot go back to format ${to}`)
+  const details = { migration: { from, to } }
+  if (from > to) throw new PmkitError('NOT_SUPPORTED', `tracker format ${from} cannot go back to format ${to}`, '/pmkit:upgrade', details)
   const steps = []
   for (let version = from; version < to;) {
     const step = migrations.find((migration) => migration.from === version)
     if (!step || step.to <= version || step.to > to) {
-      throw new PmkitError('NOT_SUPPORTED', `this pmkit has no migration from tracker format ${version} toward format ${to}`)
+      throw new PmkitError('NOT_SUPPORTED', `this pmkit has no migration from tracker format ${version} toward format ${to}`, '/pmkit:upgrade', details)
     }
     steps.push(step)
     version = step.to
@@ -82,12 +84,13 @@ export function planMigration({ root, trackerPath, from, to, migrations = MIGRAT
   const planned = []
   for (const step of steps) {
     const before = snapshot(dir)
+    // The version bump is part of the step: a step that leaves config.yaml missing or unreadable fails as that step.
     try {
       step.run(dir)
+      fs.writeFileSync(configFile, setScalar(fs.readFileSync(configFile, 'utf8'), ['version'], step.to))
     } catch (error) {
       throw new PmkitError('INVALID_INPUT', `migration ${step.from} to ${step.to} failed: ${error.message}`, 'pmkit validate', { migration: { from: step.from, to: step.to } })
     }
-    fs.writeFileSync(configFile, setScalar(fs.readFileSync(configFile, 'utf8'), ['version'], step.to))
     const after = snapshot(dir)
     const changes = []
     for (const [rel, hash] of after) {
