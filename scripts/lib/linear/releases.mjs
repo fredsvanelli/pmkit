@@ -13,6 +13,9 @@ const MAX_PAGES = 100
 
 const canceled = (node) => node.stage?.type === 'canceled'
 
+/** The release nodes that count: every one but a canceled release. The one place the canceled rule lives (PMK-266). */
+export const activeReleases = (nodes) => nodes.filter((node) => !canceled(node))
+
 /** The refusal of a release write or filter on a workspace with releases off. */
 export const releasesOff = () => new PmkitError('NOT_SUPPORTED', 'Linear releases are off in this workspace', RELEASES_HINT)
 
@@ -28,7 +31,7 @@ export function toRelease(node) {
 
 /** The release keys of an issue from its release nodes: `release` for one, `releases` for two or more, none for none. Canceled ones do not count. */
 export function issueReleaseFields(nodes) {
-  const ids = nodes.filter((node) => !canceled(node)).map((node) => node.id).sort()
+  const ids = activeReleases(nodes).map((node) => node.id).sort()
   if (ids.length === 0) return {}
   return ids.length === 1 ? { release: ids[0] } : { releases: ids }
 }
@@ -74,8 +77,7 @@ export function releaseOperations({ client, config }) {
     const filter = { pipeline: { teams: { some: { key: { eq: team } } } } }
     const nodes = await allReleases(client, RELEASES_QUERY, { filter }, (data) => data.releases)
     const key = (node) => node.version ?? node.name
-    return nodes
-      .filter((node) => !canceled(node))
+    return activeReleases(nodes)
       .sort((a, b) => compareReleaseIds(key(a), key(b)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .map(toRelease)
       .filter((release) => state === undefined || release.state === state)
