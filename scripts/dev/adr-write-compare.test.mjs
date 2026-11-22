@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
-import { ADR_STATUSES, adrKeptLines, setAdrStatus } from '../lib/adr.mjs'
+import { ADR_STATUSES, adrKeptLines, adrStatusDropped, setAdrStatus } from '../lib/adr.mjs'
 import { HTML_CONTAINERS, KNOWN_STATUS, ONE_SPACE, STATUS_BREAKS, STATUS_NEAR, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, oneSpacePairs, statusBreakPairs, statusBreakTriples, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
@@ -140,6 +140,17 @@ test('the helper copy of the known status rule has not drifted from scripts/lib/
   for (const line of lines) {
     const kept = adrKeptLines(`## Status\n\n${line}\nDate: x\n## Context\n`).length > 0
     assert.equal(readsAsStatus(line), kept, JSON.stringify(line))
+  }
+})
+
+test('the helper copy reads an ordered list item as a status as scripts/lib/adr.mjs does (PMK-328)', () => {
+  // adr.mjs refuses a status followed by another line that reads as a known status, so the refusal says how it reads each line.
+  const reads = ['1. Proposed', '1) Proposed', '10. Proposed', '1.\tProposed', '> 1. Proposed', '- 1. Proposed']
+  const not = ['1.Accepted', 'see 1. Proposed', '**1. Accepted**', '1234567890. Proposed', '(1) x']
+  for (const line of [...reads, ...not]) {
+    const refused = adrStatusDropped(`## Status\n\nAccepted\n\n${line}\n\n## Context\n`).length > 0
+    assert.equal(readsAsStatus(line), reads.includes(line), JSON.stringify(line))
+    assert.equal(refused, reads.includes(line), JSON.stringify(line))
   }
 })
 

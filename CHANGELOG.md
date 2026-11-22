@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `docs adr-status` and `docs adr-get` read an ordered list item (`1. Proposed`, `1) Proposed`, `10. Proposed`, in a quote or indented too) as a status when its text reads as one, as they read a bullet item (PMK-328). A status followed by such an item is two statuses: the write refuses and names the item, and `adr-get` reads the section whole, where before the status was written in place and the item stayed as a second status the reader sees. A first item that reads as a status is kept as the status in the refusal's names. `1.Accepted` (no space after the marker), `see 1. Proposed` and `**1. Accepted**` read as before.
+
 ## 0.7.0 - 2026-11-21
 
 - On a GitHub repository without a Project, the priority and the estimate can come from labels when no field holds them (PMK-339; ADR 0012). `mappings.priority.<level>` names one label per level (urgent, high, medium, low) and `mappings.estimate.<value>` one label per estimate value, written `label:<name>`; the keys of `mappings.estimate` are the scale, in points when each is a number. Reads take the label, the highest priority when an issue has several, with a warning; `--priority` and `--estimate` swap the labels; a labels patch refuses them. Setup asks a label per priority level, recommended by name, and takes estimate labels from `init --estimate-label <value>=<label>`. Start and target dates stay unsupported without a Project or issue fields, since a label cannot hold a date. The runbooks `setup-github.md` and `issues-github.md` gain steps for both.

@@ -11,10 +11,11 @@ const minus = (a, b) => {
 /** The trimmed non-blank lines of `before` that `after` no longer has, as a multiset. */
 export const removedLines = (before, after) => minus(lines(before), lines(after))
 
-// A copy of the PMK-311 rule of `scripts/lib/adr.mjs` (`readsAsStatus`: the first word of the line, emphasis and punctuation skipped, is a known status). It is a copy on purpose:
+// A copy of the PMK-311 rule of `scripts/lib/adr.mjs` (`readsAsStatus`: the first word of the line, quote, bullet and ordered list markers (PMK-328), emphasis and punctuation skipped, is a known status). It is a copy on purpose:
 // the line a write may replace must not be chosen by the head under test, which is the defect of PMK-315. A change to the rule in adr.mjs has to change this list too.
 export const KNOWN_STATUS = new Set(['accepted', 'deprecated', 'superseded', 'proposed', 'rejected', 'draft'])
-export const readsAsStatus = (line) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(line)?.[1].toLowerCase() ?? '')
+const LIST_MARKERS = /^(?:[ \t>]|[-+*][ \t]|\d{1,9}[.)][ \t])*/
+export const readsAsStatus = (line) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(line.replace(LIST_MARKERS, ''))?.[1].toLowerCase() ?? '')
 
 // A copy of the PMK-314 rule of `scripts/lib/adr.mjs` (`hardBreak`: two or more trailing spaces, or an odd number of trailing backslashes, which `setAdrStatus` keeps on the line it replaces), for the same reason as the copy above (PMK-321).
 // A test compares `expectedLine` with what `setAdrStatus` writes; a change to the rule in adr.mjs has to change this one too.
