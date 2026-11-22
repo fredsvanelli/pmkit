@@ -178,6 +178,18 @@ test('without requireResolution the Done transition has no fields', async () => 
   assert.equal((await read('ENG-2')).fields.status.id, '5')
 })
 
+test('extraStatuses adds Triage, Backlog and Canceled to every work type and leaves the default site as it was', async () => {
+  const { create, api } = setup({ extraStatuses: true })
+  const types = (await api('GET', '/rest/api/3/project/ENG/statuses')).json
+  for (const type of types) {
+    assert.deepEqual(type.statuses.slice(-3).map((status) => [status.id, status.name, status.statusCategory.key]), [['6', 'Triage', 'new'], ['7', 'Backlog', 'new'], ['8', 'Canceled', 'done']])
+  }
+  await create({ summary: 'a' })
+  assert.deepEqual((await api('GET', '/rest/api/3/issue/ENG-1/transitions')).json.transitions.map((transition) => transition.id), ['t3', 't4', 't5', 't6', 't7', 't8'])
+  const plain = (await setup().api('GET', '/rest/api/3/project/ENG/statuses')).json
+  assert.ok(plain.every((type) => type.statuses.every((status) => Number(status.id) <= 5)))
+})
+
 test('an issueLink shows on both items in the documented directions and deletes', async () => {
   const { create, read, api } = setup()
   await create({ summary: 'A' })

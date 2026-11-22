@@ -87,9 +87,16 @@ const STATUS = {
   review: { id: '4', name: 'Review', statusCategory: { key: 'indeterminate', name: 'In Progress' } },
   done: { id: '5', name: 'Done', statusCategory: { key: 'done', name: 'Done' } },
 }
+// extraStatuses adds these to every work type, so a space has a status for each of pmkit's seven categories.
+const EXTRA_STATUSES = [
+  { id: '6', name: 'Triage', statusCategory: { key: 'new', name: 'To Do' } },
+  { id: '7', name: 'Backlog', statusCategory: { key: 'new', name: 'To Do' } },
+  { id: '8', name: 'Canceled', statusCategory: { key: 'done', name: 'Done' } },
+]
 
-export function jiraSiteRoutes({ style = 'company-managed' } = {}) {
+export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false } = {}) {
   const team = style === 'team-managed'
+  const extra = extraStatuses ? EXTRA_STATUSES : []
   const scope = (id) => (team ? { scope: { type: 'PROJECT', project: { id } } } : {})
   const workTypes = [
     { id: '10000', name: 'Epic', subtask: false, hierarchyLevel: 1, ...scope('10001') },
@@ -118,10 +125,10 @@ export function jiraSiteRoutes({ style = 'company-managed' } = {}) {
     },
     'GET /rest/api/3/project/ENG/statuses': {
       json: [
-        { id: '10000', name: 'Epic', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done] },
-        { id: '10001', name: 'Story', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.review, STATUS.done] },
-        { id: '10002', name: 'Bug', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done] },
-        { id: '10003', name: 'Sub-task', subtask: true, statuses: [STATUS.todo, STATUS.done] },
+        { id: '10000', name: 'Epic', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] },
+        { id: '10001', name: 'Story', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.review, STATUS.done, ...extra] },
+        { id: '10002', name: 'Bug', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] },
+        { id: '10003', name: 'Sub-task', subtask: true, statuses: [STATUS.todo, STATUS.done, ...extra] },
       ],
     },
     'GET /rest/api/3/field': {

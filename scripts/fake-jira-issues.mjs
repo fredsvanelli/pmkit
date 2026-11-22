@@ -9,7 +9,7 @@ const API = '/rest/api/3'
 const SITE = jiraSiteRoutes()
 const SPACE = SITE[`GET ${API}/project/ENG`].json
 const WORK_TYPES = SPACE.issueTypes
-const STATUSES = Object.fromEntries(SITE[`GET ${API}/project/ENG/statuses`].json.map((type) => [type.id, type.statuses]))
+const statusesByType = (site) => Object.fromEntries(site[`GET ${API}/project/ENG/statuses`].json.map((type) => [type.id, type.statuses]))
 const PRIORITIES = SITE[`GET ${API}/priority`].json
 const USERS = SITE[`GET ${API}/user/assignable/search`].json
 const LINK_TYPES = SITE[`GET ${API}/issueLinkType`].json.issueLinkTypes
@@ -215,9 +215,12 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
 /**
  * The fake work-item routes, spread over jiraSiteRoutes(), the state they read and mutate in place, and writes() the
  * non-GET calls. `now` returns the time of each write; the default clock starts at 2026-11-22T10:00:00.000Z and
- * advances one second per write, and lives in the state so a restored state keeps counting.
+ * advances one second per write, and lives in the state so a restored state keeps counting. `extraStatuses` passes on to
+ * jiraSiteRoutes, for a status in every category.
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false } = {}) {
+  const site = jiraSiteRoutes({ extraStatuses })
+  const typeStatuses = statusesByType(site)
   const writes = []
   const stamp = () => jiraFormat(now ? now() : START + 1000 * state.clock++)
 
@@ -266,7 +269,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   }
 
   function transitionsOf(item) {
-    const statuses = STATUSES[item.fields.issuetype.id].filter((status) => status.id !== item.fields.status.id)
+    const statuses = typeStatuses[item.fields.issuetype.id].filter((status) => status.id !== item.fields.status.id)
     return statuses.map((status) => {
       const screen = requireResolution && status.statusCategory.key === 'done'
       return { id: `t${status.id}`, name: status.name, hasScreen: screen, to: statusOf(status), fields: screen ? { resolution: structuredClone(RESOLUTION_FIELD) } : {} }
@@ -305,7 +308,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       if (Object.keys(errors).length > 0) refuse(400, errors)
       const number = state.next.item
       const key = `${SPACE.key}-${number}`
-      const todo = statusOf(STATUSES[convert('issuetype', issuetype, state).id][0])
+      const todo = statusOf(typeStatuses[convert('issuetype', issuetype, state).id][0])
       const item = { id: String(10000 + number), key, fields: { summary: null, description: null, status: todo, priority: null, assignee: null, labels: [], parent: null, duedate: null, resolution: null, creator: { ...VIEWER } } }
       applyFields(item, { issuetype, ...fields }, at, { log: false })
       if (isSubtaskType(item) && !item.fields.parent) badField('parent', 'A sub-task needs a parent.')
@@ -418,6 +421,6 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     }
   }
 
-  const routes = { ...SITE, ...Object.fromEntries(Object.entries(handlers).map(([key, handle]) => [key, route(handle)])) }
+  const routes = { ...site, ...Object.fromEntries(Object.entries(handlers).map(([key, handle]) => [key, route(handle)])) }
   return { routes, state, writes: () => structuredClone(writes) }
 }
