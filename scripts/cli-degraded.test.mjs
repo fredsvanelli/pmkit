@@ -178,6 +178,20 @@ test('issues update --add-doc on Linear exits 0 with a warning when the read-bac
   assert.match(result.stderr, /warning: ACME-1 is updated and its docs are linked, but reading it back failed/)
 })
 
+// PMK-264: the link follows the GitHub Enterprise host of origin.
+test('issues update --add-doc on Linear links to the GitHub Enterprise host of origin', async () => {
+  const git = (root, ...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' })
+  const prepare = (root) => {
+    git(root, 'init', '-q')
+    git(root, 'remote', 'add', 'origin', 'git@ghe.example.com:acme/app.git')
+  }
+  const calls = {}
+  const result = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/a.md', '--json'], { calls, gitHost: 'acme/app', prepare, seed: (fake) => fake.seed({ title: 'One' }) })
+  assert.equal(result.code, 0, result.stderr)
+  const create = calls.fetch.calls.find((call) => /PmkitAttachmentCreate/.test(call.body.query))
+  assert.match(create.body.variables.input.url, /^https:\/\/ghe\.example\.com\/acme\/app\/blob\/[^/]+\/docs\/a\.md$/)
+})
+
 // The step 6 of /pmkit:spec:record-decision on Linear (PMK-252 review): the comment and the docs link of each related issue.
 test('record-decision step 6 on Linear: a comment and a docs link per issue, and the link is the comment alone without a GitHub repo', async () => {
   const seed = (fake) => { fake.seed({ title: 'One' }); fake.seed({ title: 'Two' }) }
