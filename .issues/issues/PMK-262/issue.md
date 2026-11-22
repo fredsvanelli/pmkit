@@ -2,12 +2,14 @@
 id: PMK-262
 title: Cut the extra release and docs reads on Linear
 type: task
-status: backlog
+status: in_progress
 priority: low
 estimate: 3
+assignee: fred
 parent: EPC-5
+branch: pmk-262-cut-the-extra-release-and-docs-reads-on
 created: 2026-11-11T22:34:42.919Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-22T06:38:23Z
 ---
 
 ## Description
