@@ -1697,16 +1697,6 @@ test('releases off: --release and none refuse NOT_SUPPORTED with the hint and se
   assert.equal(mutationsIn(fetch), 0)
 })
 
-test('createIssue with a release refuses NOT_SUPPORTED', async () => {
-  const { tracker: linear, fetch } = releaseSetup()
-  await assert.rejects(linear.createIssue({ title: 'New', release: REL.two }, 'user-1', { dryRun: true }), {
-    code: 'NOT_SUPPORTED',
-    message: 'issues create does not set a Linear release',
-    nextStep: 'Create the issue, then run pmkit issues update <id> --release <release>',
-  })
-  assert.equal(mutationsIn(fetch), 0)
-})
-
 test('releaseIssues refuses a cut read instead of answering with part of the issues', async () => {
   const { tracker: linear, fake } = releaseSetup()
   for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}`, releaseIds: [REL.two] })
@@ -2222,4 +2212,24 @@ test('markReleased marks a Linear release released, and a released one is a CONF
   assert.equal((await linear.getRelease(REL.two)).state, 'released')
   await assert.rejects(linear.markReleased(REL.one, 'user-1'), { code: 'CONFLICT', message: `release ${REL.one} was released at 2026-10-01T00:00:00.000Z` })
   await assert.rejects(linear.markReleased(REL.ten, 'user-1', { tag: 'v1' }), { code: 'INVALID_INPUT', message: 'Linear releases have no git tag' })
+})
+
+test('issues create --release puts a new Linear issue in the release, and the dry run shows it', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  const dry = await linear.createIssue({ title: 'New', release: REL.two }, 'user-1', { dryRun: true })
+  assert.equal(dry.after.release, REL.two)
+  assert.equal(mutationsIn(fetch), 0)
+  const made = await linear.createIssue({ title: 'New', release: REL.two }, 'user-1')
+  assert.equal(made.after.release, REL.two)
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueCreate').input.releaseIds, [REL.two])
+  assert.deepEqual(fake.records[0].releaseIds, [REL.two])
+  await assert.rejects(linear.createIssue({ title: 'Gone', release: REL.gone }, 'user-1'), { code: 'NOT_FOUND' })
+})
+
+test('the three release writes refuse with a clear message when releases are off', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  for (const call of [() => linear.createRelease({ id: '1.0' }, 'user-1'), () => linear.markReleased(REL.two, 'user-1'), () => linear.createIssue({ title: 'X', release: REL.two }, 'user-1')]) {
+    await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /releases/.test(error.message) && /Business or Enterprise plan/.test(error.nextStep))
+  }
+  assert.equal(mutationsIn(fetch), 0)
 })

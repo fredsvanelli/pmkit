@@ -205,8 +205,10 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
  */
 function releaseInput(release, { mode, beforeNode, releaseNode }) {
   if (mode === 'create') {
+    // PMK-261: a new issue goes straight into the release the caller resolved.
     if (release === null) return {}
-    throw new PmkitError('NOT_SUPPORTED', 'issues create does not set a Linear release', 'Create the issue, then run pmkit issues update <id> --release <release>')
+    if (!releaseNode) throw invalid(`release ${release} was not resolved to a Linear release`)
+    return { releaseIds: [releaseNode.id] }
   }
   if (release !== null && !releaseNode) throw invalid(`release ${release} was not resolved to a Linear release`)
   const target = release === null ? null : releaseNode.id
@@ -248,6 +250,7 @@ export function applyInput(node, input, context, { parent, project, cycle, relea
   if (input.cycleId !== undefined) next.cycle = input.cycleId === null ? null : { id: cycle.id, number: cycle.number }
   if (input.projectId !== undefined) next.project = input.projectId === null ? null : project
   if (input.projectMilestoneId !== undefined) next.projectMilestone = input.projectMilestoneId === null ? null : { id: input.projectMilestoneId }
+  if (input.releaseIds !== undefined) next.releases = { nodes: release ? [release] : [] }
   if (input.addedReleaseIds !== undefined || input.removedReleaseIds !== undefined) {
     const kept = (next.releases?.nodes ?? []).filter((item) => !(input.removedReleaseIds ?? []).includes(item.id))
     next.releases = { nodes: [...kept, ...(input.addedReleaseIds ? [release] : [])] }

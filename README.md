@@ -136,8 +136,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `release list` | lists releases, oldest version first; `--state planned\|released`; on Linear the releases of the scope team's pipelines, canceled ones left out, with the release UUID as the id |
 | `release get <id>` | shows one release |
 | `release issues <id> [--archived]` | lists the issues of a release; `--archived` keeps the archived ones |
-| `release create <id>` | creates a release; takes `--name`, `--tag` and `--target` |
-| `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag` |
+| `release create <id>` | creates a release; takes `--name`, `--tag` and `--target`. On Linear the id is the version, the release goes in the scope team's one release pipeline, and `--tag` is refused |
+| `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag`. On Linear the release moves to its pipeline's completed stage, and `--tag` is refused |
 | `release-readiness [--release id \| --milestone id \| --sprint id\|current]` | what is left for a release: open issues, open pull requests and deploys; without releases a milestone or a sprint, and says so; only reads |
 | `release-notes [--release id \| --sprint id\|current \| --since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
 | `docs list` | lists the documents under the docs folder (Local) or the documents of the team's projects (Linear) |

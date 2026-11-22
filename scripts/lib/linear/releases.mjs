@@ -113,7 +113,7 @@ export function releaseOperations({ client, config, now = () => new Date(), uuid
     const taken = (await allReleases(client, RELEASES_QUERY, { filter: { pipeline: { id: { eq: pipeline.id } } } }, (data) => data.releases)).find((node) => node.version === version && !canceled(node))
     if (taken) throw new PmkitError('CONFLICT', `release ${version} already exists in pipeline ${pipeline.name}`, `pmkit release get ${taken.id}`)
     const fields = { name: input.name ?? version, version, pipelineId: pipeline.id, ...(input.target ? { targetDate: input.target } : {}), ...(input.description ? { description: input.description } : {}) }
-    if (dryRun) return { before: null, after: { id: null, ...toRelease({ ...fields, id: null, targetDate: fields.targetDate ?? null, completedAt: null, description: fields.description ?? '' }), id: null } }
+    if (dryRun) return { before: null, after: toRelease({ ...fields, id: null, targetDate: fields.targetDate ?? null, completedAt: null, description: fields.description ?? '' }) }
     const id = uuid()
     let node
     try {
