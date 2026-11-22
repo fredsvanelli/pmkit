@@ -2,7 +2,7 @@
 id: PMK-156
 title: Guide setup and doctor through a failing migration
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-118, PMK-119]
 milestone: local-gaps
 branch: pmk-156-guide-setup-and-doctor-through-a-failing
 created: 2026-10-28T00:11:38.981Z
-updated: 2026-11-22T04:32:23Z
+updated: 2026-11-22T04:32:40Z
 ---
 
 ## Description
