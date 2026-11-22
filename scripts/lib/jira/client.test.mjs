@@ -248,3 +248,76 @@ test('a fetch error that quotes the header never reaches the error', async () =>
   const { client } = setup({ [ISSUE]: { throws: new Error(`bad header Authorization: ${FAKE_HEADER}`) } }, { retries: 0 })
   assertError(await failure(() => client.request('GET', '/rest/api/3/issue/ENG-1')), 'UPSTREAM', 'Jira did not answer: network error')
 })
+
+const BOARDS = 'GET /rest/agile/1.0/board'
+const queryOf = (call) => Object.fromEntries(new URL(call.url).searchParams)
+const answers = (bodies) => bodies.map((json) => ({ json }))
+const pageCalls = (fetch, key) => fetch.calls.filter((call) => `${call.method} ${new URL(call.url).pathname}` === key)
+
+test('paginate walks offset pages until isLast', async () => {
+  const pages = [{ values: [1, 2], isLast: false }, { values: [3, 4], isLast: false }, { values: [5, 6], isLast: true }]
+  const { fetch, client } = setup({ [BOARDS]: answers(pages) })
+  assert.deepEqual(await client.paginate('/rest/agile/1.0/board', { pageSize: 2, query: { type: 'scrum' } }), { items: [1, 2, 3, 4, 5, 6], hasMore: false })
+  assert.deepEqual(pageCalls(fetch, BOARDS).map(queryOf), [
+    { type: 'scrum', maxResults: '2' },
+    { type: 'scrum', maxResults: '2', startAt: '2' },
+    { type: 'scrum', maxResults: '2', startAt: '4' },
+  ])
+})
+
+test('paginate moves startAt by the items Jira returned, not by the page size asked', async () => {
+  const { fetch, client } = setup({ [BOARDS]: answers([{ values: [1], isLast: false }, { values: [2], isLast: true }]) })
+  await client.paginate('/rest/agile/1.0/board', { pageSize: 2 })
+  assert.equal(queryOf(pageCalls(fetch, BOARDS)[1]).startAt, '1')
+})
+
+test('paginate stops at total and at an empty page', async () => {
+  const total = setup({ [BOARDS]: answers([{ values: [1, 2], total: 3 }, { values: [3], total: 3 }]) })
+  assert.deepEqual(await total.client.paginate('/rest/agile/1.0/board', { pageSize: 2 }), { items: [1, 2, 3], hasMore: false })
+  assert.equal(pageCalls(total.fetch, BOARDS).length, 2)
+  const empty = setup({ [BOARDS]: answers([{ values: [1] }, { values: [] }]) })
+  assert.deepEqual(await empty.client.paginate('/rest/agile/1.0/board'), { items: [1], hasMore: false })
+})
+
+test('paginate follows nextPageToken on search/jql', async () => {
+  const search = 'GET /rest/api/3/search/jql'
+  const { fetch, client } = setup({ [search]: answers([{ issues: [{ id: '1' }], nextPageToken: 't1' }, { issues: [{ id: '2' }], isLast: true }]) })
+  const result = await client.paginate('/rest/api/3/search/jql', { key: 'issues', query: { jql: 'project = ENG' } })
+  assert.deepEqual(result, { items: [{ id: '1' }, { id: '2' }], hasMore: false })
+  const [first, second] = pageCalls(fetch, search).map(queryOf)
+  assert.deepEqual(first, { jql: 'project = ENG', maxResults: '50' })
+  assert.deepEqual(second, { jql: 'project = ENG', maxResults: '50', nextPageToken: 't1' })
+})
+
+test('paginate stops at the limit, asks for only what it needs and says Jira had more', async () => {
+  const { fetch, client } = setup({ [BOARDS]: answers([{ values: [1, 2] }, { values: [3] }, { values: [4] }]) })
+  assert.deepEqual(await client.paginate('/rest/agile/1.0/board', { pageSize: 2, limit: 3 }), { items: [1, 2, 3], hasMore: true })
+  assert.deepEqual(pageCalls(fetch, BOARDS).map((call) => queryOf(call).maxResults), ['2', '1'])
+})
+
+test('paginate stops at 10 pages without a limit, and at maxPages', async () => {
+  const endless = setup({ [BOARDS]: { json: { values: [1], isLast: false } } })
+  const result = await endless.client.paginate('/rest/agile/1.0/board')
+  assert.equal(result.items.length, 10)
+  assert.equal(result.hasMore, true)
+  assert.equal(pageCalls(endless.fetch, BOARDS).length, 10)
+  const capped = setup({ [BOARDS]: { json: { values: [1], isLast: false } } })
+  assert.equal((await capped.client.paginate('/rest/agile/1.0/board', { maxPages: 2 })).hasMore, true)
+  assert.equal(pageCalls(capped.fetch, BOARDS).length, 2)
+})
+
+test('a broken page is UPSTREAM', async () => {
+  for (const pages of [[{ json: { issues: [] } }], [{ json: { values: [1], nextPageToken: 't' } }, { json: { values: [2], nextPageToken: 't' } }]]) {
+    const { client } = setup({ [BOARDS]: answers(pages) })
+    assertError(await failure(() => client.paginate('/rest/agile/1.0/board')), 'UPSTREAM', 'Jira returned a broken page for /rest/agile/1.0/board', RETRY_STEP)
+  }
+})
+
+test('bad paging options throw TypeError with no request', async () => {
+  const { fetch, client } = setup()
+  for (const options of [{ pageSize: 0 }, { pageSize: 101 }, { pageSize: 1.5 }, { maxPages: 0 }, { limit: 0 }]) {
+    await assert.rejects(client.paginate('/rest/agile/1.0/board', options), TypeError)
+  }
+  await assert.rejects(client.paginate('/wiki/x'), TypeError)
+  assert.equal(fetch.calls.length, 0)
+})

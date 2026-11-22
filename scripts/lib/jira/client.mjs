@@ -200,5 +200,41 @@ export function createJiraClient({
     return send(method, path, options)
   }
 
-  return Object.freeze({ request, session })
+  /** Reads one Jira list, offset (startAt) or token (nextPageToken), into { items, hasMore }. */
+  async function paginate(path, { query = {}, key = 'values', pageSize = 50, limit, maxPages } = {}) {
+    checkCall('GET', path)
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new TypeError('pageSize must be an integer from 1 to 100')
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw new TypeError('limit must be an integer of at least 1')
+    if (maxPages !== undefined && (!Number.isInteger(maxPages) || maxPages < 1)) throw new TypeError('maxPages must be an integer of at least 1')
+    // Without a limit, a careless call stops at 10 requests, as on Linear (PMK-30).
+    const pageCap = maxPages ?? (limit === undefined ? 10 : Infinity)
+    const broken = () => new PmkitError('UPSTREAM', `Jira returned a broken page for ${path}`, RETRY_STEP)
+    const items = []
+    let startAt = 0
+    let token
+    for (let pages = 1; ; pages += 1) {
+      const maxResults = limit === undefined ? pageSize : Math.min(pageSize, limit - items.length)
+      // startAt 0 is every offset list's default, so the first request also suits a token list.
+      const position = token !== undefined ? { nextPageToken: token } : startAt > 0 ? { startAt } : {}
+      const page = await request('GET', path, { query: { ...query, maxResults, ...position } })
+      const list = page?.[key]
+      if (!Array.isArray(list)) throw broken()
+      items.push(...list)
+      let more
+      if (typeof page.nextPageToken === 'string' && page.nextPageToken !== '') {
+        if (page.nextPageToken === token) throw broken()
+        token = page.nextPageToken
+        more = page.isLast !== true
+      } else if (token !== undefined) {
+        more = false
+      } else {
+        startAt += list.length
+        more = page.isLast !== true && list.length > 0 && !(typeof page.total === 'number' && startAt >= page.total)
+      }
+      const full = limit !== undefined && items.length >= limit
+      if (!more || full || pages >= pageCap) return { items: limit === undefined ? items : items.slice(0, limit), hasMore: more }
+    }
+  }
+
+  return Object.freeze({ request, paginate, session })
 }
