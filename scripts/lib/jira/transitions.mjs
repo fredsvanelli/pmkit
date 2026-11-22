@@ -68,7 +68,7 @@ function convert(field, id, value, key) {
     return value
   }
   if (type === 'string') return isTextArea(field.schema) ? textToAdf(value) : value
-  throw new PmkitError('NOT_SUPPORTED', `pmkit cannot fill ${field.name} (${type}); move ${key} in Jira`)
+  throw new PmkitError('NOT_SUPPORTED', `Jira asks for ${field.name} (${type}), which pmkit cannot fill`, `Move ${key} in Jira`)
 }
 
 const fillable = (field) => (field.allowedValues ?? []).length > 0 || ['number', 'date', 'string'].includes(field.schema?.type)
@@ -80,7 +80,7 @@ export function fieldValues(required, transition, given, { key, category, target
     if (!Object.hasOwn(known, id)) throw invalid(`the transition to ${target} has no field ${id}`, `Use one of: ${Object.keys(known).join(', ') || 'no fields'}`)
   }
   for (const { id } of required) {
-    if (!fillable(known[id])) throw new PmkitError('NOT_SUPPORTED', `pmkit cannot fill ${known[id].name} (${known[id].schema?.type}); move ${key} in Jira`)
+    if (!fillable(known[id])) throw new PmkitError('NOT_SUPPORTED', `Jira asks for ${known[id].name} (${known[id].schema?.type}), which pmkit cannot fill`, `Move ${key} in Jira`)
   }
   const missing = required.filter(({ id }) => !Object.hasOwn(given ?? {}, id))
   if (missing.length > 0) {

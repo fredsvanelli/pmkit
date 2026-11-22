@@ -125,7 +125,7 @@ test('fieldValues refuses a field type pmkit cannot fill', () => {
   const t = withFields({ who: { required: true, name: 'Reviewer', schema: { type: 'user' } } })
   assert.throws(
     () => fieldValues(requiredFields(t), t, { who: 'me' }, CTX),
-    (e) => e.code === 'NOT_SUPPORTED' && e.message === 'pmkit cannot fill Reviewer (user); move ENG-1 in Jira',
+    (e) => e.code === 'NOT_SUPPORTED' && e.message === 'Jira asks for Reviewer (user), which pmkit cannot fill' && e.nextStep === 'Move ENG-1 in Jira',
   )
 })
 
