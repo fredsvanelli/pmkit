@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-5
 branch: pmk-265-keep-issue-docs-in-the-linear-to-local
 created: 2026-11-11T22:34:43.140Z
-updated: 2026-11-22T07:19:07Z
+updated: 2026-11-22T07:27:35Z
 ---
 
 ## Description
@@ -33,5 +33,5 @@ PMK-252 stores issue docs on Linear as attachments. A migration from Linear to t
 
 ## Acceptance criteria
 
-- [ ] After a migration from Linear to the Local tracker, each issue has the same docs it had on Linear
-- [ ] The migration preview counts the docs it will bring, and an attachment pmkit did not create is not counted as a doc
+- [x] After a migration from Linear to the Local tracker, each issue has the same docs it had on Linear
+- [x] The migration preview counts the docs it will bring, and an attachment pmkit did not create is not counted as a doc
