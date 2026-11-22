@@ -32,7 +32,7 @@ import { GOAL_STATUSES, goalStems, parseGoal, serializeGoal, sortGoals } from '.
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
-import { viewOverrides } from '../issue-filter.mjs'
+import { closedSprint, viewOverrides } from '../issue-filter.mjs'
 import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
 import { inboxGet, inboxUpdate } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
@@ -178,6 +178,10 @@ export function createLocalTracker(root, {
   function requireSprint(value) {
     if (value === 'current') return requireActiveSprintId()
     if (!sprintExists(value)) throw invalid(`sprint ${value} does not exist`, 'pmkit cycle list')
+    // A sprint file that does not parse is validate's to report, not a reason to refuse the write.
+    let state
+    try { state = readSprint(path.join(issuesDir, 'sprints'), String(value)).state } catch { state = undefined }
+    if (state === 'closed') throw closedSprint(value)
     return String(value)
   }
 

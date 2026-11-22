@@ -380,6 +380,19 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: planned.id })).issues), [inPlanned])
     })
 
+    it('a closed sprint as the target of createIssue, updateIssue and moveToCycle fails with CONFLICT and writes nothing', ['cycles', 'cycle-lifecycle'], async ({ tracker, actor, today }) => {
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const closed = (await tracker.openCycle({ start: today }, actor)).after
+      await tracker.closeCycle(closed.id, actor)
+      const before = await issueState(tracker, [a])
+      await rejects(() => tracker.createIssue({ title: 'Never', sprint: closed.id }, actor), 'CONFLICT')
+      await rejects(() => tracker.updateIssue(a, { sprint: closed.id }, actor), 'CONFLICT')
+      await rejects(() => tracker.moveToCycle([a], closed.id, actor), 'CONFLICT')
+      await rejects(() => tracker.moveToCycle([a], closed.id, actor, { dryRun: true }), 'CONFLICT')
+      assert.equal(await issueState(tracker, [a]), before)
+      assert.deepEqual(await tracker.cycleIssues(closed.id), [])
+    })
+
     it('searchIssues with sprint current returns an empty list without an active sprint', ['cycles', 'cycle-lifecycle'], async ({ tracker, actor }) => {
       const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
       await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)

@@ -7,6 +7,7 @@ import { PmkitError } from '../errors.mjs'
 import { addDays, baseField, overlaps, SPRINT_STATES, validDate } from '../local/sprints.mjs'
 import { entryFor, readCapacity, writeEntry } from '../capacity-store.mjs'
 import { appendIteration, ITERATION_FIELD_QUERY, sprintsOf, toSprint, UPDATE_ITERATIONS } from './cycles.mjs'
+import { closedSprint } from '../issue-filter.mjs'
 import { projectName } from './writes.mjs'
 
 const SETUP = '/pmkit:setup'
@@ -148,7 +149,7 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
 
   /**
    * `to` is a start date, 'current' for the active sprint, or null to take the issues out of their sprint. Every issue and the target
-   * are checked first, so a bad id writes nothing, and a closed sprint is a target as on Local. Each issue then gets one item write, after an item add when it has no item.
+   * are checked first, so a bad id writes nothing, and a closed sprint is CONFLICT as on Local (PMK-166). Each issue then gets one item write, after an item add when it has no item.
    */
   /** The sprint a move goes to: null for none, the active one for current, or the one starting on to. */
   async function moveTarget({ context, field, key }, to) {
@@ -158,6 +159,8 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
     // The sprint is where the issues go, a value of the move: INVALID_INPUT, as in createIssue and updateIssue.
     if (!target) throw invalid(`sprint ${to} does not exist`, 'pmkit cycle list')
+    // A closed sprint's velocity is fixed, so it takes no issue (PMK-166).
+    if (target.state === 'closed') throw closedSprint(to)
     return target
   }
 
