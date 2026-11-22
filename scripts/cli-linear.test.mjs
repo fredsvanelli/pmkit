@@ -2180,8 +2180,11 @@ test('issues get shows the release and issues update --release changes it on Lin
   const real = await linear(fetch, ['issues', 'update', 'ACME-4', '--release', RB, '--json'])
   assert.equal(real.code, 0, real.stdout + real.stderr)
   assert.deepEqual(fake.records[3].releaseIds, [RB])
-  const refused = await linear(fetch, ['issues', 'update', 'ACME-3', '--release', 'none', '--json'])
-  assert.deepEqual(errorOf(refused), { code: 'INVALID_INPUT', message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue', nextStep: 'Change the releases of the issue in Linear' })
+  // PMK-260: --release none clears an issue in two releases, and its text showed both.
+  assert.match((await linear(fetch, ['issues', 'get', 'ACME-3'])).stdout, new RegExp(`release: +${RA}, ${RB}`))
+  const cleared = await linear(fetch, ['issues', 'update', 'ACME-3', '--release', 'none', '--json'])
+  assert.equal(cleared.code, 0, cleared.stdout + cleared.stderr)
+  assert.deepEqual(fake.records[2].releaseIds, [])
 })
 
 test('issues update --release on a workspace with releases off says releases are off', async () => {

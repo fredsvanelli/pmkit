@@ -9,7 +9,7 @@ import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refu
 import { compareIds } from '../ids.mjs'
 import { checkFilter, closedSprint, unknownSprint } from '../issue-filter.mjs'
 import { cycleKey, cycleState } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASE_PIPELINES_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { activeReleases, allReleases, releasesOff } from './releases.mjs'
@@ -349,11 +349,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (!(await releasesOn())) throw releasesOff()
     if (release !== null && !releaseReads.has(release)) releaseReads.set(release, resolveRelease(release).catch((error) => { releaseReads.delete(release); throw error }))
     const target = release === null ? null : await releaseReads.get(release)
-    // The one-release rule needs the real count: an unknown list refuses the write, and a node without one reads it.
+    // The write needs the real list: an unknown one refuses the write, and a node without one reads it.
     if (beforeNode.releasesUnread) throw beforeNode.releasesUnread
     if (beforeNode.releases === undefined) await attachReleases(beforeNode)
-    const count = activeReleases(beforeNode.releases.nodes).length
-    if (count > 1) throw new PmkitError('INVALID_INPUT', `the issue is in ${count} Linear releases, and pmkit sets one release per issue`, 'Change the releases of the issue in Linear')
+    // One release per pipeline (PMK-260, option B of PMK-246-1): a target replaces only its own pipeline's release, so the pipelines are read.
+    if (target !== null && activeReleases(beforeNode.releases.nodes).length > 0) {
+      beforeNode.releases = { nodes: await allReleases(client, ISSUE_RELEASE_PIPELINES_QUERY, { id: beforeNode.id }, (data) => data.issue.releases) }
+    }
     return target
   }
 

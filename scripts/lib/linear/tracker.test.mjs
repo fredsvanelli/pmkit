@@ -1652,17 +1652,38 @@ test('an issue whose only release is canceled gets the new release without remov
   assert.equal(result.after.release, REL.two)
 })
 
-test('an issue in two releases is refused with the count', async () => {
-  const { tracker: linear, fake, fetch } = releaseSetup()
-  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
-  for (const release of [REL.one, null]) {
-    await assert.rejects(linear.updateIssue('ACME-1', { release }, 'user-1', { dryRun: true }), {
-      code: 'INVALID_INPUT',
-      message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue',
-      nextStep: 'Change the releases of the issue in Linear',
-    })
-  }
+// PMK-260 (option B of PMK-246-1): one release per pipeline. A second pipeline of the scope team, for iOS.
+const MOBILE = '00000000-0000-4000-8000-0000000000c1'
+const MOBILE_NEXT = '00000000-0000-4000-8000-0000000000c2'
+const twoPipelines = () => releaseSetup({ issues: {
+  pipelines: [...PIPELINES, { id: 'pipe-ios', name: 'iOS', teams: ['team-acme'] }],
+  releases: [...RELEASES, { id: MOBILE, name: 'iOS 1', version: '1.0', pipeline: 'pipe-ios' }, { id: MOBILE_NEXT, name: 'iOS 2', version: '2.0', pipeline: 'pipe-ios' }],
+} })
+
+test('--release none clears every release of an issue in two releases', async () => {
+  const { tracker: linear, fake, fetch } = twoPipelines()
+  seed(fake, { title: 'Both', releaseIds: [REL.two, MOBILE] })
+  const result = await linear.updateIssue('ACME-1', { release: null }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input.removedReleaseIds.sort(), [REL.two, MOBILE].sort())
+  assert.equal('release' in result.after || 'releases' in result.after, false)
+})
+
+test('--release <id> replaces only the release of that id\'s pipeline and keeps the others', async () => {
+  const { tracker: linear, fake, fetch } = twoPipelines()
+  seed(fake, { title: 'Both', releaseIds: [REL.two, MOBILE] })
+  const dry = await linear.updateIssue('ACME-1', { release: MOBILE_NEXT }, 'user-1', { dryRun: true })
+  assert.deepEqual(dry.after.releases, [REL.two, MOBILE_NEXT].sort())
   assert.equal(mutationsIn(fetch), 0)
+  const result = await linear.updateIssue('ACME-1', { release: MOBILE_NEXT }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { addedReleaseIds: [MOBILE_NEXT], removedReleaseIds: [MOBILE] })
+  assert.deepEqual(result.after.releases, [REL.two, MOBILE_NEXT].sort())
+})
+
+test('a release of another pipeline joins the one an issue has', async () => {
+  const { tracker: linear, fake, fetch } = twoPipelines()
+  seed(fake, { title: 'Web only', releaseIds: [REL.two] })
+  await linear.updateIssue('ACME-1', { release: MOBILE }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { addedReleaseIds: [MOBILE] })
 })
 
 test('a canceled or unknown target release is refused before any mutation', async () => {

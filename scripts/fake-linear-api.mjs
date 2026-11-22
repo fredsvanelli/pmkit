@@ -818,6 +818,9 @@ export function fakeLinearIssues({
   routes.PmkitIssuesReleases = query('PmkitIssuesReleases', ({ ids = [], first = 50 }) => ({
     issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, releases: connection(record.releaseIds.map((rid) => releaseNode(requireRelease(rid))), BATCH_RELEASES_PAGE) })), first),
   }))
+  routes.PmkitIssueReleasePipelines = query('PmkitIssueReleasePipelines', ({ id, first, after }) => ({
+    issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
+  }))
   routes.PmkitIssueReleases = query('PmkitIssueReleases', ({ id, first, after }) => ({
     issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
   }))
