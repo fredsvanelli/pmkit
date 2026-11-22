@@ -2,13 +2,14 @@
 id: PMK-329
 title: Skip a quote of definitions and keep a shown line in the adr-status fallback
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-329-skip-a-quote-of-definitions-and-keep-a
 created: 2026-11-15T23:21:51.096Z
-updated: 2026-11-15T23:21:51Z
+updated: 2026-11-22T01:56:54Z
 ---
 
 ## Description
@@ -43,6 +44,6 @@ Source: PMK-325 (PR #302, review cycles 1 and 2).
 
 ## Acceptance criteria
 
-- [ ] `> [a]: /u`, blank, `> Date: x`, `> Accepted`, with and without a blank and `> Proposed` after, keeps `> Accepted` and names every other line, as with no definition, real and dry run, with tests; the list item holding only definitions keeps its names, with a test
-- [ ] With no line that reads as a status, `[a]: /u`, blank, `Date: x`, `Foo` keeps `Date: x`, and the PMK-322 test `a definition over two lines with no later status` keeps `see ADR 3`, changed on purpose and said in the PR
-- [ ] A develop x branch comparison on random Status bodies shows refusal, text written and `adr-get` status equal, and only names differ, each difference explained, and `scripts/dev/adr-commonmark-diff.mjs` exits 0 with 0 worse on the full run, in the PR
+- [x] `> [a]: /u`, blank, `> Date: x`, `> Accepted`, with and without a blank and `> Proposed` after, keeps `> Accepted` and names every other line, as with no definition, real and dry run, with tests; the list item holding only definitions keeps its names, with a test
+- [x] With no line that reads as a status, `[a]: /u`, blank, `Date: x`, `Foo` keeps `Date: x`, and the PMK-322 test `a definition over two lines with no later status` keeps `see ADR 3`, changed on purpose and said in the PR
+- [x] A develop x branch comparison on random Status bodies shows refusal, text written and `adr-get` status equal, and only names differ, each difference explained, and `scripts/dev/adr-commonmark-diff.mjs` exits 0 with 0 worse on the full run, in the PR
