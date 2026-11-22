@@ -10,7 +10,7 @@
 //   trashTestTeamItems({ client, team, guard }) Trashes those issues with issueDelete and those projects with projectDelete.
 //   createGuardedFetch({ fetch, workspace, allowlist }) { fetch, guard }. The fetch refuses every mutation the allowlist lacks.
 //
-// The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 14 mutations of
+// The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 17 mutations of
 // the contract run. A caller that needs another mutation passes its own allowlist with rules of the same shape.
 // Before any rule runs, readMutation refuses a document whose root field takes anything but `id: $id` and/or `input: $input`.
 // Each suite rule also refuses an input key off SUITE_INPUT_KEYS, so an id the rules do not check never reaches Linear.
@@ -255,7 +255,7 @@ const rules = {
   /** The first reason among the checks that the ids a create or update input carries belong to the run. */
   issueInput(ctx, input = {}) {
     if (input.teamId !== undefined && rules.team(ctx, input.teamId)) return 'the team is not the test team'
-    for (const [field, kind] of [['projectId', 'project'], ['parentId', 'issue'], ['cycleId', 'cycle'], ['stateId', 'state']]) {
+    for (const [field, kind] of [['projectId', 'project'], ['parentId', 'issue'], ['cycleId', 'cycle'], ['stateId', 'state'], ['projectMilestoneId', 'milestone']]) {
       if (input[field] !== undefined && input[field] !== null && !ctx.owned(kind, input[field])) return `${field} is not one the run owns`
     }
     if (input.labelIds !== undefined && !Array.isArray(input.labelIds)) return 'labelIds is not a list'
@@ -266,7 +266,7 @@ const rules = {
 }
 
 /** The fields of an issue input the adapter sends (writes.mjs toInput). Every id among them is checked by rules.issueInput. */
-const ISSUE_KEYS = ['title', 'description', 'priority', 'estimate', 'dueDate', 'stateId', 'labelIds', 'assigneeId', 'parentId', 'projectId', 'cycleId']
+const ISSUE_KEYS = ['title', 'description', 'priority', 'estimate', 'dueDate', 'stateId', 'labelIds', 'assigneeId', 'parentId', 'projectId', 'cycleId', 'projectMilestoneId']
 
 /**
  * The input keys each mutation may carry: the ones the adapter and the run send. A key off the list is refused, so an id the guard
@@ -282,6 +282,8 @@ export const SUITE_INPUT_KEYS = Object.freeze({
   commentCreate: ['id', 'issueId', 'body', 'parentId'],
   projectCreate: ['id', 'name', 'startDate', 'targetDate', 'content', 'teamIds'],
   projectUpdateCreate: ['id', 'projectId', 'body', 'health'],
+  // PMK-255: the run makes its own milestone, since the adapter does not create one.
+  projectMilestoneCreate: ['id', 'projectId', 'name', 'targetDate'],
   // PMK-356: the epic move (PROJECT_SET_STATUS) sends the status; PMK-348: the epic edit (PROJECT_EDIT) sends the name and content. A team move is refused.
   projectUpdate: ['statusId', 'name', 'content'],
 })
@@ -324,6 +326,7 @@ const SUITE_RULES = {
     return teams.length === 1 && rules.team(ctx, teams[0]) === null ? null : 'teamIds must be exactly the test team'
   },
   projectUpdateCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
+  projectMilestoneCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
   // A workspace project status is not the run's, so only its shape is checked; the project must be one the run created (PMK-356).
   projectUpdate: (variables, ctx) =>
     rules.owns(ctx, 'project', variables.id, 'project') ??
@@ -335,7 +338,7 @@ const SUITE_RULES = {
   projectDelete: (variables, ctx) => rules.owns(ctx, 'project', variables.id, 'project'),
 }
 
-/** The 16 mutations of the contract run, each behind its input-key check. */
+/** The 17 mutations of the contract run, each behind its input-key check. */
 export const SUITE_ALLOWLIST = Object.freeze(Object.fromEntries(Object.entries(SUITE_RULES).map(([root, rule]) => [root, checked(root, rule)])))
 
 /** The kind of id a create makes the run's own, and the payload field of its answer that carries the new node. */
@@ -346,6 +349,7 @@ const CREATES = {
   issueRelationCreate: ['relation', 'issueRelation'],
   workflowStateCreate: ['state', 'workflowState'],
   teamCreate: ['team', 'team'],
+  projectMilestoneCreate: ['milestone', 'projectMilestone'],
 }
 
 /** The id of the node a create answer reports, or null unless the answer says success: true and carries a string id. */
@@ -595,6 +599,7 @@ export const TEAM_BY_NAME_QUERY = `query PmkitSandboxTeam($name: String!) { team
 export const TEAM_BY_ID_QUERY = `query PmkitSandboxTeamById($id: ID!) { teams(filter: { id: { eq: $id } }, includeArchived: true, first: 1) { nodes { ${TEAM_FIELDS} } } }`
 export const TEAM_CREATE = 'mutation PmkitSandboxTeamCreate($input: TeamCreateInput!) { teamCreate(input: $input) { success team { id key } } }'
 export const STATES_QUERY = 'query PmkitSandboxStates($id: String!) { team(id: $id) { states(first: 100) { nodes { id name type } } } }'
+export const MILESTONE_CREATE = 'mutation PmkitSandboxMilestoneCreate($input: ProjectMilestoneCreateInput!) { projectMilestoneCreate(input: $input) { success projectMilestone { id } } }'
 export const STATE_CREATE = 'mutation PmkitSandboxStateCreate($input: WorkflowStateCreateInput!) { workflowStateCreate(input: $input) { success workflowState { id } } }'
 
 const DESCRIPTION = `Test team for the pmkit contract tests (marker: ${TEST_TEAM.marker}). They create and trash items here. Do not use it for real work.`
