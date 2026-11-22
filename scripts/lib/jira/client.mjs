@@ -1,5 +1,6 @@
 // The Jira Cloud REST client. See docs/superpowers/specs/2026-11-22-pmk-75-jira-api-client-design.md and ADR 0013.
 
+import { URLSearchParams } from 'node:url'
 import { PmkitError } from '../errors.mjs'
 import { secretKeyPaths } from '../user-store.mjs'
 import { jiraCredential } from './credential.mjs'
