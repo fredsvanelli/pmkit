@@ -2,7 +2,7 @@
 id: PMK-157
 title: Tidy how validate handles migrations and a skipped tracker
 type: bug
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-118, PMK-119]
 milestone: local-gaps
 branch: pmk-157-tidy-how-validate-handles-migrations-and
 created: 2026-10-28T00:11:39.206Z
-updated: 2026-11-22T04:24:30Z
+updated: 2026-11-22T04:24:45Z
 ---
 
 ## Description
