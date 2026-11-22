@@ -2,7 +2,7 @@
 id: PMK-161
 title: Handle nested splits in one cycle close
 type: task
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-123]
 milestone: local-gaps
 branch: pmk-161-handle-nested-splits-in-one-cycle-close
 created: 2026-10-28T00:11:40.126Z
-updated: 2026-11-22T05:52:16Z
+updated: 2026-11-22T05:52:22Z
 ---
 
 ## Description
