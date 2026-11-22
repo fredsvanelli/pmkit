@@ -1,1 +1,8 @@
 {"at":"2026-11-15T23:21:50Z","by":"fred","op":"create","to":{"id":"PMK-328","title":"Read an ordered list item as a status in adr-status, as a bullet item","type":"bug","status":"backlog","priority":"medium","estimate":2,"assignee":"fred","labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-15T23:21:50.971Z","updated":"2026-11-15T23:21:50Z"}}
+{"at":"2026-11-22T01:34:39Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T01:34:39Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-328-read-an-ordered-list-item-as-a-status-in"}
+{"at":"2026-11-22T01:46:26Z","by":"fred","op":"comment","to":"2026-11-22T01-46-26Z-fred.md"}
+{"at":"2026-11-22T01:46:26Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T01:46:26Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T01:46:26Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T01:46:26Z","by":"fred","op":"update","field":"acceptance_criteria"}
