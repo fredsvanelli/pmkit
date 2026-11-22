@@ -55,6 +55,7 @@ test('--field resolution=Done moves the issue to done', async () => {
   assert.equal(result.code, 0, result.stdout + result.stderr)
   const body = JSON.parse(result.stdout)
   assert.deepEqual((body.data ?? body).after.status, { name: 'Done', category: 'done' })
+  assert.doesNotMatch(result.stderr, /--field is ignored/)
 })
 
 test('--field without = or with an empty id is a usage error naming the value', async () => {

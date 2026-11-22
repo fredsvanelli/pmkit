@@ -735,6 +735,8 @@ async function unlinkMany(ctx, tracker, actor, from, targets) {
 }
 
 /** The --field id=value options of issues move as an object, undefined when none was given. */
+const FIELD_IGNORED = "--field is ignored: this tracker's move needs no fields"
+
 function moveFields(values) {
   if (values.length === 0) return undefined
   const fields = {}
@@ -1178,8 +1180,11 @@ export const COMMANDS = [
       const fields = moveFields(ctx.list('field'))
       const result = await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), ...(fields === undefined ? {} : { fields }), dryRun: ctx.dryRun })
       const needs = (result.requiredFields ?? []).map((field) => `needs: ${field.name} (${field.id}${field.allowed?.length > 0 ? `: ${field.allowed.join(', ')}` : ''})`)
-      if (!ctx.dryRun || needs.length === 0) return issueWrite(ctx, result)
-      return { data: result, text: `${writeText(result, { dryRun: false })}\n${needs.join('\n')}\ndry run: nothing was written`, commit: result.after.id }
+      // A tracker that sent the fields marks its result with the non-enumerable fieldsUsed; any other one ignored them.
+      const warnings = fields !== undefined && result.fieldsUsed !== true ? [FIELD_IGNORED] : []
+      const data = warnings.length > 0 ? { ...result, warnings } : result
+      if (!ctx.dryRun || needs.length === 0) return { ...issueWrite(ctx, data), warnings }
+      return { data, text: `${writeText(result, { dryRun: false })}\n${needs.join('\n')}\ndry run: nothing was written`, commit: result.after.id, warnings }
     },
   },
   {

@@ -195,6 +195,9 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
   }
 
   /** The move after the actor check: target, transition, screen fields, then one POST. */
+  /** Marks a move result with the non-enumerable fieldsUsed when the given fields went through a transition, so the CLI does not warn that they were ignored. */
+  const used = (result, fields) => (Object.keys(fields).length > 0 ? Object.defineProperty(result, 'fieldsUsed', { value: true, enumerable: false }) : result)
+
   async function move(id, category, { status, fields = {}, dryRun = false }) {
     const { item, issue: before, context } = await readItem(id)
     const target = pickTarget({ item, category, status, context })
@@ -207,12 +210,12 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
     if (dryRun) {
       // The given values are checked; the missing ones are listed, so the confirmation can ask for them.
       fieldValues([], transition, fields, where)
-      return { before, after: { ...before, status: statusAt(target, context) }, requiredFields: required }
+      return used({ before, after: { ...before, status: statusAt(target, context) }, requiredFields: required }, fields)
     }
     const values = fieldValues(required, transition, fields, where)
     const body = { transition: { id: transition.id }, ...(Object.keys(values).length > 0 ? { fields: values } : {}) }
     await client.request('POST', issuePath(before.id, '/transitions'), { body })
-    return { before, after: await afterOf(before.id) }
+    return used({ before, after: await afterOf(before.id) }, fields)
   }
 
   async function moveToCategory(id, category, actor, { status, fields = {}, dryRun = false } = {}) {

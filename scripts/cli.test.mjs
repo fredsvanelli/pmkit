@@ -97,6 +97,19 @@ test('issues move prints status: backlog → in_progress', () => {
   assert.match(moved.stdout, /status: backlog → in_progress/)
 })
 
+test('issues move --field is ignored with a warning on a tracker whose move needs no fields, and still moves', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['issues', 'create', '--title', 'First'])
+  const moved = run(root, ['issues', 'move', after.id, 'in_progress', '--field', 'x=y'])
+  assert.equal(moved.status, 0, moved.stderr)
+  assert.match(moved.stdout, /status: backlog → in_progress/)
+  assert.match(moved.stderr, /warning: --field is ignored: this tracker's move needs no fields/)
+  const second = json(root, ['issues', 'create', '--title', 'Second'])
+  const asJson = json(root, ['issues', 'move', second.after.id, 'in_progress', '--field', 'x=y'])
+  assert.deepEqual(asJson.warnings, ["--field is ignored: this tracker's move needs no fields"])
+  assert.equal(run(root, ['issues', 'move', json(root, ['issues', 'create', '--title', 'Third']).after.id, 'in_progress']).stderr, '')
+})
+
 test('issues update --dry-run prints the change and leaves the repo byte-identical', () => {
   const root = makeRepo('basic')
   const { after } = json(root, ['issues', 'create', '--title', 'First'])
