@@ -29,7 +29,9 @@ The key is loaded at run time from the file the owner named and never printed, l
 
 - Does `issues create` without `--milestone` change? No: `writes.mjs` sends no `projectMilestoneId` on a create without one.
 - A milestone of a project the run did not create: refused, as any foreign id.
+- The update and bulk writes need the issue in the milestone's project (the caller checks it, `writes.mjs` line 16), so the probe creates all three issues under the run's epic.
+- Does Linear's `ProjectMilestoneCreateInput` take `id`? `CREATES` owns the id from the answer, so the run works either way; if the live run refuses `id`, the probe drops it and the design notes it.
 - `null` (clearing the milestone): passes; it points at nothing.
 - Other missing sandbox fields: out of scope; none turned up in the three milestone writes.
-- New terms or ADRs: none.
+- New terms or ADRs: none. Milestone is in `CONTEXT.md`; a guard rule is easy to reverse.
 - Approval: no product question; the acceptance criteria are the approval. pmkit PO approves.
