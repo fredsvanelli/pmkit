@@ -1,6 +1,6 @@
 # PMK-76 design: discover a Jira site and build its capability manifest
 
-Issue PMK-76, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: draft, waiting for the owner's approval. Written on 2026-11-22 by a dispatched worker with no live user dialogue, from the issue, ADR 0003, ADR 0013, the PMK-74 and PMK-75 specs, the PMK-33 (Linear discovery) and PMK-86 (GitHub discovery) specs and the code. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion. No Jira credentials exist, so nothing here was checked against a live site.
+Issue PMK-76, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: approved by the owner on 2026-11-22, with the four answers in "Resolved questions". Written on 2026-11-22 by a dispatched worker with no live user dialogue, from the issue, ADR 0003, ADR 0013, the PMK-74 and PMK-75 specs, the PMK-33 (Linear discovery) and PMK-86 (GitHub discovery) specs and the code. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion. No Jira credentials exist, so nothing here was checked against a live site.
 
 ## Problem
 
@@ -52,7 +52,7 @@ Status categories carry `key` `new`, `indeterminate` or `done` (and `undefined` 
 
 ## Non-goals
 
-- `init --tracker jira` and a Jira section in `commands/setup.md` (see open question 1).
+- `init --tracker jira` and a Jira section in `commands/setup.md` (resolved question 1: a separate EPC-7 issue).
 - Work items, transitions, JQL, assignable users, priority names (PMK-77); sprints (PMK-78); epics, versions and status updates (PMK-79); worklogs (PMK-80). Every contract operation but `discover` and `capabilities` stays a `NOT_SUPPORTED` stub.
 - A discovery cache in the user store and the mapping check before each operation. `discover` always reads Jira, and no other operation reads discovery yet; PMK-77 adds both with the first operation that needs them, as PMK-87 did for GitHub **(builder's call)**.
 - Telling Standard from Premium. No documented call says it.
@@ -178,7 +178,7 @@ Names match case-insensitively. `estimate.unit` is `hours` when the estimate fie
 
 ### The manifest
 
-`buildJiraCapabilities(raw, pmkit)` returns the 20 entries in `CAPABILITIES` order. Each entry first gets the site's answer, the Jira column below. Then the served rule, as Linear's manifest does for an offer pmkit does not serve: while the Jira adapter implements no operation behind a capability, the entry is `absent`, keeps the site's answer in `detail.site` (and its other detail keys), and carries the hint `The Jira adapter does not serve <id> yet (<issue>)` **(open question 2)**. `linked_code` is served now (git, as on every tracker).
+`buildJiraCapabilities(raw, pmkit)` returns the 20 entries in `CAPABILITIES` order. Each entry first gets the site's answer, the Jira column below. Then the served rule, as Linear's manifest does for an offer pmkit does not serve: while the Jira adapter implements no operation behind a capability, the entry is `absent`, keeps the site's answer in `detail.site` (and its other detail keys), and carries the hint `The Jira adapter does not serve <id> yet (<issue>)` (resolved question 2). `linked_code` is served now (git, as on every tracker).
 
 | Capability | Site answer | Served by |
 |---|---|---|
@@ -260,7 +260,7 @@ Skipped: no Jira credentials. The PR lists it open, and a follow-up issue in EPC
 | `absent` until served, site answer in `detail.site` | No command treats a stub as working; the site's answer is still reported. Same rule Linear uses for an offer pmkit does not serve. |
 | Field roles map by field id | Ids are stable; names repeat across team-managed spaces. The issue quotes `customfield_10016`. |
 | No cache, no mapping check yet | No operation reads discovery before PMK-77. |
-| No ADR | ADR 0013 holds the hard-to-reverse choices; the field-id mapping follows the issue's quote (open question 3). |
+| ADR 0014 | The field-id mapping is a config format users write by hand. |
 
 ## Risks
 
@@ -271,11 +271,16 @@ Skipped: no Jira credentials. The PR lists it open, and a follow-up issue in EPC
 
 New flow: `discover` and `capabilities` on a Jira site. The Check step adds the runbook and its E2E test and runs every `scripts/runbook-*.test.mjs`.
 
-## Open questions for the owner
+## Resolved questions
 
-1. **Setup.** ADR 0013 describes what `/pmkit:setup` does for Jira but no EPC-7 issue owns `init --tracker jira` and the setup questions (status mappings for `backlog`, `in_review`, `canceled`; field roles; types). Recommendation: keep them out of PMK-76 (its criteria do not name setup) and open a follow-up issue in EPC-7; until then a user writes `.pmkit/config.yaml` by hand, which costs nothing while every operation is a stub.
-2. **Unserved capabilities.** Recommendation as above: `absent` with `detail.site` until PMK-77 to PMK-80 serve them. The alternative reports the site's path as the entry's path now, which reads as "works" while every operation is a stub.
-3. **Field mapping value.** Recommendation: `mappings.fields.<role>` holds the Jira field id (`customfield_10016`), not its name.
+The owner answered these on 2026-11-22, accepting each recommendation.
+
+1. **Setup.** `init --tracker jira` and the `/pmkit:setup` Jira section stay out of PMK-76. PMK-365, in EPC-7 itself, holds them, scheduled after PMK-77. Until then a user writes `.pmkit/config.yaml` by hand.
+2. **Unserved capabilities.** `absent` with the site's answer in `detail.site` and the hint `The Jira adapter does not serve <id> yet (<issue>)`, until PMK-77 to PMK-80 serve them. `linked_code` is served now.
+3. **Field mapping value.** `mappings.fields.<role>` holds the Jira field id. ADR 0014 records it.
+4. **The plan.** Criterion 3 reads as what the `jira-software` license plan (`FREE`, `PAID`, `UNLICENSED`), the space type and the global settings allow.
+
+New term in `CONTEXT.md`: **Work type**.
 
 ## Left to the builder
 
