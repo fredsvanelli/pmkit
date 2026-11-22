@@ -2,6 +2,7 @@
 // GitHub answers. Pure: it makes no request. See the spec's "Search: Native search (criterion 1)" and its table.
 
 import { PmkitError } from '../errors.mjs'
+import { unknownSprint } from '../issue-filter.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { parseIssueId } from './ids.mjs'
 import { epicOf, parseEpicId } from './projects.mjs'
@@ -42,7 +43,7 @@ function sprintStep(sprint, context, today) {
   const { sprints } = sprintsOf(mapped.field.configuration, today)
   if (sprint !== 'current') {
     // A start date no iteration has is a typo, not a sprint with no issues. Stale, as below: the iteration may be new.
-    if (!sprints.some((item) => item.id === sprint)) throw new PmkitError('INVALID_INPUT', `sprint "${sprint}" is not current, none or an existing sprint id`, 'pmkit cycle list', { stale: true })
+    if (!sprints.some((item) => item.id === sprint)) throw unknownSprint(sprint, { stale: true })
     return (issue) => issue.sprint === sprint
   }
   const active = sprints.find((item) => item.state === 'active')

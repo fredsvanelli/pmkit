@@ -7,7 +7,7 @@ import { repoDocPath } from '../doc-path.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
-import { checkFilter } from '../issue-filter.mjs'
+import { checkFilter, unknownSprint } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
@@ -195,8 +195,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (current.scopeTeam && typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint)) {
       // A cycle number no cycle of the team has is a typo, not a sprint with no issues (Local refuses it the same way).
       await cycleNodeFor(filter.sprint, current.scopeTeam).catch((error) => {
-        if (error.code !== 'NOT_FOUND') throw error
-        throw new PmkitError('INVALID_INPUT', `sprint "${filter.sprint}" is not current, none or an existing sprint id`, 'pmkit cycle list')
+        throw error.code === 'NOT_FOUND' ? unknownSprint(filter.sprint) : error
       })
     }
     let epicProject

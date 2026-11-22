@@ -12,6 +12,9 @@ export const FILTER_KEYS = [
 export const SORTS = ['priority', 'updated', 'created', 'due']
 
 const invalid = (message, nextStep = 'pmkit issues list --help') => new PmkitError('INVALID_INPUT', message, nextStep)
+
+/** The error for a sprint filter value no sprint has, the same on every tracker. */
+export const unknownSprint = (id, details) => new PmkitError('INVALID_INPUT', `sprint "${id}" is not current, none or an existing sprint id`, 'pmkit cycle list', details)
 const isStringList = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string')
 
 /**
@@ -44,7 +47,7 @@ export function checkFilter(filter, { types = [], members = [], sprintExists = (
   if (filter.types) within('type', filter.types, types, 'pmkit discover')
   if (filter.assignee !== undefined) within('assignee', [filter.assignee], ['me', 'none', ...members], 'pmkit discover')
   if (typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint) && !sprintExists(filter.sprint)) {
-    throw invalid(`sprint "${filter.sprint}" is not current, none or an existing sprint id`, 'pmkit cycle list')
+    throw unknownSprint(filter.sprint)
   }
 }
 
