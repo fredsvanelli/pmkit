@@ -1,0 +1,2 @@
+{"at":"2026-11-22T05:53:35Z","by":"fred","op":"create","to":{"id":"PMK-360","title":"Run the migration branch of /pmkit:local:doctor in a scenario","type":"chore","status":"backlog","priority":"low","labels":[],"parent":"EPC-12","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-22T05:53:35.917Z","updated":"2026-11-22T05:53:35Z"}}
+{"at":"2026-11-22T05:53:36Z","by":"fred","op":"link","field":"related","to":"PMK-156"}

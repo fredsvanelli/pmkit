@@ -2,7 +2,7 @@
 id: PMK-155
 title: Check the design spec CLI table against the usage strings
 type: task
-status: in_review
+status: done
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-117]
 milestone: local-gaps
 branch: pmk-155-check-the-design-spec-cli-table-against
 created: 2026-10-28T00:11:38.781Z
-updated: 2026-11-22T03:16:23Z
+updated: 2026-11-22T05:53:08Z
 ---
 
 ## Description

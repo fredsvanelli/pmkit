@@ -2,7 +2,7 @@
 id: PMK-154
 title: Say when a current reader finds no active sprint
 type: task
-status: in_review
+status: done
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-116]
 milestone: local-gaps
 branch: pmk-154-say-when-a-current-reader-finds-no
 created: 2026-10-28T00:11:38.633Z
-updated: 2026-11-22T04:05:36Z
+updated: 2026-11-22T05:53:07Z
 ---
 
 ## Description

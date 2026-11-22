@@ -2,7 +2,7 @@
 id: PMK-153
 title: Cover the remaining sprint and assignee aliases in the contract suite
 type: task
-status: in_review
+status: done
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-115]
 milestone: local-gaps
 branch: pmk-153-cover-the-remaining-sprint-and-assignee
 created: 2026-10-28T00:11:38.487Z
-updated: 2026-11-22T03:37:26Z
+updated: 2026-11-22T05:53:07Z
 ---
 
 ## Description

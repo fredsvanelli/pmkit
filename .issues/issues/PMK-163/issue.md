@@ -2,7 +2,7 @@
 id: PMK-163
 title: "Check paragraph indentation after list items in commands, skills and docs"
 type: chore
-status: in_review
+status: done
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-124]
 milestone: local-gaps
 branch: pmk-163-check-paragraph-indentation-after-list
 created: 2026-10-28T00:11:40.560Z
-updated: 2026-11-22T04:11:20Z
+updated: 2026-11-22T05:53:13Z
 ---
 
 ## Description
