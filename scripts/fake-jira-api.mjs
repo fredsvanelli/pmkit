@@ -122,6 +122,31 @@ export function jiraSiteRoutes({ style = 'company-managed' } = {}) {
     'GET /rest/api/3/label': { json: { startAt: 0, maxResults: 100, total: 2, isLast: true, values: ['backend', 'frontend'] } },
     'GET /rest/api/3/instance/license': { json: { applications: [{ id: 'jira-software', plan: 'PAID' }] } },
     'GET /rest/api/3/configuration': { json: { issueLinkingEnabled: true, subTasksEnabled: true, timeTrackingEnabled: true, timeTrackingConfiguration: { defaultUnit: 'hour' } } },
+    'GET /rest/api/3/user/assignable/search': {
+      json: [
+        { accountId: 'acc-1', displayName: 'Test User', accountType: 'atlassian' },
+        { accountId: 'acc-2', displayName: 'Second User', accountType: 'atlassian' },
+        { accountId: 'app-1', displayName: 'Bot', accountType: 'app' },
+      ],
+    },
+    'GET /rest/api/3/priority': {
+      json: [
+        { id: '1', name: 'Highest' },
+        { id: '2', name: 'High' },
+        { id: '3', name: 'Medium' },
+        { id: '4', name: 'Low' },
+        { id: '5', name: 'Lowest' },
+      ],
+    },
+    'GET /rest/api/3/issueLinkType': {
+      json: {
+        issueLinkTypes: [
+          { id: '10000', name: 'Blocks', inward: 'is blocked by', outward: 'blocks' },
+          { id: '10002', name: 'Duplicate', inward: 'is duplicated by', outward: 'duplicates' },
+          { id: '10003', name: 'Relates', inward: 'relates to', outward: 'relates to' },
+        ],
+      },
+    },
     'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }, { id: 1, name: 'ENG board', type: 'scrum' }] } },
     'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', estimation: { type: 'field', field: { fieldId: 'customfield_10016', displayName: 'Story Points' } } } },
   }
