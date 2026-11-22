@@ -8,6 +8,7 @@ import { PmkitError } from '../errors.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createJiraClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
+import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
 import { relationOperations } from './relation-ops.mjs'
@@ -136,6 +137,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
 
   const issues = issueOperations({ client, getContext, now })
   const relations = relationOperations({ client, ops: issues, getContext })
+  const history = historyOperations({ client, ops: issues, getContext, now })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -147,6 +149,11 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     link: relations.link,
     unlink: relations.unlink,
     setParent: relations.setParent,
+    getHistory: history.getHistory,
+    listComments: history.listComments,
+    comment: history.comment,
+    resolveThread: history.resolveThread,
+    metricEvents: history.metricEvents,
   }
   // delegate carries the manifest's hint, as GitHub's absent operations do.
   const delegate = guarded(async () => {
