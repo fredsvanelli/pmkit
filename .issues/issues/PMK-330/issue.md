@@ -2,13 +2,14 @@
 id: PMK-330
 title: Lock the PMK-326 CRLF cases against fences and share the HTML openers
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
+branch: pmk-330-lock-the-pmk-326-crlf-cases-against
 created: 2026-11-15T23:21:51.203Z
-updated: 2026-11-15T23:21:51Z
+updated: 2026-11-22T02:03:34Z
 ---
 
 ## Description
@@ -43,6 +44,6 @@ Source: PMK-326 (PR #301, review cycles 1 and 2).
 
 ## Acceptance criteria
 
-- [ ] The CRLF in-place tests check that `adrFenceHeld`, `adrFenceBlocks` and `adr-get` `fenceHeld` are null, and a CRLF control for a top-level block of kind 1 to 5 that never closes after a block of the same kind its quote or list item holds still refuses, real and dry run, with tests
-- [ ] The LF and CRLF loops use one list of openers and endings, with the same test names and count as before, and no other test changes
-- [ ] The PMK-326 CHANGELOG line and the `adrHtmlHeld` doc comment state the quote rule, also for a list item in a quote; no code line changes outside the tests
+- [x] The CRLF in-place tests check that `adrFenceHeld`, `adrFenceBlocks` and `adr-get` `fenceHeld` are null, and a CRLF control for a top-level block of kind 1 to 5 that never closes after a block of the same kind its quote or list item holds still refuses, real and dry run, with tests
+- [x] The LF and CRLF loops use one list of openers and endings, with the same test names and count as before, and no other test changes
+- [x] The PMK-326 CHANGELOG line and the `adrHtmlHeld` doc comment state the quote rule, also for a list item in a quote; no code line changes outside the tests
