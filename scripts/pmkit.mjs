@@ -848,6 +848,9 @@ const requestTable = (requests) => table(
   requests.map((r) => [r.id, r.title, r.state, r.customer ? (r.customer.name ?? r.customer.id) : '', r.from ?? '', r.target?.id ?? '', r.created ?? '']),
 )
 
+/** A Jira site's plan as one phrase: the Jira Software license plan, or that it is unknown. */
+const jiraPlan = (plan) => (plan?.software ? `Jira Software ${plan.software}` : 'Jira Software plan unknown')
+
 /**
  * The member the caller is. A tracker whose discover() names a viewer, such as Linear, writes as that viewer (ADR-0005).
  * Otherwise from the tracker's members: by git email, then PMKIT_USER. Throws NOT_CONFIGURED when none matches.
@@ -943,6 +946,8 @@ export const COMMANDS = [
       // A hosted manifest names its workspace; the Local one has none, so its output stays as it was.
       const hosted = manifest.workspace
         ? [['workspace', `${manifest.workspace.urlKey} (${manifest.workspace.plan})`], ['team', manifest.team ?? '(none)'], ['discovered', manifest.discoveredAt]]
+        : manifest.site
+          ? [['site', manifest.site], ['space', `${manifest.space.key} (${manifest.space.style})`], ['plan', jiraPlan(manifest.plan)], ['discovered', manifest.discoveredAt]]
         : manifest.repo
           ? [['repository', `${manifest.repo} on ${manifest.host}`], ['project', manifest.project ?? 'none']]
           : []
@@ -961,6 +966,14 @@ export const COMMANDS = [
             `workspace: ${d.workspace.name} (${d.workspace.urlKey}), plan ${d.workspace.plan}${d.auth ? `, viewer ${d.auth.viewer.name}` : ''}`,
             'teams:', ...(d.teams.length > 0 ? d.teams.map((t) => `  ${t.key}  ${t.name}  cycles ${onOff(t.cycles)}, triage ${onOff(t.triage)}, estimate ${t.estimate.type}`) : ['  (none)']),
           ]
+        : d.site
+          ? [
+              `site: ${d.site}${d.viewer ? `, viewer ${d.viewer.name}` : ''}, ${jiraPlan(d.plan)}`,
+              `space: ${d.space.key} ${d.space.name} (${d.space.style}, ${d.space.type})`,
+              'spaces:', ...d.spaces.map((s) => `  ${s.key}  ${s.name}  ${s.style}`),
+              'work types:', `  ${d.workTypes.map((t) => (t.level === 'standard' ? t.name : `${t.name} (${t.level})`)).join(', ') || '(none)'}`,
+              'fields:', ...Object.entries(d.fields).map(([role, f]) => `  ${role.padEnd(20)}${f ? `${f.id}  ${f.name}` : '(none)'}`),
+            ]
         : d.repo
           ? [
               `repository: ${d.repo} on ${d.host}${d.ghesVersion ? ` (GitHub Enterprise Server ${d.ghesVersion})` : ''}${d.viewer?.id ? `, viewer ${d.viewer.id}` : ''}`,

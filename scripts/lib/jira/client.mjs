@@ -5,7 +5,7 @@ import { PmkitError } from '../errors.mjs'
 import { secretKeyPaths } from '../user-store.mjs'
 import { jiraCredential } from './credential.mjs'
 
-const HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
+export const HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
 const API_PATH = /^\/rest\/(?:api\/3|agile\/1\.0)\/[^?#\s]*$/
 const METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE'])
 const RETRY_STEP = 'Retry, and check status.atlassian.com if it keeps failing'

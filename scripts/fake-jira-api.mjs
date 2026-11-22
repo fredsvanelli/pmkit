@@ -60,3 +60,69 @@ export function fakeJiraFetch(routes = {}) {
   fetch.calls = calls
   return fetch
 }
+
+// The discovery routes of a Jira site (PMK-76) whose configured space is ENG, a software space with a Scrum board.
+// style 'team-managed' gives ENG next-gen work types and a scoped estimate field, plus another space's same-named field.
+const STATUS = {
+  todo: { id: '1', name: 'To Do', statusCategory: { key: 'new', name: 'To Do' } },
+  doing: { id: '3', name: 'In Progress', statusCategory: { key: 'indeterminate', name: 'In Progress' } },
+  review: { id: '4', name: 'Review', statusCategory: { key: 'indeterminate', name: 'In Progress' } },
+  done: { id: '5', name: 'Done', statusCategory: { key: 'done', name: 'Done' } },
+}
+
+export function jiraSiteRoutes({ style = 'company-managed' } = {}) {
+  const team = style === 'team-managed'
+  const scope = (id) => (team ? { scope: { type: 'PROJECT', project: { id } } } : {})
+  const workTypes = [
+    { id: '10000', name: 'Epic', subtask: false, hierarchyLevel: 1, ...scope('10001') },
+    { id: '10001', name: 'Story', subtask: false, hierarchyLevel: 0, ...scope('10001') },
+    { id: '10002', name: 'Bug', subtask: false, hierarchyLevel: 0, ...scope('10001') },
+    { id: '10003', name: 'Sub-task', subtask: true, hierarchyLevel: -1, ...scope('10001') },
+  ]
+  const estimate = team
+    ? [
+        { id: 'customfield_10016', name: 'Story point estimate', custom: true, schema: { type: 'number', custom: 'com.pyxis.greenhopper.jira:jsw-story-points', customId: 10016 }, scope: { type: 'PROJECT', project: { id: '10001' } } },
+        { id: 'customfield_10099', name: 'Story point estimate', custom: true, schema: { type: 'number', custom: 'com.pyxis.greenhopper.jira:jsw-story-points', customId: 10099 }, scope: { type: 'PROJECT', project: { id: '10002' } } },
+      ]
+    : [{ id: 'customfield_10016', name: 'Story Points', custom: true, schema: { type: 'number', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:float', customId: 10016 } }]
+  return {
+    'GET /rest/api/3/project/search': {
+      json: {
+        startAt: 0, maxResults: 50, total: 2, isLast: true,
+        values: [
+          { id: '10001', key: 'ENG', name: 'Engineering', projectTypeKey: 'software', style: team ? 'next-gen' : 'classic', simplified: team },
+          { id: '10002', key: 'OPS', name: 'Operations', projectTypeKey: 'business', style: 'next-gen', simplified: true },
+        ],
+      },
+    },
+    'GET /rest/api/3/project/ENG': {
+      json: { id: '10001', key: 'ENG', name: 'Engineering', projectTypeKey: 'software', style: team ? 'next-gen' : 'classic', simplified: team, issueTypes: workTypes },
+    },
+    'GET /rest/api/3/project/ENG/statuses': {
+      json: [
+        { id: '10000', name: 'Epic', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done] },
+        { id: '10001', name: 'Story', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.review, STATUS.done] },
+        { id: '10002', name: 'Bug', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done] },
+        { id: '10003', name: 'Sub-task', subtask: true, statuses: [STATUS.todo, STATUS.done] },
+      ],
+    },
+    'GET /rest/api/3/field': {
+      json: [
+        { id: 'summary', name: 'Summary', custom: false, schema: { type: 'string', system: 'summary' } },
+        { id: 'priority', name: 'Priority', custom: false, schema: { type: 'priority', system: 'priority' } },
+        { id: 'duedate', name: 'Due date', custom: false, schema: { type: 'date', system: 'duedate' } },
+        { id: 'assignee', name: 'Assignee', custom: false, schema: { type: 'user', system: 'assignee' } },
+        { id: 'timespent', name: 'Time Spent', custom: false, schema: { type: 'number', system: 'timespent' } },
+        { id: 'timeoriginalestimate', name: 'Original estimate', custom: false, schema: { type: 'number', system: 'timeoriginalestimate' } },
+        { id: 'customfield_10015', name: 'Start date', custom: true, schema: { type: 'date', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:datepicker', customId: 10015 } },
+        { id: 'customfield_10020', name: 'Sprint', custom: true, schema: { type: 'array', items: 'json', custom: 'com.pyxis.greenhopper.jira:gh-sprint', customId: 10020 } },
+        ...estimate,
+      ],
+    },
+    'GET /rest/api/3/label': { json: { startAt: 0, maxResults: 100, total: 2, isLast: true, values: ['backend', 'frontend'] } },
+    'GET /rest/api/3/instance/license': { json: { applications: [{ id: 'jira-software', plan: 'PAID' }] } },
+    'GET /rest/api/3/configuration': { json: { issueLinkingEnabled: true, subTasksEnabled: true, timeTrackingEnabled: true, timeTrackingConfiguration: { defaultUnit: 'hour' } } },
+    'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }, { id: 1, name: 'ENG board', type: 'scrum' }] } },
+    'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', estimation: { type: 'field', field: { fieldId: 'customfield_10016', displayName: 'Story Points' } } } },
+  }
+}

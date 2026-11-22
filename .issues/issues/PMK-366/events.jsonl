@@ -1,0 +1,2 @@
+{"at":"2026-11-22T19:42:30Z","by":"fred","op":"create","to":{"id":"PMK-366","title":"Check Jira discovery and the manifest against a live site","type":"chore","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-22T19:42:30.042Z","updated":"2026-11-22T19:42:30Z"}}
+{"at":"2026-11-22T19:42:33Z","by":"fred","op":"link","field":"related","to":"PMK-76"}

@@ -61,13 +61,13 @@ test('a hosted config with a bad mapping warns on a read and refuses a write', a
   assert.equal(errorOf(create).code, 'INVALID_INPUT')
 })
 
-test('jira exits 2 with NOT_SUPPORTED with linear registered', async () => {
+test('gitlab exits 2 with NOT_SUPPORTED with linear registered', async () => {
   const root = makeRepo('team')
-  editFile(path.join(root, '.pmkit', 'config.yaml'), /^ {2}system: local$/m, '  system: jira')
+  editFile(path.join(root, '.pmkit', 'config.yaml'), /^ {2}system: local$/m, '  system: gitlab')
   const result = await call(root, ['issues', 'list', '--json'], { adapters: withLinear(mirrorLinear()) })
   assert.equal(result.code, 2)
   assert.deepEqual(JSON.parse(result.stdout), {
-    error: { code: 'NOT_SUPPORTED', message: 'tracker.system "jira" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' },
+    error: { code: 'NOT_SUPPORTED', message: 'tracker.system "gitlab" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' },
   })
 })
 

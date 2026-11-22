@@ -28,7 +28,7 @@
         },
         "scope": {
           "title": "Tracker scope",
-          "description": "Hosted trackers only: the names that pick the team, project or space, such as team: ENG. GitHub Issues uses host (such as github.com), repo (owner/name) and project (the Project's owner/number, or none). Ignored by the local tracker.",
+          "description": "Hosted trackers only: the names that pick the team, project or space, such as team: ENG. GitHub Issues uses host (such as github.com), repo (owner/name) and project (the Project's owner/number, or none). Jira uses site (the site's host, such as acme.atlassian.net) and space (the space key, such as ENG). Ignored by the local tracker.",
           "type": "object",
           "properties": {
             "workspace": {
