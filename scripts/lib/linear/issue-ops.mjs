@@ -194,9 +194,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: (id) => cycleKey(id) !== null })
     if (current.scopeTeam && typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint)) {
       // A cycle number no cycle of the team has is a typo, not a sprint with no issues (Local refuses it the same way).
-      await cycleNodeFor(filter.sprint, current.scopeTeam).catch((error) => {
-        throw error.code === 'NOT_FOUND' ? unknownSprint(filter.sprint) : error
-      })
+      await cycleNodeFor(filter.sprint, current.scopeTeam)
     }
     let epicProject
     if (filter.parent !== undefined && !isIssueId(filter.parent) && resolveEpic) {
@@ -262,7 +260,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   /**
    * The { id, number } node of the cycle a sprint value names in `team`: 'current' is the active cycle, else a cycle number.
    * Returns undefined for no value, for null and for a team with cycles off, where toInput decides. Reads the cycle, so a
-   * bad value fails before the write: NOT_FOUND for an unknown cycle, INVALID_INPUT for no active one.
+   * bad value fails before the write: INVALID_INPUT for an unknown cycle and for no active one.
    */
   async function cycleNodeFor(sprint, team) {
     if (sprint === undefined || sprint === null || team.cyclesEnabled !== true) return undefined
@@ -275,7 +273,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       return { id: active.id, number: active.number }
     }
     const number = cycleKey(sprint)
-    const missing = new PmkitError('NOT_FOUND', `sprint ${sprint} does not exist`, 'pmkit cycle list')
+    const missing = unknownSprint(sprint)
     if (number === null) throw missing
     const data = await client.request(CYCLE_BY_NUMBER_QUERY, { filter: { and: [teamClause, { number: { eq: number } }] } })
     const found = data?.cycles?.nodes?.[0]

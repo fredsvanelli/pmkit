@@ -92,6 +92,7 @@ test('the runbook names the commands this test runs', () => {
     'cycle add 2 --to 2026-11-30 --json',
     'cycle issues 2027-01-04 --json',
     'issues list --sprint 2027-01-04 --json',
+    'cycle add 1 --to 2027-01-04 --json',
     'cycle close 2026-11-16 --json',
     'epic create --title-file tmp/title-epic.txt --start 2026-11-17 --target 2026-12-15 --json',
     'epic list --json',
@@ -169,6 +170,10 @@ test('runbook: sprints, epics and milestones on GitHub Issues, steps 1 to 20', (
   assert.deepEqual([unknownSprint.code, unknownSprint.message], ['NOT_FOUND', 'sprint 2027-01-04 does not exist'])
   const unknownFilter = failure(pmkit('issues', 'list', '--sprint', '2027-01-04', '--json'))
   assert.deepEqual([unknownFilter.code, unknownFilter.message], ['INVALID_INPUT', 'sprint "2027-01-04" is not current, none or an existing sprint id'])
+  // As the target of a move the sprint is a value too, so INVALID_INPUT, and nothing moves (PMK-152).
+  const unknownTarget = failure(pmkit('cycle', 'add', '1', '--to', '2027-01-04', '--json'))
+  assert.deepEqual([unknownTarget.code, unknownTarget.message], ['INVALID_INPUT', 'sprint 2027-01-04 does not exist'])
+  assert.deepEqual(json(pmkit('cycle', 'issues', '2026-11-16', '--json')).map((issue) => issue.id), ['1'])
 
   // Step 6: closing a sprint is refused.
   const close = failure(pmkit('cycle', 'close', '2026-11-16', '--json'))

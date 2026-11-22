@@ -1329,8 +1329,8 @@ export function createLocalTracker(root, {
     requireWriter(actor)
     if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
     const known = ids.map(knownIssue)
-    const sprint = to === 'current' ? requireActiveSprintId() : to
-    if (sprint !== null) getSprint(sprint)
+    // The sprint is where the issues go, a value of the move: an unknown one is INVALID_INPUT, as in createIssue and updateIssue.
+    const sprint = to === null ? null : requireSprint(to)
     return known.map((id) => updateIssue(id, { sprint }, actor, { dryRun }))
   }
 

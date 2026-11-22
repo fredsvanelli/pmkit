@@ -196,8 +196,10 @@ test('a view with a criterion and a sort is accepted, and the sort orders the pr
 
 test('a one-issue batch keeps the code of the operation that failed', async () => {
   await withRepo(async (root) => {
+    // The message is the operation's own (cycle add), not a rule of the batch. Its code is INVALID_INPUT since PMK-152.
     const result = await bulk(root, 'sprint', '999', '--label', 'other', '--dry-run')
-    assert.equal(result.body.error.code, 'NOT_FOUND', JSON.stringify(result.body))
+    assert.equal(result.body.error.code, 'INVALID_INPUT', JSON.stringify(result.body))
+    assert.match(result.body.error.message, /: sprint 999 does not exist$/)
   })
 })
 

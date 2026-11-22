@@ -411,6 +411,22 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.searchIssues({ sprint: 'not-a-sprint' }), 'INVALID_INPUT')
     })
 
+    it('a sprint value no sprint has, or none, fails with INVALID_INPUT in createIssue, updateIssue and moveToCycle and writes nothing', ['cycles'], async ({ tracker, actor, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
+      const unknown = unknownSprintLike(sprint.id)
+      for (const value of [...(unknown === null ? [] : [unknown]), 'none']) {
+        const before = await issueState(tracker, [a, b])
+        await rejects(() => tracker.createIssue({ title: 'Never', sprint: value }, actor), 'INVALID_INPUT')
+        await rejects(() => tracker.updateIssue(a, { sprint: value }, actor), 'INVALID_INPUT')
+        await rejects(() => tracker.moveToCycle([a, b], value, actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before, value)
+        assert.deepEqual(ids((await tracker.searchIssues({ text: 'Never' })).issues), [], value)
+      }
+    })
+
     it('cycleIssues of an unknown sprint id fails with NOT_FOUND', ['cycles'], async ({ tracker, cycle }) => {
       const sprint = await cycle('active')
       if (sprint === null) return

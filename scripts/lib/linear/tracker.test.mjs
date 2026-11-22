@@ -472,13 +472,13 @@ test('sprint current with no active cycle is INVALID_INPUT and writes nothing', 
   assert.equal(fake.nodes().length, 1)
 })
 
-test('an unknown or malformed sprint on a write is NOT_FOUND', async () => {
+test('an unknown or malformed sprint on a write is INVALID_INPUT', async () => {
   const { tracker: linear, fake } = cycling()
   const a = (await linear.createIssue({ title: 'A' }, 'user-1')).after.id
   const before = fake.mutations.length
   for (const sprint of ['99', 'abc']) {
-    await assert.rejects(linear.updateIssue(a, { sprint }, 'user-1'), { code: 'NOT_FOUND', nextStep: 'pmkit cycle list' }, sprint)
-    await assert.rejects(linear.createIssue({ title: 'Never', sprint }, 'user-1'), { code: 'NOT_FOUND' }, sprint)
+    await assert.rejects(linear.updateIssue(a, { sprint }, 'user-1'), { code: 'INVALID_INPUT', nextStep: 'pmkit cycle list' }, sprint)
+    await assert.rejects(linear.createIssue({ title: 'Never', sprint }, 'user-1'), { code: 'INVALID_INPUT' }, sprint)
   }
   assert.equal(fake.mutations.length, before)
 })
