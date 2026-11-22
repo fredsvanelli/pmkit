@@ -11,9 +11,9 @@ import {
 } from '../../fake-linear-api.mjs'
 import { createLinearClient, isMutation } from './client.mjs'
 import {
-  COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UNARCHIVE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
+  ATTACHMENT_CREATE, ATTACHMENT_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UNARCHIVE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
-import { PROBES, commentProbe, cycleProbe, descriptionProbe, milestoneProbe, relationProbe, unarchiveProbe } from './live-probes.mjs'
+import { PROBES, commentProbe, cycleProbe, descriptionProbe, docsProbe, milestoneProbe, relationProbe, unarchiveProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_SET_STATUS, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import {
@@ -42,7 +42,7 @@ function scripted(reply = () => answer({})) {
   return inner
 }
 
-const PAYLOADS = { issueCreate: 'issue', projectCreate: 'project', commentCreate: 'comment', issueRelationCreate: 'issueRelation', workflowStateCreate: 'workflowState', teamCreate: 'team', projectMilestoneCreate: 'projectMilestone' }
+const PAYLOADS = { issueCreate: 'issue', projectCreate: 'project', commentCreate: 'comment', issueRelationCreate: 'issueRelation', workflowStateCreate: 'workflowState', teamCreate: 'team', projectMilestoneCreate: 'projectMilestone', attachmentCreate: 'attachment' }
 /** A reply that confirms every create with the id its input chose, as Linear does, and answers anything else with empty data. */
 const confirmCreates = (body) => {
   const { root } = readMutation(body.query)
@@ -289,6 +289,29 @@ test('projectMilestoneCreate is refused on a project the run did not create, wit
   assert.equal(inner.calls.length, 0)
 })
 
+// PMK-254: the docs writes go through on the run's own issues and attachments only.
+test('attachmentCreate and attachmentDelete pass on the run\'s own issue and attachment', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('issue', 'i-1')
+  await send(guarded, ATTACHMENT_CREATE, { input: { issueId: 'i-1', url: 'https://github.com/x/y/blob/main/a.md', title: 'a.md', metadata: { pmkitDoc: 'a.md' } } })
+  await send(guarded, ATTACHMENT_CREATE, { input: { issueId: 'i-1', url: 'https://github.com/x/y/blob/main/b.md', title: 'hand' } })
+  guarded.guard.own('attachment', 'a-1')
+  await send(guarded, ATTACHMENT_DELETE, { id: 'a-1' })
+  assert.equal(inner.calls.length, 3)
+})
+
+test('attachment writes outside the run, off https, or with other metadata are refused', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('issue', 'i-1')
+  const create = (input) => send(guarded, ATTACHMENT_CREATE, { input })
+  await assert.rejects(create({ issueId: 'i-9', url: 'https://a/b', title: 'x' }), REFUSED)
+  await assert.rejects(create({ issueId: 'i-1', url: 'http://a/b', title: 'x' }), REFUSED)
+  await assert.rejects(create({ issueId: 'i-1', url: 'https://a/b', title: 'x', metadata: { other: 'y' } }), REFUSED)
+  await assert.rejects(create({ issueId: 'i-1', url: 'https://a/b', title: 'x', metadata: { pmkitDoc: 7 } }), REFUSED)
+  await assert.rejects(send(guarded, ATTACHMENT_DELETE, { id: 'a-9' }), REFUSED)
+  assert.equal(inner.calls.length, 0)
+})
+
 test('after stop(), suite mutations are refused and the deletes of owned ids still pass', async () => {
   const { inner, ...guarded } = opened()
   guarded.guard.own('issue', 'i-1')
@@ -302,7 +325,7 @@ test('after stop(), suite mutations are refused and the deletes of owned ids sti
   assert.equal(inner.calls.length, 3)
 })
 
-test('a caller passes its own allowlist, and the suite list has the 17 mutations of the spec table', async () => {
+test('a caller passes its own allowlist, and the suite list has the 19 mutations of the spec table', async () => {
   const own = { teamUpdate: (variables) => (variables.input?.name === 'ok' ? null : 'wrong name') }
   const { inner, ...guarded } = opened({ allowlist: own })
   const update = 'mutation Update($input: TeamUpdateInput!) { teamUpdate(input: $input) { success } }'
@@ -310,7 +333,7 @@ test('a caller passes its own allowlist, and the suite list has the 17 mutations
   await assert.rejects(send(guarded, update, { input: { name: 'bad' } }), /refusing Update: wrong name/)
   await assert.rejects(send(guarded, ISSUE_CREATE, { input: { teamId: TEAM } }), REFUSED)
   assert.equal(inner.calls.length, 1)
-  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 17)
+  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 19)
 })
 
 /** Sends each [document, variables] attack through a guard that owns i-1, and checks that none reaches the fetch. */
@@ -377,7 +400,7 @@ test('issueDelete refuses permanentlyDelete passed through a variable default', 
 test('every mutation document the adapter and the run send has the shape the guard accepts', () => {
   const documents = [
     ISSUE_CREATE, ISSUE_UPDATE, ISSUE_ARCHIVE, RELATION_CREATE, RELATION_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, PROJECT_CREATE,
-    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, ISSUE_UNARCHIVE, PROJECT_SET_STATUS, MILESTONE_CREATE,
+    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, ISSUE_UNARCHIVE, PROJECT_SET_STATUS, MILESTONE_CREATE, ATTACHMENT_CREATE, ATTACHMENT_DELETE,
   ]
   const roots = documents.map((document) => {
     const read = readMutation(document)
@@ -1046,7 +1069,7 @@ async function withProbeContext(use) {
   await w.run.before()
   const env = await w.run.setup()
   try {
-    return await use({ tracker: env.tracker, client: w.run.client, actor: env.actor, team: w.run.team }, w)
+    return await use({ tracker: env.tracker, client: w.run.client, actor: env.actor, team: w.run.team, config: w.run.config }, w)
   } finally {
     await env.teardown()
     await w.run.after()
@@ -1117,8 +1140,20 @@ test('the unarchive probe archives an issue and brings it back through the guard
   })
 })
 
-test('the probes are six and each has a name', () => {
-  assert.equal(PROBES.length, 6)
+test('the docs probe adds, reads and removes a doc and leaves a hand-made attachment alone (PMK-254)', async () => {
+  await withProbeContext(async (context, w) => {
+    const git = context.config.pmkit.git_host
+    const { recorded } = await docsProbe(context)
+    assert.equal(recorded.conflict, true)
+    assert.equal(recorded.handMadeLeft, true)
+    assert.deepEqual(recorded.metadata, { pmkitDoc: 'docs/pmkit-probe-a.md' })
+    assert.deepEqual(w.run.guard.stats().refused, [])
+    assert.deepEqual(context.config.pmkit.git_host, git)
+  })
+})
+
+test('the probes are seven and each has a name', () => {
+  assert.equal(PROBES.length, 7)
   assert.ok(PROBES.every(([name, probe]) => typeof name === 'string' && typeof probe === 'function'))
 })
 

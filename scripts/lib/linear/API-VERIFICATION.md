@@ -83,7 +83,7 @@ A field Linear has renamed would reach the command as `UPSTREAM` with Linear's m
 
 ## Issue docs mapped (PMK-252)
 
-Written 2026-11-10 from Linear's public SDK schema, not checked against a workspace: nothing below ran against the live API, only against the fake in `scripts/fake-linear-api.mjs`. Nothing here is verified.
+Written 2026-11-10 from Linear's public SDK schema, then checked against the live workspace on 2026-11-22 (PMK-254, below).
 
 | pmkit | Linear (schema, to confirm) |
 |---|---|
@@ -91,18 +91,18 @@ Written 2026-11-10 from Linear's public SDK schema, not checked against a worksp
 | `issues update --add-doc` | `attachmentCreate(input: { issueId, url, title, metadata: { pmkitDoc } })`, with `url` = `https://github.com/<repo>/blob/<branch>/<path>`. |
 | `issues update --remove-doc` | `attachmentDelete(id)` of the attachments whose `metadata.pmkitDoc` is the path. |
 
-Open until a workspace runs them:
+Live run of 2026-11-22, probe `docs` (PMK-254; 53 tests: 39 passed, 0 failed, 16 skipped; the test team empty afterwards). Each point:
 
-- `Issue.attachments` answers inside `issues(filter: { id: { in } })`, and `attachments(first: 20)` is accepted there.
-- `Attachment.metadata` comes back as it was written (`{ pmkitDoc: <path> }`), also for an attachment made with a personal API key.
-- `AttachmentCreateInput` accepts `metadata` and `title` together with `issueId` and `url` from a personal API key.
-- The upsert by URL: `attachmentCreate` for an `issueId` and `url` that already have an attachment updates it. pmkit assumes it does, so it refuses (CONFLICT) to add a doc whose link a person attached by hand, and never rewrites or removes that attachment.
-- Whether Linear turns a `github.com/.../blob/...` URL into an integration attachment (another `sourceType`, its own `metadata`), which would drop `pmkitDoc` or fail the upsert.
-- `attachmentDelete` works with a personal API key, and the attachment leaves the issue.
-- The `x-complexity` header of `PmkitIssuesAttachments` (100 issues x 20 attachments of 4 scalar fields). By the documented rule it costs about 3000 points, under the limit of 10000.
-- An issue with more than 20 attachments (pull request links count) takes the one-issue read, 50 at a time.
+- Confirmed: `Issue.attachments` answers inside `issues(filter: { id: { in } })` with `attachments(first: 20)`; `getIssue` read the doc back through it.
+- Confirmed: `Attachment.metadata` comes back as written, `{ pmkitDoc: "docs/pmkit-probe-a.md" }`, on an attachment a personal API key made.
+- Confirmed: `AttachmentCreateInput` takes `issueId`, `url`, `title` and `metadata` together from a personal API key. Corrected in pmkit: `issueId` is now the issue's UUID, as every other write sends it; it was the identifier, which the sandbox guard refused.
+- Confirmed: a `github.com/.../blob/...` URL keeps `pmkitDoc`; Linear did not turn it into an integration attachment that drops the metadata.
+- Confirmed: `attachmentDelete` works from a personal API key, and the doc leaves the issue.
+- Confirmed: a hand-made attachment with a doc's link answers `CONFLICT` before any write, and is still there, unchanged, after the doc is removed.
+- Not checked live: Linear's upsert by URL itself. pmkit never relies on it: it sends no create for a doc already linked (adding it again changed nothing, live) and refuses a hand-made link before any create (live). A follow-up ticket holds it.
+- Not checked live: the `x-complexity` of `PmkitIssuesAttachments` alone (the whole run stayed under the limits, 327715 points in all) and an issue with more than 20 attachments. A follow-up ticket holds them.
 
-A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message, and the docs of the issue would read as `unknown`.
+A field Linear renamed would reach the command as `UPSTREAM` with Linear's message, and the docs of the issue read as unknown.
 
 ## Insights
 

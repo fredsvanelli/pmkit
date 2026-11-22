@@ -392,7 +392,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       const { docs, ...rest } = result.after
       return { before, after: patch.docs.length > 0 ? { ...rest, docs: patch.docs } : rest }
     }
-    await writeDocs(before.id, change, { fieldsWritten: Object.keys(linearInput) })
+    await writeDocs(before.id, change, { fieldsWritten: Object.keys(linearInput), uuid: beforeNode.id })
     // The issue is read again, so `after` is what Linear holds: its attachments changed after the update's own answer.
     // Everything was written, so a read-back that fails is a warning, never an error that sends the caller to write again (PMK-258).
     try {
@@ -442,12 +442,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   }
 
   /** attachmentCreate for each added path, then attachmentDelete for each removed one. A failure names what was done and what was not. */
-  async function writeDocs(id, { add, remove }, { fieldsWritten = [] } = {}) {
+  // `id` names the issue in messages; `uuid` is what Linear gets, as every other write sends it (PMK-254).
+  async function writeDocs(id, { add, remove }, { fieldsWritten = [], uuid } = {}) {
     const linked = []
     const unlinked = []
     try {
       for (const item of add) {
-        const answer = await client.request(ATTACHMENT_CREATE, { input: { issueId: id, url: item.url, title: item.path, metadata: { pmkitDoc: item.path } } })
+        const answer = await client.request(ATTACHMENT_CREATE, { input: { issueId: uuid, url: item.url, title: item.path, metadata: { pmkitDoc: item.path } } })
         if (answer?.attachmentCreate?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not link ${item.path}`)
         linked.push(item.path)
       }

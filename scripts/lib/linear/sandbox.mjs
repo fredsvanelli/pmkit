@@ -10,7 +10,7 @@
 //   trashTestTeamItems({ client, team, guard }) Trashes those issues with issueDelete and those projects with projectDelete.
 //   createGuardedFetch({ fetch, workspace, allowlist }) { fetch, guard }. The fetch refuses every mutation the allowlist lacks.
 //
-// The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 17 mutations of
+// The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 19 mutations of
 // the contract run. A caller that needs another mutation passes its own allowlist with rules of the same shape.
 // Before any rule runs, readMutation refuses a document whose root field takes anything but `id: $id` and/or `input: $input`.
 // Each suite rule also refuses an input key off SUITE_INPUT_KEYS, so an id the rules do not check never reaches Linear.
@@ -284,6 +284,8 @@ export const SUITE_INPUT_KEYS = Object.freeze({
   projectUpdateCreate: ['id', 'projectId', 'body', 'health'],
   // PMK-255: the run makes its own milestone, since the adapter does not create one.
   projectMilestoneCreate: ['id', 'projectId', 'name'],
+  // PMK-254: the docs writes of issues update --add-doc and --remove-doc, and the probe's hand-made attachment.
+  attachmentCreate: ['issueId', 'url', 'title', 'metadata'],
   // PMK-356: the epic move (PROJECT_SET_STATUS) sends the status; PMK-348: the epic edit (PROJECT_EDIT) sends the name and content. A team move is refused.
   projectUpdate: ['statusId', 'name', 'content'],
 })
@@ -327,6 +329,13 @@ const SUITE_RULES = {
   },
   projectUpdateCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
   projectMilestoneCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
+  attachmentCreate(variables, ctx) {
+    const { issueId, url, metadata } = variables.input ?? {}
+    if (typeof url !== 'string' || !url.startsWith('https://')) return 'the attachment url is not https'
+    if (metadata !== undefined && (metadata === null || typeof metadata !== 'object' || Object.keys(metadata).some((key) => key !== 'pmkitDoc') || typeof metadata.pmkitDoc !== 'string')) return 'the attachment metadata holds more than a pmkitDoc path'
+    return rules.owns(ctx, 'issue', issueId, 'issue')
+  },
+  attachmentDelete: (variables, ctx) => rules.owns(ctx, 'attachment', variables.id, 'attachment'),
   // A workspace project status is not the run's, so only its shape is checked; the project must be one the run created (PMK-356).
   projectUpdate: (variables, ctx) =>
     rules.owns(ctx, 'project', variables.id, 'project') ??
@@ -338,7 +347,7 @@ const SUITE_RULES = {
   projectDelete: (variables, ctx) => rules.owns(ctx, 'project', variables.id, 'project'),
 }
 
-/** The 17 mutations of the contract run, each behind its input-key check. */
+/** The 19 mutations of the contract run, each behind its input-key check. */
 export const SUITE_ALLOWLIST = Object.freeze(Object.fromEntries(Object.entries(SUITE_RULES).map(([root, rule]) => [root, checked(root, rule)])))
 
 /** The kind of id a create makes the run's own, and the payload field of its answer that carries the new node. */
@@ -350,6 +359,7 @@ const CREATES = {
   workflowStateCreate: ['state', 'workflowState'],
   teamCreate: ['team', 'team'],
   projectMilestoneCreate: ['milestone', 'projectMilestone'],
+  attachmentCreate: ['attachment', 'attachment'],
 }
 
 /** The id of the node a create answer reports, or null unless the answer says success: true and carries a string id. */

@@ -212,7 +212,7 @@ export function registerLiveSuite(run) {
       test(`probe: ${name}`, async (t) => {
         const env = await run.setup()
         try {
-          const { asserted, recorded } = await probe({ tracker: env.tracker, client: run.client, actor: env.actor, team: run.team })
+          const { asserted, recorded } = await probe({ tracker: env.tracker, client: run.client, actor: env.actor, team: run.team, config: run.config })
           for (const line of asserted) t.diagnostic(`asserted: ${line}`)
           t.diagnostic(`recorded: ${JSON.stringify(recorded)}`)
         } finally {
