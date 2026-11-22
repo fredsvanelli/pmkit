@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-5
 branch: pmk-255-let-milestone-writes-through-the-linear
 created: 2026-11-11T22:34:42.371Z
-updated: 2026-11-22T06:04:46Z
+updated: 2026-11-22T06:25:07Z
 ---
 
 ## Description
@@ -32,5 +32,5 @@ PMK-226 and PMK-249 made pmkit write a Linear issue's milestone (`projectMilesto
 
 ## Acceptance criteria
 
-- [ ] A live sandbox run of `issues update --milestone`, `issues bulk milestone` and `issues create --parent <epic> --milestone` sends the write instead of refusing it
-- [ ] A test fails if the milestone field leaves the sandbox list again
+- [x] A live sandbox run of `issues update --milestone`, `issues bulk milestone` and `issues create --parent <epic> --milestone` sends the write instead of refusing it
+- [x] A test fails if the milestone field leaves the sandbox list again

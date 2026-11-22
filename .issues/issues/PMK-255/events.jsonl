@@ -2,3 +2,5 @@
 {"at":"2026-11-22T06:04:46Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-22T06:04:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T06:04:46Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-255-let-milestone-writes-through-the-linear"}
+{"at":"2026-11-22T06:25:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T06:25:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
