@@ -1,6 +1,6 @@
 # PMK-75 design: the Jira API client
 
-Issue PMK-75, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: draft for the interview. Written on 2026-11-22 by a dispatched worker with no live user dialogue, from the issue, ADR 0003, ADR 0013, the PMK-74 spec, the PMK-30 (Linear client) spec and the code. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion. No Jira credentials exist, so nothing here was checked against a live site.
+Issue PMK-75, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: approved by the owner on 2026-11-22 (see "Resolved questions"). Written on 2026-11-22 by a dispatched worker with no live user dialogue, from the issue, ADR 0003, ADR 0013, the PMK-74 spec, the PMK-30 (Linear client) spec and the code. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion. No Jira credentials exist, so nothing here was checked against a live site.
 
 ## Problem
 
@@ -200,7 +200,7 @@ await client.paginate('/rest/agile/1.0/board/7/sprint', {
 
 ### Live check
 
-Skipped. No Jira credentials exist, and the coordinator's brief says anything needing a live site is recorded as skipped, not faked. ADR 0013's live checks for PMK-75 (a classic token against the site host, a scoped token against the site host) are listed as open in the PR. **(Question for the interview: whether to ship an opt-in `client-live.mjs` that nobody has run, or leave it to the first issue that has a site.)**
+Skipped. No Jira credentials exist, and the coordinator's brief says anything needing a live site is recorded as skipped, not faked. ADR 0013's live checks for PMK-75 (a classic token against the site host, a scoped token against the site host) are listed as open in the PR. No opt-in `client-live.mjs` ships with this issue; a follow-up issue in the `EPC-7 follow-ups` epic holds both live checks (resolved question 1).
 
 ## Acceptance criteria map
 
@@ -235,6 +235,19 @@ Skipped. No Jira credentials exist, and the coordinator's brief says anything ne
 ## Check step (E2E)
 
 No user-visible flow changes: `tracker.system: jira` still fails with `NOT_SUPPORTED`, and no command, runbook or schema changes. The Check step runs the existing runbook tests (`scripts/runbook-*.test.mjs`) to show nothing regressed, and the PR says no flow test was added because no flow changed.
+
+## Resolved questions
+
+The owner answered these on 2026-11-22, accepting each recommendation.
+
+1. **Live check.** No `client-live.mjs` that nobody has run. The classic-token and scoped-token checks are listed as skipped in the PR, and a follow-up issue holds them, in an `EPC-7 follow-ups` epic (created if missing), not in EPC-7.
+2. **Anonymous `serverInfo`.** The probe goes without `Authorization`. ADR 0013's "up front" applies to every other request.
+3. **The `tracker` block, not a bare `site`.** As in the Linear client; setup passes `{ system: 'jira', scope: { site } }`.
+4. **400, 404 and 409 map in the client** to `INVALID_INPUT`, `NOT_FOUND` and `CONFLICT`, with `details.jira` for callers that remap.
+5. **Paging is in this issue.**
+6. **`secretKeyPaths` moves to `user-store.mjs`**, and `isCredentialString` matches `ATATT` tokens and `Basic` values, so the user store refuses them too.
+
+No new domain term (Site and Space are in `CONTEXT.md` since PMK-74) and no new ADR: ADR 0013 holds the hard-to-reverse choices.
 
 ## Left to the builder
 
