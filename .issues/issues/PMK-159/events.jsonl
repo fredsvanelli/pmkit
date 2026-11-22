@@ -4,3 +4,6 @@
 {"at":"2026-11-22T05:29:50Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T05:29:50Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-159-stop-cycle-close-from-proposing-moves-it"}
 {"at":"2026-11-22T05:30:35Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T05:36:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T05:36:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T05:36:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
