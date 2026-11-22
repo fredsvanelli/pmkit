@@ -2,7 +2,7 @@
 id: PMK-159
 title: Stop cycle close from proposing moves it cannot run on an invalid config
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-120]
 milestone: local-gaps
 branch: pmk-159-stop-cycle-close-from-proposing-moves-it
 created: 2026-10-28T00:11:39.689Z
-updated: 2026-11-22T05:36:18Z
+updated: 2026-11-22T05:36:24Z
 ---
 
 ## Description
