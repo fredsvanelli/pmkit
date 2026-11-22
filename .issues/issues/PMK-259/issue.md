@@ -2,12 +2,14 @@
 id: PMK-259
 title: Unarchive issues on Linear
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-5
+branch: pmk-259-unarchive-issues-on-linear
 created: 2026-11-11T22:34:42.693Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-22T07:28:15Z
 ---
 
 ## Description
