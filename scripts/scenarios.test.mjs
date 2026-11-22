@@ -539,3 +539,12 @@ test('cycle/close marks a split\'s new issue with its origin and finds a half-do
   assert.match(search.text, /--text "split when sprint <sprint id> closed"/)
   assert.match(stepText('cycle/close.md', '8'), /estimate update only when step 7 kept it/)
 })
+
+test('cycle/close points remaining work to remaining work when a carried blocker or sub-issue is split too, and creates first (PMK-161)', () => {
+  const step7 = stepText('cycle/close.md', '7')
+  assert.match(step7, /is itself split in this close, the `blocks` link goes from its new issue to the new issue/)
+  assert.match(step7, /is itself split in this close, it stays under the original, and its new issue moves under the new issue/)
+  const step8 = stepText('cycle/close.md', '8')
+  assert.match(step8, /run every split's create first/)
+  assert.doesNotMatch(step7, /Say the user can add the links by hand after the close/)
+})

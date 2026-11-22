@@ -1,0 +1,271 @@
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
+exit 2 (expected NOT_SUPPORTED)
+$ pmkit cycle current --json  [step 2, read]
+exit 0
+$ pmkit cycle issues 2026-10-12 --json  [step 3, read]
+exit 0
+$ pmkit events --since 2026-10-12 --until 2026-10-25 --json  [step 4, read]
+exit 0
+$ pmkit metrics cycle-time --since 2026-10-12 --until 2026-10-25 --json  [step 5, read]
+exit 0
+$ pmkit cycle list --state planned --json  [step 6, read]
+exit 0
+$ pmkit issues list --text 'split when sprint 2026-10-12 closed' --json  [step 6, read]
+exit 0
+$ pmkit issues get ISS-0G5E --json  [step 6, read]
+exit 0
+? Step 7  [confirmed]
+$ pmkit cycle add ISS-8C4W --to none --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues create --title-file <inputs>/title-finish-the-billing-export-to-csv.md --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --description-file <inputs>/split-description.md --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues create --title-file <inputs>/title-finish-paginating-the-events-api.md --type task --estimate 2 --priority medium --label backend --description-file <inputs>/split-description-ISS-5N1R.md --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues create --title-file <inputs>/title-finish-fixing-the-csv-column-order.md --type task --estimate 1 --parent ISS-2X6D --priority medium --label billing --description-file <inputs>/split-description-ISS-4M2S.md --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues update ISS-2X6D --estimate 5 --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues update ISS-5N1R --estimate 1 --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues update ISS-4M2S --estimate 1 --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues move ISS-2X6D done --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues move ISS-5N1R done --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues move ISS-4M2S done --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit cycle close 2026-10-12 --dry-run --json  [step 7, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit cycle add ISS-8C4W --to none --json  [step 7, write]
+exit 0
+$ pmkit issues create --title-file <inputs>/title-finish-the-billing-export-to-csv.md --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --description-file <inputs>/split-description.md --json  [step 7, write]
+exit 0
+$ pmkit issues create --title-file <inputs>/title-finish-paginating-the-events-api.md --type task --estimate 2 --priority medium --label backend --description-file <inputs>/split-description-ISS-5N1R.md --json  [step 7, write]
+exit 0
+$ pmkit issues create --title-file <inputs>/title-finish-fixing-the-csv-column-order.md --type task --estimate 1 --parent ISS-2X6D --priority medium --label billing --description-file <inputs>/split-description-ISS-4M2S.md --json  [step 7, write]
+exit 0
+$ pmkit issues link ISS-M0GZ ISS-2X6D --kind related --json  [step 8, write]
+exit 0
+$ pmkit issues link ISS-Y8KQ ISS-5N1R --kind related --json  [step 8, write]
+exit 0
+$ pmkit issues link ISS-DZEF ISS-4M2S --kind related --json  [step 8, write]
+exit 0
+$ pmkit issues link ISS-Y8KQ ISS-M0GZ --kind blocks --json  [step 8, write]
+exit 0
+$ pmkit issues parent ISS-DZEF ISS-M0GZ --json  [step 8, write]
+exit 0
+$ pmkit issues update ISS-2X6D --estimate 5 --json  [step 7, write]
+exit 0
+$ pmkit issues update ISS-5N1R --estimate 1 --json  [step 7, write]
+exit 0
+$ pmkit issues update ISS-4M2S --estimate 1 --json  [step 7, write]
+exit 0
+$ pmkit issues move ISS-2X6D done --json  [step 8, write]
+exit 0
+$ pmkit issues move ISS-5N1R done --json  [step 8, write]
+exit 0
+$ pmkit issues move ISS-4M2S done --json  [step 8, write]
+exit 0
+$ pmkit cycle close 2026-10-12 --json  [step 8, write]
+exit 0
+$ pmkit cycle issues 2026-10-12 --json  [step 8, read]
+exit 0
+
+--- changed .issues/issues/ISS-2X6D/events.jsonl
+  {"at":"2026-10-05T09:00:00Z","by":"ana","op":"create","to":{"id":"ISS-2X6D","title":"Billing export to CSV","type":"feature","status":"todo","priority":"high","estimate":8,"assignee":"ana","labels":["billing","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","due":"2026-10-23","created":"2026-10-05T09:00:00Z","updated":"2026-10-05T09:00:00Z"}}
+  {"at":"2026-10-09T10:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-5N1R"}
+  {"at":"2026-10-09T10:10:00Z","by":"ana","op":"link","field":"related","to":"ISS-0G5E"}
+  {"at":"2026-10-14T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-M0GZ"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":8,"to":5}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}
+--- changed .issues/issues/ISS-2X6D/issue.md
+  ---
+  id: ISS-2X6D
+  title: Billing export to CSV
+  type: feature
+-status: in_progress
++status: done
+  priority: high
+-estimate: 8
++estimate: 5
+  assignee: ana
+  labels: [billing, backend]
+  parent: EPC-2M9D
+  blocked_by: [ISS-5N1R]
+-related: [ISS-0G5E]
++related: [ISS-0G5E, ISS-M0GZ]
+  sprint: 2026-10-12
+  due: 2026-10-23
+  created: 2026-10-05T09:00:00Z
+-updated: 2026-10-14T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Finance needs a CSV of all invoices for a date range.
+--- changed .issues/issues/ISS-4M2S/events.jsonl
+  {"at":"2026-10-13T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-4M2S","title":"Fix CSV column order","type":"task","status":"todo","priority":"medium","estimate":1,"labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-13T09:00:00Z","updated":"2026-10-13T09:00:00Z"}}
+  {"at":"2026-10-13T09:10:00Z","by":"fred","op":"update","field":"parent","from":null,"to":"ISS-2X6D"}
+  {"at":"2026-10-13T09:20:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":1,"to":2}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-DZEF"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":2,"to":1}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"done"}
+--- changed .issues/issues/ISS-4M2S/issue.md
+  ---
+  id: ISS-4M2S
+  title: Fix CSV column order
+  type: task
+-status: todo
++status: done
+  priority: medium
+-estimate: 2
++estimate: 1
+  assignee: fred
+  labels: [billing]
+  parent: ISS-2X6D
++related: [ISS-DZEF]
+  sprint: 2026-10-12
+  created: 2026-10-13T09:00:00Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Columns follow the finance template: date, invoice, customer, total.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-Y8KQ"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":3,"to":1}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+-status: in_progress
++status: done
+  priority: medium
+-estimate: 3
++estimate: 1
+  assignee: fred
+  labels: [backend]
++related: [ISS-Y8KQ]
+  sprint: 2026-10-12
+  created: 2026-10-05T09:30:00Z
+-updated: 2026-10-22T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.
+--- changed .issues/issues/ISS-8C4W/events.jsonl
+  {"at":"2026-10-06T11:00:00Z","by":"ana","op":"create","to":{"id":"ISS-8C4W","title":"Dead-letter queue for webhooks","type":"feature","status":"todo","priority":"high","estimate":5,"assignee":"ana","labels":["webhooks","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","due":"2026-10-20","created":"2026-10-06T11:00:00Z","updated":"2026-10-06T11:00:00Z"}}
+  {"at":"2026-10-09T10:05:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-7K3Q"}
+  {"at":"2026-10-15T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-21T14:00:00Z","by":"ana","op":"move","field":"status","from":"in_progress","to":"in_review"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":"2026-10-12","to":null}
+--- changed .issues/issues/ISS-8C4W/issue.md
+  ---
+  id: ISS-8C4W
+  title: Dead-letter queue for webhooks
+  type: feature
+  status: in_review
+  priority: high
+  estimate: 5
+  assignee: ana
+  labels: [webhooks, backend]
+  parent: EPC-2M9D
+  blocked_by: [ISS-7K3Q]
+-sprint: 2026-10-12
+  due: 2026-10-20
+  created: 2026-10-06T11:00:00Z
+-updated: 2026-10-21T14:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Store deliveries that exhausted their retries so support can replay them.
+--- added .issues/issues/ISS-DZEF/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-DZEF","title":"Finish fixing the CSV column order","type":"task","status":"backlog","priority":"medium","estimate":1,"labels":["billing"],"parent":"ISS-2X6D","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-4M2S"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"parent","from":"ISS-2X6D","to":"ISS-M0GZ"}
+--- added .issues/issues/ISS-DZEF/issue.md
++---
++id: ISS-DZEF
++title: Finish fixing the CSV column order
++type: task
++status: backlog
++priority: medium
++estimate: 1
++labels: [billing]
++parent: ISS-M0GZ
++related: [ISS-4M2S]
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
++## Description
++
++Remaining work of ISS-4M2S, split when sprint 2026-10-12 closed.
+--- added .issues/issues/ISS-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Finish the billing export to CSV","type":"feature","status":"backlog","priority":"high","estimate":3,"labels":["billing","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-2X6D"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-Y8KQ"}
+--- added .issues/issues/ISS-M0GZ/issue.md
++---
++id: ISS-M0GZ
++title: Finish the billing export to CSV
++type: feature
++status: backlog
++priority: high
++estimate: 3
++labels: [billing, backend]
++parent: EPC-2M9D
++blocked_by: [ISS-Y8KQ]
++related: [ISS-2X6D]
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
++## Description
++
++Remaining work of ISS-2X6D, split when sprint 2026-10-12 closed.
+--- added .issues/issues/ISS-Y8KQ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-Y8KQ","title":"Finish paginating the events API","type":"task","status":"backlog","priority":"medium","estimate":2,"labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-5N1R"}
+--- added .issues/issues/ISS-Y8KQ/issue.md
++---
++id: ISS-Y8KQ
++title: Finish paginating the events API
++type: task
++status: backlog
++priority: medium
++estimate: 2
++labels: [backend]
++related: [ISS-5N1R]
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
++## Description
++
++Remaining work of ISS-5N1R, split when sprint 2026-10-12 closed.
+--- changed .issues/sprints/2026-10-12.yaml
+  name: Sprint 2026-10-12
+  start: 2026-10-12
+  end: 2026-10-25
+  goal: Webhook retries and the billing export
+-state: active
++state: closed
++closed: 2026-10-23T12:00:00Z
+  capacity: { fred: 8, ana: 10 }
+  days_off:
+    ana: [2026-10-16]

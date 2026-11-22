@@ -238,4 +238,87 @@ const finishHalfDoneSplit = {
   },
 }
 
-export default [closeAndSplit, invalidConfig, finishHalfDoneSplit]
+// PMK-161: nested splits in one close. ISS-2X6D (8 to 5) is split, and so are its open blocker ISS-5N1R (3 to 1) and its open
+// sub-issue ISS-4M2S (setup raises it to 2, then 2 to 1). Step 8 runs every create first, then the links: the new issue of
+// ISS-5N1R blocks the new issue of ISS-2X6D, and the new issue of ISS-4M2S moves under it, while ISS-4M2S, done, stays under
+// ISS-2X6D. Remaining work points to remaining work. The git host is none, so the sync answers NOT_SUPPORTED.
+const input = (name) => path.join(import.meta.dirname, '_inputs', name)
+const createA = ['issues', 'create', '--title-file', titleFile, '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend', '--description-file', splitDescription]
+const createB = ['issues', 'create', '--title-file', input('title-finish-paginating-the-events-api.md'), '--type', 'task', '--estimate', '2', '--priority', 'medium', '--label', 'backend', '--description-file', input('split-description-ISS-5N1R.md')]
+const createS = ['issues', 'create', '--title-file', input('title-finish-fixing-the-csv-column-order.md'), '--type', 'task', '--estimate', '1', '--parent', 'ISS-2X6D', '--priority', 'medium', '--label', 'billing', '--description-file', input('split-description-ISS-4M2S.md')]
+const shrinkB = ['issues', 'update', 'ISS-5N1R', '--estimate', '1']
+const shrinkS = ['issues', 'update', 'ISS-4M2S', '--estimate', '1']
+const doneB = ['issues', 'move', 'ISS-5N1R', 'done']
+const doneS = ['issues', 'move', 'ISS-4M2S', 'done']
+const reviewBack = ['cycle', 'add', 'ISS-8C4W', '--to', 'none']
+const nestedSplits = {
+  command: 'cycle/close',
+  fixture: 'team',
+  async setup({ pmkit }) {
+    await pmkit(['issues', 'update', 'ISS-4M2S', '--estimate', '2'])
+  },
+  prompt: '/pmkit:cycle:close',
+  answers: ['Split ISS-2X6D with 5 delivered, ISS-5N1R with 1 and ISS-4M2S with 1, move ISS-8C4W to the backlog', 'Yes'],
+  steps: [
+    { step: '1', dryRun: ['pr', 'sync'], expectError: 'NOT_SUPPORTED' },
+    { step: '2', read: ['cycle', 'current'] },
+    { step: '3', read: ['cycle', 'issues', '2026-10-12'] },
+    { step: '4', read: ['events', '--since', '2026-10-12', '--until', '2026-10-25'] },
+    { step: '5', read: ['metrics', 'cycle-time', '--since', '2026-10-12', '--until', '2026-10-25'] },
+    { step: '6', read: ['cycle', 'list', '--state', 'planned'] },
+    { step: '6', read: marked },
+    { step: '6', read: ['issues', 'get', 'ISS-0G5E'] },
+    { confirm: 'Step 7' },
+    { step: '7', dryRun: reviewBack },
+    { step: '7', dryRun: createA },
+    { step: '7', dryRun: createB },
+    { step: '7', dryRun: createS },
+    { step: '7', dryRun: shrink },
+    { step: '7', dryRun: shrinkB },
+    { step: '7', dryRun: shrinkS },
+    { step: '7', dryRun: done },
+    { step: '7', dryRun: doneB },
+    { step: '7', dryRun: doneS },
+    { step: '7', dryRun: close },
+    { confirm: 'Step 7' },
+    { step: '7', write: reviewBack },
+    // Every create first, so the links can name any new issue of this close.
+    { step: '7', write: createA, save: 'a' },
+    { step: '7', write: createB, save: 'b' },
+    { step: '7', write: createS, save: 's' },
+    { step: '8', write: ({ a }) => ['issues', 'link', a.after.id, 'ISS-2X6D', '--kind', 'related'] },
+    { step: '8', write: ({ b }) => ['issues', 'link', b.after.id, 'ISS-5N1R', '--kind', 'related'] },
+    { step: '8', write: ({ s }) => ['issues', 'link', s.after.id, 'ISS-4M2S', '--kind', 'related'] },
+    // The blocker of ISS-2X6D is split too, so its new issue blocks the new issue of ISS-2X6D.
+    { step: '8', write: ({ a, b }) => ['issues', 'link', b.after.id, a.after.id, '--kind', 'blocks'] },
+    // The sub-issue of ISS-2X6D is split too: ISS-4M2S stays under ISS-2X6D, and its new issue moves under the new one.
+    { step: '8', write: ({ a, s }) => ['issues', 'parent', s.after.id, a.after.id] },
+    { step: '7', write: shrink },
+    { step: '7', write: shrinkB },
+    { step: '7', write: shrinkS },
+    { step: '8', write: done },
+    { step: '8', write: doneB },
+    { step: '8', write: doneS },
+    { step: '8', write: close },
+    { step: '8', read: ['cycle', 'issues', '2026-10-12'] },
+  ],
+  skip: {},
+  notHit: {
+    'Step 1': 'the git host is none, so the sync answers NOT_SUPPORTED and has nothing to confirm',
+    'Step 9': 'this scenario ends at the close; the first scenario covers the retro',
+  },
+  expect(repo, saved) {
+    const [a, b, s] = [saved.a.after.id, saved.b.after.id, saved.s.after.id]
+    assert.deepEqual(repo.issue(a).blocked_by, [b], 'the new issue of ISS-2X6D is blocked by the remaining work of its blocker, not by the done ISS-5N1R')
+    assert.equal(repo.issue(s).parent, a, 'the remaining work of the sub-issue sits under the remaining work')
+    assert.equal(repo.issue('ISS-4M2S').parent, 'ISS-2X6D', 'the delivered sub-issue stays under the delivered original')
+    for (const [id, estimate] of [['ISS-2X6D', 5], ['ISS-5N1R', 1], ['ISS-4M2S', 1]]) {
+      assert.deepEqual([repo.issue(id).status, repo.issue(id).estimate], ['done', estimate], id)
+    }
+    assert.deepEqual(repo.issue('ISS-2X6D').blocked_by, ['ISS-5N1R'], 'the original keeps its blocker')
+    for (const [made, from] of [[a, 'ISS-2X6D'], [b, 'ISS-5N1R'], [s, 'ISS-4M2S']]) assert.ok(repo.issue(made).related.includes(from), `${made} is related to ${from}`)
+    assert.equal(repo.sprint('2026-10-12').state, 'closed')
+  },
+}
+
+export default [closeAndSplit, invalidConfig, finishHalfDoneSplit, nestedSplits]
