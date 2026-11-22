@@ -2,12 +2,14 @@
 id: PMK-264
 title: Link issue docs on a GitHub Enterprise host
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-5
+branch: pmk-264-link-issue-docs-on-a-github-enterprise
 created: 2026-11-11T22:34:43.066Z
-updated: 2026-11-11T22:34:43Z
+updated: 2026-11-22T07:12:14Z
 ---
 
 ## Description
