@@ -2,13 +2,15 @@
 id: PMK-74
 title: Decide Jira authentication and Cloud or Data Center support
 type: task
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-7
 milestone: jira
+branch: pmk-74-decide-jira-authentication-and-cloud-or
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:22Z
+updated: 2026-11-22T18:22:35Z
 ---
 
 ## Description
