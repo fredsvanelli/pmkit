@@ -2,14 +2,16 @@
 id: PMK-365
 title: Set up pmkit on a Jira site
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
+assignee: fred
 parent: EPC-7
 blocked_by: [PMK-77, PMK-76]
 milestone: jira
+branch: fredsvanelli/pmk-365-setup-pmkit
 created: 2026-11-22T19:14:24.247Z
-updated: 2026-11-22T19:14:32Z
+updated: 2026-11-22T23:54:38Z
 ---
 
 ## Description
