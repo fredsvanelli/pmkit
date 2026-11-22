@@ -13,7 +13,7 @@ import { createLinearClient, isMutation } from './client.mjs'
 import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UNARCHIVE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
-import { PROBES, commentProbe, cycleProbe, descriptionProbe, relationProbe } from './live-probes.mjs'
+import { PROBES, commentProbe, cycleProbe, descriptionProbe, milestoneProbe, relationProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_SET_STATUS, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import {
@@ -908,6 +908,11 @@ function liveWorld({ withTeam = true, cycles = [ACTIVE, PLANNED] } = {}) {
     PmkitSandboxLabels: (body) => json({ issueLabels: connection(labels, body) }),
     PmkitSandboxIssues: (body) => json({ issues: connection(issues.records.map((record) => ({ id: record.id, identifier: record.identifier, trashed: record.trashed, archivedAt: record.archivedAt })), body) }),
     PmkitSandboxProjects: (body) => json({ projects: connection(projects.projects.map((project) => ({ id: project.id, name: project.name, trashed: false, archivedAt: null, teams: { nodes: project.teamIds.map((id) => ({ id })) } })), body) }),
+    PmkitSandboxMilestoneCreate: (body) => {
+      const { id, projectId, name, targetDate } = body.variables.input
+      projects.seedMilestone(projectId, { id, name, targetDate })
+      return json({ projectMilestoneCreate: { success: true, projectMilestone: { id } } })
+    },
     PmkitSandboxIssueDelete: (body) => {
       issues.records.find((record) => record.id === body.variables.id).trashed = true
       return json({ issueDelete: { success: true } })
@@ -1093,8 +1098,18 @@ test('the cycle probe fails when a cycle does not end where the next one starts'
   }
 })
 
-test('the probes are four and each has a name', () => {
-  assert.equal(PROBES.length, 4)
+test('the milestone probe sends the three milestone writes through the guard (PMK-255)', async () => {
+  await withProbeContext(async (context, w) => {
+    const { asserted, recorded } = await milestoneProbe(context)
+    assert.equal(asserted.length, 4)
+    assert.deepEqual(recorded, { created: true, updated: true, bulk: true, cleared: true })
+    assert.deepEqual(w.run.guard.stats().refused, [])
+    assert.ok(w.mutations().includes('PmkitSandboxMilestoneCreate'))
+  })
+})
+
+test('the probes are five and each has a name', () => {
+  assert.equal(PROBES.length, 5)
   assert.ok(PROBES.every(([name, probe]) => typeof name === 'string' && typeof probe === 'function'))
 })
 

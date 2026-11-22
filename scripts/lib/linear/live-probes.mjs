@@ -1,10 +1,13 @@
 // The live probes of the Linear run (PMK-39): facts the PMK-35 to PMK-38 specs left open. Each probe is
 // probe({ tracker, client, actor, team }) and returns { asserted, recorded }. It asserts only what pmkit relies on and
 // records the rest, so the run's output grows the verification notes. `npm test` runs them over the fake only.
-// The probes create at most 4 issues in all (1 + 1 + 2).
+// The probes create at most 7 issues in all (1 + 1 + 2 + 3).
 
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { parseChange } from '../bulk.mjs'
 import { CYCLES_QUERY, ISSUE_BY_ID_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { MILESTONE_CREATE } from './sandbox.mjs'
 
 const CRITERIA = [{ text: 'first criterion', done: false }, { text: 'second criterion', done: true }]
 const MARKER_COMMENT = ['<!-- pmkit:probe -->', '- [ ] a checklist item', '```', 'code fence', '```'].join('\n')
@@ -85,9 +88,35 @@ export async function cycleProbe({ client, team }) {
   }
 }
 
+/**
+ * PMK-255: the milestone writes of `issues create --parent <epic> --milestone`, `issues update --milestone` and `issues bulk milestone`
+ * reach Linear through the guard. The adapter creates no milestone, so the run makes one in its own epic.
+ */
+export async function milestoneProbe({ tracker, client, actor }) {
+  const epic = (await tracker.createDeliverable({ title: 'Probe milestone epic' }, actor)).after
+  const updated = (await tracker.createIssue({ title: 'Probe milestone update', parent: epic.id }, actor)).after
+  const projectId = (await rawIssue(client, updated.id)).project.id
+  const milestone = randomUUID()
+  await client.request(MILESTONE_CREATE, { input: { id: milestone, projectId, name: 'Probe milestone' } })
+  const created = (await tracker.createIssue({ title: 'Probe milestone create', parent: epic.id, milestone }, actor)).after
+  await tracker.updateIssue(updated.id, { milestone }, actor)
+  const bulked = (await tracker.createIssue({ title: 'Probe milestone bulk', parent: epic.id }, actor)).after
+  await parseChange('milestone', milestone).apply(tracker, bulked, actor)
+  const milestoneOf = async (id) => (await tracker.getIssue(id)).milestone ?? null
+  const recorded = { created: (await milestoneOf(created.id)) === milestone, updated: (await milestoneOf(updated.id)) === milestone, bulk: (await milestoneOf(bulked.id)) === milestone }
+  await parseChange('milestone', 'none').apply(tracker, bulked, actor)
+  recorded.cleared = (await milestoneOf(bulked.id)) === null
+  for (const [key, value] of Object.entries(recorded)) assert.equal(value, true, `the milestone write "${key}" did not read back`)
+  return {
+    asserted: ['issueCreate under an epic with a milestone', 'issueUpdate with a milestone', 'the bulk milestone change', 'the bulk milestone change to none'],
+    recorded,
+  }
+}
+
 export const PROBES = [
   ['description round trip', descriptionProbe],
   ['comment body and updatedAt', commentProbe],
   ['relation history codes', relationProbe],
   ['cycle dates', cycleProbe],
+  ['milestone writes', milestoneProbe],
 ]
