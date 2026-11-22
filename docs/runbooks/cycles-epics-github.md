@@ -58,9 +58,11 @@ The sprint, epic and milestone commands on a repository whose tracker is GitHub 
    node scripts/pmkit.mjs cycle add 2 --to 2026-11-30 --json
    node scripts/pmkit.mjs cycle issues 2026-11-16 --json
    node scripts/pmkit.mjs cycle list --json
+   node scripts/pmkit.mjs cycle issues 2027-01-04 --json
+   node scripts/pmkit.mjs issues list --sprint 2027-01-04 --json
    ```
 
-   Expect `after.sprint: "2026-11-30"`, the sprint `2026-11-16` listing issue `1` only, and the list showing `2026-11-16` as `active` and `2026-11-30` as `planned`.
+   Expect `after.sprint: "2026-11-30"`, the sprint `2026-11-16` listing issue `1` only, and the list showing `2026-11-16` as `active` and `2026-11-30` as `planned`. No iteration starts on `2027-01-04`, so the last two commands exit with code 2: `cycle issues` with `NOT_FOUND`, `sprint 2027-01-04 does not exist`, and `issues list` with `INVALID_INPUT`, `sprint "2027-01-04" is not current, none or an existing sprint id`. A typo in a sprint ID never reads as a sprint with no issues.
 
 6. Try to close the sprint:
 

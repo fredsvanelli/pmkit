@@ -1,2 +1,12 @@
 {"at":"2026-10-28T00:11:38Z","by":"fred","op":"create","to":{"id":"PMK-153","title":"Cover the remaining sprint and assignee aliases in the contract suite","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:38.487Z","updated":"2026-10-28T00:11:38Z"}}
 {"at":"2026-10-28T00:11:38Z","by":"fred","op":"link","field":"related","to":"PMK-115"}
+{"at":"2026-11-22T03:16:45Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-153-cover-the-remaining-sprint-and-assignee"}
+{"at":"2026-11-22T03:16:50Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T03:16:50Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T03:19:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:37:10Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:37:10Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:37:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:37:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:37:25Z","by":"fred","op":"comment","to":"2026-11-22T03-37-25Z-fred.md"}
+{"at":"2026-11-22T03:37:26Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

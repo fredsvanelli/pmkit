@@ -7,7 +7,7 @@ import { repoDocPath } from '../doc-path.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
-import { checkFilter } from '../issue-filter.mjs'
+import { checkFilter, unknownSprint } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
@@ -192,6 +192,12 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const current = await context()
     const members = current.raw.users.filter((user) => !user.app).map((user) => user.id)
     checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: (id) => cycleKey(id) !== null })
+    if (current.scopeTeam && typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint)) {
+      // A cycle number no cycle of the team has is a typo, not a sprint with no issues (Local refuses it the same way).
+      await cycleNodeFor(filter.sprint, current.scopeTeam).catch((error) => {
+        throw error.code === 'NOT_FOUND' ? unknownSprint(filter.sprint) : error
+      })
+    }
     let epicProject
     if (filter.parent !== undefined && !isIssueId(filter.parent) && resolveEpic) {
       epicProject = await resolveEpic(filter.parent)

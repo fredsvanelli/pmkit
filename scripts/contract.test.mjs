@@ -41,7 +41,8 @@ function setupLocal(options = {}) {
   let counter = 0
   const random = (n) => counter++ % n
   const now = () => new Date('2026-10-23T12:00:00Z')
-  const tracker = createLocalTracker(root, { now, random, ...options })
+  // PMKIT_USER makes `me` the actor, as the viewer is on a hosted tracker.
+  const tracker = createLocalTracker(root, { now, random, env: { ...process.env, PMKIT_USER: 'fred' }, ...options })
   return { tracker, actor: 'fred', assignee: 'fred', agent: 'agent:claude', today: '2026-10-23', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
 }
 
