@@ -36,7 +36,7 @@ The existing tests and goldens check that every command shows what it showed bef
 
 ## Interview
 
-- `delete`'s `before` comes from a bare read, so its JSON loses `release`/`releases`/`docs`. The issue names delete among the reads that show neither; the text output never shows them, and the existing delete tests and goldens stay green. Recorded in the PR as the one JSON difference.
+- `delete`'s `before` comes from a bare read, so its JSON loses `release`/`releases`/`docs`. The issue names delete among the reads that show neither; the text output never shows them, and the existing delete tests and goldens stay green. No Linear test reads `release` or `docs` from a delete (the `issues-delete` goldens are Local). Recorded in the PR as the one JSON difference.
 - A release write (`--release`): `changesReleases` is true, so its after-read reads the releases again, as today.
 - An unread list carried over stays unread with its note already taken; it is never turned into an empty list.
 - Does the search change the issues it returns? No: `finishSearch` uses `blocked` and the sort keys, neither of which is a release or a doc.
