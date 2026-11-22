@@ -290,3 +290,7 @@ test('branch is a property, not a field, on update only', async () => {
   assert.throws(() => toFields({ branch: 'bad..name' }, old, ctx, {}), { code: 'INVALID_INPUT' })
   assert.throws(() => toFields({ title: 'x', branch: 'b' }, null, ctx, { create: true }), { code: 'INVALID_INPUT' })
 })
+
+test('jiraTime returns an unparseable time as it came', () => {
+  assert.equal(jiraTime('not a time'), 'not a time')
+})

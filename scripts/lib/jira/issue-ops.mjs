@@ -48,7 +48,8 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
   /** The context to map items with: a status a cached discovery lacks refreshes it once, as a renamed status often explains. */
   async function contextFor(items) {
     const context = await getContext()
-    if (context.fresh || items.every((item) => knowsStatus(item, context))) return context
+    const ours = items.filter((item) => String(item.key).startsWith(`${context.view.space.key}-`))
+    if (context.fresh || ours.every((item) => knowsStatus(item, context))) return context
     return getContext({ refresh: true })
   }
 

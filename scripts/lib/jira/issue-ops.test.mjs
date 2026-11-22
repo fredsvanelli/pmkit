@@ -326,3 +326,16 @@ test('a status a cached discovery lacks refreshes the discovery once', async () 
   assert.deepEqual((await second.tracker.getIssue('ENG-1')).status, { name: 'Shipped', category: 'in_progress' })
   assert.equal(callsTo(second.fetch, 'GET', '/rest/api/3/project/ENG/statuses').length, 1)
 })
+
+test('reading a work item of another space does not refresh a cached discovery', async () => {
+  const first = setup()
+  await first.tracker.discover({ refresh: true })
+  const second = setup({ context: first.context })
+  const [key] = seed(second.fake.state, 1, { status: { id: '9', name: 'Elsewhere', statusCategory: { key: 'done' } } })
+  const item = second.fake.state.items[key]
+  delete second.fake.state.items[key]
+  item.key = 'OPS-1'
+  second.fake.state.items['OPS-1'] = item
+  assert.equal((await second.tracker.getIssue('OPS-1')).status.name, 'Elsewhere')
+  assert.equal(callsTo(second.fetch, 'GET', '/rest/api/3/project/ENG/statuses').length, 0)
+})

@@ -55,7 +55,8 @@ export const ISSUE_FIELDS = (context) => [...BASE_FIELDS, ...[context.fields.est
 // A Jira time such as 2026-11-22T10:00:00.000+0000 as ISO UTC with Z; undefined for none.
 export function jiraTime(value) {
   if (!value) return undefined
-  return new Date(String(value).replace(/([+-]\d\d)(\d\d)$/, '$1:$2')).toISOString()
+  const time = new Date(String(value).replace(/([+-]\d\d)(\d\d)$/, '$1:$2'))
+  return Number.isNaN(time.getTime()) ? String(value) : time.toISOString()
 }
 
 const setDefined = (issue, key, value) => {
