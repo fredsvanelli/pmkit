@@ -2,6 +2,7 @@
 // See docs/superpowers/specs/2026-11-22-pmk-77-jira-work-items-transitions-links-jql-design.md, "History and comments".
 
 import { adfToText } from './adf.mjs'
+import { compareTimes } from '../model.mjs'
 import { jiraTime } from './issues.mjs'
 
 const HOURS = 'timeoriginalestimate'
@@ -58,7 +59,7 @@ const eventsOf = (history, context) => {
 
 /** The `fromString` of the earliest change of the field `id`, or `current` when the changelog never changes it. */
 function startOf(histories, id, current) {
-  const ordered = [...histories].sort((a, b) => (jiraTime(a.created) < jiraTime(b.created) ? -1 : jiraTime(a.created) > jiraTime(b.created) ? 1 : 0))
+  const ordered = [...histories].sort((a, b) => compareTimes(jiraTime(a.created), jiraTime(b.created)))
   for (const history of ordered) {
     const change = (history.items ?? []).find((item) => (item.fieldId ?? item.field) === id)
     if (change) return change.fromString ?? null
@@ -85,5 +86,5 @@ export function toEvents(item, histories, context, comments = []) {
   const create = { at: jiraTime(item.fields.created), by: accountOf(item.fields.creator), op: 'create', to: createdAs(item, histories, context) }
   const noted = comments.map((node) => ({ at: jiraTime(node.created), by: accountOf(node.author), op: 'comment' }))
   const all = [create, ...histories.flatMap((history) => eventsOf(history, context)), ...noted]
-  return all.map((event, index) => ({ event, index })).sort((a, b) => (a.event.at < b.event.at ? -1 : a.event.at > b.event.at ? 1 : a.index - b.index)).map(({ event }) => event)
+  return all.sort((a, b) => compareTimes(a.at, b.at))
 }

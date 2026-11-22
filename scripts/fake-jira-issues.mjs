@@ -4,6 +4,7 @@
 
 import { jiraSiteRoutes } from './fake-jira-api.mjs'
 import { adfToText } from './lib/jira/adf.mjs'
+import { lower } from './lib/jira/ids.mjs'
 
 const API = '/rest/api/3'
 const SITE = jiraSiteRoutes()
@@ -22,7 +23,6 @@ const RESOLUTION_FIELD = { required: true, hasDefaultValue: false, name: 'Resolu
 const MISSING = 'Issue does not exist or you do not have permission to see it.'
 
 const upper = (value) => String(value ?? '').toUpperCase()
-const lower = (value) => String(value ?? '').toLowerCase()
 const jiraFormat = (date) => new Date(date).toISOString().replace('Z', '+0000')
 const instant = (time) => Date.parse(String(time).replace(/([+-]\d\d)(\d\d)$/, '$1:$2'))
 const statusOf = (status) => ({ id: status.id, name: status.name, statusCategory: { key: status.statusCategory.key } })

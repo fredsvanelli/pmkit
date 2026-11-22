@@ -1,8 +1,8 @@
 import { PmkitError } from '../errors.mjs'
+import { validDate } from '../local/sprints.mjs'
 import { textToAdf } from './adf.mjs'
 
 const SETUP = '/pmkit:setup'
-const DATE = /^\d{4}-\d{2}-\d{2}$/
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const same = (a, b) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase()
@@ -64,7 +64,7 @@ function convert(field, id, value, key) {
     return Number(value)
   }
   if (type === 'date') {
-    if (!DATE.test(value)) throw invalid(`${field.name} (${id}) takes a date as YYYY-MM-DD, not ${value}`)
+    if (!validDate(value)) throw invalid(`${field.name} (${id}) takes a date as YYYY-MM-DD, not ${value}`)
     return value
   }
   if (type === 'string') return isTextArea(field.schema) ? textToAdf(value) : value

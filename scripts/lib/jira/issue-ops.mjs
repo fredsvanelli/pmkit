@@ -9,32 +9,27 @@ import { compareIds } from '../ids.mjs'
 import { checkFilter, issueComparator } from '../issue-filter.mjs'
 import { CATEGORIES, compareTimes, PRIORITY_LABEL_LEVELS as PRIORITIES, TERMINAL } from '../model.mjs'
 import { jqlString, translateFilter } from './filter.mjs'
-import { isIssueKey, normalizeKey } from './ids.mjs'
+import { API, isIssueKey, issuePath, lower, normalizeKey, PAGE_SIZE } from './ids.mjs'
 import { ISSUE_FIELDS, toFields, toIssue } from './issues.mjs'
 import { fieldValues, pickTarget, pickTransition, requiredFields } from './transitions.mjs'
 
-const API = '/rest/api/3'
 const SEARCH = `${API}/search/jql`
 const BRANCH = 'pmkit.branch'
-const PAGE_SIZE = 100
 const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notFound = (id) => new PmkitError('NOT_FOUND', `issue ${id} does not exist`, 'pmkit issues list')
-const issuePath = (key, rest = '') => `${API}/issue/${encodeURIComponent(key)}${rest}`
-const lower = (value) => String(value ?? '').toLowerCase()
 
 /** True when the issue has a blocker whose category is not done or canceled. */
 const openBlocker = (issue) => [...issue.blockerCategories.values()].some((category) => !TERMINAL.includes(category))
 
-// The client steps translateFilter names, each a test of one issue against the filter. The sort runs on every search.
+// The client steps translateFilter names, each a test of one issue against the filter. The sort runs on every search, after them.
 const STEPS = {
   text: (issue, filter) => [issue.title, issue.description].some((value) => lower(value).includes(lower(filter.text))),
   blocked: (issue, filter) => openBlocker(issue) === filter.blocked,
   updated: (issue, filter) =>
     (filter.updatedAfter === undefined || compareTimes(issue.updated, filter.updatedAfter) > 0) &&
     (filter.updatedBefore === undefined || compareTimes(issue.updated, filter.updatedBefore) < 0),
-  sort: () => true,
 }
 
 /**
@@ -238,9 +233,8 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
     const { issue: before } = await readItem(id)
     if ((before.assignee ?? null) === account) return { before, after: before }
     if (dryRun) {
-      const after = { ...before, assignee: account ?? undefined }
-      if (account === null) delete after.assignee
-      return { before, after }
+      const { assignee: _gone, ...rest } = before
+      return { before, after: account === null ? rest : { ...before, assignee: account } }
     }
     await client.request('PUT', issuePath(before.id, '/assignee'), { body: { accountId: account } })
     return { before, after: await afterOf(before.id) }
@@ -276,5 +270,5 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
     return result
   }
 
-  return { getIssue, searchIssues, readItem, requireActor, createIssue, updateIssue, moveToCategory, assign, delete: deleteIssue }
+  return { getIssue, searchIssues, readItem, requireActor, afterOf, createIssue, updateIssue, moveToCategory, assign, delete: deleteIssue }
 }

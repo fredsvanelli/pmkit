@@ -10,7 +10,7 @@ import { validDate } from '../local/sprints.mjs'
 import { isCategory, PRIORITY_LABEL_LEVELS as PRIORITIES } from '../model.mjs'
 import { adfToText, textToAdf } from './adf.mjs'
 import { categoryOfStatus, discoveryView } from './discovery.mjs'
-import { isIssueKey, normalizeKey } from './ids.mjs'
+import { isIssueKey, lower, normalizeKey } from './ids.mjs'
 
 const BRANCH_PROPERTY = 'pmkit.branch'
 const HOURS = 'timeoriginalestimate'
@@ -28,7 +28,6 @@ const LATER = { sprint: 'PMK-78', milestone: 'PMK-79', release: 'PMK-79' }
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', message, nextStep)
-const lower = (value) => String(value ?? '').toLowerCase()
 
 /** The pmkit priority a Jira priority name reads as, or undefined. */
 const readPriority = (name) => (Object.hasOwn(PRIORITY_READ, lower(name)) ? PRIORITY_READ[lower(name)] : undefined)
@@ -42,7 +41,6 @@ export function makeContext(raw, pmkit, session) {
   return {
     raw, pmkit, view, viewer: view.viewer ?? null, space: raw.space.key,
     categoryOf: (name, key) => view.statuses.find((status) => status.name === name)?.category ?? categoryOfStatus(key) ?? 'in_progress',
-    typeOfId: (id) => typeOfName(raw.workTypes.find((type) => type.id === String(id))?.name),
     typeOfName,
     workTypeOf: (type) => (Object.hasOwn(types, type) ? workTypeByName(types[type]) : undefined),
     priorityOf: readPriority,

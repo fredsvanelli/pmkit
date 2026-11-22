@@ -11,7 +11,7 @@ export function jqlString(value) {
 }
 
 const list = (values) => `(${values.map(jqlString).join(', ')})`
-const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset * DAY).toISOString().slice(0, 10)
+export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset * DAY).toISOString().slice(0, 10)
 
 const notSupported = (key, issue) => new PmkitError('NOT_SUPPORTED', `the Jira adapter does not filter by ${key} yet (${issue})`, `Run the search without --${key}`)
 
@@ -63,15 +63,10 @@ const HANDLERS = {
     out.clauses.push(`updated >= ${jqlString(dayOf(filter.updatedAfter, -1))}`)
     out.steps.add('updated')
   },
-  archived() {},
-  sort(filter, out) {
-    if (filter.sort !== 'created') out.steps.add('sort')
-  },
-  limit() {},
 }
 
 // The step names in the order the adapter runs them.
-const STEP_ORDER = ['text', 'blocked', 'updated', 'sort']
+const STEP_ORDER = ['text', 'blocked', 'updated']
 
 /**
  * Translates a filter that checkFilter accepted (the caller checks) into { empty: true } when nothing can match, else
@@ -85,6 +80,6 @@ export function translateFilter(filter, context) {
   if (out.empty) return { empty: true }
   const clientSteps = STEP_ORDER.filter((step) => out.steps.has(step))
   const { limit } = filter
-  const serverLimit = clientSteps.length === 0 && Number.isInteger(limit) && limit >= 1 ? limit : undefined
+  const serverLimit = clientSteps.length === 0 && (filter.sort ?? 'created') === 'created' && Number.isInteger(limit) && limit >= 1 ? limit : undefined
   return { jql: `${out.clauses.join(' AND ')} ORDER BY created ASC, key ASC`, clientSteps, serverLimit }
 }

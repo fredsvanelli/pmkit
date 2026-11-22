@@ -136,7 +136,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   }
 
   const issues = issueOperations({ client, getContext, now })
-  const relations = relationOperations({ client, ops: issues, getContext })
+  const relations = relationOperations({ client, ops: issues })
   const history = historyOperations({ client, ops: issues, getContext, now })
   const contract = {
     getIssue: issues.getIssue,

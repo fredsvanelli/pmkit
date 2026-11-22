@@ -72,7 +72,6 @@ test('makeContext gives the viewer, the space, the link types and the field role
   assert.equal(ctx.linkType('related').name, 'Relates')
   assert.equal(ctx.linkType('duplicate').name, 'Duplicate')
   assert.deepEqual(ctx.fields, { estimate: 'customfield_10016', criteria: null })
-  assert.equal(ctx.typeOfId('10002'), 'bug')
   assert.equal(ctx.workTypeOf('story').id, '10001')
   assert.equal(ctx.workTypeOf('task'), undefined)
 })

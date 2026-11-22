@@ -81,14 +81,14 @@ test('a late-in-day updatedBefore is not cut for users east of UTC', async () =>
   assert.equal(out.jql, `project = "ENG" AND updated < "2026-01-04"${TAIL}`)
 })
 
-test('archived adds nothing; sort other than created adds the sort step', async () => {
+test('archived adds nothing; sort adds no step', async () => {
   const ctx = await context()
   assert.deepEqual(translateFilter({ archived: true, sort: 'created' }, ctx).clientSteps, [])
-  assert.deepEqual(translateFilter({ sort: 'priority' }, ctx).clientSteps, ['sort'])
+  assert.deepEqual(translateFilter({ sort: 'priority' }, ctx).clientSteps, [])
 })
 
 test('clientSteps keep a stable order', async () => {
-  assert.deepEqual(translateFilter({ sort: 'due', updatedAfter: '2026-11-10T00:00:00Z', blocked: true, text: 'x' }, await context()).clientSteps, ['text', 'blocked', 'updated', 'sort'])
+  assert.deepEqual(translateFilter({ sort: 'due', updatedAfter: '2026-11-10T00:00:00Z', blocked: true, text: 'x' }, await context()).clientSteps, ['text', 'blocked', 'updated'])
 })
 
 test('serverLimit only without steps and with sort created', async () => {

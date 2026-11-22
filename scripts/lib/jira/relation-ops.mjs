@@ -4,11 +4,11 @@
 import { PmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
 import { LINK_KINDS } from '../model.mjs'
+import { lower } from './ids.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const DEPTH = 10
 const PROP = { blocks: 'blocks', related: 'related', duplicate: 'duplicateOf' }
-const lower = (value) => String(value ?? '').toLowerCase()
 
 /** The issue with `other` added to or removed from the list of `kind`, as a dry run shows it. */
 function withLink(issue, other, kind, add) {
@@ -18,16 +18,15 @@ function withLink(issue, other, kind, add) {
 }
 
 /** The relation operations over a Jira client and the issue operations `ops` (readItem, requireActor). */
-export function relationOperations({ client, ops, getContext }) {
+export function relationOperations({ client, ops }) {
   /** The checks before any read, then both items. */
   async function pair(from, to, kind, actor) {
     await ops.requireActor(actor)
     if (!LINK_KINDS.includes(kind)) throw invalid(`kind must be one of ${LINK_KINDS.join(', ')}`)
-    const context = await getContext()
     const a = await ops.readItem(from)
     const b = await ops.readItem(to)
     if (a.issue.id === b.issue.id) throw invalid(`${a.issue.id} cannot be linked to itself`)
-    return { a, b, context }
+    return { a, b, context: a.context }
   }
 
   /** The shortest path from `start` to `goal` along blocks relations, read one item at a time, or null within DEPTH levels. */
@@ -53,8 +52,6 @@ export function relationOperations({ client, ops, getContext }) {
     return null
   }
 
-  const afterOf = async (id) => (await ops.readItem(id)).issue
-
   async function link(from, to, kind, actor, { dryRun = false } = {}) {
     const { a, b, context } = await pair(from, to, kind, actor)
     const before = a.issue
@@ -72,7 +69,7 @@ export function relationOperations({ client, ops, getContext }) {
     await client.request('POST', '/rest/api/3/issueLink', {
       body: { type: { name: type.name }, inwardIssue: { key: before.id }, outwardIssue: { key: b.issue.id } },
     })
-    return { before, after: await afterOf(before.id) }
+    return { before, after: await ops.afterOf(before.id) }
   }
 
   /** The ids of the links of `a` of `kind` to `other`: either direction for related, else a as the inward side. */
@@ -91,7 +88,7 @@ export function relationOperations({ client, ops, getContext }) {
     if (ids.length === 0 || !before[PROP[kind]].includes(b.issue.id)) return { before, after: before }
     if (dryRun) return { before, after: withLink(before, b.issue.id, kind, false) }
     for (const id of ids) await client.request('DELETE', `/rest/api/3/issueLink/${encodeURIComponent(id)}`)
-    return { before, after: await afterOf(before.id) }
+    return { before, after: await ops.afterOf(before.id) }
   }
 
   /** The id followed by its ancestors', read up to DEPTH levels. */
@@ -125,7 +122,7 @@ export function relationOperations({ client, ops, getContext }) {
       return { before, after: target ? { ...rest, parent: target.id } : rest }
     }
     await client.request('PUT', `/rest/api/3/issue/${before.id}`, { body: { fields: { parent: target ? { key: target.id } : null } } })
-    return { before, after: await afterOf(before.id) }
+    return { before, after: await ops.afterOf(before.id) }
   }
 
   return { link, unlink, setParent }
