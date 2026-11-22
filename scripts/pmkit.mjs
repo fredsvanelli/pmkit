@@ -1136,7 +1136,7 @@ export const COMMANDS = [
       const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear' && ctx.list('add-doc').length > 0
       const branch = linkDocs ? resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) }) : null
       const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: branch.branch } : {}) }))
-      return { ...result, warnings: await releasedWarnings(ctx, patch), ...(linkDocs ? { notes: branch.note === null ? [] : [branch.note] } : {}) }
+      return { ...result, warnings: [...(result.data.warnings ?? []), ...(await releasedWarnings(ctx, patch))], ...(linkDocs ? { notes: branch.note === null ? [] : [branch.note] } : {}) }
     },
   },
   {

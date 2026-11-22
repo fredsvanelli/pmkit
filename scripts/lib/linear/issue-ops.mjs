@@ -394,7 +394,15 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
     await writeDocs(before.id, change, { fieldsWritten: Object.keys(linearInput) })
     // The issue is read again, so `after` is what Linear holds: its attachments changed after the update's own answer.
-    return { before, after: await mapped(keep(await readNode(before.id, { extras: false }), beforeNode, { releases: !changesReleases(linearInput), docs: false })) }
+    // Everything was written, so a read-back that fails is a warning, never an error that sends the caller to write again (PMK-258).
+    try {
+      return { before, after: await mapped(keep(await readNode(before.id, { extras: false }), beforeNode, { releases: !changesReleases(linearInput), docs: false })) }
+    } catch (error) {
+      if (!(error instanceof PmkitError)) throw error
+      const { docs, ...rest } = result.after
+      const expected = patch.docs.length > 0 ? { ...rest, docs: patch.docs } : rest
+      return { before, after: expected, warnings: [`${before.id} is updated and its docs are linked, but reading it back failed (${error.message}), so this record is the one pmkit expected: pmkit issues get ${before.id} shows it as it is now`] }
+    }
   }
 
   /** The docs a write adds (paths) and removes (attachment nodes), or null when the list is the one the issue has. An unread list refuses. */

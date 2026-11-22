@@ -2131,3 +2131,22 @@ test('a docs change keeps a doc whose stored path is not in normal form, and say
   await linear.updateIssue('ACME-1', { docs: ['docs/b.md'] }, 'user-1', { docsBranch: 'develop' })
   assert.deepEqual((await linear.getIssue('ACME-1')).docs, ['docs/b.md'])
 })
+
+// PMK-258: the update and the links went through, so a failed read-back is a warning, never an error that would send the caller to write again.
+const readBackFails = () => {
+  let linked = false
+  return (fake) => ({
+    PmkitAttachmentCreate: (body) => { linked = true; return fake.routes.PmkitAttachmentCreate(body) },
+    PmkitIssueById: (body) => (linked ? { status: 200, json: { data: null, errors: [{ message: 'Rate limited', extensions: { code: 'RATELIMITED' } }] } } : fake.routes.PmkitIssueById(body)),
+  })
+}
+
+test('a docs write whose read-back fails says the write was done and that the issue could not be read back', async () => {
+  const { tracker: linear, fake } = docsSetup({ routes: readBackFails() })
+  seed(fake, { title: 'One' })
+  const result = await linear.updateIssue('ACME-1', { title: 'Renamed', docs: ['docs/a.md'] }, 'user-1', { docsBranch: 'develop' })
+  assert.equal(result.after.title, 'Renamed')
+  assert.deepEqual(result.after.docs, ['docs/a.md'])
+  assert.match(result.warnings[0], /^ACME-1 is updated and its docs are linked, but reading it back failed \(.+\), so this record is the one pmkit expected: pmkit issues get ACME-1 shows it as it is now$/)
+  assert.equal(fake.records[0].title, 'Renamed')
+})
