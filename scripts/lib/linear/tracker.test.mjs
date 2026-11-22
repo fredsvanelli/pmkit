@@ -2096,3 +2096,25 @@ test('one issue whose release page read fails is unknown, and the rest of its ch
   assert.equal(byId['ACME-2'].release, REL.two)
   assert.equal('releaseUnknown' in byId['ACME-2'], false)
 })
+
+test('unlink, a comment, resolving a thread, delegate and restore read no list after their write', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  seed(fake, { title: 'Two' })
+  const after = (mutation, from) => listReads(fetch, namesOf(fetch).indexOf(mutation, from))
+  await linear.link('ACME-1', 'ACME-2', 'related', 'user-1')
+  let from = fetch.calls.length
+  assert.equal((await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1')).after.release, REL.two)
+  assert.deepEqual(after('PmkitRelationDelete', from), [])
+  from = fetch.calls.length
+  const posted = await linear.comment('ACME-1', 'Hello', 'user-1')
+  await linear.resolveThread('ACME-1', posted.after?.id ?? posted.id, 'user-1')
+  assert.deepEqual(listReads(fetch, from), [])
+  from = fetch.calls.length
+  assert.equal((await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')).after.release, REL.two)
+  assert.deepEqual(after('PmkitIssueUpdate', from), [])
+  await linear.delete('ACME-2', 'user-1')
+  from = fetch.calls.length
+  await linear.restore('ACME-2', 'user-1')
+  assert.deepEqual(after('PmkitIssueUnarchive', from), [])
+})
