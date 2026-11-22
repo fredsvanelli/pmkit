@@ -5,6 +5,7 @@ import test from 'node:test'
 import { ACME_LABELS, ACME_TEAM, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
+import { parseChange } from '../bulk.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
 import { isMutation, operationName } from './client.mjs'
 import { BATCH_RELEASES_PAGE, ISSUES_RELEASES_QUERY, RELEASES_QUERY, RELEASE_QUERY } from './documents.mjs'
@@ -1789,8 +1790,8 @@ test('a node that already has its releases is not read again, and a new issue re
   const { tracker: linear, fake, fetch } = releaseSetup()
   seed(fake, { title: 'One', releaseIds: [REL.two] })
   await linear.archive('ACME-1', 'user-1')
-  // readNode before the archive, then readNode for the result: mapped does not read them a third time.
-  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), 2)
+  // readNode before the archive reads them; the read for the result keeps them (PMK-262), and mapped does not read them again.
+  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), 1)
   const before = callsOf(fetch, 'PmkitIssuesReleases')
   const made = await linear.createIssue({ title: 'New' }, 'user-1')
   assert.equal('release' in made.after, false)
@@ -2009,4 +2010,111 @@ test('one issue whose attachments cannot be read alone does not make the rest of
   const { issues } = await linear.searchIssues({})
   assert.match(issues[0].docsUnknown, /Rate limited/)
   assert.deepEqual(issues[1].docs, ['docs/c.md'])
+})
+
+// PMK-262: no release or attachment read where pmkit already has the answer or never shows it.
+const LIST_READS = ['PmkitIssuesReleases', 'PmkitIssueReleases', 'PmkitIssuesAttachments', 'PmkitIssueAttachments']
+const listReads = (fetch, from = 0) => namesOf(fetch).slice(from).filter((name) => LIST_READS.includes(name))
+const indexOf = (fetch, name) => namesOf(fetch).lastIndexOf(name)
+
+test('a write that touches neither releases nor docs reads neither after it', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  seed(fake, { title: 'Two' })
+  const writes = [
+    [() => linear.updateIssue('ACME-1', { priority: 'high' }, 'user-1'), 'PmkitIssueUpdate'],
+    [() => linear.moveToCategory('ACME-1', 'in_progress', 'user-1'), 'PmkitIssueUpdate'],
+    [() => linear.assign('ACME-1', 'me', 'user-1'), 'PmkitIssueUpdate'],
+    [() => linear.link('ACME-1', 'ACME-2', 'related', 'user-1'), 'PmkitRelationCreate'],
+    [() => linear.archive('ACME-1', 'user-1'), 'PmkitIssueArchive'],
+  ]
+  for (const [write, mutation] of writes) {
+    const from = fetch.calls.length
+    const { after } = await write()
+    const at = namesOf(fetch).indexOf(mutation, from)
+    assert.ok(at >= 0, `${mutation} was sent`)
+    assert.deepEqual(listReads(fetch, at), [], mutation)
+    assert.equal(after.release, REL.two, mutation)
+  }
+})
+
+test('history, comments, delete and a parent lookup read no release or attachment', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  const from = fetch.calls.length
+  await linear.getHistory('ACME-1')
+  await linear.listComments('ACME-1')
+  await linear.delete('ACME-1', 'user-1', { dryRun: true })
+  await linear.createIssue({ title: 'Child', parent: 'ACME-1' }, 'user-1', { dryRun: true })
+  assert.deepEqual(listReads(fetch, from), [])
+})
+
+test('a bulk change reads each issue\'s lists once, before its write', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  for (const title of ['A', 'B', 'C']) seed(fake, { title })
+  const change = parseChange('priority', 'high')
+  const from = fetch.calls.length
+  for (const id of ['ACME-1', 'ACME-2', 'ACME-3']) await change.apply(linear, await linear.getIssue(id), 'user-1', {})
+  const reads = listReads(fetch, from)
+  // One getIssue and one before-read per issue: the after-read of each write reads neither list.
+  assert.equal(reads.filter((name) => name === 'PmkitIssuesReleases').length, 6)
+  assert.equal(reads.filter((name) => name === 'PmkitIssuesAttachments').length, 6)
+})
+
+test('a search reads the lists of the issues it keeps only', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  for (const title of ['A', 'B', 'C']) seed(fake, { title })
+  const { issues } = await linear.searchIssues({ limit: 1, sort: 'priority' })
+  assert.equal(issues.length, 1)
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssuesReleases').ids.length, 1)
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssuesAttachments').ids.length, 1)
+})
+
+test('a release write reads the releases again after it, and a docs write the attachments', async () => {
+  const context = setup()
+  context.config.pmkit.git_host = { system: 'github', repo: 'acme/app' }
+  const { tracker: linear, fake, fetch } = releaseSetup({ context })
+  seed(fake, { title: 'One' })
+  const released = await linear.updateIssue('ACME-1', { release: REL.two }, 'user-1')
+  assert.equal(released.after.release, REL.two)
+  assert.ok(listReads(fetch, indexOf(fetch, 'PmkitIssueUpdate')).includes('PmkitIssuesReleases'))
+  const linked = await linear.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1', { docsBranch: 'main' })
+  assert.deepEqual(linked.after.docs, ['docs/a.md'])
+  assert.ok(listReads(fetch, indexOf(fetch, 'PmkitAttachmentCreate')).includes('PmkitIssuesAttachments'))
+  assert.equal(linked.after.release, REL.two)
+})
+
+test('one issue whose release page read fails is unknown, and the rest of its chunk keeps its releases', async () => {
+  const many = Array.from({ length: BATCH_RELEASES_PAGE + 1 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `R${i}`, version: `1.${i}`, pipeline: 'pipe-acme' }))
+  const routes = () => ({ PmkitIssueReleases: failingReleases().PmkitIssueReleases })
+  const { tracker: linear, fake } = releaseSetup({ issues: { pipelines: PIPELINES, releases: [...RELEASES, ...many] }, routes })
+  seed(fake, { title: 'Many', releaseIds: many.map((item) => item.id) })
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  const { issues } = await linear.searchIssues({})
+  const byId = Object.fromEntries(issues.map((issue) => [issue.id, issue]))
+  assert.match(byId['ACME-1'].releaseUnknown, /Query too complex/)
+  assert.equal(byId['ACME-2'].release, REL.two)
+  assert.equal('releaseUnknown' in byId['ACME-2'], false)
+})
+
+test('unlink, a comment, resolving a thread, delegate and restore read no list after their write', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  seed(fake, { title: 'Two' })
+  const after = (mutation, from) => listReads(fetch, namesOf(fetch).indexOf(mutation, from))
+  await linear.link('ACME-1', 'ACME-2', 'related', 'user-1')
+  let from = fetch.calls.length
+  assert.equal((await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1')).after.release, REL.two)
+  assert.deepEqual(after('PmkitRelationDelete', from), [])
+  from = fetch.calls.length
+  const posted = await linear.comment('ACME-1', 'Hello', 'user-1')
+  await linear.resolveThread('ACME-1', posted.after?.id ?? posted.id, 'user-1')
+  assert.deepEqual(listReads(fetch, from), [])
+  from = fetch.calls.length
+  assert.equal((await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')).after.release, REL.two)
+  assert.deepEqual(after('PmkitIssueUpdate', from), [])
+  await linear.delete('ACME-2', 'user-1')
+  from = fetch.calls.length
+  await linear.restore('ACME-2', 'user-1')
+  assert.deepEqual(after('PmkitIssueUnarchive', from), [])
 })
