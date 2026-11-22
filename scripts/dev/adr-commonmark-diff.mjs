@@ -21,8 +21,8 @@
 // PMK-311, which are unchanged and in the same order; `--status-random` sets its random part.
 // PMK-324: after the PMK-321 cases, pairs, triples and random status runs with status lines ending in a hard line break (two or more spaces, one or three backslashes) or two backslashes (not a break), the older cases unchanged
 // and in the same order; `--break-random` sets its random part. The corpus (`cases`) lives in adr-write-compare.mjs, so `npm test` checks it holds those lines and that the older cases do not change.
-// PMK-327: after the PMK-324 cases, an HTML block of kind 1 to 5 in a quote or list item holding `## X`, with the PMK-321 ends and the end of the file with no final newline (tallied as its own end), then pairs of a status line
-// then a break line and triples of two status lines then a break line, with status lines that end in exactly one space (not a break) among them, then those one-space lines next to each line of the corpus (as the only status line of a section, the one `setAdrStatus` writes in place). The older cases are unchanged and in the same order.
+// PMK-327: after the PMK-324 cases, an HTML block of kind 1 to 5 in a quote or list item holding `## X`, with the PMK-321 ends and the end of the file with no final newline (tallied as its own end, and all of them apart from the PMK-321 cases, PMK-331), then pairs of a status line
+// then a break line and triples of two status lines then a break line, some of whose status lines end in exactly one space (not a break), then those one-space lines next to each line of the corpus. Only those last pairs catch a write that keeps the space as a hard break: next to a break line the write adds a line, while 630 of the 3,766 one-space pairs, where the line is the only status line of its section, are written in place over it (a test in adr-write-compare.test.mjs pins them, PMK-331). The older cases are unchanged and in the same order.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -118,7 +118,7 @@ for (const item of cases({ seed: Number(args.seed), random: Number(args.random),
   counts.cases++
   const compared = compareWrites({ base: base.write(text, span), head: head.write(text, span), section, span, status: STATUS })
   if (item.end) {
-    const tally = (containers[item.end] ??= {})
+    const tally = (containers[`${item.end} (${item.group ?? 'PMK-321'})`] ??= {})
     tally[compared.outcome] = (tally[compared.outcome] ?? 0) + 1
   }
   counts[`write${compared.outcome[0].toUpperCase()}${compared.outcome.slice(1)}`]++
@@ -136,7 +136,7 @@ console.log(`${args.base} -> ${args.head}, commonmark ${createRequire(import.met
 console.log(`cases ${counts.cases}: right on both ${counts.right}, fixed ${counts.fixed}, worse ${counts.worse}, wrong on both ${counts.wrongSame + counts.wrongDifferent} (same answer ${counts.wrongSame}, different ${counts.wrongDifferent})`)
 console.log(`adrInfo status at ${args.head}: empty status ${counts.empty}, the whole section ${counts.lineOfSection}, one line of it ${counts.lineChanged}, text from outside the section ${counts.lineOutside}`)
 console.log(`setAdrStatus at ${args.base} vs ${args.head}: same removal ${counts.writeSame}, refused on both ${counts.writeRefusedBoth}, newly refused at the head ${counts.writeNewlyRefused}, written at the head where the base refused ${counts.writeAcceptedWhereRefused}, head removes text the base kept or refused ${counts.writeWorse}, threw at the head ${counts.writeHeadThrew}, threw at the base ${counts.writeBaseThrew}`)
-for (const [end, outcomes] of Object.entries(containers)) console.log(`container cases ending at ${end} (PMK-321): ${Object.entries(outcomes).map(([outcome, n]) => `${outcome} ${n}`).join(', ')}`)
+for (const [end, outcomes] of Object.entries(containers)) console.log(`container cases ending at ${end}: ${Object.entries(outcomes).map(([outcome, n]) => `${outcome} ${n}`).join(', ')}`)
 for (const example of worse) console.log(JSON.stringify(example))
 for (const example of writeWorse) console.log(JSON.stringify(example))
 for (const example of threw) console.log(JSON.stringify(example))
