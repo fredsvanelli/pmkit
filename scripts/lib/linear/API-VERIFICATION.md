@@ -226,13 +226,13 @@ The team is named `pmkit-test`, has the key `PKT` and carries the marker `pmkit-
 | `findOrCreateTestTeam({ client, guard })` | Finds the team by name or creates it once. Returns `{ team: { id, key }, created }`. Sends no write when the team exists. |
 | `listTestTeamItems({ client, team, guard })` | Returns `{ issues, projects }` that the team holds and are not trashed. |
 | `trashTestTeamItems({ client, team, guard })` | Trashes those issues and projects. Returns the counts. |
-| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 15 mutations of this suite. PMK-41 passes its own allowlist. |
+| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 17 mutations of this suite. PMK-41 passes its own allowlist. |
 
 `preflight`, `waitForCycles` and `checkTestTeam` are exported too. The live run calls them in this order: `preflight`, `findOrCreateTestTeam`, `waitForCycles`.
 
 ### The write guard
 
-The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `projectUpdate` (PMK-356 and PMK-348: only `statusId`, `name` and `content`, as strings, only on a project the run created, for the epic move and the epic edit), `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
+The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run, a `projectMilestoneId` included (PMK-255). The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `projectMilestoneCreate` (PMK-255: only on a project the run created, so the run has a milestone to point at, since the adapter creates none), `projectUpdate` (PMK-356 and PMK-348: only `statusId`, `name` and `content`, as strings, only on a project the run created, for the epic move and the epic edit), `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
 
 ### Request budget
 
@@ -255,6 +255,7 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 | A missing comment id | PMK-36 | `comments(filter: { id })` answers HTTP 200 with `errors[0]` holding `message: 'Argument Validation Error'`, `path: ['comments']`, and extensions `code: 'INVALID_INPUT'`, `type: 'invalid input'`, `userError: true`. The code is not `INPUT_ERROR`. The adapter maps this answer to NOT_FOUND. |
 | An update right after create | PMK-39 | The history had no `update` entry for a title change made seconds after create. Linear folds it into the create entry. See the section on folded quick edits below. |
 | `endsAt` equals the next `startsAt`, the time of day, `isPast` and `completedAt` | PMK-37 | `endsAt` equals the next `startsAt` on the 2 cycles read. Every time of day is `00:00:00.000Z`. No cycle was `isPast` and none had `completedAt` (third live run) |
+| The milestone writes of `issues create --parent <epic> --milestone`, `issues update --milestone` and `issues bulk milestone` | PMK-255 | Live run of 2026-11-22 (53 tests: 37 passed, 0 failed, 16 skipped; the test team empty afterwards). The guard let `projectMilestoneCreate` and each `projectMilestoneId` through; `ProjectMilestoneCreateInput` takes the `id` the run chooses; the three issues read back with the milestone, and the bulk change to `none` cleared it. |
 
 ### Open facts
 

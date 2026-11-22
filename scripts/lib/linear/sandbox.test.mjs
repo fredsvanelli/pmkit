@@ -13,11 +13,11 @@ import { createLinearClient, isMutation } from './client.mjs'
 import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UNARCHIVE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
-import { PROBES, commentProbe, cycleProbe, descriptionProbe, relationProbe } from './live-probes.mjs'
+import { PROBES, commentProbe, cycleProbe, descriptionProbe, milestoneProbe, relationProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_SET_STATUS, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import {
-  CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, STATE_CREATE, SUITE_ALLOWLIST, TEAM_CREATE, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight,
+  CYCLE_START, ISSUE_DELETE, MILESTONE_CREATE, PROJECT_DELETE, STATE_CREATE, SUITE_ALLOWLIST, TEAM_CREATE, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight,
   readMutation, trashTestTeamItems, waitForCycles,
 } from './sandbox.mjs'
 
@@ -42,7 +42,7 @@ function scripted(reply = () => answer({})) {
   return inner
 }
 
-const PAYLOADS = { issueCreate: 'issue', projectCreate: 'project', commentCreate: 'comment', issueRelationCreate: 'issueRelation', workflowStateCreate: 'workflowState', teamCreate: 'team' }
+const PAYLOADS = { issueCreate: 'issue', projectCreate: 'project', commentCreate: 'comment', issueRelationCreate: 'issueRelation', workflowStateCreate: 'workflowState', teamCreate: 'team', projectMilestoneCreate: 'projectMilestone' }
 /** A reply that confirms every create with the id its input chose, as Linear does, and answers anything else with empty data. */
 const confirmCreates = (body) => {
   const { root } = readMutation(body.query)
@@ -250,6 +250,45 @@ test('projectUpdate takes only the status, name and content of a project the run
   assert.equal(inner.calls.length, 0)
 })
 
+// PMK-255: the milestone writes of issues update, bulk and create go through on a milestone the run made.
+test('issueCreate and issueUpdate take a milestone the run owns, or null', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('issue', 'i-1')
+  guarded.guard.own('project', 'p-1')
+  guarded.guard.own('milestone', 'm-1')
+  await send(guarded, ISSUE_UPDATE, { id: 'i-1', input: { projectMilestoneId: 'm-1' } })
+  await send(guarded, ISSUE_UPDATE, { id: 'i-1', input: { projectMilestoneId: null } })
+  await send(guarded, ISSUE_CREATE, { input: { id: 'i-2', teamId: TEAM, projectId: 'p-1', projectMilestoneId: 'm-1' } })
+  assert.equal(inner.calls.length, 3)
+})
+
+test('a milestone the run does not own is refused for that reason', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('issue', 'i-1')
+  await assert.rejects(send(guarded, ISSUE_UPDATE, { id: 'i-1', input: { projectMilestoneId: 'm-foreign' } }), /projectMilestoneId is not one the run owns/)
+  await assert.rejects(send(guarded, ISSUE_CREATE, { input: { id: 'i-2', teamId: TEAM, projectMilestoneId: 'm-foreign' } }), /projectMilestoneId is not one the run owns/)
+  assert.equal(inner.calls.length, 0)
+})
+
+test('projectMilestoneCreate passes on a project the run created and makes the milestone the run\'s own', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('issue', 'i-1')
+  guarded.guard.own('project', 'p-1')
+  await send(guarded, MILESTONE_CREATE, { input: { id: 'm-1', projectId: 'p-1', name: 'Probe milestone' } })
+  await send(guarded, ISSUE_UPDATE, { id: 'i-1', input: { projectMilestoneId: 'm-1' } })
+  assert.equal(inner.calls.length, 2)
+})
+
+test('projectMilestoneCreate is refused on a project the run did not create, with an unlisted key, or after stop()', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('project', 'p-1')
+  await assert.rejects(send(guarded, MILESTONE_CREATE, { input: { id: 'm-1', projectId: 'p-9', name: 'x' } }), REFUSED)
+  await assert.rejects(send(guarded, MILESTONE_CREATE, { input: { id: 'm-1', projectId: 'p-1', name: 'x', sortOrder: 1 } }), REFUSED)
+  guarded.guard.stop()
+  await assert.rejects(send(guarded, MILESTONE_CREATE, { input: { id: 'm-1', projectId: 'p-1', name: 'x' } }), REFUSED)
+  assert.equal(inner.calls.length, 0)
+})
+
 test('after stop(), suite mutations are refused and the deletes of owned ids still pass', async () => {
   const { inner, ...guarded } = opened()
   guarded.guard.own('issue', 'i-1')
@@ -263,7 +302,7 @@ test('after stop(), suite mutations are refused and the deletes of owned ids sti
   assert.equal(inner.calls.length, 3)
 })
 
-test('a caller passes its own allowlist, and the suite list has the 16 mutations of the spec table', async () => {
+test('a caller passes its own allowlist, and the suite list has the 17 mutations of the spec table', async () => {
   const own = { teamUpdate: (variables) => (variables.input?.name === 'ok' ? null : 'wrong name') }
   const { inner, ...guarded } = opened({ allowlist: own })
   const update = 'mutation Update($input: TeamUpdateInput!) { teamUpdate(input: $input) { success } }'
@@ -271,7 +310,7 @@ test('a caller passes its own allowlist, and the suite list has the 16 mutations
   await assert.rejects(send(guarded, update, { input: { name: 'bad' } }), /refusing Update: wrong name/)
   await assert.rejects(send(guarded, ISSUE_CREATE, { input: { teamId: TEAM } }), REFUSED)
   assert.equal(inner.calls.length, 1)
-  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 16)
+  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 17)
 })
 
 /** Sends each [document, variables] attack through a guard that owns i-1, and checks that none reaches the fetch. */
@@ -308,7 +347,6 @@ test('an input key the mutation does not list is refused, ids included', async (
   await refusesAll([
     [ISSUE_CREATE, { input: { id: 'i-9', teamId: TEAM, title: 'x', templateId: 'tpl-foreign' } }],
     [ISSUE_UPDATE, { id: 'i-1', input: { addedLabelIds: ['label-foreign'] } }],
-    [ISSUE_UPDATE, { id: 'i-1', input: { projectMilestoneId: 'm-foreign' } }],
     [ISSUE_UPDATE, { id: 'i-1', input: { teamId: TEAM } }],
     [ISSUE_UPDATE, { id: 'i-1', input: { labelIds: 'label-foreign' } }],
     [COMMENT_CREATE, { input: { id: 'cm-9', issueId: 'i-1', body: 'x', documentContentId: 'd-foreign' } }],
@@ -339,7 +377,7 @@ test('issueDelete refuses permanentlyDelete passed through a variable default', 
 test('every mutation document the adapter and the run send has the shape the guard accepts', () => {
   const documents = [
     ISSUE_CREATE, ISSUE_UPDATE, ISSUE_ARCHIVE, RELATION_CREATE, RELATION_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, PROJECT_CREATE,
-    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, ISSUE_UNARCHIVE, PROJECT_SET_STATUS,
+    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, ISSUE_UNARCHIVE, PROJECT_SET_STATUS, MILESTONE_CREATE,
   ]
   const roots = documents.map((document) => {
     const read = readMutation(document)
@@ -870,6 +908,11 @@ function liveWorld({ withTeam = true, cycles = [ACTIVE, PLANNED] } = {}) {
     PmkitSandboxLabels: (body) => json({ issueLabels: connection(labels, body) }),
     PmkitSandboxIssues: (body) => json({ issues: connection(issues.records.map((record) => ({ id: record.id, identifier: record.identifier, trashed: record.trashed, archivedAt: record.archivedAt })), body) }),
     PmkitSandboxProjects: (body) => json({ projects: connection(projects.projects.map((project) => ({ id: project.id, name: project.name, trashed: false, archivedAt: null, teams: { nodes: project.teamIds.map((id) => ({ id })) } })), body) }),
+    PmkitSandboxMilestoneCreate: (body) => {
+      const { id, projectId, name } = body.variables.input
+      projects.seedMilestone(projectId, { id, name })
+      return json({ projectMilestoneCreate: { success: true, projectMilestone: { id } } })
+    },
     PmkitSandboxIssueDelete: (body) => {
       issues.records.find((record) => record.id === body.variables.id).trashed = true
       return json({ issueDelete: { success: true } })
@@ -1055,8 +1098,18 @@ test('the cycle probe fails when a cycle does not end where the next one starts'
   }
 })
 
-test('the probes are four and each has a name', () => {
-  assert.equal(PROBES.length, 4)
+test('the milestone probe sends the three milestone writes through the guard (PMK-255)', async () => {
+  await withProbeContext(async (context, w) => {
+    const { asserted, recorded } = await milestoneProbe(context)
+    assert.equal(asserted.length, 4)
+    assert.deepEqual(recorded, { created: true, updated: true, bulk: true, cleared: true })
+    assert.deepEqual(w.run.guard.stats().refused, [])
+    assert.ok(w.mutations().includes('PmkitSandboxMilestoneCreate'))
+  })
+})
+
+test('the probes are five and each has a name', () => {
+  assert.equal(PROBES.length, 5)
   assert.ok(PROBES.every(([name, probe]) => typeof name === 'string' && typeof probe === 'function'))
 })
 

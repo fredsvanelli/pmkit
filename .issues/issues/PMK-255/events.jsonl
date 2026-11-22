@@ -1,1 +1,7 @@
 {"at":"2026-11-11T22:34:42Z","by":"fred","op":"create","to":{"id":"PMK-255","title":"Let milestone writes through the Linear live sandbox","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-11T22:34:42.371Z","updated":"2026-11-11T22:34:42Z"}}
+{"at":"2026-11-22T06:04:46Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T06:04:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T06:04:46Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-255-let-milestone-writes-through-the-linear"}
+{"at":"2026-11-22T06:25:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T06:25:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T06:25:30Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
