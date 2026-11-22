@@ -13,7 +13,7 @@ import { createLinearClient, isMutation } from './client.mjs'
 import {
   ATTACHMENT_CREATE, ATTACHMENT_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UNARCHIVE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
-import { PROBES, commentProbe, cycleProbe, descriptionProbe, milestoneProbe, relationProbe, unarchiveProbe } from './live-probes.mjs'
+import { PROBES, commentProbe, cycleProbe, descriptionProbe, docsProbe, milestoneProbe, relationProbe, unarchiveProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_SET_STATUS, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import {
@@ -1069,7 +1069,7 @@ async function withProbeContext(use) {
   await w.run.before()
   const env = await w.run.setup()
   try {
-    return await use({ tracker: env.tracker, client: w.run.client, actor: env.actor, team: w.run.team }, w)
+    return await use({ tracker: env.tracker, client: w.run.client, actor: env.actor, team: w.run.team, config: w.run.config }, w)
   } finally {
     await env.teardown()
     await w.run.after()
@@ -1140,8 +1140,20 @@ test('the unarchive probe archives an issue and brings it back through the guard
   })
 })
 
-test('the probes are six and each has a name', () => {
-  assert.equal(PROBES.length, 6)
+test('the docs probe adds, reads and removes a doc and leaves a hand-made attachment alone (PMK-254)', async () => {
+  await withProbeContext(async (context, w) => {
+    const git = context.config.pmkit.git_host
+    const { recorded } = await docsProbe(context)
+    assert.equal(recorded.conflict, true)
+    assert.equal(recorded.handMadeLeft, true)
+    assert.deepEqual(recorded.metadata, { pmkitDoc: 'docs/pmkit-probe-a.md' })
+    assert.deepEqual(w.run.guard.stats().refused, [])
+    assert.deepEqual(context.config.pmkit.git_host, git)
+  })
+})
+
+test('the probes are seven and each has a name', () => {
+  assert.equal(PROBES.length, 7)
   assert.ok(PROBES.every(([name, probe]) => typeof name === 'string' && typeof probe === 'function'))
 })
 
