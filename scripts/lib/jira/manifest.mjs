@@ -6,12 +6,11 @@ import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldRoles } from './discovery.mjs'
 
 /** The capabilities the Jira adapter serves. PMK-77 to PMK-80 add theirs as they implement the operations behind them. */
-export const SERVED = Object.freeze({ linked_code: true })
+export const SERVED = Object.freeze({ linked_code: true, estimation: true, multilevel_hierarchy: true, dependencies: true, native_metrics: true })
 
 /** The issue that serves each capability, for the hint of an unserved one. */
 const SERVED_IN = {
   cycles: 'PMK-78', capacity: 'PMK-78',
-  estimation: 'PMK-77', multilevel_hierarchy: 'PMK-77', dependencies: 'PMK-77', native_metrics: 'PMK-77',
   deliverables: 'PMK-79', status_update: 'PMK-79', releases: 'PMK-79',
   time_tracking: 'PMK-80',
 }

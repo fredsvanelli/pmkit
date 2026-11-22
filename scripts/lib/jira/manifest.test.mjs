@@ -17,26 +17,30 @@ const raw = (overrides = {}) => ({
 const GIT = { git_host: { system: 'github' } }
 const entry = (entries, id) => entries.find((item) => item.id === id)
 
+const SERVED_NOW = ['estimation', 'multilevel_hierarchy', 'dependencies', 'native_metrics', 'linked_code']
+
 test('the manifest has every capability in order, absent until served', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
   assert.deepEqual(entries.map((item) => item.id), CAPABILITIES)
-  for (const item of entries) if (item.id !== 'linked_code') assert.equal(item.path, 'absent', item.id)
+  for (const item of entries) if (!SERVED_NOW.includes(item.id)) assert.equal(item.path, 'absent', item.id)
+})
+
+test('PMK-77 serves estimation, the hierarchy, dependencies and native metrics with the site answer', () => {
+  const entries = buildJiraCapabilities(raw(), GIT)
+  assert.deepEqual(entry(entries, 'estimation'), { id: 'estimation', path: 'native', detail: { unit: 'points', field: 'customfield_10016' } })
+  assert.deepEqual(entry(entries, 'multilevel_hierarchy'), { id: 'multilevel_hierarchy', path: 'native', detail: { levels: ['epic', 'standard', 'subtask'] } })
+  assert.deepEqual(entry(entries, 'dependencies'), { id: 'dependencies', path: 'native' })
+  assert.deepEqual(entry(entries, 'native_metrics'), { id: 'native_metrics', path: 'derived', detail: { source: 'history' } })
 })
 
 test('an unserved capability keeps the site answer and names its issue', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
   assert.deepEqual(entry(entries, 'cycles'), { id: 'cycles', path: 'absent', detail: { site: 'native' }, enableHint: 'The Jira adapter does not serve cycles yet (PMK-78)' })
-  assert.deepEqual(entry(entries, 'estimation'), {
-    id: 'estimation', path: 'absent', detail: { site: 'native', unit: 'points', field: 'customfield_10016' }, enableHint: 'The Jira adapter does not serve estimation yet (PMK-77)',
-  })
-  assert.deepEqual(entry(entries, 'multilevel_hierarchy').detail, { site: 'native', levels: ['epic', 'standard', 'subtask'] })
   assert.deepEqual(entry(entries, 'deliverables').detail, { site: 'native', entity: 'epic' })
   assert.deepEqual(entry(entries, 'releases').detail, { site: 'native', entity: 'version' })
   assert.deepEqual(entry(entries, 'capacity').detail, { site: 'derived', source: 'local', file: CAPACITY_FILE })
-  assert.deepEqual(entry(entries, 'native_metrics').detail, { site: 'derived', source: 'history' })
   assert.deepEqual(entry(entries, 'saved_views').detail, { site: 'native', source: 'filters' })
   assert.equal(entry(entries, 'saved_views').enableHint, 'The Jira adapter does not serve saved_views yet')
-  assert.equal(entry(entries, 'dependencies').detail.site, 'native')
   assert.equal(entry(entries, 'time_tracking').detail.site, 'native')
 })
 
@@ -64,7 +68,7 @@ test('free Jira Software still has sprints; an unread license defers to the boar
 
 test('unread settings assume linking and time tracking are on', () => {
   const entries = buildJiraCapabilities(raw({ settings: null }), GIT)
-  assert.equal(entry(entries, 'dependencies').detail.site, 'native')
+  assert.equal(entry(entries, 'dependencies').path, 'native')
   assert.equal(entry(entries, 'time_tracking').detail.site, 'native')
 })
 
