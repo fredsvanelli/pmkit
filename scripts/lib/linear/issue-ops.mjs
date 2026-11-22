@@ -540,6 +540,35 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { before, after: await mapped(keep(await readNode(id, { extras: false }), beforeNode)) }
   }
 
+  /**
+   * Brings an archived issue back with issueUnarchive (PMK-259). An issue that is not archived changes nothing; one in Linear's trash is
+   * refused and pointed to `issues restore`, which is the way back from the trash (PMK-222).
+   */
+  async function unarchive(id, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    let beforeNode
+    try {
+      beforeNode = await readNode(id)
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.code !== 'NOT_FOUND' || !isIssueId(id)) throw error
+      const raw = (await client.request(ISSUE_BY_ID_QUERY, { id: issueKey(id) }))?.issues?.nodes?.[0]
+      if (raw?.trashed === true) throw new PmkitError('INVALID_INPUT', `${raw.identifier} is in Linear's trash, not archived`, `pmkit issues restore ${raw.identifier}`)
+      throw error
+    }
+    const before = toIssue(beforeNode, await contextFor([beforeNode]))
+    if (!before.archived) return { before, after: before }
+    if (dryRun) return { before, after: { ...before, archived: false } }
+    const answer = await client.request(ISSUE_UNARCHIVE, { id: beforeNode.id })
+    if (answer?.issueUnarchive?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not unarchive ${before.id}`, `Run pmkit issues unarchive ${before.id} again`)
+    // The write worked: a read-back that fails is a warning, never an error that would send the caller to unarchive again.
+    try {
+      return { before, after: await mapped(keep(await readNode(id, { extras: false }), beforeNode)) }
+    } catch (error) {
+      if (!(error instanceof PmkitError)) throw error
+      return { before, after: { ...before, archived: false }, warnings: [`${before.id} is unarchived, but reading it back failed (${error.message}): pmkit issues get ${before.id} shows it as it is now`] }
+    }
+  }
+
   /** The records that point at the issue, from its node: others it blocks, related in either direction, duplicates of it and its children. */
   function referencesTo(node) {
     const out = nodesOf(node.relations)
@@ -604,5 +633,5 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
   }
 
-  return { attachReleasesTo, attachDocsTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, keep, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  return { attachReleasesTo, attachDocsTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, unarchive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, keep, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }
