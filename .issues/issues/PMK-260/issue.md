@@ -2,14 +2,14 @@
 id: PMK-260
 title: Show and set several Linear releases per issue
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
 parent: EPC-5
 branch: pmk-260-show-and-set-several-linear-releases-per
 created: 2026-11-11T22:34:42.770Z
-updated: 2026-11-22T17:38:42Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description

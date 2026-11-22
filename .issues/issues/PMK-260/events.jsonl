@@ -7,3 +7,4 @@
 {"at":"2026-11-22T17:38:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T17:38:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T17:38:42Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T17:58:45Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

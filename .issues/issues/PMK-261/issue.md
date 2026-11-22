@@ -2,14 +2,14 @@
 id: PMK-261
 title: Create and mark releases on Linear
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
 parent: EPC-5
 branch: pmk-261-create-and-mark-releases-on-linear
 created: 2026-11-11T22:34:42.843Z
-updated: 2026-11-22T17:57:22Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description

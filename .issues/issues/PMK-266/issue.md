@@ -2,14 +2,14 @@
 id: PMK-266
 title: "Tidy the Linear release, docs and archive code"
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-5
 branch: pmk-266-tidy-the-linear-release-docs-and-archive
 created: 2026-11-11T22:34:43.213Z
-updated: 2026-11-22T06:37:36Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description
