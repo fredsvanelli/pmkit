@@ -33,6 +33,7 @@ Each task is test first, then code, then `node --test` on the touched file.
    - everything unread and no basis: the first error is rethrown;
    - `--sprint current` without cycles: `NOT_SUPPORTED`;
    - release with a tag: the ref calls are made, an old deploy is matched, `refs/tags/` ref matches.
+
    Then the code. (AC 1, 2, 4)
 5. **Docs and bookkeeping**: `commands/report/release-readiness.md` (skip reasons, `empty`, incomplete reads), scenario `report-release-readiness` still green, CHANGELOG line, tick the four criteria with `issues update PMK-205 --check n`, commit `.issues/`.
 6. **Verify**: `npm test` in the foreground, exit code 0, then the PR.

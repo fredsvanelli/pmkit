@@ -24,5 +24,6 @@ A static rule in `scripts/scenarios.test.mjs` fails on that shape, naming `file:
 - Do the fixes change what a command says? No: the words stay; the blank line moves the sentence from the last sub-item to the step, where every one of the ten reads as meant.
 - Do scenario tests read these steps? The harness parses steps and sub-steps by their numbers; a paragraph is not a step id, so the parsed ids do not change (the suite checks it).
 - `skills/` holds `references/` too; the rule scans every `.md` under it.
+- `README.md` and `CHANGELOG.md` stay out: the issue names the three folders, and neither has nested lists today.
 - New terms or ADRs: none.
 - Approval: the issue names the rule and its place; pmkit PO approves.

@@ -46,6 +46,7 @@
   - no later status `[a]: /u`, blank, `Date: x`, `Accepted` → `['[a]: /u', 'Date: x']`; quote form → `['> [a]: /u', '>', '> Date: x']`
   - before a quote `[a]: /u`, blank, `> Date: x`, `> Accepted` → `['[a]: /u', '> Date: x']`; with blank, `> Proposed` → `['[a]: /u', '> Date: x', '> Proposed']`
   - nested `> [a]: /u`, `>`, `> > Date: x`, `> > Accepted` → `['> [a]: /u', '>', '> > Date: x']`
+
   Controls (`adrStatusDropped` only, pass before and after): `[a]: /u`, `---`, `Date: x`, `Accepted` → `['---', 'Date: x', 'Accepted']`; `    code`, blank, `Date: x`, `Accepted` → `['Date: x', 'Accepted']`; `Date: x`, blank, `[x]: /u`, blank, `Accepted` → as on develop.
 - [ ] **Step 2: Run** `node --test --test-name-pattern=PMK-325 scripts/adr.test.mjs` — expected: the new refusal cases FAIL (old names), controls PASS.
 - [ ] **Step 3: Implement.** In `add`, set `block.parent = parent` for every block when `held.paragraphs` (paragraphs keep `lines`, `lazy`). In `walk`: `runs = new Map()` (parent → `{ line, index }`); a definitions-only paragraph extends the parent's run when `run.index === index - 1`, else starts one at `lines[0]`; for a shown paragraph that passes the existing first-block check, climb `node` from the paragraph: if `runs.get(node.parent)?.index === node.index - 1`, `after.set(run.line - section - 1, start)` and stop; else stop at the document or when `node.index !== 1`, else `node = node.parent`. Keep the existing `after` entry for glued definitions.

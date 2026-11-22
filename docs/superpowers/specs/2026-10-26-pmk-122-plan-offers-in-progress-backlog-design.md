@@ -106,6 +106,7 @@ C. **Plan drops the category filter and excludes by text.** Step 5 runs `issues 
 1. `commands/cycle/plan.md`:
    - step 5: replace `--category todo,backlog --sprint none` with `--category todo,backlog,in_progress --sprint none`;
    - step 8: replace "The preview is a table (ID, title, estimate, assignee, blocked by)" with "The preview is a table (ID, title, status, estimate, assignee, blocked by)".
+
    No other word changes.
 2. `commands/cycle/close.md` step 6: after "move it back to the backlog", add this sentence: "A move back to the backlog keeps the issue's status and leaves it with no sprint, and `/pmkit:cycle:plan` offers it again when its status category is `todo`, `backlog` or `in_progress`." Keep the line parseable (no new fenced call). Step 5 (carry-over) reads events and does not change.
 3. `scripts/__scenarios__/cycle-plan.mjs`:

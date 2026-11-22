@@ -421,3 +421,50 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     })
   }
 })
+
+// PMK-163: a line right after a list item, with no blank line, that is not a list item and is indented less than the item's
+// content column is a lazy continuation in CommonMark: it joins the item's paragraph. PMK-124 found two that were meant for the outer step.
+const LIST_ITEM = /^( *)([-*+]|\d{1,9}[.)])( +)\S/
+const NOT_PROSE = /^ *(```|~~~|\||#|>)/
+
+/** The 1-based numbers of the lines that are an indented lazy continuation of the list item above them. */
+function lazyContinuations(text) {
+  const lines = text.split(/\r?\n/)
+  const hits = []
+  let fenced = false
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (/^ *(```|~~~)/.test(lines[i])) fenced = !fenced
+    const item = fenced ? null : LIST_ITEM.exec(lines[i])
+    if (!item) continue
+    const next = lines[i + 1]
+    if (next.trim() === '' || LIST_ITEM.test(next) || NOT_PROSE.test(next)) continue
+    const indent = next.length - next.trimStart().length
+    if (indent > 0 && indent < item[1].length + item[2].length + item[3].length) hits.push(i + 2)
+  }
+  return hits
+}
+
+function markdownFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) return markdownFiles(full)
+    return entry.name.endsWith('.md') ? [full] : []
+  })
+}
+
+test('lazyContinuations finds an indented paragraph glued to the list item above it, and nothing else', () => {
+  const step = '7. Draft the PR.\n   - When `existing` is `false`, show it.\n'
+  assert.deepEqual(lazyContinuations(`${step}   When the user approves, run it.\n`), [3])
+  assert.deepEqual(lazyContinuations(`${step}\n   When the user approves, run it.\n`), [])
+  assert.deepEqual(lazyContinuations(`${step}     more of the same sub-item\n`), [])
+  assert.deepEqual(lazyContinuations(`${step}   - another sub-item\n`), [])
+  assert.deepEqual(lazyContinuations('```\n- item\n  glued\n```\n'), [])
+  assert.deepEqual(lazyContinuations(`${step.replace(/\n/g, '\r\n')}   When the user approves, run it.\r\n`), [3])
+})
+
+test('no paragraph in commands, skills or docs is glued to the list item above it', () => {
+  const root = path.join(HERE, '..')
+  const found = ['commands', 'skills', 'docs'].flatMap((dir) => markdownFiles(path.join(root, dir)))
+    .flatMap((file) => lazyContinuations(fs.readFileSync(file, 'utf8')).map((line) => `${path.relative(root, file)}:${line}`))
+  assert.deepEqual(found, [], 'add a blank line before the paragraph, or indent it to the list item\'s text')
+})
