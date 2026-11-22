@@ -37,5 +37,6 @@ The user is told to fix the links by hand after the close.
 - Does a blocker outside the sprint, or one not split, change? No: the rule applies only to a carried blocker or sub-issue that this close splits; others are carried as before.
 - What does the rerun of PMK-160 see after a failure between the creates and the moves? Every original still unfinished, and every new issue marked; step 6 finds each split and finishes its missing writes. The rule's links name new issues the rerun finds the same way.
 - A blocker that is split and also blocks an issue that is not split: that issue keeps `B` as its blocker (B is `done` after the close). Out of scope; the close copies blockers only for a split.
-- New terms or ADRs: none.
+- S′'s create cannot name A′ as its parent, since the creates run in any order: it takes the parent of the step 3 read (A), and the parent change `issues parent <S′> <A′>` moves it, one write the preview shows.
+- New terms or ADRs: none (`CONTEXT.md`'s Blocked and Sub-issue entries hold).
 - Approval: the issue asks for a write order or a rule; this is the rule the preview already described as the wanted result. pmkit PO approves.
