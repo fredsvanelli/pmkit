@@ -84,6 +84,7 @@ export function createLocalWriter({ root, config, actor, now = () => new Date() 
         sprint: fields.sprint,
         due: fields.due,
         archived: fields.archived,
+        docs: fields.docs,
         created: fields.created,
         description: fields.description ?? '',
         acceptanceCriteria: fields.acceptanceCriteria ?? [],
