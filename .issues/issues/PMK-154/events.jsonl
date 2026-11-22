@@ -4,3 +4,6 @@
 {"at":"2026-11-22T03:54:36Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T03:54:36Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-154-say-when-a-current-reader-finds-no"}
 {"at":"2026-11-22T03:54:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:05:21Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:05:22Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:05:22Z","by":"fred","op":"update","field":"acceptance_criteria"}
