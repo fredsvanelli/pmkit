@@ -36,12 +36,21 @@ process.exitCode = result.code
   return file
 }
 
+function git(cwd, ...args) {
+  const result = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', ...args], { cwd, encoding: 'utf8', env: childEnv() })
+  assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`)
+  return result.stdout.trim()
+}
+
 /** The repository the runbook's "Before you start" describes: Jira site and space, and the types mapped. */
 function jiraRepo() {
   const root = makeRepo('basic')
   const file = path.join(root, '.pmkit', 'config.yaml')
   const text = fs.readFileSync(file, 'utf8').replace(/^ {2}system: local$/m, '  system: jira\n  scope:\n    site: acme.atlassian.net\n    space: ENG')
-  fs.writeFileSync(file, `${text}mappings:\n  types:\n    feature: Story\n    bug: Bug\n`)
+  fs.writeFileSync(file, `${text.replace(/^git_host:\n {2}system: none$/m, 'git_host:\n  system: github\n  repo: acme/widgets\n  default_branch: main')}mappings:\n  types:\n    feature: Story\n    bug: Bug\n`)
+  git(root, 'init', '-q', '-b', 'main')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'init')
   fs.mkdirSync(path.join(root, 'tmp'))
   return root
 }
@@ -56,7 +65,7 @@ function session() {
     return { code: result.status, stdout: result.stdout, stderr: result.stderr }
   }
   const write = (name, text) => fs.writeFileSync(path.join(root, 'tmp', name), text)
-  return { pmkit, write }
+  return { pmkit, write, root }
 }
 
 const body = (result) => {
@@ -80,7 +89,7 @@ test('the runbook names every command the test runs', () => {
     'issues parent ENG-2 ENG-1 --json',
     'issues comment ENG-1 --body-file tmp/comment-1.txt --json',
     'issues get ENG-1 --history --json',
-    'issues update ENG-1 --branch eng-1-ship-it --json',
+    'issues branch ENG-1 --json',
     'issues create --title-file tmp/title-3.txt --json',
     'issues delete ENG-2 --json',
     'issues delete ENG-3 --json',
@@ -89,7 +98,7 @@ test('the runbook names every command the test runs', () => {
 })
 
 test('the issue flows, step by step', () => {
-  const { pmkit, write } = session()
+  const { pmkit, write, root } = session()
   write('title-1.txt', 'Ship it')
   write('criteria-1.txt', '- It ships\n- A test covers it\n')
   write('title-2.txt', 'Prepare the release')
@@ -128,8 +137,11 @@ test('the issue flows, step by step', () => {
   body(pmkit(['issues', 'comment', 'ENG-1', '--body-file', 'tmp/comment-1.txt', '--json']))
 
   // Branch, then the history
-  const branched = body(pmkit(['issues', 'update', 'ENG-1', '--branch', 'eng-1-ship-it', '--json']))
+  const branched = body(pmkit(['issues', 'branch', 'ENG-1', '--json']))
+  assert.equal(branched.branch, 'eng-1-ship-it')
   assert.equal(branched.after.branch, 'eng-1-ship-it')
+  assert.equal(git(root, 'branch', '--list', 'eng-1-ship-it').replace(/^[*+]?\s+/, ''), 'eng-1-ship-it')
+  assert.equal(body(pmkit(['issues', 'get', 'ENG-1', '--json'])).branch, 'eng-1-ship-it')
   const done = body(pmkit(['issues', 'move', 'ENG-1', 'done', '--field', 'resolution=Done', '--json']))
   assert.deepEqual(done.after.status, { name: 'Done', category: 'done' })
   const got = body(pmkit(['issues', 'get', 'ENG-1', '--history', '--json']))
@@ -138,6 +150,9 @@ test('the issue flows, step by step', () => {
   // Delete an item nothing references
   const refusedDelete = pmkit(['issues', 'delete', 'ENG-2', '--json'])
   assert.equal(refusedDelete.code, 2, refusedDelete.stdout)
+  const deleteError = JSON.parse(refusedDelete.stdout).error
+  assert.equal(deleteError.code, 'CONFLICT')
+  assert.ok(deleteError.message.includes('ENG-1'), deleteError.message)
   assert.equal(body(pmkit(['issues', 'create', '--title-file', 'tmp/title-3.txt', '--json'])).after.id, 'ENG-3')
   const gone = body(pmkit(['issues', 'delete', 'ENG-3', '--json']))
   assert.equal(gone.after, null)

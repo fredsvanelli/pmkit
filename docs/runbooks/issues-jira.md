@@ -7,6 +7,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 ## Before you start
 
 - The setup of `docs/runbooks/discover-jira.md`: a Jira Cloud site, `JIRA_EMAIL` and `JIRA_API_TOKEN` exported, and `tracker.system: jira` with a site and a space in `.pmkit/config.yaml`.
+- A git repository with a commit on `main`, and `git_host` in `.pmkit/config.yaml` set to `system: github`, `repo: acme/widgets`, `default_branch: main`. `issues branch` reads it; Jira itself needs no git host.
 - The config maps the types pmkit uses to the space's work types:
 
   ```yaml
@@ -103,13 +104,13 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 
 ## Branch
 
-9. Record the branch. Jira has no git host in pmkit's model, so `issues branch` (which creates the branch on a git host) is not the step here; `issues update` records the name in the work-item property `pmkit.branch` (ADR 0015):
+9. Create the branch and record it:
 
-    ```
-    node scripts/pmkit.mjs issues update ENG-1 --branch eng-1-ship-it --json
-    ```
+   ```
+   node scripts/pmkit.mjs issues branch ENG-1 --json
+   ```
 
-    Expect `after.branch: eng-1-ship-it`. A name that is not a valid branch name is `INVALID_INPUT`.
+   Expect `branch: eng-1-ship-it`, created locally from `main` (`git branch --list eng-1-ship-it` shows it), and `after.branch` with the same name: pmkit writes it to the work-item property `pmkit.branch` (ADR 0015), so `issues get ENG-1 --json` reads it back. `issues branch` needs `git_host.system: github` in `.pmkit/config.yaml`; with `git_host: none` it answers `NOT_SUPPORTED`. `issues update <key> --branch <name>` records a branch made by hand.
 
 ## Finish the move
 
@@ -133,7 +134,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 
 ## Delete
 
-12. Delete a work item nothing references. `ENG-2` is a blocker and a child of `ENG-1`, so deleting it is refused (exit 2) with the references named. Create and delete a scratch item:
+12. Delete a work item nothing references. `ENG-2` is a blocker and a child of `ENG-1`, so deleting it is refused (exit 2, `CONFLICT`) with the referencing keys named. Create and delete a scratch item:
 
     ```
     node scripts/pmkit.mjs issues delete ENG-2 --json
@@ -150,5 +151,6 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 | A move to done without `--field` for a required screen field | `INVALID_INPUT` | Run with `--dry-run`, then pass `--field <id>=<value>` |
 | `--type` names a type absent from `mappings.types` | `INVALID_INPUT` | Add the type to `mappings.types` |
 | `issues archive` | `NOT_SUPPORTED` | Archive in Jira (Premium only) |
+| `issues branch` with `git_host: none` | `NOT_SUPPORTED` | Set `git_host.system` to `github` or run `/pmkit:setup` |
 | `issues create --branch` | `INVALID_INPUT` | Create the work item, then `issues update <key> --branch <name>` |
-| Delete of a linked or parent work item | refused | Remove the links and children first |
+| Delete of a linked or parent work item | `CONFLICT` | Remove the links and children first |
