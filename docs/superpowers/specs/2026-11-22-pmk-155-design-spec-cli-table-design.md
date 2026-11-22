@@ -34,5 +34,9 @@ Non-goals: the table stays a summary. It does not have to list every flag of a c
 - Does a row with several commands (`cycle list [--state s]`, `cycle current`, ...) work? Each backticked command is checked on its own.
 - A command with a longer name sharing a prefix (`epic update` and `epic update-status`): the longest name that matches followed by a space or the end wins.
 - Flags with no value in the row (`[--type]`) are only checked for existence.
-- New terms or ADRs: none. The check is a test, easy to change.
+- Should a usage flag missing from the row fail? No. The table is a summary (non-goal above); only what the row says has to be true.
+- Is the `## Commands` table (CLI calls per command file) in scope? No. It names commands without flags, and the scenario harness already checks the calls of each command file.
+- Does the new test file need wiring? No. `scripts/run-tests.mjs` runs every `scripts/**/*.test.mjs`.
+- Against the issue: it asks for the `cycle add` fix and a test over every row; the three other drifts are fixed because the new test would fail on them.
+- New terms (`CONTEXT.md`) or ADRs: none. The check is a test, easy to change.
 - Approval: there is no product question; the issue states the fix and the test. pmkit PO approves.
