@@ -10,7 +10,7 @@ related: [PMK-121, PMK-122]
 milestone: local-gaps
 branch: pmk-165-treat-canceled-issues-the-same-way-in
 created: 2026-10-28T00:11:40.872Z
-updated: 2026-11-22T05:07:04Z
+updated: 2026-11-22T05:16:00Z
 ---
 
 ## Description
@@ -19,6 +19,6 @@ Found in PMK-121 and PMK-122. `/pmkit:cycle:close` step 3 counts every issue not
 
 ## Acceptance criteria
 
-- [ ] `/pmkit:cycle:close` leaves a canceled issue out of the unfinished issues and the carry-over, as `closeCycle` does, and proposes nothing for it
-- [ ] Step 6 asks its question with `AskUserQuestion`
-- [ ] The cycle-close scenario runs with a canceled issue in the sprint
+- [x] `/pmkit:cycle:close` leaves a canceled issue out of the unfinished issues and the carry-over, as `closeCycle` does, and proposes nothing for it
+- [x] Step 6 asks its question with `AskUserQuestion`
+- [x] The cycle-close scenario runs with a canceled issue in the sprint
