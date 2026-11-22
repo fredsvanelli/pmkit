@@ -159,6 +159,7 @@ Checked 2026-10-28 for PMK-38, by introspection and reads only, through a fetch 
 | `__type(ProjectUpdate)` | `id`, `body`, `health` (required), `user`, `project`, `createdAt`, `url`. |
 | `__type(ProjectUpdateCreateInput)` | `id` (client-chosen), `projectId` (required), `body`, `health`. |
 | `__type(ProjectCreateInput)` | `id` (client-chosen), `name` (required), `teamIds` (required), `content`, `description`, `startDate`, `targetDate`, `statusId`, `leadId`. |
+| `__type(ProjectUpdateInput)` | 31 fields, among them `statusId` (`String`), the one `epic move` sends (PMK-353). `Mutation.projectUpdate` takes `id: String!` and `input: ProjectUpdateInput!`. Introspected live on 2026-11-21 (PMK-356). |
 | `__type(ProjectMilestone)` | `id`, `name`, `description`, `targetDate`, `status` (`unstarted`, `next`, `overdue`, `done`), `progress`, `project`. No slug and no short identifier. |
 | `__type(Document)` | `id`, `slugId`, `title`, `content` (Markdown), `project`, `initiative`, `team`, `issue`, `url`. |
 | `__type(DocumentCreateInput)` | `title` (required), `content`, and one container such as `projectId`. No path. |
@@ -231,7 +232,7 @@ The team is named `pmkit-test`, has the key `PKT` and carries the marker `pmkit-
 
 ### The write guard
 
-The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
+The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `projectUpdate` (PMK-356: only `statusId`, only on a project the run created, for the epic move), `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
 
 ### Request budget
 

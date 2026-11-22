@@ -2,11 +2,12 @@
 id: PMK-356
 title: Verify Linear projectUpdate with statusId against a live workspace
 type: feature
-status: backlog
+status: in_review
 parent: EPC-6
 related: [PMK-353]
+branch: pmk-356-verify-linear-projectupdate-with
 created: 2026-11-21T07:03:24.308Z
-updated: 2026-11-21T07:03:24Z
+updated: 2026-11-22T02:39:23Z
 ---
 
 ## Description
@@ -25,6 +26,6 @@ PMK-353 moves a Linear epic with `projectUpdate(id, input: { statusId })` (`PROJ
 
 ## Acceptance criteria
 
-- [ ] `scripts/lib/linear/API-VERIFICATION.md` records `projectUpdate` with `statusId` on `ProjectUpdateInput`, verified against a real workspace
-- [ ] The live sandbox write guard allows `projectUpdate` only on projects the sandbox created
-- [ ] The live Linear contract run includes the `deliverable-writes` family and passes
+- [x] `scripts/lib/linear/API-VERIFICATION.md` records `projectUpdate` with `statusId` on `ProjectUpdateInput`, verified against a real workspace
+- [x] The live sandbox write guard allows `projectUpdate` only on projects the sandbox created
+- [x] The live Linear contract run includes the `deliverable-writes` family and passes
