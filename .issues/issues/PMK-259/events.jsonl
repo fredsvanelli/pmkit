@@ -2,3 +2,7 @@
 {"at":"2026-11-22T07:28:14Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-22T07:28:14Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T07:28:15Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-259-unarchive-issues-on-linear"}
+{"at":"2026-11-22T17:09:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:09:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:09:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:09:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
