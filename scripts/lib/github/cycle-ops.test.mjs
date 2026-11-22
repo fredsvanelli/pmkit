@@ -105,6 +105,20 @@ test('searchIssues --sprint current with no active sprint after the refresh answ
   assert.equal(state.refreshes, 1)
 })
 
+test('searchIssues by a sprint id the cached field lacks refreshes once: a new iteration lists its issues, an unknown one is INVALID_INPUT', async () => {
+  const { fake, ops, state } = await setup({ iterations: { iterations: [], completed: COMPLETED } })
+  fake.state.project.fields.find((field) => field.name === 'Sprint').configuration.iterations.push(...structuredClone(CURRENT))
+  fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+  assert.deepEqual(ids((await ops.searchIssues({ sprint: '2026-11-16' })).issues), ['1'])
+  assert.equal(state.refreshes, 1)
+  await assert.rejects(ops.searchIssues({ sprint: '2027-01-04' }), (error) => {
+    assert.deepEqual([error.code, error.message, error.nextStep], ['INVALID_INPUT', 'sprint "2027-01-04" is not current, none or an existing sprint id', 'pmkit cycle list'])
+    assert.equal(error.details?.stale, undefined)
+    return true
+  })
+  assert.equal(state.refreshes, 2)
+})
+
 test('currentCycle is the active sprint, or null when none is active', async () => {
   const { cycles } = await setup()
   assert.equal((await cycles.currentCycle()).id, '2026-11-16')
