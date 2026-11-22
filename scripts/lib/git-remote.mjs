@@ -77,3 +77,13 @@ export function chooseRemote(remotes, wanted) {
   }
   return { remote: null, state: 'ambiguous', notes: [`there is no origin and there are several remotes (${names.join(', ')}); pass --remote <name> or --git-host`] }
 }
+
+/**
+ * The web host of a remote URL for the repo `repo` (owner/name): its host when the URL parses, names that repo (ignoring case) and the
+ * host has a dot; GitHub's own aliases give github.com. Anything else, an SSH alias such as `work` included, is null (PMK-264).
+ */
+export function webHost(url, repo) {
+  const parsed = parseRemoteUrl(url)
+  if (!parsed || typeof repo !== 'string' || `${parsed.owner}/${parsed.name}`.toLowerCase() !== repo.toLowerCase() || !parsed.host.includes('.')) return null
+  return GITHUB_HOSTS.includes(parsed.host) ? 'github.com' : parsed.host
+}
