@@ -2,7 +2,7 @@
 id: PMK-162
 title: Cover a blocker already in the planned sprint in the cycle-plan scenario
 type: task
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-1
@@ -10,7 +10,7 @@ related: [PMK-123]
 milestone: local-gaps
 branch: pmk-162-cover-a-blocker-already-in-the-planned
 created: 2026-10-28T00:11:40.357Z
-updated: 2026-11-22T05:29:19Z
+updated: 2026-11-22T05:29:33Z
 ---
 
 ## Description

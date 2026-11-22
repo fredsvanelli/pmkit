@@ -5,3 +5,5 @@
 {"at":"2026-11-22T05:23:05Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-162-cover-a-blocker-already-in-the-planned"}
 {"at":"2026-11-22T05:23:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-22T05:29:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T05:29:25Z","by":"fred","op":"comment","to":"2026-11-22T05-29-25Z-fred.md"}
+{"at":"2026-11-22T05:29:33Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
