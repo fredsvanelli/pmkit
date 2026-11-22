@@ -2,7 +2,7 @@
 id: PMK-75
 title: Add the Jira API client
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 5
 assignee: fred
@@ -12,7 +12,7 @@ related: [PMK-364]
 milestone: jira
 branch: pmk-75-add-the-jira-api-client
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-22T18:49:42Z
+updated: 2026-11-22T19:00:34Z
 ---
 
 ## Description
@@ -21,5 +21,5 @@ Source: Unified model, Q1 decision D (REST v3 and Agile).
 
 ## Acceptance criteria
 
-- [ ] Calls Jira REST v3 and Agile with the chosen credential
-- [ ] Maps failures to the pmkit error codes
+- [x] Calls Jira REST v3 and Agile with the chosen credential
+- [x] Maps failures to the pmkit error codes
