@@ -3,7 +3,7 @@
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md, "Writes".
 
 import { PmkitError } from '../errors.mjs'
-import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
+import { CREATE_KEYS, UPDATE_KEYS, checkKeys, criteriaOf, oneLine } from '../issue-fields.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { estimateScale } from './discovery.mjs'
 import { cyclesOff } from './cycles.mjs'
@@ -26,11 +26,6 @@ export function createTeam(context) {
 
 export const teamOf = (context, id) => context.raw.teams.find((team) => team.id === id)
 export const teamStates = (context, team) => context.raw.states.filter((state) => state.team === team.id).sort((a, b) => a.position - b.position)
-
-function oneLine(field, value) {
-  if (/[\r\n]/.test(value)) throw invalid(`${field} must not contain a line break`)
-  return value
-}
 
 /** The label of a name: the team's label first, then the workspace's. Group labels are never applied. */
 function findLabel(context, team, name) {
@@ -101,15 +96,6 @@ export function requireAssignee(context, id) {
   if (!user) throw stale(`assignee "${id}" is not a member of this workspace`, 'pmkit discover')
   if (user.app) throw invalid(`assignee "${id}" is an app user, not a member`, 'pmkit discover')
   return id
-}
-
-function criteriaOf(value) {
-  if (!Array.isArray(value)) throw invalid('acceptanceCriteria must be a list')
-  return value.map((item) => {
-    const text = typeof item === 'string' ? item : item?.text
-    if (typeof text !== 'string' || text.trim() === '') throw invalid('each acceptance criterion needs text')
-    return { text: oneLine('acceptance criterion', text.trim()), done: item?.done === true }
-  })
 }
 
 function descriptionOf(value) {

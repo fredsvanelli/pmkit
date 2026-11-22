@@ -3,22 +3,18 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
+import { validDate } from '../model.mjs'
 import { parseYaml, stringifyYaml } from '../yaml.mjs'
 
 /** Whether a sprint file exists for an id. An id that is not a plain name, such as `../config`, never does. */
 export const sprintFileExists = (issuesDir, id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
 
+export { validDate }
 export const SPRINT_STATES = ['planned', 'active', 'closed']
 const FILE_ORDER = ['name', 'start', 'end', 'goal', 'state', 'closed', 'capacity', 'capacity_base', 'days_off']
 const DOCTOR = '/pmkit:local:doctor'
 
 export const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
-
-export function validDate(text) {
-  if (typeof text !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return false
-  const date = new Date(`${text}T00:00:00Z`)
-  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(text)
-}
 
 export function addDays(date, days) {
   const next = new Date(`${date}T00:00:00Z`)

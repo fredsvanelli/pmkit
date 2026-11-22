@@ -1,5 +1,5 @@
+import { validDate } from '../model.mjs'
 import { PmkitError } from '../errors.mjs'
-import { validDate } from '../local/sprints.mjs'
 import { textToAdf } from './adf.mjs'
 
 const SETUP = '/pmkit:setup'

@@ -169,3 +169,10 @@ export function epicEditInput(input) {
   if (fields.description !== undefined && fields.description !== null && typeof fields.description !== 'string') throw invalid('description must be a string')
   return fields
 }
+
+/** Whether a text is a real calendar date as YYYY-MM-DD. */
+export function validDate(text) {
+  if (typeof text !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return false
+  const date = new Date(`${text}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(text)
+}

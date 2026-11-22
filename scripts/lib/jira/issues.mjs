@@ -5,9 +5,8 @@ import { buildDescription, CRITERIA_HEADING, parseDescription } from '../body-cr
 import { validBranch } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
-import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
-import { validDate } from '../local/sprints.mjs'
-import { isCategory, PRIORITY_LABEL_LEVELS as PRIORITIES } from '../model.mjs'
+import { CREATE_KEYS, UPDATE_KEYS, checkKeys, criteriaOf, oneLine } from '../issue-fields.mjs'
+import { isCategory, validDate, PRIORITY_LABEL_LEVELS as PRIORITIES } from '../model.mjs'
 import { adfToText, textToAdf } from './adf.mjs'
 import { categoryOfStatus, discoveryView } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
@@ -128,20 +127,6 @@ export function toIssue(item, context, { children = [] } = {}) {
 }
 
 // Writes
-
-function oneLine(field, value) {
-  if (/[\r\n]/.test(value)) throw invalid(`${field} must not contain a line break`)
-  return value
-}
-
-function criteriaOf(value) {
-  if (!Array.isArray(value)) throw invalid('acceptanceCriteria must be a list')
-  return value.map((item) => {
-    const text = typeof item === 'string' ? item : item?.text
-    if (typeof text !== 'string' || text.trim() === '') throw invalid('each acceptance criterion needs text')
-    return { text: oneLine('acceptance criterion', text.trim()), done: item?.done === true }
-  })
-}
 
 function descriptionOf(value) {
   if (typeof value !== 'string') throw invalid('description must be a string')
