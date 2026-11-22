@@ -506,24 +506,37 @@ test('migrate writes nothing when a later step fails', () => {
   assert.equal(subjects(root), 'initial\n')
 })
 
-test('migrate refuses an invalid .pmkit/config.yaml before every other check', () => {
+test('migrate warns about an invalid .pmkit/config.yaml and still checks and migrates the tracker (PMK-158)', () => {
   const gitlab = (root) => {
     const file = path.join(root, '.pmkit', 'config.yaml')
     const text = fs.readFileSync(file, 'utf8')
     assert.ok(text.includes('system: none'))
     fs.writeFileSync(file, text.replace('system: none', 'system: gitlab'))
   }
-  // Format 1 in git, format 2 (nothing to migrate today) and format 1 outside git (NOT_CONFIGURED today).
-  for (const root of [gitRepo().root, makeRepo('team'), setup().root]) {
-    gitlab(root)
-    const before = hashTree(root)
-    for (const options of [{}, { dryRun: true }]) {
-      assert.throws(() => runMigrate(root, options), {
-        code: 'INVALID_INPUT',
-        message: '.pmkit/config.yaml is not valid, so writes are refused: git_host.system must be github or none',
-        nextStep: 'pmkit validate',
-      })
-      assert.equal(hashTree(root), before)
-    }
+  const warning = '.pmkit/config.yaml is not valid, so writes are refused: git_host.system must be github or none; run pmkit validate'
+  // A later pmkit may read an older .pmkit/config.yaml as invalid; migrate reads only tracker.system and tracker.path from it.
+  const inGit = gitRepo().root
+  gitlab(inGit)
+  const plan = runMigrate(inGit, { dryRun: true, ...options })
+  assert.deepEqual([plan.data.from, plan.data.to, plan.warnings], [1, 2, [warning]])
+  const done = runMigrate(inGit, options)
+  assert.deepEqual([done.data.to, done.warnings], [2, [warning]])
+  const current = makeRepo('team')
+  gitlab(current)
+  assert.deepEqual(runMigrate(current).warnings, [warning])
+  const outside = setup().root
+  gitlab(outside)
+  assert.throws(() => runMigrate(outside, options), { code: 'NOT_CONFIGURED' })
+})
+
+test('pmkit migrate exits 0 with a warning when .pmkit/config.yaml is not valid, as /pmkit:upgrade step 5 runs it (PMK-158)', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('system: none', 'system: gitlab'))
+  for (const args of [['migrate', '--dry-run'], ['migrate']]) {
+    const result = spawnSync(process.execPath, [CLI, ...args, '--json'], { cwd: root, env: { ...process.env, PMKIT_USER: 'fred' }, encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.equal(JSON.parse(result.stdout).steps.length, 0)
+    assert.match(result.stderr, /^warning: \.pmkit\/config\.yaml is not valid, so writes are refused: git_host\.system must be github or none; run pmkit validate$/m)
   }
 })
