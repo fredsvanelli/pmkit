@@ -2,14 +2,14 @@
 id: PMK-255
 title: Let milestone writes through the Linear live sandbox
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 1
 assignee: fred
 parent: EPC-5
 branch: pmk-255-let-milestone-writes-through-the-linear
 created: 2026-11-11T22:34:42.371Z
-updated: 2026-11-22T06:25:07Z
+updated: 2026-11-22T06:25:30Z
 ---
 
 ## Description
