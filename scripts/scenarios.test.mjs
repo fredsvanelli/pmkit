@@ -519,3 +519,12 @@ test('cycle/close step 3 leaves canceled issues out of the unfinished ones, as c
 test('cycle/close step 6 asks whether an issue is the remaining work of an earlier split with AskUserQuestion (PMK-165)', () => {
   assert.match(stepText('cycle/close.md', '6'), /Ask with `AskUserQuestion` whether that issue is the remaining work of an earlier split/)
 })
+
+test('cycle/close says once what it does with an invalid .pmkit/config.yaml: a report, no proposal, no question (PMK-159)', () => {
+  assert.match(stepText('cycle/close.md', '1'), /follow "An invalid `\.pmkit\/config\.yaml`" under "If something is missing"/)
+  const text = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'close.md'), 'utf8')
+  const bullet = text.split('\n## If something is missing\n')[1].split('\n').find((line) => line.startsWith('- An invalid `.pmkit/config.yaml`'))
+  assert.ok(bullet, 'If something is missing has the bullet')
+  for (const part of [/skip step 6/, /without a proposal or a question/, /pmkit validate/, /\/pmkit:local:doctor/, /stop/]) assert.match(bullet, part)
+  assert.doesNotMatch(stepText('cycle/close.md', '1'), /Steps 2 to 6 only read, so go on with them/)
+})

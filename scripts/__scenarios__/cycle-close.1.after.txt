@@ -1,0 +1,14 @@
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
+exit 2 (expected INVALID_INPUT)
+$ pmkit cycle current --json  [step 2, read]
+exit 0
+$ pmkit cycle issues 2026-10-12 --json  [step 3, read]
+exit 0
+$ pmkit events --since 2026-10-12 --until 2026-10-25 --json  [step 4, read]
+exit 0
+$ pmkit metrics cycle-time --since 2026-10-12 --until 2026-10-25 --json  [step 5, read]
+exit 0
+
+(no file changed)
+--- gh calls
+(none)
