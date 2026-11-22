@@ -10,7 +10,7 @@ related: [PMK-122]
 milestone: local-gaps
 branch: pmk-164-offer-in-review-issues-sent-back-to-no
 created: 2026-10-28T00:11:40.739Z
-updated: 2026-11-22T05:17:22Z
+updated: 2026-11-22T05:22:28Z
 ---
 
 ## Description
@@ -19,6 +19,6 @@ Found in PMK-122. `/pmkit:cycle:close` sends back any unfinished issue, includin
 
 ## Acceptance criteria
 
-- [ ] `/pmkit:cycle:plan` step 5 offers `in_review` issues with no sprint, in both of its `issues list` calls
-- [ ] `/pmkit:cycle:close` step 6 names `in_review` among the categories plan offers again
-- [ ] The cycle-plan scenario offers and plans a sprintless `in_review` issue
+- [x] `/pmkit:cycle:plan` step 5 offers `in_review` issues with no sprint, in both of its `issues list` calls
+- [x] `/pmkit:cycle:close` step 6 names `in_review` among the categories plan offers again
+- [x] The cycle-plan scenario offers and plans a sprintless `in_review` issue
