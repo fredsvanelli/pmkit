@@ -524,7 +524,10 @@ const NOT_TEXT = /^(?:\[[^\]]*\]:|(?:[-*_][ \t]*){3,}$)/
 // The line must also read as a known status: with the emphasis and punctuation around it removed, its first word is one of `ADR_STATUSES` or a common ADR status, in any case (PMK-311 review).
 // Anything else (a date, a `**Date:**`, a status word nobody listed) is not replaced: the section is read whole and a write is refused, as before PMK-311.
 const KNOWN_STATUS = new Set([...ADR_STATUSES, 'proposed', 'rejected', 'draft'])
-const readsAsStatus = (item) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(item)?.[1].toLowerCase() ?? '')
+// Quote, bullet and ordered list markers at the start are skipped first: an ordered marker (1 to 9 digits, `.` or `)`, a space or tab, as in CommonMark) is not a word, so `1. Proposed` reads as
+// `- Proposed` does (PMK-328). Only after spaces, `>` and other markers: `1.Accepted`, `see 1. Proposed` and `**1. Accepted**` do not read as a status.
+const LIST_MARKERS = /^(?:[ \t>]|[-+*][ \t]|\d{1,9}[.)][ \t])*/
+const readsAsStatus = (item) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(item.replace(LIST_MARKERS, ''))?.[1].toLowerCase() ?? '')
 const topLevelStatus = (orig) => {
   for (let i = 0; i < orig.length; i++) {
     const item = orig[i].trim()

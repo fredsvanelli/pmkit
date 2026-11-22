@@ -2229,6 +2229,38 @@ for (const [name, text, dropped] of [
   })
 }
 
+// PMK-328: an ordered list item reads as a status when its text does, as a bullet item: a second status refuses (the guard), the section is read whole (adr-get),
+// and a first item that reads as a status is kept in the refusal's names. The bullet row is the control each ordered row is compared with.
+const ORDERED = [['1.', '1. '], ['1)', '1) '], ['10.', '10. '], ['an indented 1.', '  1. '], ['1. in a quote', '> 1. '], ['a tab after 1.', '1.\t']]
+for (const [name, marker] of [['a bullet', '- '], ...ORDERED]) {
+  const text = `## Status\n\nAccepted\n\n${marker}Proposed\n\n## Context\n`
+  const line = `${marker}Proposed`.trim()
+  test(`a status, then ${name} item that reads as a status refuses as two statuses, real and dry run, and adr-get reads the section whole (PMK-328)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), [line])
+    assert.equal(adrInfo(text).status, `Accepted ${line}`)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      assert.ok(result.data.error.message.includes(`would delete the other text of the Status section, "${line}"`), result.data.error.message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+  test(`${name} item that reads as a status, then a quote, keeps the item and names the quote (PMK-328)`, () => {
+    assert.deepEqual(adrStatusDropped(`## Status\n\n${marker}Accepted\n\n> Proposed\n\n## Context\n`), ['> Proposed'])
+  })
+}
+// PMK-328, unchanged: no space after the marker, a number inside the text, emphasis before the number and a 10-digit number are not list items that read as a status.
+for (const [name, other] of [['1.Accepted', '1.Accepted'], ['see 1. Proposed', 'see 1. Proposed'], ['emphasis before the number', '**1. Accepted**'], ['a 10-digit number', '1234567890. Proposed']]) {
+  test(`a status, then ${name}, is still written in place (PMK-328)`, () => {
+    const text = `## Status\n\nAccepted\n\n${other}\n\n## Context\n`
+    assert.deepEqual(adrStatusDropped(text), [])
+    assert.equal(adrInfo(text).status, 'Accepted')
+    assert.equal(setAdrStatus(text, 'deprecated').text, `## Status\n\nDeprecated\n\n${other}\n\n## Context\n`)
+  })
+}
+
 // PMK-319: two closed fences that share their opener are two fences in the refusal, not one. PMK-322: each is named with the lines it takes, so they read apart
 // (PMK-319 asserted `the code fences "```", "```" take "## X", "## Y"`, which does not say which fence takes which line), and the adr-get note counts them the same way.
 const TICKS = '"```"'
