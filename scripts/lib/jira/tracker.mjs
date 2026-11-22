@@ -10,6 +10,7 @@ import { createJiraClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
+import { relationOperations } from './relation-ops.mjs'
 import { buildJiraCapabilities } from './manifest.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
 
@@ -134,6 +135,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   }
 
   const issues = issueOperations({ client, getContext, now })
+  const relations = relationOperations({ client, ops: issues, getContext })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -142,6 +144,9 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     moveToCategory: issues.moveToCategory,
     assign: issues.assign,
     delete: issues.delete,
+    link: relations.link,
+    unlink: relations.unlink,
+    setParent: relations.setParent,
   }
   // delegate carries the manifest's hint, as GitHub's absent operations do.
   const delegate = guarded(async () => {
