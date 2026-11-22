@@ -310,14 +310,20 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       throw new PmkitError('INVALID_INPUT', message, 'Add --parent <epic>')
     }
     const milestoneNode = await milestoneNodeFor(input?.milestone, { project: epicNode })
+    // PMK-261: the release of a new issue, refused when releases are off; a new issue is in no release yet, so nothing to replace.
+    let releaseNode
+    if (input?.release !== undefined && input.release !== null) {
+      if (!(await releasesOn())) throw releasesOff()
+      releaseNode = await resolveRelease(input.release)
+    }
     const { team, linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
       const teamNode = createTeam(ctx)
       const cycle = await cycleNodeFor(input?.sprint, teamNode)
-      const linear = toInput(input, { mode: 'create', team: teamNode, context: ctx, parentNode, epicNode, cycleNode: cycle, milestoneNode })
+      const linear = toInput(input, { mode: 'create', team: teamNode, context: ctx, parentNode, epicNode, cycleNode: cycle, milestoneNode, releaseNode })
       return { team: teamNode, linearInput: linear, current: ctx, cycleNode: cycle }
     })
     if (dryRun) {
-      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier, project: epicNode, cycle: cycleNode })
+      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier, project: epicNode, cycle: cycleNode, release: releaseNode })
       return { before: null, after: { ...toIssue(preview, current), id: null } }
     }
     const id = uuid()
@@ -330,8 +336,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       node = (await client.request(ISSUE_BY_ID_QUERY, { id }))?.issues?.nodes?.[0]
       if (!node) throw error
     }
-    // A new issue is in no release (create sets none), so its releases are not read.
-    node.releases ??= { nodes: [] }
+    // A new issue is in the release it was created in, or none, so its releases are not read.
+    node.releases ??= { nodes: releaseNode ? [releaseNode] : [] }
     node.attachments ??= { nodes: [] }
     return { before: null, after: await mapped(node) }
   }

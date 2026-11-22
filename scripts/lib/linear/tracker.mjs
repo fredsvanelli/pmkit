@@ -172,7 +172,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
 
   // Release reads on a workspace without releases (the Free plan) answer with the empty shape (a get is NOT_FOUND), and the command prints the manifest's note. No release query is sent.
   // With releases on, they read Linear releases (PMK-246).
-  const releases = releaseOperations({ client, config })
+  const releases = releaseOperations({ client, config, now, uuid })
   const releasesEntry = async () => (await capabilities()).capabilities.find((c) => c.id === 'releases')
   // A release's issues are a search with the release filter (PMK-246-2). A cut read refuses rather than answer with part of them.
   // `issues` is defined below; the call happens later, so the reference is safe.
@@ -181,6 +181,13 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     const found = await issues.searchIssues({ release: id, ...(archived ? { archived: true } : {}) })
     if (found.hasMore) throw new PmkitError('UPSTREAM', `release ${id} has more issues than pmkit reads at once, and pmkit does not answer with part of them`, 'Narrow the search with pmkit issues list')
     return found.issues
+  }
+  const releaseWrite = (operation, finish = async (result) => result) => {
+    const refuse = stub(operation)
+    return guarded(async (...args) => {
+      const entry = await releasesEntry()
+      return entry?.path === 'absent' ? refuse(...args) : finish(await releases[operation](...args), ...args)
+    })
   }
   const releaseRead = (operation, empty) => {
     const read = operation === 'releaseIssues' ? releaseIssues : (releases[operation] ?? stub(operation))
@@ -196,6 +203,14 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
       throw new PmkitError('NOT_FOUND', `release ${id} does not exist: releases is absent: ${entry.enableHint}`, 'pmkit release list')
     }),
     releaseIssues: releaseRead('releaseIssues', () => []),
+    // PMK-261: the writes run with releases on; with them off, the stub's refusal carries the manifest's hint.
+    createRelease: releaseWrite('createRelease'),
+    markReleased: releaseWrite('markReleased', async (result, id) => ({
+      ...result,
+      // As on Local: the release's issues that are not done or canceled, read after the mark. A dry run reads them too.
+      unfinished: (await releaseIssues(id, { archived: true })).filter((issue) => !['done', 'canceled'].includes(issue.status.category)),
+      problems: [],
+    })),
   }
 
   const projects = projectOperations({ client, discovery, config, now, uuid })

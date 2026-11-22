@@ -66,9 +66,9 @@ function workspaceAnswers(raw) {
     strategic_goals: business
       ? { path: 'native', detail: { entity: 'initiative', unsupported: ['createGoal', 'setEpicGoal', 'updateGoal', 'deleteGoal'] } }
       : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
-    // The adapter reads releases and sets an issue's release (PMK-246); it does not create or mark them.
+    // The adapter reads, creates and marks releases and sets an issue's release (PMK-246, PMK-261).
     releases: releasesEnabled
-      ? { path: 'native', detail: { unsupported: ['createRelease', 'markReleased'] } }
+      ? { path: 'native' }
       : { path: 'absent', enableHint: RELEASES_HINT },
     // Linear has customer requests when customers are on, and the generic commands read them through linear customers (PMK-221).
     demand_signals: customersEnabled

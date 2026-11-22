@@ -161,9 +161,10 @@ test('description and criteria rebuild the whole description; the heading is ref
   assert.throws(() => toInput({ acceptanceCriteria: [{ text: '' }] }, update), { code: 'INVALID_INPUT' })
 })
 
-test('create takes no release, and milestone null clears the milestone', () => {
+test('create takes the release it resolved (PMK-261), and milestone null clears the milestone', () => {
   assert.deepEqual(toInput({ milestone: null, release: null }, update), { projectMilestoneId: null })
-  assert.throws(() => toInput({ title: 'T', release: 'x' }, { mode: 'create', team: raw.teams[0], context }), { code: 'NOT_SUPPORTED', message: 'issues create does not set a Linear release' })
+  assert.deepEqual(toInput({ title: 'T', release: 'x' }, { mode: 'create', team: raw.teams[0], context, releaseNode: rel('r2') }).releaseIds, ['r2'])
+  assert.throws(() => toInput({ title: 'T', release: 'x' }, { mode: 'create', team: raw.teams[0], context }), { code: 'INVALID_INPUT', message: 'release x was not resolved to a Linear release' })
 })
 
 test('applyInput shows the release an addedReleaseIds sets and drops the removed one', () => {
