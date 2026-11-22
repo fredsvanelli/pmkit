@@ -97,3 +97,18 @@ test('projects past the first page are all read', async () => {
   assert.equal(snapshot.epics.length, 12)
   assert.equal(calls(fetch, 'PmkitProjects').length, 2)
 })
+
+// PMK-265: the docs pmkit linked come along; an attachment pmkit did not create does not.
+const docAt = (path, n) => ({ id: `att-${n}`, url: `https://github.com/acme/app/blob/main/${path}`, title: path, metadata: { pmkitDoc: path }, createdAt: `2026-10-27T12:00:${String(n).padStart(2, '0')}.000Z` })
+test('the snapshot carries each issue\'s docs, archived issues and long attachment lists included', async () => {
+  const { issues, fetch, read } = setup({ nestedPage: 2 })
+  issues.seed({ title: 'one' }, { attachments: [docAt('docs/a.md', 1), { id: 'att-pr', url: 'https://github.com/acme/app/pull/3', title: 'PR', metadata: {}, createdAt: '2026-10-27T11:00:00.000Z' }] })
+  issues.seed({ title: 'many' }, { attachments: [docAt('docs/b.md', 2), docAt('./docs/c.md', 3), docAt('docs/d.md', 4)] })
+  issues.seed({ title: 'archived' }, { archivedAt: '2026-10-20T00:00:00.000Z', attachments: [docAt('docs/e.md', 5)] })
+  issues.seed({ title: 'none' })
+  const { snapshot } = await read()
+  const byTitle = Object.fromEntries(snapshot.issues.map((issue) => [issue.title, issue.docs]))
+  assert.deepEqual(byTitle, { one: ['docs/a.md'], many: ['docs/b.md', 'docs/c.md', 'docs/d.md'], archived: ['docs/e.md'], none: [] })
+  assert.equal(calls(fetch, 'PmkitIssuesAttachments').length, 1)
+  assert.equal(calls(fetch, 'PmkitIssueAttachments').length >= 1, true)
+})
