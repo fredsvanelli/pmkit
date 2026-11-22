@@ -2,12 +2,14 @@
 id: PMK-265
 title: Keep issue docs in the Linear-to-Local migration
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-5
+branch: pmk-265-keep-issue-docs-in-the-linear-to-local
 created: 2026-11-11T22:34:43.140Z
-updated: 2026-11-11T22:34:43Z
+updated: 2026-11-22T07:19:07Z
 ---
 
 ## Description
