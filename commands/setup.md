@@ -52,7 +52,10 @@ Its first rule (stop when there is no config) does not apply here, because this 
 
 Never run `init` without `--update` when a config exists.
 
-2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. Show each problem with its path and message. A problem in `.issues/config.yaml` or `.pmkit/config.yaml` makes `init --update` refuse, so ask the user to fix that file by hand first (see `/pmkit:local:doctor`) and run the check again. Other problems do not stop the update, but say that they stay until the user fixes them.
+2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. Show each problem with its path, code and message, then read them by `code`:
+   - `config` or `conflict` in `.issues/config.yaml` or `.pmkit/config.yaml` make `init --update` refuse. Ask the user to fix that file by hand first (see `/pmkit:local:doctor`) and run the check again.
+   - `FORMAT` or `migration` in `.issues/config.yaml` do not stop the update, but every other command refuses until they are settled. Say so: `/pmkit:local:doctor` migrates an older format and guides a failing migration, and `/pmkit:upgrade` brings a pmkit that reads a newer format or has the missing migration.
+   - Other problems do not stop the update either. Say that they stay until the user fixes them.
 3. Handle the `needs-criteria` label.
    - Read the `labels` field of `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json`. When it lists `needs-criteria`, skip the question and go to step 4 without label flags.
    - Otherwise ask once with `AskUserQuestion` whether to add the `needs-criteria` label, with yes first and marked "(Recommended)".
