@@ -7,7 +7,8 @@
 // ISS-4M2S and the unchecked criterion of ISS-2X6D. Setup gives ISS-2X6D one checked and one unchecked criterion,
 // because the fixture's ISS-2X6D has none.
 // Step 6 reads ISS-0G5E, the issue outside the sprint that the related list of ISS-2X6D names. It is canceled and
-// older than the sprint, so it is no half-done split. Step 8 runs the moves and the split, closes the sprint last,
+// older than the sprint, so it is no half-done split. Setup also cancels an issue of the sprint, Drop the legacy export: step 3
+// leaves it out of the unfinished issues, as cycle close does (PMK-165), so it gets no decision and keeps its sprint. Step 8 runs the moves and the split, closes the sprint last,
 // then reads the sprint's issues again for the delivered numbers.
 import assert from 'node:assert/strict'
 import path from 'node:path'
@@ -37,6 +38,8 @@ export default {
   async setup({ pmkit }) {
     await pmkit(['issues', 'update', 'ISS-8C4W', '--branch', 'feat-dlq'])
     await pmkit(['issues', 'update', 'ISS-2X6D', '--criteria-file', splitCriteria])
+    const dropped = await pmkit(['issues', 'create', '--title', 'Drop the legacy export', '--sprint', '2026-10-12'])
+    await pmkit(['issues', 'move', dropped.after.id, 'canceled'])
   },
   prompt: '/pmkit:cycle:close',
   answers: ['Yes', 'Split ISS-2X6D, move ISS-4M2S and ISS-5N1R to the backlog', 'Yes', 'Yes'],
@@ -87,8 +90,13 @@ export default {
     assert.equal(saved.sprint.id, '2026-10-12')
     assert.deepEqual(saved.planned, [], 'no planned sprint, so the moves go to the backlog')
     assert.equal(saved.related.status.category, 'canceled', 'the related issue outside the sprint is no half-done split')
-    const unfinished = saved.issues.filter((issue) => issue.status.category !== 'done').map((issue) => issue.id).sort()
+    const unfinished = saved.issues.filter((issue) => !['done', 'canceled'].includes(issue.status.category)).map((issue) => issue.id).sort()
     assert.deepEqual(unfinished, ['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R'])
+    // The canceled issue gets no decision: no move names it, and it keeps its sprint and status through the close.
+    const dropped = saved.issues.find((issue) => issue.title === 'Drop the legacy export')
+    assert.equal(dropped.status.category, 'canceled')
+    assert.ok(!toBacklog.includes(dropped.id), 'no cycle add names the canceled issue')
+    assert.deepEqual([repo.issue(dropped.id).sprint, repo.issue(dropped.id).status], ['2026-10-12', 'canceled'])
     const original = repo.issue('ISS-2X6D')
     assert.equal(original.estimate, 5)
     assert.equal(original.status, 'done', 'the split moves the original to done')
