@@ -3,7 +3,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { createGitLocal, refArg } from '../git-local.mjs'
-import { FAILED_RUN } from '../risks.mjs'
+import { FAILED_RUN, newerSuccess } from '../risks.mjs'
 import { createBitbucketClient } from './client.mjs'
 
 const STATES = { OPEN: 'OPEN', MERGED: 'MERGED', DECLINED: 'CLOSED', SUPERSEDED: 'CLOSED' }
@@ -98,7 +98,7 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
       if (found) return found
       if (!answer?.next) break
     }
-    throw new PmkitError('INVALID_INPUT', `pipeline run ${runId} was not found in ${RUN_PAGE * RUN_PAGES} newest runs`, 'Pass the build number of a recent pipeline, or use --branch')
+    throw new PmkitError('INVALID_INPUT', `pipeline run ${runId} was not found in the ${RUN_PAGE * RUN_PAGES} newest runs`, 'Pass the build number of a recent pipeline, or use --branch')
   }
 
   /** The log of each failed step, under a "== <step name> ==" line. */
@@ -126,7 +126,7 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
       try {
         return toPullRequest(await api().get(`pullrequests/${number}`), { detail })
       } catch (error) {
-        if (error instanceof PmkitError && error.httpStatus === 404) return null
+        if (error instanceof PmkitError && error.code === 'UPSTREAM' && error.httpStatus === 404) return null
         throw error
       }
     }
@@ -225,13 +225,7 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
         const pipelines = await branchPipelines(branch)
         raw = pipelines.find((p) => FAILED_RUN.has(toRun(p).conclusion))
         if (!raw) return null
-        // As on GitHub: a newer successful run of the same pipeline makes this failure old news.
-        const failed = toRun(raw)
-        const newest = pipelines
-          .map(toRun)
-          .filter((r) => r.workflowName === failed.workflowName && r.status === 'completed' && r.conclusion === 'success' && Date.parse(r.createdAt) > Date.parse(failed.createdAt))
-          .reduce((a, r) => (a === null || Date.parse(r.createdAt) > Date.parse(a.createdAt) ? r : a), null)
-        newerRun = newest ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha } : null
+        newerRun = newerSuccess(pipelines.map(toRun), toRun(raw))
       }
       const run = toRun(raw)
       // A run that succeeded or has not finished has no failed step to read.

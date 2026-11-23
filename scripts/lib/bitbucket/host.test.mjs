@@ -121,6 +121,11 @@ test('getPullRequest by number that does not exist is null', async () => {
   assert.equal(await host.getPullRequest({ number: 7 }), null)
 })
 
+test('getPullRequest by number on a repository Bitbucket cannot find is NOT_CONFIGURED, not null', async () => {
+  const { host } = setup({ [`GET ${BB}/pullrequests/7`]: { status: 404, json: { type: 'error', error: { message: 'Repository acme/widgets not found' } } } })
+  await assert.rejects(host.getPullRequest({ number: 7 }), (error) => error.code === 'NOT_CONFIGURED')
+})
+
 test('getPullRequest refuses a missing selector and a head that reads as an option', async () => {
   const { host, fetch } = setup()
   for (const selector of [{}, { head: '' }, { head: '-x' }, { number: 0 }]) {
@@ -431,7 +436,7 @@ test('ciLogs by run id that is not in the 500 newest runs is INVALID_INPUT after
   const { host, fetch } = setup({
     [PIPELINES]: [0, 1, 2, 3, 4, 5].map((n) => ({ json: { values: page(1000 - n * 100), next: `${API}${BB}/pipelines?page=${n + 2}` } })),
   })
-  await assert.rejects(host.ciLogs({ runId: 3 }), (error) => error.code === 'INVALID_INPUT' && error.message === 'pipeline run 3 was not found in 500 newest runs')
+  await assert.rejects(host.ciLogs({ runId: 3 }), (error) => error.code === 'INVALID_INPUT' && error.message === 'pipeline run 3 was not found in the 500 newest runs')
   assert.equal(fetch.calls.length, 5)
 })
 

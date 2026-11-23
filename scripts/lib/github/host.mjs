@@ -1,5 +1,5 @@
 import { PmkitError } from '../errors.mjs'
-import { FAILED_RUN } from '../risks.mjs'
+import { FAILED_RUN, newerSuccess } from '../risks.mjs'
 import { hideAbsolutePaths } from '../paths.mjs'
 import { createGitLocal, defaultExec, DIFF_TIMEOUT_MS, refArg } from '../git-local.mjs'
 
@@ -273,11 +273,7 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
         const runs = listRuns({ branch })
         run = runs.find((r) => FAILED_RUN.has(r.conclusion))
         if (!run) return null
-        // A newer successful run of the workflow makes this failure old news. A cancelled, skipped or other run says nothing about the code.
-        const newest = runs
-          .filter((r) => r.workflowName === run.workflowName && r.status === 'completed' && r.conclusion === 'success' && Date.parse(r.createdAt) > Date.parse(run.createdAt))
-          .reduce((a, r) => (a === null || Date.parse(r.createdAt) > Date.parse(a.createdAt) ? r : a), null)
-        newerRun = newest ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha ?? null } : null
+        newerRun = newerSuccess(runs, run)
       }
       const conclusion = run.conclusion || null
       // A run that succeeded, is still going or never started a job has no failed-step log: gh would only answer with nothing.

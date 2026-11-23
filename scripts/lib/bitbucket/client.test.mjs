@@ -304,10 +304,12 @@ test('a next link to a repository whose name only starts with the slug is refuse
 })
 
 test('404 whose message says the repository was not found is NOT_CONFIGURED on any path', async () => {
-  const { client } = setup({ [`GET ${BB}/pipelines`]: { status: 404, json: bbError('Repository acme/widgets not found') } })
-  const error = await failure(() => client.get('pipelines'))
-  assertError(error, 'NOT_CONFIGURED', 'git_host.repo acme/widgets was not found or the token cannot read it', '/pmkit:setup')
-  assert.equal(error.httpStatus, 404)
+  for (const message of ['Repository acme/widgets not found', 'Repository not found']) {
+    const { client } = setup({ [`GET ${BB}/pipelines`]: { status: 404, json: bbError(message) } })
+    const error = await failure(() => client.get('pipelines'))
+    assertError(error, 'NOT_CONFIGURED', 'git_host.repo acme/widgets was not found or the token cannot read it', '/pmkit:setup')
+    assert.equal(error.httpStatus, 404)
+  }
 })
 
 test('404 with another message on a path stays UPSTREAM', async () => {

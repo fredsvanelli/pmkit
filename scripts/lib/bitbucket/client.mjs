@@ -102,7 +102,7 @@ export function createBitbucketClient({
     }
     if (status === 429) return fail('RATE_LIMITED', "Bitbucket's rate limit for this token is used up", 'Wait a few minutes and retry')
     // Bitbucket answers 404 "Repository <ws>/<slug> not found" on any path of a repository it cannot find or the token cannot read.
-    if (status === 404 && ((method === 'GET' && path === '') || /repository .* not found/i.test(message))) {
+    if (status === 404 && ((method === 'GET' && path === '') || /repository\b.*\bnot found/i.test(message))) {
       return fail('NOT_CONFIGURED', `git_host.repo ${workspace}/${slug} was not found or the token cannot read it`, '/pmkit:setup')
     }
     if (status === 403) return fail('UPSTREAM', `Bitbucket refused ${method} ${path || 'the repository'} (HTTP 403): ${message}`, `Check that BITBUCKET_TOKEN has the scopes /pmkit:setup lists and can reach ${workspace}/${slug}`)
