@@ -8,7 +8,7 @@ import { PmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
 import { checkFilter, issueComparator } from '../issue-filter.mjs'
 import { CATEGORIES, compareTimes, PRIORITY_LABEL_LEVELS as PRIORITIES, TERMINAL } from '../model.mjs'
-import { jqlString, translateFilter } from './filter.mjs'
+import { jqlString, sprintUnsupported, translateFilter } from './filter.mjs'
 import { API, isIssueKey, issuePath, lower, normalizeKey, PAGE_SIZE } from './ids.mjs'
 import { ISSUE_FIELDS, toFields, toIssue } from './issues.mjs'
 import { fieldValues, pickTarget, pickTransition, requiredFields } from './transitions.mjs'
@@ -27,6 +27,7 @@ const openBlocker = (issue) => [...issue.blockerCategories.values()].some((categ
 const STEPS = {
   text: (issue, filter) => [issue.title, issue.description].some((value) => lower(value).includes(lower(filter.text))),
   blocked: (issue, filter) => openBlocker(issue) === filter.blocked,
+  sprint: (issue, filter) => issue.sprint === (filter.sprint === 'none' ? undefined : filter.sprint),
   updated: (issue, filter) =>
     (filter.updatedAfter === undefined || compareTimes(issue.updated, filter.updatedAfter) > 0) &&
     (filter.updatedBefore === undefined || compareTimes(issue.updated, filter.updatedBefore) < 0),
@@ -34,9 +35,9 @@ const STEPS = {
 
 /**
  * The issue operations over a Jira client. getContext({ refresh }) returns makeContext's context over the tracker's
- * discovery, with `fresh` true when that discovery was read from Jira in this run.
+ * discovery, with `fresh` true when that discovery was read from Jira in this run. sprints() reads the board's Jira sprints.
  */
-export function issueOperations({ client, getContext, now = () => new Date() }) {
+export function issueOperations({ client, getContext, now = () => new Date(), sprints = async () => [] }) {
   function keyOf(id) {
     if (!isIssueKey(id)) throw notFound(id)
     return normalizeKey(id)
@@ -92,19 +93,27 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
     return (await readItem(id)).issue
   }
 
-  function checkSearch(filter, context) {
-    checkFilter(filter, { types: context.view.types, members: context.view.members.map((member) => member.id) })
+  /** Checks the filter and returns the id of the active sprint, read only when a sprint filter needs it. */
+  async function checkSearch(filter, context) {
+    let list = []
+    if (typeof filter.sprint === 'string') {
+      const unsupported = sprintUnsupported(context)
+      if (unsupported) throw unsupported
+      list = await sprints()
+    }
+    checkFilter(filter, { types: context.view.types, members: context.view.members.map((member) => member.id), sprintExists: (id) => list.some((sprint) => String(sprint.id) === id) })
     for (const key of ['updatedAfter', 'updatedBefore']) {
       if (filter[key] !== undefined && Number.isNaN(Date.parse(filter[key]))) throw invalid(`${key} must be a date or a time such as 2026-11-22T10:00:00Z`, 'pmkit issues list --help')
     }
+    return list.find((sprint) => sprint.state === 'active')?.id
   }
 
   /** Narrows with JQL, then runs the client steps, pmkit's order and the limit. */
   async function searchIssues(filter = {}) {
     const held = await getContext()
-    checkSearch(filter, held)
+    const activeId = await checkSearch(filter, held)
     if (filter.limit === 0) return NOTHING()
-    const translated = translateFilter(filter, held)
+    const translated = translateFilter(filter, held, { activeId: activeId === undefined ? undefined : String(activeId) })
     if (translated.empty) return NOTHING()
     const query = { jql: translated.jql, fields: ISSUE_FIELDS(held).join(','), properties: BRANCH }
     const { items, hasMore } = await client.paginate(SEARCH, { query, key: 'issues', pageSize: PAGE_SIZE, limit: translated.serverLimit })

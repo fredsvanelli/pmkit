@@ -21,8 +21,8 @@ const STATUS = {
 const WORK_TYPE = { story: { id: '10001', name: 'Story' }, epic: { id: '10000', name: 'Epic' } }
 
 /** A tracker over a fresh fake, its own user store and repository root. */
-function setup({ requireResolution, pmkit = {}, routes = {}, context } = {}) {
-  const fake = fakeJiraIssues({ requireResolution })
+function setup({ requireResolution, pmkit = {}, routes = {}, context, sprints } = {}) {
+  const fake = fakeJiraIssues({ requireResolution, sprints })
   const fetch = fakeJiraFetch({ ...fake.routes, ...routes })
   const at = context ?? { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
   const config = { root: at.root, pmkit: { version: 1, tracker: TRACKER, mappings: { types: TYPES }, ...pmkit } }
@@ -256,6 +256,23 @@ test('searchIssues pages 100 at a time and reports hasMore when the page cap cut
   assert.equal(some.issues.length, 150)
   assert.equal(some.hasMore, false)
   assert.equal(callsTo(fetch, 'GET', '/rest/api/3/search/jql').length - before, 2)
+})
+
+const AGILE = 'https://acme.atlassian.net/rest/agile/1.0'
+const post = (fetch, path, body) => fetch(`${AGILE}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+const SPRINT = { id: 1, state: 'active', name: 'Sprint 1', startDate: '2026-11-09T12:00:00.000Z', endDate: '2026-11-20T12:00:00.000Z' }
+
+test('searchIssues by sprint: none keeps the unfinished item of a closed sprint, current is empty without an active sprint, an unknown id is INVALID_INPUT', async () => {
+  const { fake, fetch, tracker } = setup({ sprints: [SPRINT] })
+  const [open, done, never] = [seed(fake.state)[0], seed(fake.state, 1, { status: STATUS.done })[0], seed(fake.state)[0]]
+  await post(fetch, '/sprint/1/issue', { issues: [open, done] })
+  assert.deepEqual((await tracker.searchIssues({ sprint: '1' })).issues.map((issue) => issue.id), [open, done])
+  assert.equal((await tracker.getIssue(open)).sprint, '1')
+  await post(fetch, '/sprint/1', { state: 'closed' })
+  assert.deepEqual((await tracker.searchIssues({ sprint: 'none' })).issues.map((issue) => issue.id), [open, never])
+  assert.equal((await tracker.getIssue(done)).sprint, '1')
+  assert.deepEqual((await tracker.searchIssues({ sprint: 'current' })).issues, [])
+  await assert.rejects(tracker.searchIssues({ sprint: '999' }), { code: 'INVALID_INPUT' })
 })
 
 test('searchIssues keeps a case-free substring of the title or the description', async () => {

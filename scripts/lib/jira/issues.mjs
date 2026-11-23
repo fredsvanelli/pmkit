@@ -10,6 +10,7 @@ import { isCategory, validDate, PRIORITY_LABEL_LEVELS as PRIORITIES } from '../m
 import { adfToText, textToAdf } from './adf.mjs'
 import { categoryOfStatus, discoveryView } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
+import { sprintOf } from './sprints.mjs'
 
 const BRANCH_PROPERTY = 'pmkit.branch'
 const HOURS = 'timeoriginalestimate'
@@ -45,12 +46,13 @@ export function makeContext(raw, pmkit, session) {
     priorityOf: readPriority,
     priorityIdOf: (level) => (raw.priorities ?? []).find((item) => readPriority(item.name) === level)?.id,
     linkType: (kind) => (raw.linkTypes ?? []).find((type) => lower(type.name) === LINK_NAMES[kind]) ?? null,
-    fields: { estimate: view.fields.estimate?.id ?? null, criteria: view.fields.acceptance_criteria?.id ?? null },
+    fields: { estimate: view.fields.estimate?.id ?? null, criteria: view.fields.acceptance_criteria?.id ?? null, sprint: view.fields.sprint?.id ?? null },
+    boardId: raw.board?.type === 'scrum' ? raw.board.id : null,
   }
 }
 
 // The fields every work-item read asks for.
-export const ISSUE_FIELDS = (context) => [...BASE_FIELDS, ...[context.fields.estimate, context.fields.criteria].filter(Boolean)]
+export const ISSUE_FIELDS = (context) => [...BASE_FIELDS, ...[context.fields.estimate, context.fields.criteria, context.fields.sprint].filter(Boolean)]
 
 // A Jira time such as 2026-11-22T10:00:00.000+0000 as ISO UTC with Z; undefined for none.
 export function jiraTime(value) {
@@ -117,6 +119,7 @@ export function toIssue(item, context, { children = [] } = {}) {
   Object.assign(issue, lists)
   issue.children = sortedKeys([...(fields.subtasks ?? []).map((sub) => sub.key), ...children])
   issue.archived = false
+  setDefined(issue, 'sprint', sprintOf(fields[context.fields.sprint], issue.status.category, context.boardId))
   setDefined(issue, 'due', fields.duedate)
   setDefined(issue, 'branch', item.properties?.[BRANCH_PROPERTY])
   issue.description = texts.description

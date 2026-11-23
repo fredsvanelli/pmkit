@@ -14,6 +14,7 @@ import { makeContext } from './issues.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { buildJiraCapabilities } from './manifest.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
+import { readBoardSprints } from './sprints.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -135,7 +136,11 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     return contexts.get(raw)
   }
 
-  const issues = issueOperations({ client, getContext, now })
+  const sprints = async () => {
+    const { boardId } = await getContext()
+    return boardId === null ? [] : readBoardSprints(client, boardId)
+  }
+  const issues = issueOperations({ client, getContext, now, sprints })
   const relations = relationOperations({ client, ops: issues })
   const history = historyOperations({ client, ops: issues, getContext, now })
   const contract = {
