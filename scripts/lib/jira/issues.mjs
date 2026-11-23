@@ -10,6 +10,8 @@ import { isCategory, validDate, PRIORITY_LABEL_LEVELS as PRIORITIES } from '../m
 import { adfToText, textToAdf } from './adf.mjs'
 import { categoryOfStatus, discoveryView } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
+import { moveTargetIn } from '../cycle-moves.mjs'
+import { sprintOf, toSprint } from './sprints.mjs'
 
 const BRANCH_PROPERTY = 'pmkit.branch'
 const HOURS = 'timeoriginalestimate'
@@ -23,7 +25,7 @@ const PRIORITY_READ = {
   low: 'low', lowest: 'low', minor: 'low', trivial: 'low',
 }
 // The issue that serves each field PMK-77 leaves unset.
-const LATER = { sprint: 'PMK-78', milestone: 'PMK-79', release: 'PMK-79' }
+const LATER = { milestone: 'PMK-79', release: 'PMK-79' }
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', message, nextStep)
@@ -45,12 +47,13 @@ export function makeContext(raw, pmkit, session) {
     priorityOf: readPriority,
     priorityIdOf: (level) => (raw.priorities ?? []).find((item) => readPriority(item.name) === level)?.id,
     linkType: (kind) => (raw.linkTypes ?? []).find((type) => lower(type.name) === LINK_NAMES[kind]) ?? null,
-    fields: { estimate: view.fields.estimate?.id ?? null, criteria: view.fields.acceptance_criteria?.id ?? null },
+    fields: { estimate: view.fields.estimate?.id ?? null, criteria: view.fields.acceptance_criteria?.id ?? null, sprint: view.fields.sprint?.id ?? null },
+    boardId: raw.board?.type === 'scrum' ? raw.board.id : null,
   }
 }
 
 // The fields every work-item read asks for.
-export const ISSUE_FIELDS = (context) => [...BASE_FIELDS, ...[context.fields.estimate, context.fields.criteria].filter(Boolean)]
+export const ISSUE_FIELDS = (context) => [...BASE_FIELDS, ...[context.fields.estimate, context.fields.criteria, context.fields.sprint].filter(Boolean)]
 
 // A Jira time such as 2026-11-22T10:00:00.000+0000 as ISO UTC with Z; undefined for none.
 export function jiraTime(value) {
@@ -117,6 +120,7 @@ export function toIssue(item, context, { children = [] } = {}) {
   Object.assign(issue, lists)
   issue.children = sortedKeys([...(fields.subtasks ?? []).map((sub) => sub.key), ...children])
   issue.archived = false
+  setDefined(issue, 'sprint', sprintOf(fields[context.fields.sprint], issue.status.category, context.boardId))
   setDefined(issue, 'due', fields.duedate)
   setDefined(issue, 'branch', item.properties?.[BRANCH_PROPERTY])
   issue.description = texts.description
@@ -289,8 +293,25 @@ function planBranch(patch, state, create) {
   state.set('branch', patch.branch)
 }
 
-// The Jira fields a patch sends (only the changed ones on update) and the issue it leaves; a changed branch is `property`.
-export function toFields(patch, before, context, { create = false, now = new Date().toISOString() } = {}) {
+/** A changed sprint is `sprint: { to }`, the Jira sprint id or null for the backlog. `sprints` is the board's raw Jira sprints, read when the patch has a sprint id. */
+function planSprint(patch, state, context, sprints) {
+  if (patch.sprint === undefined) return
+  if (patch.sprint === null) {
+    if (state.after.sprint === undefined) return
+    state.result.sprint = { to: null }
+    state.set('sprint', null)
+    return
+  }
+  // The sprint the item is already in, closed or not, is no change; anything else resolves as cycle add does.
+  if (patch.sprint === state.after.sprint) return
+  const to = moveTargetIn(sprints.map((sprint) => toSprint(sprint)), patch.sprint).id
+  if (to === state.after.sprint) return
+  state.result.sprint = { to }
+  state.set('sprint', to)
+}
+
+// The Jira fields a patch sends (only the changed ones on update) and the issue it leaves; a changed branch is `property`, a changed sprint is `sprint`.
+export function toFields(patch, before, context, { create = false, now = new Date().toISOString(), sprints = [] } = {}) {
   checkPatch(patch, create)
   const start = create ? skeleton(context, (typeof patch.type === 'string' ? context.workTypeOf(patch.type) : undefined) ?? defaultWorkType(context), now) : before
   const state = plan(start)
@@ -304,5 +325,6 @@ export function toFields(patch, before, context, { create = false, now = new Dat
   planDue(patch, state, create)
   if (create) planCreateOnly(patch, state, context)
   planBranch(patch, state, create)
+  planSprint(patch, state, context, sprints)
   return state.result
 }

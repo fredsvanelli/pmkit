@@ -8,7 +8,7 @@ import { PmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
 import { checkFilter, issueComparator } from '../issue-filter.mjs'
 import { CATEGORIES, compareTimes, PRIORITY_LABEL_LEVELS as PRIORITIES, TERMINAL } from '../model.mjs'
-import { jqlString, translateFilter } from './filter.mjs'
+import { jqlString, sprintUnsupported, translateFilter } from './filter.mjs'
 import { API, isIssueKey, issuePath, lower, normalizeKey, PAGE_SIZE } from './ids.mjs'
 import { ISSUE_FIELDS, toFields, toIssue } from './issues.mjs'
 import { fieldValues, pickTarget, pickTransition, requiredFields } from './transitions.mjs'
@@ -27,6 +27,7 @@ const openBlocker = (issue) => [...issue.blockerCategories.values()].some((categ
 const STEPS = {
   text: (issue, filter) => [issue.title, issue.description].some((value) => lower(value).includes(lower(filter.text))),
   blocked: (issue, filter) => openBlocker(issue) === filter.blocked,
+  sprint: (issue, filter) => issue.sprint === (filter.sprint === 'none' ? undefined : filter.sprint),
   updated: (issue, filter) =>
     (filter.updatedAfter === undefined || compareTimes(issue.updated, filter.updatedAfter) > 0) &&
     (filter.updatedBefore === undefined || compareTimes(issue.updated, filter.updatedBefore) < 0),
@@ -34,9 +35,9 @@ const STEPS = {
 
 /**
  * The issue operations over a Jira client. getContext({ refresh }) returns makeContext's context over the tracker's
- * discovery, with `fresh` true when that discovery was read from Jira in this run.
+ * discovery, with `fresh` true when that discovery was read from Jira in this run. sprints() reads the board's Jira sprints.
  */
-export function issueOperations({ client, getContext, now = () => new Date() }) {
+export function issueOperations({ client, getContext, now = () => new Date(), sprints = async () => [] }) {
   function keyOf(id) {
     if (!isIssueKey(id)) throw notFound(id)
     return normalizeKey(id)
@@ -92,25 +93,36 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
     return (await readItem(id)).issue
   }
 
-  function checkSearch(filter, context) {
-    checkFilter(filter, { types: context.view.types, members: context.view.members.map((member) => member.id) })
+  /** Checks the filter and returns the id of the active sprint, read only when a sprint filter needs it. */
+  async function checkSearch(filter, context) {
+    let list = []
+    if (typeof filter.sprint === 'string') {
+      const unsupported = sprintUnsupported(context)
+      if (unsupported) throw unsupported
+      list = await sprints()
+    }
+    checkFilter(filter, { types: context.view.types, members: context.view.members.map((member) => member.id), sprintExists: (id) => list.some((sprint) => String(sprint.id) === id) })
     for (const key of ['updatedAfter', 'updatedBefore']) {
       if (filter[key] !== undefined && Number.isNaN(Date.parse(filter[key]))) throw invalid(`${key} must be a date or a time such as 2026-11-22T10:00:00Z`, 'pmkit issues list --help')
     }
+    const active = list.find((sprint) => sprint.state === 'active')
+    return active && String(active.id)
   }
 
   /** Narrows with JQL, then runs the client steps, pmkit's order and the limit. */
   async function searchIssues(filter = {}) {
     const held = await getContext()
-    checkSearch(filter, held)
+    const activeId = await checkSearch(filter, held)
     if (filter.limit === 0) return NOTHING()
-    const translated = translateFilter(filter, held)
+    const translated = translateFilter(filter, held, { activeId })
     if (translated.empty) return NOTHING()
     const query = { jql: translated.jql, fields: ISSUE_FIELDS(held).join(','), properties: BRANCH }
     const { items, hasMore } = await client.paginate(SEARCH, { query, key: 'issues', pageSize: PAGE_SIZE, limit: translated.serverLimit })
     const issues = await toIssues(items, await contextFor(items))
     const sort = filter.sort ?? 'created'
-    const kept = issues.filter((issue) => translated.clientSteps.every((step) => STEPS[step](issue, filter))).sort(issueComparator(sort, PRIORITIES))
+    // The sprint step compares ids, so current stands for the active sprint's id.
+    const stepFilter = filter.sprint === 'current' ? { ...filter, sprint: activeId } : filter
+    const kept = issues.filter((issue) => translated.clientSteps.every((step) => STEPS[step](issue, stepFilter))).sort(issueComparator(sort, PRIORITIES))
     // Jira's order is created, so a created read that kept limit issues needed no more: hasMore is then false.
     const enough = sort === 'created' && filter.limit !== undefined && kept.length >= filter.limit
     return { issues: filter.limit === undefined ? kept : kept.slice(0, filter.limit), problems: [], hasMore: hasMore && !enough }
@@ -144,18 +156,38 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
     }
   }
 
+  /** The board's Jira sprints, read only when the patch names a sprint to move to; `known` is a list the caller already read. */
+  async function sprintsFor(patch, context, known) {
+    if (typeof patch.sprint !== 'string') return []
+    const unsupported = sprintUnsupported(context)
+    if (unsupported) throw unsupported
+    return known ?? sprints()
+  }
+
+  /** Puts a work item into a sprint, or into the backlog for `to` null. */
+  const moveToSprint = (key, to) => (to === null
+    ? client.request('POST', '/rest/agile/1.0/backlog/issue', { body: { issues: [key] } })
+    : client.request('POST', `/rest/agile/1.0/sprint/${encodeURIComponent(to)}/issue`, { body: { issues: [key] } }))
+
   const afterOf = async (key) => (await readItem(key)).issue
   const statusAt = (target, context) => ({ name: target.name, category: context.categoryOf(target.name) })
 
   async function createIssue(request, actor, { dryRun = false } = {}) {
     await requireActor(actor)
     const input = request ?? {}
-    const { value: plan, context } = await withRefresh((current) => toFields(input, null, current, { create: true, now: now().toISOString() }))
+    const { value: plan, context } = await withRefresh(async (current) => toFields(input, null, current, { create: true, now: now().toISOString(), sprints: await sprintsFor(input, current) }))
     const category = input.status ?? undefined
     // The target is checked before the create, so a work type with no status in the category sends nothing.
     const target = category === undefined ? null : pickTarget({ item: { fields: { issuetype: plan.fields.issuetype } }, category, context })
     if (dryRun) return { before: null, after: target ? { ...plan.after, status: statusAt(target, context) } : plan.after }
     const { key } = await client.request('POST', `${API}/issue`, { body: { fields: plan.fields } })
+    if (plan.sprint) {
+      try {
+        await moveToSprint(key, plan.sprint.to)
+      } catch (error) {
+        throw new PmkitError('UPSTREAM', `Jira created ${key}, but moving it to sprint ${plan.sprint.to} failed: ${error.message}`, `pmkit cycle add ${key} --to ${plan.sprint.to}`, { created: key, cause: error.code ?? error.name })
+      }
+    }
     if (target) {
       try {
         await move(key, category, {})
@@ -175,12 +207,13 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
     return name === null ? client.request('DELETE', path) : client.request('PUT', path, { body: name })
   }
 
-  async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
+  /** `sprints`, internal, is the board's raw Jira sprints when the caller (moveToCycle) has read them. */
+  async function updateIssue(id, patch, actor, { dryRun = false, sprints: known } = {}) {
     await requireActor(actor)
     const { issue: before, context } = await readItem(id)
-    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString() })
+    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context, known) })
     const changed = Object.keys(plan.fields).length > 0
-    if (!changed && !plan.property) return { before, after: before }
+    if (!changed && !plan.property && !plan.sprint) return { before, after: before }
     if (dryRun) return { before, after: plan.after }
     if (changed) await client.request('PUT', issuePath(before.id), { body: { fields: plan.fields } })
     if (plan.property) {
@@ -189,6 +222,15 @@ export function issueOperations({ client, getContext, now = () => new Date() }) 
       } catch (error) {
         if (!changed) throw error
         throw new PmkitError('UPSTREAM', `Jira updated ${before.id}, but writing its branch failed: ${error.message}`, `pmkit issues update ${before.id} --branch <name>`, { cause: error.code ?? error.name })
+      }
+    }
+    if (plan.sprint) {
+      try {
+        await moveToSprint(before.id, plan.sprint.to)
+      } catch (error) {
+        if (!changed && !plan.property) throw error
+        const to = plan.sprint.to ?? 'none'
+        throw new PmkitError('UPSTREAM', `Jira updated ${before.id}, but moving it to sprint ${to} failed: ${error.message}`, `pmkit cycle add ${before.id} --to ${to}`, { cause: error.code ?? error.name })
       }
     }
     return { before, after: await afterOf(before.id) }

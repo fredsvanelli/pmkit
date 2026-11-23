@@ -6,11 +6,10 @@ import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldRoles } from './discovery.mjs'
 
 /** The capabilities the Jira adapter serves. PMK-77 to PMK-80 add theirs as they implement the operations behind them. */
-export const SERVED = Object.freeze({ linked_code: true, estimation: true, multilevel_hierarchy: true, dependencies: true, native_metrics: true })
+export const SERVED = Object.freeze({ cycles: true, capacity: true, linked_code: true, estimation: true, multilevel_hierarchy: true, dependencies: true, native_metrics: true })
 
 /** The issue that serves each capability, for the hint of an unserved one. */
 const SERVED_IN = {
-  cycles: 'PMK-78', capacity: 'PMK-78',
   deliverables: 'PMK-79', status_update: 'PMK-79', releases: 'PMK-79',
   time_tracking: 'PMK-80',
 }
@@ -18,10 +17,11 @@ const unservedHint = (id) => `The Jira adapter does not serve ${id} yet${SERVED_
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const absent = (enableHint) => ({ path: 'absent', enableHint })
 
-/** Sprints need Jira Software (any plan) and a Scrum board; an unread license defers to the board. */
-function cycles(raw) {
+/** Sprints need Jira Software (any plan), a Scrum board and the Sprint field; an unread license defers to the board. */
+function cycles(raw, pmkit) {
   if (raw.license?.software === 'unlicensed') return absent('Sprints need Jira Software')
   if (raw.board?.type !== 'scrum') return absent(`Sprints need a Scrum board in space ${raw.space.key}`)
+  if (!fieldRoles(raw, pmkit).fields.sprint) return absent(`No sprint field in space ${raw.space.key}`)
   return { path: 'native' }
 }
 
@@ -32,7 +32,7 @@ function siteAnswers(raw, pmkit) {
   const estimate = fieldRoles(raw, pmkit).fields.estimate
   // Unread settings: issue linking and time tracking are on by default in Jira, and discover warns.
   const setting = (name) => raw.settings === null || raw.settings?.[name] === true
-  const sprints = cycles(raw)
+  const sprints = cycles(raw, pmkit)
   return {
     cycles: sprints,
     estimation: estimate

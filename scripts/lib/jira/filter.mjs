@@ -15,6 +15,14 @@ export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset 
 
 const notSupported = (key, issue) => new PmkitError('NOT_SUPPORTED', `the Jira adapter does not filter by ${key} yet (${issue})`, `Run the search without --${key}`)
 
+/** The NOT_SUPPORTED error of a sprint filter on a space with no Scrum board or no Sprint field, else null. */
+export function sprintUnsupported(context) {
+  const space = context.space
+  if (context.boardId === null) return new PmkitError('NOT_SUPPORTED', `Sprints need a Scrum board in space ${space}`, '/pmkit:setup')
+  if (!context.fields.sprint) return new PmkitError('NOT_SUPPORTED', `No sprint field in space ${space}`, '/pmkit:setup')
+  return null
+}
+
 // One handler per filter key, in FILTER_KEYS order. Each adds to out.clauses and out.steps; out.empty says nothing can match.
 const HANDLERS = {
   text(filter, out) {
@@ -41,8 +49,16 @@ const HANDLERS = {
   labels(filter, out) {
     for (const label of filter.labels) out.clauses.push(`labels = ${jqlString(label)}`)
   },
-  sprint() {
-    throw notSupported('sprint', 'PMK-78')
+  sprint(filter, out, context, { activeId }) {
+    // null is no sprint filter, as on Linear.
+    if (typeof filter.sprint !== 'string') return
+    const unsupported = sprintUnsupported(context)
+    if (unsupported) throw unsupported
+    if (filter.sprint === 'none') out.clauses.push('(sprint is EMPTY OR sprint not in openSprints())')
+    else if (filter.sprint !== 'current') out.clauses.push(`sprint = ${jqlString(filter.sprint)}`)
+    else if (activeId) out.clauses.push(`sprint = ${jqlString(activeId)}`)
+    else out.empty = true
+    out.steps.add('sprint')
   },
   release() {
     throw notSupported('release', 'PMK-79')
@@ -66,16 +82,16 @@ const HANDLERS = {
 }
 
 // The step names in the order the adapter runs them.
-const STEP_ORDER = ['text', 'blocked', 'updated']
+const STEP_ORDER = ['text', 'blocked', 'sprint', 'updated']
 
 /**
  * Translates a filter that checkFilter accepted (the caller checks) into { empty: true } when nothing can match, else
- * { jql, clientSteps, serverLimit }. `serverLimit` is set only when no client step runs and the order is created.
+ * { jql, clientSteps, serverLimit }. `activeId` is the id of the board's active sprint, which `current` means. `serverLimit` is set only when no client step runs and the order is created.
  */
-export function translateFilter(filter, context) {
+export function translateFilter(filter, context, { activeId } = {}) {
   const out = { clauses: [`project = ${jqlString(context.space)}`], steps: new Set(), empty: false }
   for (const [key, handle] of Object.entries(HANDLERS)) {
-    if (filter[key] !== undefined) handle(filter, out, context)
+    if (filter[key] !== undefined) handle(filter, out, context, { activeId })
   }
   if (out.empty) return { empty: true }
   const clientSteps = STEP_ORDER.filter((step) => out.steps.has(step))

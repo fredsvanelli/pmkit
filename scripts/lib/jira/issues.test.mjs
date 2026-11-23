@@ -59,9 +59,9 @@ test('jiraTime turns a +0000 offset into Z', () => {
 
 test('ISSUE_FIELDS lists the read fields with the estimate and criteria fields', async () => {
   const ctx = await context()
-  assert.deepEqual(ISSUE_FIELDS(ctx), ['summary', 'status', 'issuetype', 'priority', 'assignee', 'labels', 'parent', 'subtasks', 'issuelinks', 'duedate', 'description', 'created', 'updated', 'creator', 'customfield_10016'])
+  assert.deepEqual(ISSUE_FIELDS(ctx), ['summary', 'status', 'issuetype', 'priority', 'assignee', 'labels', 'parent', 'subtasks', 'issuelinks', 'duedate', 'description', 'created', 'updated', 'creator', 'customfield_10016', 'customfield_10020'])
   const withCriteria = await context({ edit: (raw) => raw.fields.push({ id: 'customfield_10200', name: 'Acceptance criteria', system: null, customType: 'x' }) })
-  assert.deepEqual(ISSUE_FIELDS(withCriteria).slice(-2), ['customfield_10016', 'customfield_10200'])
+  assert.deepEqual(ISSUE_FIELDS(withCriteria).slice(-3), ['customfield_10016', 'customfield_10200', 'customfield_10020'])
 })
 
 test('makeContext gives the viewer, the space, the link types and the field roles', async () => {
@@ -71,7 +71,8 @@ test('makeContext gives the viewer, the space, the link types and the field role
   assert.deepEqual(ctx.linkType('blocks'), { id: '10000', name: 'Blocks', inward: 'is blocked by', outward: 'blocks' })
   assert.equal(ctx.linkType('related').name, 'Relates')
   assert.equal(ctx.linkType('duplicate').name, 'Duplicate')
-  assert.deepEqual(ctx.fields, { estimate: 'customfield_10016', criteria: null })
+  assert.deepEqual(ctx.fields, { estimate: 'customfield_10016', criteria: null, sprint: 'customfield_10020' })
+  assert.equal(ctx.boardId, 1)
   assert.equal(ctx.workTypeOf('story').id, '10001')
   assert.equal(ctx.workTypeOf('task'), undefined)
 })
@@ -85,6 +86,14 @@ test('toIssue maps the common fields', async () => {
     children: ['ENG-3', 'ENG-11', 'ENG-20'], archived: false, due: '2026-12-01', branch: 'eng-1-first',
     description: '', acceptanceCriteria: [], created: '2026-11-22T10:00:00.000Z', updated: '2026-11-22T10:00:00.000Z',
   })
+})
+
+test('a Done item reads its last closed sprint; an item in progress reads none', async () => {
+  const ctx = await context()
+  const closed = [{ id: 41, state: 'closed', name: 'S41', boardId: 1, completeDate: '2026-11-10T00:00:00.000Z' }]
+  assert.equal(toIssue(item({ status: status('Done', 'done'), customfield_10020: closed }), ctx).sprint, '41')
+  assert.equal('sprint' in toIssue(item({ status: status('In Progress', 'indeterminate'), customfield_10020: closed }), ctx), false)
+  assert.equal('sprint' in toIssue(item(), ctx), false)
 })
 
 test('an unmapped work type reads as no type', async () => {
@@ -236,10 +245,9 @@ test('labels holding a space are refused', async () => {
   assert.deepEqual(set.after.labels, ['new', 'z'])
 })
 
-test('sprint, milestone and release values name the issue that serves them; null passes', async () => {
+test('milestone and release values name the issue that serves them; null passes', async () => {
   const ctx = await context()
   const old = await before(ctx)
-  assert.throws(() => toFields({ sprint: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-78/ })
   assert.throws(() => toFields({ milestone: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-79/ })
   assert.throws(() => toFields({ release: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-79/ })
   assert.deepEqual(toFields({ sprint: null, milestone: null, release: null }, old, ctx, {}).fields, {})
@@ -293,4 +301,18 @@ test('branch is a property, not a field, on update only', async () => {
 
 test('jiraTime returns an unparseable time as it came', () => {
   assert.equal(jiraTime('not a time'), 'not a time')
+})
+
+test('a sprint write resolves its target as cycle add does, and keeps a closed sprint the item is already in', async () => {
+  const ctx = await context()
+  const old = await before(ctx)
+  const sprints = [{ id: 41, state: 'closed', name: 'S41' }, { id: 42, state: 'active', name: 'S42' }]
+  const plan = (sprint, from = old) => toFields({ sprint }, from, ctx, { sprints })
+  for (const value of ['999', 'none']) {
+    assert.throws(() => plan(value), { code: 'INVALID_INPUT', message: `sprint ${value} does not exist`, nextStep: 'pmkit cycle list' })
+  }
+  assert.throws(() => toFields({ sprint: 'current' }, old, ctx, { sprints: [sprints[0]] }), { code: 'INVALID_INPUT', message: 'there is no active sprint' })
+  assert.throws(() => plan('41'), { code: 'CONFLICT' })
+  assert.deepEqual(plan('current').sprint, { to: '42' })
+  assert.equal(plan('41', { ...old, sprint: '41' }).sprint, undefined)
 })

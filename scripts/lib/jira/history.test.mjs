@@ -132,3 +132,15 @@ test('toComment maps a comment node with its body from ADF', () => {
   assert.deepEqual(toComment({ id: 7, author: { accountId: 'acc-3' }, created: '2026-11-21T12:00:00.000+0000', body: textToAdf('hello\n') }, 'ENG-1'), { id: '7', issue: 'ENG-1', author: 'acc-3', body: 'hello', created: '2026-11-21T12:00:00.000Z' })
   assert.equal(toComment({ id: 8, created: '2026-11-21T12:00:00.000+0000', body: null }, 'ENG-1').author, null)
 })
+
+test('sprint changes give one sprint event from the sprint ids removed and added', async () => {
+  const base = await context()
+  const ctx = { ...base, fields: { ...base.fields, sprint: 'customfield_10020' } }
+  const sprint = async (from, to) => toEvents(ITEM, [history([{ field: 'Sprint', fieldtype: 'custom', fieldId: 'customfield_10020', from, to }])], ctx).slice(1).map((e) => [e.op, e.field, e.from, e.to])
+  assert.deepEqual(await sprint('42, 43', '42'), [['update', 'sprint', '43', null]])
+  assert.deepEqual(await sprint('43', '43, 44'), [['update', 'sprint', '43', '44']])
+  assert.deepEqual(await sprint('', '44'), [['update', 'sprint', null, '44']])
+  assert.deepEqual(await sprint(null, '44'), [['update', 'sprint', null, '44']])
+  assert.deepEqual(await sprint('43', null), [['update', 'sprint', '43', null]])
+  assert.deepEqual(await sprint('42, 43', '42, 43'), [])
+})

@@ -7,6 +7,9 @@ import { adfToText } from './lib/jira/adf.mjs'
 import { lower } from './lib/jira/ids.mjs'
 
 const API = '/rest/api/3'
+const AGILE = '/rest/agile/1.0'
+const BOARD = 1
+const SPRINT_FIELD = 'customfield_10020'
 const SITE = jiraSiteRoutes()
 const SPACE = SITE[`GET ${API}/project/ENG`].json
 const WORK_TYPES = SPACE.issueTypes
@@ -43,14 +46,14 @@ const cannotSet = (id) => badField(id, `Field '${id}' cannot be set. It is not o
 
 /** A fresh, empty state. */
 function emptyState() {
-  return { next: { item: 1, link: 10100, comment: 10000, history: 1 }, clock: 0, items: {}, links: [], comments: {}, properties: {}, changelog: {} }
+  return { next: { item: 1, link: 10100, comment: 10000, history: 1, sprint: 1 }, clock: 0, items: {}, links: [], comments: {}, properties: {}, changelog: {}, sprints: [] }
 }
 
 // Field values: the stored form of a written value, and the [id, string] sides of a changelog item.
 
 /** The stored form of one written field, or a 400 when Jira would refuse it. */
 function convert(id, value, state) {
-  if (!SETTABLE.has(id) && !id.startsWith('customfield_')) cannotSet(id)
+  if (id === SPRINT_FIELD || (!SETTABLE.has(id) && !id.startsWith('customfield_'))) cannotSet(id)
   if (id === 'summary') return typeof value === 'string' && value.trim() ? value : badField('summary', 'You must specify a summary of the issue.')
   if (value === null) return null
   switch (id) {
@@ -125,7 +128,7 @@ function linkItem(otherKey, verb, added) {
 // JQL: exactly the subset translateFilter and metricEvents emit; anything else is a 400.
 
 const TOKEN = /\s*(?:("(?:[^"\\]|\\.)*")|(>=|[=~<(),])|([A-Za-z_][\w.-]*))/y
-const FORMS = { '=': ['project', 'assignee', 'labels', 'parent'], in: ['status', 'issuetype', 'parent', 'key'], is: ['assignee'], '>=': ['updated'], '<': ['updated'] }
+const FORMS = { '=': ['project', 'assignee', 'labels', 'parent', 'sprint'], in: ['status', 'issuetype', 'parent', 'key'], is: ['assignee', 'sprint'], '>=': ['updated'], '<': ['updated'] }
 const VALUE = {
   project: () => SPACE.key,
   status: (item) => item.fields.status.id,
@@ -133,6 +136,7 @@ const VALUE = {
   assignee: (item) => item.fields.assignee?.accountId ?? null,
   parent: (item) => item.fields.parent?.key ?? null,
   key: (item) => item.key,
+  sprint: (item) => (item.sprintIds ?? []).map(String),
 }
 const KEYED = ['project', 'parent', 'key']
 const ORDERS = { 'created ASC , key ASC': 'created', 'updated DESC': 'updated' }
@@ -150,7 +154,7 @@ function tokenize(jql, fail) {
 }
 
 /** The test and order of a JQL query, or a 400 naming the query when the fake does not understand it. */
-function parseJql(jql) {
+function parseJql(jql, sprintOf) {
   const fail = () => refuse(400, {}, [`fake Jira does not understand: ${jql}`])
   const tokens = tokenize(jql, fail)
   let at = 0
@@ -161,6 +165,11 @@ function parseJql(jql) {
   const textMatch = (text) => (item) => [item.fields.summary, adfToText(item.fields.description)].some((value) => lower(value).includes(lower(text)))
   function clause() {
     if (accept('(')) {
+      if (tokens[at]?.value === 'sprint') {
+        const [first, second] = [clause(), expect('OR') && clause()]
+        expect(')')
+        return (item) => first(item) || second(item)
+      }
       ;['summary', '~'].forEach(expect)
       const text = string()
       ;['OR', 'description', '~'].forEach(expect)
@@ -170,8 +179,12 @@ function parseJql(jql) {
     }
     const field = tokens[at++]?.value
     const op = tokens[at++]?.value
+    if (field === 'sprint' && op === 'not') {
+      ;['in', 'openSprints', '(', ')'].forEach(expect)
+      return (item) => !(item.sprintIds ?? []).some((id) => sprintOf(id).state !== 'closed')
+    }
     if (!FORMS[op]?.includes(field)) fail()
-    if (op === 'is') return expect('EMPTY') && ((item) => VALUE.assignee(item) === null)
+    if (op === 'is') return expect('EMPTY') && ((item) => (field === 'sprint' ? VALUE.sprint(item).length === 0 : VALUE.assignee(item) === null))
     if (op === 'in') {
       expect('(')
       const values = [string()]
@@ -180,6 +193,7 @@ function parseJql(jql) {
       return (item) => values.some((value) => same(field, VALUE[field](item), value))
     }
     const value = string()
+    if (field === 'sprint') return (item) => VALUE.sprint(item).includes(value)
     if (field === 'labels') return (item) => item.fields.labels.includes(value)
     if (field !== 'updated') return (item) => same(field, VALUE[field](item), value)
     const day = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : fail()
@@ -216,15 +230,23 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
  * The fake work-item routes, spread over jiraSiteRoutes(), the state they read and mutate in place, and writes() the
  * non-GET calls. `now` returns the time of each write; the default clock starts at 2026-11-22T10:00:00.000Z and
  * advances one second per write, and lives in the state so a restored state keeps counting. `extraStatuses` passes on to
- * jiraSiteRoutes, for a status in every category.
+ * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78).
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [] } = {}) {
+  state.sprints ??= []
+  state.next.sprint ??= 1
+  for (const sprint of sprints) state.sprints.push({ originBoardId: BOARD, goal: '', ...structuredClone(sprint) })
+  state.next.sprint = Math.max(state.next.sprint, ...state.sprints.map((sprint) => sprint.id + 1))
   const site = jiraSiteRoutes({ extraStatuses })
   const typeStatuses = statusesByType(site)
   const writes = []
   const stamp = () => jiraFormat(now ? now() : START + 1000 * state.clock++)
 
   const itemOf = (key) => state.items[upper(key)] ?? notFound()
+  const sprintOf = (id) => state.sprints.find((sprint) => String(sprint.id) === String(id)) ?? notFound(`Sprint with id '${id}' does not exist.`)
+  const sprintField = (sprint) => ({ id: sprint.id, name: sprint.name, state: sprint.state, boardId: sprint.originBoardId, goal: sprint.goal, ...pickDates(sprint) })
+  const pickDates = ({ startDate, endDate, completeDate }) => Object.fromEntries(Object.entries({ startDate, endDate, completeDate }).filter(([, value]) => value))
+  const names = (ids) => (ids.length > 0 ? ids.map((id) => sprintOf(id).name).join(', ') : null)
 
   function record(item, items, at) {
     if (items.length === 0) return
@@ -262,6 +284,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   /** The item as a read returns it; `propertyKeys` limits the properties (all when undefined). */
   function render(item, propertyKeys) {
     const fields = { ...item.fields, subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
+    if (item.sprintIds?.length) fields[SPRINT_FIELD] = item.sprintIds.map((id) => sprintField(sprintOf(id)))
+    else fields[SPRINT_FIELD] = null
     const read = structuredClone({ id: item.id, key: item.key, fields })
     const stored = Object.entries(state.properties[item.key] ?? {}).filter(([name]) => !propertyKeys || propertyKeys.includes(name))
     if (stored.length > 0 || propertyKeys?.length) read.properties = Object.fromEntries(stored)
@@ -283,9 +307,57 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     for (const other of Object.values(state.items)) if (other.fields.parent?.key === key) other.fields.parent = null
   }
 
+  /** Sets the sprints of the issues named in `body`, recording one Sprint changelog item each. */
+  function moveIssues(body, at, target) {
+    const issues = (Array.isArray(body?.issues) ? body.issues : []).map(itemOf)
+    if (issues.length === 0) refuse(400, {}, ['issues must name at least one work item.'])
+    if (target?.state === 'closed') refuse(400, {}, ['Cannot add issues to a closed sprint.'])
+    for (const item of issues) {
+      const before = item.sprintIds ?? []
+      const after = [...before.filter((id) => sprintOf(id).state === 'closed'), ...(target ? [target.id] : [])]
+      if (after.join() === before.join()) continue
+      item.sprintIds = after
+      const join = (ids) => (ids.length > 0 ? ids.join(', ') : null)
+      record(item, [{ field: 'Sprint', fieldtype: 'custom', fieldId: SPRINT_FIELD, from: join(before), fromString: names(before), to: join(after), toString: names(after) }], at())
+    }
+    return { status: 204 }
+  }
+
   const handlers = {
+    [`GET ${AGILE}/board/{boardId}/sprint`]({ params, query }) {
+      if (params.boardId !== String(BOARD)) notFound('Board does not exist or you do not have permission to see it.')
+      const states = queryList(query, 'state')
+      const matched = state.sprints.filter((sprint) => states.length === 0 || states.includes(sprint.state))
+      return { json: offsetPage(structuredClone(matched), query, 50) }
+    },
+    [`GET ${AGILE}/sprint/{sprintId}`]: ({ params }) => ({ json: structuredClone(sprintOf(params.sprintId)) }),
+    [`POST ${AGILE}/sprint`]({ body }) {
+      if (body?.originBoardId !== BOARD) refuse(400, {}, ['The board does not exist or is not a Scrum board.'])
+      if (typeof body.name !== 'string' || !body.name.trim()) refuse(400, {}, ['The sprint name is required.'])
+      const { startDate, endDate, goal = '' } = body
+      const sprint = { id: state.next.sprint++, state: 'future', name: body.name, originBoardId: BOARD, goal, ...pickDates({ startDate, endDate }) }
+      state.sprints.push(sprint)
+      return { status: 201, json: structuredClone(sprint) }
+    },
+    [`POST ${AGILE}/sprint/{sprintId}`]({ params, body, at }) {
+      const sprint = sprintOf(params.sprintId)
+      const next = { ...sprint, ...Object.fromEntries(['name', 'goal', 'startDate', 'endDate'].filter((name) => name in (body ?? {})).map((name) => [name, body[name]])) }
+      if (typeof next.name !== 'string' || !next.name.trim()) refuse(400, {}, ['The sprint name is required.'])
+      if (body?.state !== undefined && body.state !== sprint.state) {
+        if (body.state === 'active') {
+          if (sprint.state !== 'future' || !next.startDate || !next.endDate) refuse(400, {}, ['Only a future sprint with start and end dates can be started.'])
+          if (state.sprints.some((other) => other.state === 'active')) refuse(400, {}, ['Another sprint is already active.'])
+        } else if (body.state === 'closed' && sprint.state === 'active') next.completeDate = at()
+        else refuse(400, {}, [`A ${sprint.state} sprint cannot become ${body.state}.`])
+        next.state = body.state
+      }
+      Object.assign(sprint, next)
+      return { json: structuredClone(sprint) }
+    },
+    [`POST ${AGILE}/sprint/{sprintId}/issue`]: ({ params, body, at }) => moveIssues(body, at, sprintOf(params.sprintId)),
+    [`POST ${AGILE}/backlog/issue`]: ({ body, at }) => moveIssues(body, at, null),
     [`GET ${API}/search/jql`]({ query }) {
-      const { test, order } = parseJql(query.get('jql') ?? '')
+      const { test, order } = parseJql(query.get('jql') ?? '', sprintOf)
       const startAt = Number(query.get('nextPageToken') ?? 0)
       const maxResults = Math.min(Number(query.get('maxResults') ?? 50), 100)
       const matched = Object.values(state.items).filter(test).sort(SORTS[order])

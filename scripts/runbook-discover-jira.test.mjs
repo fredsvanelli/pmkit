@@ -71,7 +71,7 @@ test('steps 1 to 3 on a company-managed space: validate, discover and capabiliti
   const manifest = json(pmkit(root, ['capabilities', '--json']))
   assert.equal(manifest.tracker, 'jira')
   assert.equal(manifest.capabilities.length, 20)
-  assert.equal(manifest.capabilities.find((c) => c.id === 'cycles').detail.site, 'native')
+  assert.equal(manifest.capabilities.find((c) => c.id === 'cycles').path, 'native')
   assert.match(pmkit(root, ['discover']).stdout, /^space: ENG Engineering \(company-managed, software\)$/m)
 })
 

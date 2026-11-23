@@ -34,7 +34,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 
    Expect `space: { key: "ENG", name, style }` and these questions, in order:
    - `mappings.status.backlog`, `mappings.status.in_review` and `mappings.status.canceled`, each offering every status of the space and recommending the one whose name matches (`Review` for `in_review`), or `none`. `todo`, `in_progress` and `done` come from Jira's status categories and are never asked; neither is `blocked`, which on Jira comes from Blocks links.
-   - `mappings.fields.estimate` and `mappings.fields.acceptance_criteria`, each offering field ids with their names in `titles`, such as `customfield_10016` (Story Points). A role with one field is applied without a question; a role with none gets a note, such as `the site has no field for the acceptance criteria`.
+   - `mappings.fields.estimate`, `mappings.fields.acceptance_criteria` and `mappings.fields.sprint`, each offering field ids with their names in `titles`, such as `customfield_10016` (Story Points). A role with one field is applied without a question (on the fake site, `sprint` is `customfield_10020`); a role with none gets a note, such as `the site has no field for the acceptance criteria`.
    - `mappings.types.feature`, `bug`, `task` and `chore`, each offering the space's standard work types and recommending the one whose name matches (`Story` for `feature`, `Bug` for `bug`), or `none`. A work type already recommended for an earlier type is not recommended again: on a space with `Task`, `task` gets `Task` and `chore` gets `none`.
 
    `statuses` lists each status with its category. Nothing is written.

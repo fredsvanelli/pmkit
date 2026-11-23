@@ -10,12 +10,12 @@ globalThis.fetch = () => {
   throw new Error('the real fetch was called')
 }
 
-async function context({ edit, types = { story: 'Story', bug: 'Bug', epic: 'Epic' } } = {}) {
+async function context({ edit, types = { story: 'Story', bug: 'Bug', epic: 'Epic' }, mappings = {} } = {}) {
   const fetch = fakeJiraFetch(jiraSiteRoutes())
   const client = createJiraClient({ env: FAKE_ENV, tracker: TRACKER, fetch, sleep: async () => {} })
   const raw = await fetchDiscovery(client, { space: 'ENG', now: () => new Date('2026-11-22T12:00:00Z') })
   edit?.(raw)
-  return makeContext(raw, { tracker: TRACKER, mappings: { types } }, await client.session())
+  return makeContext(raw, { tracker: TRACKER, mappings: { types, ...mappings } }, await client.session())
 }
 
 const TAIL = ' ORDER BY created ASC, key ASC'
@@ -100,9 +100,30 @@ test('serverLimit only without steps and with sort created', async () => {
   assert.equal(translateFilter({}, ctx).serverLimit, undefined)
 })
 
-test('sprint and release are NOT_SUPPORTED naming their issues', async () => {
+test('a sprint id, current and none become clauses and the sprint step', async () => {
   const ctx = await context()
-  assert.throws(() => translateFilter({ sprint: 'current' }, ctx), (e) => e.code === 'NOT_SUPPORTED' && e.message.includes('PMK-78'))
+  assert.deepEqual(translateFilter({ sprint: '41' }, ctx), { jql: `project = "ENG" AND sprint = "41"${TAIL}`, clientSteps: ['sprint'], serverLimit: undefined })
+  assert.equal(translateFilter({ sprint: 'current' }, ctx, { activeId: '42' }).jql, `project = "ENG" AND sprint = "42"${TAIL}`)
+  assert.deepEqual(translateFilter({ sprint: 'current' }, ctx), { empty: true })
+  assert.deepEqual(translateFilter({ sprint: 'none' }, ctx), { jql: `project = "ENG" AND (sprint is EMPTY OR sprint not in openSprints())${TAIL}`, clientSteps: ['sprint'], serverLimit: undefined })
+})
+
+test('a null sprint is no sprint filter, as on Linear', async () => {
+  const ctx = await context()
+  assert.deepEqual(translateFilter({ sprint: null }, ctx), { jql: `project = "ENG"${TAIL}`, clientSteps: [], serverLimit: undefined })
+  const noBoard = await context({ edit: (raw) => { raw.board = null } })
+  assert.doesNotThrow(() => translateFilter({ sprint: null }, noBoard))
+})
+
+test('a sprint filter without a Scrum board or a sprint field is NOT_SUPPORTED', async () => {
+  const noBoard = await context({ edit: (raw) => { raw.board = null } })
+  assert.throws(() => translateFilter({ sprint: '41' }, noBoard), { code: 'NOT_SUPPORTED', message: /Scrum board in space ENG/, nextStep: '/pmkit:setup' })
+  const noField = await context({ mappings: { fields: { sprint: 'none' } } })
+  assert.throws(() => translateFilter({ sprint: 'none' }, noField), { code: 'NOT_SUPPORTED', message: /No sprint field in space ENG/ })
+})
+
+test('release is NOT_SUPPORTED naming its issue', async () => {
+  const ctx = await context()
   assert.throws(() => translateFilter({ release: 'v1' }, ctx), (e) => e.code === 'NOT_SUPPORTED' && e.message.includes('PMK-79'))
   assert.doesNotThrow(() => translateFilter({ sprint: undefined, release: undefined }, ctx))
 })

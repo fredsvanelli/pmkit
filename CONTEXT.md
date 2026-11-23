@@ -36,6 +36,10 @@ _Avoid_: status change (on Jira, alone), workflow step
 A field a Jira transition asks for on its screen before it moves the work item, such as Resolution on a move to Done. pmkit asks the user for each required one that has no default, and never fills one itself.
 _Avoid_: transition field, required field (alone)
 
+**Scrum board**:
+The Jira board of a space that runs sprints. pmkit reads the space's first Scrum board, and its sprints are the space's sprints; a space without one has no sprints. Opening a sprint there creates it and, when it starts today or earlier and no sprint is active, starts it; closing completes it.
+_Avoid_: board (alone; reads a GitHub Project), Kanban board (it has no sprints)
+
 **Adapter**:
 The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`. The CLI picks the tracker adapter by `tracker.system` from the registry in `scripts/lib/adapters.mjs`, and commands reach it only through the contract operations.
 _Avoid_: driver, connector, integration
@@ -93,7 +97,7 @@ An accepted request, read as a sign that someone wants its issue. `demand list` 
 _Avoid_: vote, upvote
 
 **Sprint**:
-A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.
+A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. On the Local tracker and GitHub the sprint's id is its start date; on Linear it is the cycle number and on Jira the Jira sprint id. Jira calls a planned sprint a future sprint. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.
 _Avoid_: iteration, cycle (outside the CLI and contract names)
 
 **Status**:

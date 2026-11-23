@@ -1,5 +1,5 @@
 // The Jira tracker. discover and capabilities read one site and one space (PMK-76); the Issues family reads and writes work
-// items (PMK-77). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
+// items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's Scrum board (PMK-78). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
 // later issues stay stubs. See docs/superpowers/specs/2026-11-22-pmk-77-jira-work-items-transitions-links-jql-design.md,
 // "Discovery additions, cache and mapping check".
 
@@ -7,6 +7,7 @@ import { TRACKER_OPERATIONS } from '../contract.mjs'
 import { PmkitError } from '../errors.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createJiraClient } from './client.mjs'
+import { cycleOperations } from './cycle-ops.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
@@ -14,6 +15,7 @@ import { makeContext } from './issues.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { buildJiraCapabilities } from './manifest.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
+import { readBoardSprints } from './sprints.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -135,9 +137,14 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     return contexts.get(raw)
   }
 
-  const issues = issueOperations({ client, getContext, now })
+  const sprints = async () => {
+    const { boardId } = await getContext()
+    return boardId === null ? [] : readBoardSprints(client, boardId)
+  }
+  const issues = issueOperations({ client, getContext, now, sprints })
   const relations = relationOperations({ client, ops: issues })
   const history = historyOperations({ client, ops: issues, getContext, now })
+  const cycles = cycleOperations({ client, ops: issues, config, getContext, now })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -154,6 +161,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     comment: history.comment,
     resolveThread: history.resolveThread,
     metricEvents: history.metricEvents,
+    ...cycles,
   }
   // delegate carries the manifest's hint, as GitHub's absent operations do.
   const delegate = guarded(async () => {

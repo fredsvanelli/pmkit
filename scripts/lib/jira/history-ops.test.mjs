@@ -23,8 +23,8 @@ const STATUS = {
 const WORK_TYPE = { story: { id: '10001', name: 'Story' }, epic: { id: '10000', name: 'Epic' } }
 
 /** A tracker over a fresh fake, its own user store and repository root. */
-function setup({ requireResolution, pmkit = {}, routes = {}, context } = {}) {
-  const fake = fakeJiraIssues({ requireResolution })
+function setup({ requireResolution, pmkit = {}, routes = {}, context, sprints } = {}) {
+  const fake = fakeJiraIssues({ requireResolution, sprints })
   const fetch = fakeJiraFetch({ ...fake.routes, ...routes })
   const at = context ?? { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
   const config = { root: at.root, pmkit: { version: 1, tracker: TRACKER, mappings: { types: TYPES }, ...pmkit } }
@@ -63,6 +63,16 @@ test('getHistory gives create, update and comment events in time order', async (
   assert.deepEqual(events.map((e) => e.op), ['create', 'update', 'comment'])
   assert.equal(events[1].field, 'title')
   assert.equal(events[1].to, 'New')
+})
+
+test('getHistory gives a sprint event when an item joins a sprint and when it goes back to the backlog', async () => {
+  const sprint = { id: 1, state: 'active', name: 'Sprint 1', startDate: '2026-11-09T12:00:00.000Z', endDate: '2026-11-20T12:00:00.000Z' }
+  const { fake, tracker } = setup({ sprints: [sprint], pmkit: { mappings: { types: TYPES, fields: { sprint: 'customfield_10020' } } } })
+  const [key] = seed(fake.state)
+  await tracker.updateIssue(key, { sprint: '1' }, ME)
+  await tracker.updateIssue(key, { sprint: null }, ME)
+  const events = (await tracker.getHistory(key)).filter((e) => e.field === 'sprint')
+  assert.deepEqual(events.map((e) => [e.op, e.from, e.to]), [['update', null, '1'], ['update', '1', null]])
 })
 
 test('getHistory since keeps the events at or after the instant', async () => {

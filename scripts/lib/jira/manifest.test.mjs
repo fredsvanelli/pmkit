@@ -7,7 +7,10 @@ import { buildJiraCapabilities } from './manifest.mjs'
 const raw = (overrides = {}) => ({
   space: { key: 'ENG', type: 'software' },
   workTypes: [{ name: 'Epic', level: 'epic' }, { name: 'Story', level: 'standard' }, { name: 'Sub-task', level: 'subtask' }],
-  fields: [{ id: 'customfield_10016', name: 'Story Points', customType: 'com.pyxis.greenhopper.jira:jsw-story-points' }],
+  fields: [
+    { id: 'customfield_10016', name: 'Story Points', customType: 'com.pyxis.greenhopper.jira:jsw-story-points' },
+    { id: 'customfield_10020', name: 'Sprint', customType: 'com.pyxis.greenhopper.jira:gh-sprint' },
+  ],
   license: { software: 'paid' },
   settings: { issueLinking: true, timeTracking: true },
   board: { id: 1, type: 'scrum', estimationField: 'customfield_10016' },
@@ -17,7 +20,7 @@ const raw = (overrides = {}) => ({
 const GIT = { git_host: { system: 'github' } }
 const entry = (entries, id) => entries.find((item) => item.id === id)
 
-const SERVED_NOW = ['estimation', 'multilevel_hierarchy', 'dependencies', 'native_metrics', 'linked_code']
+const SERVED_NOW = ['cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'capacity', 'native_metrics', 'linked_code']
 
 test('the manifest has every capability in order, absent until served', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
@@ -33,12 +36,21 @@ test('PMK-77 serves estimation, the hierarchy, dependencies and native metrics w
   assert.deepEqual(entry(entries, 'native_metrics'), { id: 'native_metrics', path: 'derived', detail: { source: 'history' } })
 })
 
+test('PMK-78 serves cycles natively and capacity through the capacity file', () => {
+  const entries = buildJiraCapabilities(raw(), GIT)
+  assert.deepEqual(entry(entries, 'cycles'), { id: 'cycles', path: 'native' })
+  assert.deepEqual(entry(entries, 'capacity'), { id: 'capacity', path: 'derived', detail: { source: 'local', file: CAPACITY_FILE } })
+  const noField = buildJiraCapabilities(raw({ fields: [] }), GIT)
+  assert.deepEqual(entry(noField, 'cycles'), { id: 'cycles', path: 'absent', enableHint: 'No sprint field in space ENG' })
+  assert.deepEqual(entry(noField, 'capacity'), { id: 'capacity', path: 'absent', enableHint: 'Capacity needs cycles' })
+  const unmapped = buildJiraCapabilities(raw(), { ...GIT, mappings: { fields: { sprint: 'none' } } })
+  assert.equal(entry(unmapped, 'cycles').enableHint, 'No sprint field in space ENG')
+})
+
 test('an unserved capability keeps the site answer and names its issue', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
-  assert.deepEqual(entry(entries, 'cycles'), { id: 'cycles', path: 'absent', detail: { site: 'native' }, enableHint: 'The Jira adapter does not serve cycles yet (PMK-78)' })
   assert.deepEqual(entry(entries, 'deliverables').detail, { site: 'native', entity: 'epic' })
   assert.deepEqual(entry(entries, 'releases').detail, { site: 'native', entity: 'version' })
-  assert.deepEqual(entry(entries, 'capacity').detail, { site: 'derived', source: 'local', file: CAPACITY_FILE })
   assert.deepEqual(entry(entries, 'saved_views').detail, { site: 'native', source: 'filters' })
   assert.equal(entry(entries, 'saved_views').enableHint, 'The Jira adapter does not serve saved_views yet')
   assert.equal(entry(entries, 'time_tracking').detail.site, 'native')
@@ -61,8 +73,8 @@ test('a capability the site lacks gives the site hint and no site path', () => {
 })
 
 test('free Jira Software still has sprints; an unread license defers to the board', () => {
-  assert.equal(entry(buildJiraCapabilities(raw({ license: { software: 'free' } }), GIT), 'cycles').detail.site, 'native')
-  assert.equal(entry(buildJiraCapabilities(raw({ license: { software: null } }), GIT), 'cycles').detail.site, 'native')
+  assert.equal(entry(buildJiraCapabilities(raw({ license: { software: 'free' } }), GIT), 'cycles').path, 'native')
+  assert.equal(entry(buildJiraCapabilities(raw({ license: { software: null } }), GIT), 'cycles').path, 'native')
   assert.equal(entry(buildJiraCapabilities(raw({ license: { software: null }, board: null }), GIT), 'cycles').detail, undefined)
 })
 

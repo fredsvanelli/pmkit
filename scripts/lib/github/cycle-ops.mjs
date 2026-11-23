@@ -2,12 +2,11 @@
 // is the start date. Capacity lives in .pmkit/capacity.yaml, as on Linear, under the key github:<owner>/<number> of the Project.
 // See docs/specs/2026-11-17-pmk-88-github-iterations-milestones-epics-design.md, "Sprints".
 
-import { stoppedHalfway } from '../cycle-moves.mjs'
+import { checkMoveInput, moveTargetIn, stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
 import { addDays, baseField, overlaps, SPRINT_STATES, validDate } from '../local/sprints.mjs'
 import { entryFor, readCapacity, writeEntry } from '../capacity-store.mjs'
 import { appendIteration, ITERATION_FIELD_QUERY, sprintsOf, toSprint, UPDATE_ITERATIONS } from './cycles.mjs'
-import { closedSprint } from '../issue-filter.mjs'
 import { projectName } from './writes.mjs'
 
 const SETUP = '/pmkit:setup'
@@ -154,14 +153,7 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
   /** The sprint a move goes to: null for none, the active one for current, or the one starting on to. */
   async function moveTarget({ context, field, key }, to) {
     if (to === null) return null
-    const { sprints } = await readSprints(context, field, key)
-    const target = to === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === to)
-    if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
-    // The sprint is where the issues go, a value of the move: INVALID_INPUT, as in createIssue and updateIssue.
-    if (!target) throw invalid(`sprint ${to} does not exist`, 'pmkit cycle list')
-    // A closed sprint's velocity is fixed, so it takes no issue (PMK-166).
-    if (target.state === 'closed') throw closedSprint(to)
-    return target
+    return moveTargetIn((await readSprints(context, field, key)).sprints, to)
   }
 
   /**
@@ -175,11 +167,6 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
       reads.set(id, await ops.readNode(id))
     }
     return reads
-  }
-
-  function checkMoveInput(ids, to) {
-    if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
-    if (to !== null && typeof to !== 'string') throw invalid('to must be a sprint id, current or null')
   }
 
   async function moveToCycle(ids, to, actor, { dryRun = false } = {}) {
