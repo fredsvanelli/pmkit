@@ -1,0 +1,41 @@
+$ pmkit jira ideas connect IDEA-1 ENG-1
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `jira ideas connect` works only with the Jira tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit jira ideas connect IDEA-1 ENG-1 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`jira ideas connect` works only with the Jira tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit jira ideas connect IDEA-1 ENG-1 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `jira ideas connect` works only with the Jira tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit jira ideas connect IDEA-1 ENG-1 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`jira ideas connect` works only with the Jira tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)

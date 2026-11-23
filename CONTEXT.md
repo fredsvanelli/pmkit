@@ -112,6 +112,18 @@ _Avoid_: roadmap, advanced roadmap, portfolio
 One alternative version of a plan's schedule. Every plan has a default scenario; Jira's public API names only that one, so pmkit reads no other.
 _Avoid_: what-if, sandbox, draft plan
 
+**Idea**:
+A Jira Product Discovery work item: something the team might build, collected with evidence and votes before it is planned. An idea lives in a Product Discovery project, not in the tracker's space, and is not an issue. Connecting an idea to an epic hands it to delivery; the epic implements the idea. `jira ideas list` reads ideas and `jira ideas connect` connects one.
+_Avoid_: feature request, suggestion
+
+**Insight**:
+A piece of evidence attached to an idea in Jira Product Discovery, such as a customer quote or a link to a support ticket. Jira's REST API does not return insights, so pmkit reports them as unread.
+_Avoid_: data point, evidence
+
+**Vote**:
+A Jira Product Discovery vote on an idea, counted in a votes field of the idea's project. Jira Product Discovery computes the count; pmkit reads it and casts none. Not a demand signal, which is an accepted request.
+_Avoid_: upvote, demand
+
 **Status**:
 A name a tracker gives to a step of its workflow, such as `In review`. Each status belongs to one category, and commands reason by the category.
 _Avoid_: state (a sprint has a state, an issue has a status), column

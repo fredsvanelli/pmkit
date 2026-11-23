@@ -159,7 +159,7 @@ test('the github commands are the discussions and draft-issues commands and stay
 })
 
 test('the jira commands are the plans commands and stay out of the mirror', () => {
-  assert.deepEqual(COMMANDS.filter((command) => command.jira).map((command) => command.name), ['jira plans list', 'jira plans get'])
+  assert.deepEqual(COMMANDS.filter((command) => command.jira).map((command) => command.name), ['jira plans list', 'jira plans get', 'jira ideas list', 'jira ideas connect'])
   assert.ok(MIRRORED.every((command) => !command.jira))
 })
 

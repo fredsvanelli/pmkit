@@ -1804,6 +1804,7 @@ test('every write but migrate refuses an invalid .pmkit/config.yaml and writes n
     'linear triage set': ['--off'],
     'github discussions comment': ['1', '--body-file', input('comment.md')],
     'github draft-issues convert': ['PVTI_1'],
+    'jira ideas connect': ['IDEA-1', 'ENG-1'],
     migrate: [],
     'local-migrate export': ['--workspace', 'acme', '--team', 'ACME'],
     'local-migrate import': ['--workspace', 'acme', '--team', 'ACME'],
@@ -1938,6 +1939,7 @@ test('every read goes on with one warning', () => {
     'github draft-issues list': [],
     'jira plans list': [],
     'jira plans get': ['12'],
+    'jira ideas list': [],
     'local-migrate status': [],
     render: ['board'],
   }
