@@ -1,6 +1,6 @@
 # PMK-82: The jira-plans-scenarios command
 
-Issue PMK-82, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criteria: "Reads plans, scenarios, per-team capacity and schedule dependencies" and "Without Premium it says the capability is absent". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0017, the PMK-43 (Linear triage rotation) and PMK-90 (GitHub Discussions) system-specific commands, the Jira adapter code and Atlassian's published OpenAPI document for the Jira Cloud platform REST API v3 (`swagger-v3.v3.json`, read on 2026-11-23). Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Status: draft, waiting for the Interview. No Jira credentials exist, so nothing here was checked against a live site.
+Issue PMK-82, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criteria: "Reads plans, scenarios, per-team capacity and schedule dependencies" and "Without Premium it says the capability is absent". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0017, the PMK-43 (Linear triage rotation) and PMK-90 (GitHub Discussions) system-specific commands, the Jira adapter code and Atlassian's published OpenAPI document for the Jira Cloud platform REST API v3 (`swagger-v3.v3.json`, read on 2026-11-23). Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Status: approved by the owner (Orca coordinator) on 2026-11-23, with yes to Q1 to Q4 in "Interview answers". No Jira credentials exist, so nothing here was checked against a live site.
 
 ## Intent
 
@@ -94,13 +94,15 @@ The plan's `scheduling.dependencies` says whether dependent work schedules one a
 - `commands/jira/plans-scenarios.md`: (1) `capabilities`; stop when the tracker is not `jira`; (2) `jira plans list`; on `available: false` print the reason and hint, say the capability is absent, stop; (3) table of plans; ask which plan when there are several (the user may name one in the arguments); (4) `jira plans get <id>`; show the scheduling, the scenario, the releases and the teams' capacity; (5) point to `/pmkit:issues:dependencies` for the links. No write, so no confirmation point.
 - Listed in `skills/pmkit/SKILL.md`, `README.md` and `scripts/plugin.test.mjs`.
 - `docs/runbooks/plans-jira.md` with `scripts/runbook-plans-jira.test.mjs` (fake Jira routes for the Plans calls, a Premium site and a 403 site). Live check: skipped, with an EPC-14 follow-up.
-- No ADR: every decision here is reversible by a later change. No new CONTEXT.md term beyond **Plan** and **Scenario** (added in Interview if approved).
+- No ADR: every decision here is reversible by a later change. CONTEXT.md gains **Plan** and **Scenario**.
 
-## Open questions for the Interview
+## Interview answers (owner, 2026-11-23)
 
-- **Q1. Scenarios.** Jira's public API exposes only each plan's default scenario id. Recommendation: show the default scenario, say that other scenarios are not readable through Jira's public API, and file a follow-up in EPC-14 to revisit when Atlassian publishes one. Alternative: the private `/rest/jpo` endpoints (rejected above).
-- **Q2. Schedule dependencies.** Recommendation: the plan's scheduling settings plus a pointer to `/pmkit:issues:dependencies` for the links. Alternative: read the plan's work items through its sources (board, project, filter) and list their blocking links in the command (more calls and a JQL per source type).
-- **Q3. "The capability is absent".** Recommendation: the command answers `available: false` with a hint, as the Linear triage and GitHub Discussions commands do, and the manifest's 20 capabilities stay as they are. Alternative: a 21st capability id `plans` in the manifest, absent on every other tracker.
+- **Q1. Scenarios: yes.** Show each plan's default scenario and say that other scenarios are not readable through Jira's public API. No private `/rest/jpo` endpoints. A follow-up in EPC-14 revisits this when Atlassian publishes a scenarios API.
+- **Q2. Schedule dependencies: yes.** Show the plan's dependency scheduling setting (`sequential` or `concurrent`) and point to `/pmkit:issues:dependencies` for the blocking links; the command does not read the plan's work items.
+- **Q3. Absent capability: yes.** The command answers `available: false` with a reason and a hint, as the Linear triage and GitHub Discussions commands do. The manifest's 20 capabilities stay unchanged.
+- **Q4. Scope: yes.** Plans are site-wide and cross-space, so `jira plans list` lists every plan on `tracker.scope.site`, not filtered by `tracker.scope.space`.
+- CONTEXT.md gains **Plan** and **Scenario**; no ADR.
 
 ## Left to the builder
 
