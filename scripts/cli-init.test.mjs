@@ -470,7 +470,7 @@ test('a minimal hand-written .pmkit/config.yaml is refused with the missing keys
     assert.equal(result.status, 2)
     const { error } = JSON.parse(result.stdout)
     assert.match(error.message, /version must be 1/)
-    assert.match(error.message, /git_host\.system must be github or none/)
+    assert.match(error.message, /git_host\.system must be github, bitbucket or none/)
     assert.match(error.message, /write_policy\.confirm must be one of all_writes, single_writes, none/)
     assert.match(error.nextStep, /\.pmkit\/config\.yaml/)
     assert.deepEqual(hashTree(dir), before)

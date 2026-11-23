@@ -8,7 +8,7 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { repoDocPath, storedDocPath } from './lib/doc-path.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, GIT_HOSTS_TEXT, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError, unarchiveNotSupported } from './lib/errors.mjs'
@@ -4026,7 +4026,7 @@ function runInit(ctx) {
   }
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
   const host = opt('git-host')
-  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   const idStyle = opt('id-style')
   if (idStyle !== undefined && !ID_STYLES.includes(idStyle)) throw usageError(`--id-style must be ${ID_STYLES.join(' or ')}`)
   const unit = opt('estimate-unit')
@@ -4262,7 +4262,7 @@ async function runLinkRepo(ctx) {
   const flagRepo = ctx.opt('repo')
   const flagBranch = ctx.opt('default-branch')
   const wantedRemote = ctx.opt('remote')
-  if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   if (flagRepo !== undefined && !/^[^/\s]+\/[^/\s]+$/.test(flagRepo)) throw usageError('--repo must be owner/name, like acme/app')
   if (flagBranch !== undefined && !validBranch(flagBranch)) throw usageError(`--default-branch ${flagBranch} is not a branch name`, 'Pass a branch name such as main')
 
@@ -4491,7 +4491,7 @@ function hostedInitFile(ctx, system, label) {
     if (ctx.opt(flag) !== undefined || ctx.list(flag).length > 0) throw usageError(`${label} sets --${flag} itself`, `Remove --${flag}`)
   }
   const gitHost = ctx.opt('git-host')
-  if (gitHost !== undefined && !GIT_HOSTS.includes(gitHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (gitHost !== undefined && !GIT_HOSTS.includes(gitHost)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   const update = ctx.flag('update')
   const pmkitFile = path.join('.pmkit', 'config.yaml')
   const file = path.join(ctx.root, pmkitFile)

@@ -513,7 +513,7 @@ test('migrate warns about an invalid .pmkit/config.yaml and still checks and mig
     assert.ok(text.includes('system: none'))
     fs.writeFileSync(file, text.replace('system: none', 'system: gitlab'))
   }
-  const warning = '.pmkit/config.yaml is not valid, so writes are refused: git_host.system must be github or none; run pmkit validate'
+  const warning = '.pmkit/config.yaml is not valid, so writes are refused: git_host.system must be github, bitbucket or none; run pmkit validate'
   // A later pmkit may read an older .pmkit/config.yaml as invalid; migrate reads only tracker.system and tracker.path from it.
   const inGit = gitRepo().root
   gitlab(inGit)
@@ -537,6 +537,6 @@ test('pmkit migrate exits 0 with a warning when .pmkit/config.yaml is not valid,
     const result = spawnSync(process.execPath, [CLI, ...args, '--json'], { cwd: root, env: { ...process.env, PMKIT_USER: 'fred' }, encoding: 'utf8' })
     assert.equal(result.status, 0, result.stdout + result.stderr)
     assert.equal(JSON.parse(result.stdout).steps.length, 0)
-    assert.match(result.stderr, /^warning: \.pmkit\/config\.yaml is not valid, so writes are refused: git_host\.system must be github or none; run pmkit validate$/m)
+    assert.match(result.stderr, /^warning: \.pmkit\/config\.yaml is not valid, so writes are refused: git_host\.system must be github, bitbucket or none; run pmkit validate$/m)
   }
 })
