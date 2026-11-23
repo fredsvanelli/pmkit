@@ -444,6 +444,19 @@ test('updateIssue sets the release as fixVersions, refuses an unknown one and cl
   assert.deepEqual(JSON.parse(callsTo(fetch, 'PUT', `/rest/api/3/issue/${key}`).at(-1).body), { fields: { fixVersions: [] } })
 })
 
+test('setting or clearing a release keeps the archived fix versions the work item holds', async () => {
+  const { fake, fetch, tracker } = setup({ versions: VERSIONS })
+  const [key] = seed(fake.state)
+  fake.state.items[key].fields.fixVersions = [{ id: '10202', name: 'old', archived: true, released: true }]
+  const set = await tracker.updateIssue(key, { release: '2.0' }, ME)
+  assert.equal(set.after.release, '2.0')
+  assert.deepEqual(JSON.parse(callsTo(fetch, 'PUT', `/rest/api/3/issue/${key}`).at(-1).body), { fields: { fixVersions: [{ id: '10202' }, { id: '10200' }] } })
+  const cleared = await tracker.updateIssue(key, { release: null }, ME)
+  assert.equal(cleared.after.release, undefined)
+  assert.deepEqual(JSON.parse(callsTo(fetch, 'PUT', `/rest/api/3/issue/${key}`).at(-1).body), { fields: { fixVersions: [{ id: '10202' }] } })
+  assert.deepEqual(fake.state.items[key].fields.fixVersions.map((version) => version.id), ['10202'])
+})
+
 test('createIssue with a release sets fixVersions', async () => {
   const { fake, tracker } = setup({ versions: VERSIONS })
   const made = await tracker.createIssue({ title: 'First', release: 'Release "A"' }, ME)

@@ -128,6 +128,8 @@ export function toIssue(item, context, { children = [] } = {}) {
   setDefined(issue, 'created', jiraTime(fields.created))
   setDefined(issue, 'updated', jiraTime(fields.updated))
   Object.defineProperty(issue, 'blockerCategories', { value: blockerCategories, enumerable: false })
+  // pmkit does not show archived fix versions, so a release write keeps them rather than drop data it cannot see.
+  Object.defineProperty(issue, 'archivedVersionIds', { value: (fields.fixVersions ?? []).filter((version) => version.archived).map((version) => String(version.id)), enumerable: false })
   return issue
 }
 
@@ -179,14 +181,18 @@ function planMilestone(patch) {
   if (patch.milestone !== undefined && patch.milestone !== null) throw notSupported('Jira has no milestones', 'Use a release (version) or an epic')
 }
 
-/** A release is a live version's name, sent as the one fixVersion; null clears an issue's releases. `versions` is the space's live raw versions. */
-function planRelease(patch, state, create, versions) {
+/**
+ * A release is a live version's name, sent as the one live fixVersion; null clears an issue's releases. Both keep the archived fix
+ * versions of `before`. `versions` is the space's live raw versions.
+ */
+function planRelease(patch, state, create, versions, before) {
   const value = patch.release
   if (value === undefined) return
   const { after } = state
+  const archived = (before?.archivedVersionIds ?? []).map((id) => ({ id }))
   if (value === null) {
     if (create || (after.release === undefined && after.releases === undefined)) return
-    state.result.fields.fixVersions = []
+    state.result.fields.fixVersions = archived
     delete after.release
     delete after.releases
     return
@@ -194,7 +200,7 @@ function planRelease(patch, state, create, versions) {
   const version = typeof value === 'string' ? liveVersions(versions).find((candidate) => candidate.name === value) : undefined
   if (!version) throw invalid(`release ${value} does not exist`, 'pmkit release list')
   if (!create && after.release === value) return
-  state.result.fields.fixVersions = [{ id: version.id }]
+  state.result.fields.fixVersions = [...archived, { id: version.id }]
   delete after.releases
   after.release = value
 }
@@ -350,6 +356,6 @@ export function toFields(patch, before, context, { create = false, now = new Dat
   if (create) planCreateOnly(patch, state, context)
   planBranch(patch, state, create)
   planSprint(patch, state, context, sprints)
-  planRelease(patch, state, create, versions)
+  planRelease(patch, state, create, versions, before)
   return state.result
 }

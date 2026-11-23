@@ -110,7 +110,7 @@ Issue fields and search:
 
 - Read: `fixVersions` minus archived ones: one → `release`, two or more → `releases` (sorted), as Linear.
 - Search (Q2): every `searchIssues` adds `issuetype not in (<epic-level type ids>)` when the space has epic-level work types, so `issues list`, cycle plan, metrics and `issues dependencies` see no epic as an issue.
-- Write (`createIssue`, `updateIssue`): `release: <id>` resolves the name (unknown → `INVALID_INPUT`, next step `pmkit release list`) and sets `fixVersions: [{ id }]`, replacing the others; `null` clears.
+- Write (`createIssue`, `updateIssue`): `release: <id>` resolves the name (unknown → `INVALID_INPUT`, next step `pmkit release list`) and sets it as the one live fix version, replacing the other live ones; `null` clears them. Both keep the archived fix versions the work item holds, which pmkit does not show and so must not drop (PMK-79 follow-up fix).
 - `searchIssues({ release })`: JQL `fixVersion = <version id>`; an unknown name matches no issue, as on Local (ruling during Execute).
 - `milestone` with a value (issue writes, epic create, milestone operations) → `NOT_SUPPORTED`, "Jira has no milestones", next step "Use a release (version) or an epic".
 
