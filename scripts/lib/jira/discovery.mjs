@@ -121,6 +121,7 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
       name: field.name,
       system: field.schema?.system ?? null,
       customType: field.schema?.custom ?? null,
+      type: field.schema?.type ?? null,
     })),
     labels: labels === null ? null : labels.items.filter((label) => typeof label === 'string'),
     license: licenseOf(license),

@@ -119,6 +119,12 @@ test('scoped fields of another space are dropped', async () => {
   assert.equal(view.workTypes.length, 4)
 })
 
+test('raw fields keep their schema type', async () => {
+  const { raw } = await discover()
+  assert.deepEqual(raw.fields.find((f) => f.id === 'customfield_10016'), { id: 'customfield_10016', name: 'Story Points', system: null, customType: 'com.atlassian.jira.plugin.system.customfieldtypes:float', type: 'number' })
+  assert.equal(raw.fields.find((f) => f.id === 'summary').type, 'string')
+})
+
 test('optional reads degrade to warnings', async () => {
   const { raw, view } = await discover({
     routes: { 'GET /rest/api/3/label': denied, 'GET /rest/api/3/instance/license': denied, 'GET /rest/api/3/configuration': denied, 'GET /rest/agile/1.0/board': denied },
