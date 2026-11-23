@@ -57,6 +57,7 @@ These answer `NOT_SUPPORTED`. Opening a sprint on GitHub Enterprise Server fails
 - `/pmkit:github:discussions`: Summarize a GitHub discussion (an RFC, an idea, a question) and turn it into an issue after you confirm. It works only with the GitHub Issues tracker.
 - `/pmkit:github:draft-issues`: Review the draft issues of a GitHub Project and convert the ready ones into issues after a full preview. It works only with the GitHub Issues tracker.
 - `/pmkit:linear:triage-rotation`: See who is on triage duty in Linear, change the rotation, and read Linear's Triage Intelligence suggestions.
+- `/pmkit:jira:plans-scenarios`: Read the Jira Premium Plans of the site: scheduling settings, the default scenario, cross-project releases and the capacity of each team. It works only with the Jira tracker and writes nothing.
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
 - `/pmkit:local:migrate`: Move the Local tracker to a Linear team, import a Linear team into .issues/, undo an export, or switch pmkit to the new tracker.

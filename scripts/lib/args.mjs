@@ -1,9 +1,9 @@
 import { PmkitError } from './errors.mjs'
 
 // Flags that never take a value, so `--dry-run ISS-1` keeps ISS-1 as a positional.
-export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save', 'off', 'important', 'overwrite', 'all', 'redact', 'reviews', 'create', 'recheck-team'])
+export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save', 'off', 'important', 'overwrite', 'all', 'redact', 'reviews', 'create', 'recheck-team', 'trashed'])
 // Commands with a second word: `issues move`, `cycle open`.
-export const GROUPS = new Set(['alerts', 'todos', 'team', 'issues', 'cycle', 'epic', 'milestone', 'release', 'metrics', 'pr', 'deploys', 'ci', 'text', 'docs', 'views', 'goal', 'goals', 'customers', 'requests', 'demand', 'inbox', 'linear', 'github', 'local-migrate', 'roadmap'])
+export const GROUPS = new Set(['alerts', 'todos', 'team', 'issues', 'cycle', 'epic', 'milestone', 'release', 'metrics', 'pr', 'deploys', 'ci', 'text', 'docs', 'views', 'goal', 'goals', 'customers', 'requests', 'demand', 'inbox', 'linear', 'github', 'jira', 'local-migrate', 'roadmap'])
 
 /**
  * Splits argv into a command (one or two words), options and positionals.
@@ -43,7 +43,7 @@ export function parseArgs(argv, { booleans = BOOLEANS, groups = GROUPS } = {}) {
     }
   }
   const grouped = words.length > 0 && groups.has(words[0]) && words.length > 1
-  // `linear triage show`, `github discussions list` and `github draft-issues list` have three words.
-  const depth = grouped ? (['linear', 'github'].includes(words[0]) && words.length > 2 ? 3 : 2) : 1
+  // `linear triage show`, `github discussions list`, `jira plans list` and `github draft-issues list` have three words.
+  const depth = grouped ? (['linear', 'github', 'jira'].includes(words[0]) && words.length > 2 ? 3 : 2) : 1
   return { command: words.slice(0, depth).join(' ') || undefined, options, positionals: words.slice(depth) }
 }

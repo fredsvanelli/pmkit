@@ -1936,6 +1936,8 @@ test('every read goes on with one warning', () => {
     'github discussions list': [],
     'github discussions get': ['1'],
     'github draft-issues list': [],
+    'jira plans list': [],
+    'jira plans get': ['12'],
     'local-migrate status': [],
     render: ['board'],
   }

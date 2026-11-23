@@ -104,6 +104,14 @@ _Avoid_: vote, upvote
 A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. On the Local tracker and GitHub the sprint's id is its start date; on Linear it is the cycle number and on Jira the Jira sprint id. Jira calls a planned sprint a future sprint. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.
 _Avoid_: iteration, cycle (outside the CLI and contract names)
 
+**Plan**:
+A Jira Premium cross-team plan (Jira Plans, formerly Advanced Roadmaps): a named set of issue sources (boards, spaces or filters) scheduled together, with teams and their capacity. A plan is site-wide, not part of one space. `jira plans list` and `jira plans get` read plans; pmkit does not write them.
+_Avoid_: roadmap, advanced roadmap, portfolio
+
+**Scenario**:
+One alternative version of a plan's schedule. Every plan has a default scenario; Jira's public API names only that one, so pmkit reads no other.
+_Avoid_: what-if, sandbox, draft plan
+
 **Status**:
 A name a tracker gives to a step of its workflow, such as `In review`. Each status belongs to one category, and commands reason by the category.
 _Avoid_: state (a sprint has a state, an issue has a status), column

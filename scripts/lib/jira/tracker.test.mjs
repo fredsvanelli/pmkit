@@ -37,6 +37,12 @@ test('the Jira tracker holds every contract operation', () => {
   assertTracker(setup().tracker)
 })
 
+test('the Jira tracker exposes plans', () => {
+  const { tracker } = setup()
+  assert.equal(typeof tracker.plans.list, 'function')
+  assert.equal(typeof tracker.plans.get, 'function')
+})
+
 test('a missing token fails at creation with no request', () => {
   const fetch = fakeJiraFetch(jiraSiteRoutes())
   assert.throws(() => createJiraTracker(config(), { env: { JIRA_EMAIL: 'a@b.c' }, now: NOW, fetch }), { code: 'AUTH' })

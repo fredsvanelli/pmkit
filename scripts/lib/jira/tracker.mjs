@@ -15,6 +15,7 @@ import { epicOperations, NO_MILESTONES } from './epic-ops.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
+import { planOperations } from './plans.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { releaseOperations } from './releases.mjs'
 import { buildJiraCapabilities, NO_GOALS } from './manifest.mjs'
@@ -210,5 +211,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     delegate,
   }
   const implemented = { discover, capabilities, ...refused, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
-  return Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)]))
+  // Jira-only feature beside the contract, as GitHub's discussions (PMK-90). Plans read no mapping, so they skip guarded (PMK-82).
+  const plans = planOperations({ client, site: scope.site })
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), plans }
 }
