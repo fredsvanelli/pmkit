@@ -12,7 +12,7 @@ export const SPACE_PATH = 'tracker.scope.space'
 // todo, in_progress and done come from the Jira status categories; blocked comes from Blocks links (Interview Q1).
 const STATUS_KEYS = ['backlog', 'in_review', 'canceled']
 // The roles the Jira code reads through mappings.fields (Interview Q2).
-const FIELD_KEYS = ['estimate', 'acceptance_criteria']
+const FIELD_KEYS = ['estimate', 'acceptance_criteria', 'sprint']
 const CATEGORY_ORDER = ['new', 'indeterminate', 'done']
 
 // Names that setup recommends, compared without case. The first match wins.
@@ -27,6 +27,7 @@ const TYPE_MATCHES = { feature: ['story', 'feature'], bug: ['bug'], task: ['task
 const FIELD_FITS = {
   estimate: (field) => (field.type === 'number' && field.customType !== null) || field.id === 'timeoriginalestimate',
   acceptance_criteria: (field) => field.type === 'string' && field.customType !== null,
+  sprint: (field) => field.customType === 'com.pyxis.greenhopper.jira:gh-sprint',
 }
 
 const words = (key) => key.replace(/_/g, ' ')

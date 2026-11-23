@@ -83,14 +83,27 @@ test('acceptance criteria with no candidate is a note', async () => {
   assert.equal(bare.values.fields.acceptance_criteria, undefined)
   const one = proposeJiraSetup(await rawOf({ extraFields: [CRITERIA] }), {}, {}, TYPES)
   assert.equal(questionAt(one, 'mappings.fields.acceptance_criteria'), undefined)
-  assert.deepEqual(one.applied, [{ path: 'mappings.fields.acceptance_criteria', value: 'customfield_10050', reason: 'the site offers only this field' }])
+  assert.deepEqual(one.applied.filter((item) => item.path.endsWith('acceptance_criteria')), [{ path: 'mappings.fields.acceptance_criteria', value: 'customfield_10050', reason: 'the site offers only this field' }])
   assert.equal(one.values.fields.acceptance_criteria, 'customfield_10050')
+})
+
+test('the sprint field is applied when the site offers only one, and applied again to a held file without it', async () => {
+  const applied = { path: 'mappings.fields.sprint', value: 'customfield_10020', reason: 'the site offers only this field' }
+  const raw = await rawOf()
+  const first = proposeJiraSetup(raw, {}, {}, TYPES)
+  assert.equal(questionAt(first, 'mappings.fields.sprint'), undefined)
+  assert.deepEqual(first.applied.filter((item) => item.path === applied.path), [applied])
+  assert.equal(first.values.fields.sprint, 'customfield_10020')
+  const held = proposeJiraSetup(raw, { fields: { estimate: 'customfield_10016' } }, {}, TYPES)
+  assert.deepEqual(held.applied.filter((item) => item.path === applied.path), [applied])
+  assert.equal(held.values.fields.sprint, 'customfield_10020')
+  refused(() => proposeJiraSetup(raw, {}, { fields: { sprint: 'customfield_10016' } }, TYPES))
 })
 
 test('no other field role is asked', async () => {
   const raw = await rawOf()
   const result = proposeJiraSetup(raw, {}, {}, TYPES)
-  for (const role of ['priority', 'assignee', 'target_date', 'start_date', 'time_spent', 'sprint']) {
+  for (const role of ['priority', 'assignee', 'target_date', 'start_date', 'time_spent']) {
     assert.equal(questionAt(result, `mappings.fields.${role}`), undefined)
   }
   refused(() => proposeJiraSetup(raw, {}, { fields: { priority: 'priority' } }, TYPES))
@@ -139,7 +152,7 @@ test('all answered', async () => {
   }
   const result = proposeJiraSetup(await rawOf(), {}, answers, TYPES)
   assert.deepEqual(result.questions, [])
-  assert.deepEqual(result.values, { status: { backlog: 'none', in_review: 'Review', canceled: 'none' }, fields: { estimate: 'customfield_10016' }, types: { feature: 'Story', bug: 'Bug' } })
+  assert.deepEqual(result.values, { status: { backlog: 'none', in_review: 'Review', canceled: 'none' }, fields: { estimate: 'customfield_10016', sprint: 'customfield_10020' }, types: { feature: 'Story', bug: 'Bug' } })
 })
 
 test('a held mapping that broke is asked again', async () => {
