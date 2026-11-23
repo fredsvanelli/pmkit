@@ -69,7 +69,7 @@ No public endpoint lists a plan's scenarios or reads a non-default scenario: the
                             "startDate": { "type": "DueDate" }, "endDate": { "type": "TargetEndDate" } },
             "releases": [{ "name": "Spring launch", "versionIds": [10001, 10002] }],
             "teams": [{ "id": "5", "type": "plan_only", "name": "Payments", "planningStyle": "scrum", "sprintLength": 14,
-                        "capacity": 30, "capacityUnit": "story_points per sprint", "source": 7, "members": ["acc-1"] }] },
+                        "capacity": 30, "capacityUnit": "story points per sprint", "source": 7, "members": ["acc-1"] }] },
   "warnings": [] }
 ```
 
