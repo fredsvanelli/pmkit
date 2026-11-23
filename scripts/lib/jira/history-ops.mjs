@@ -19,7 +19,7 @@ const noThreads = () => new PmkitError('NOT_SUPPORTED', 'Jira comments have no t
  * The history and comment operations over a Jira client and the issue operations `ops` (readItem, requireActor). `timeTracking()` says
  * whether the site has time tracking on, so getHistory reads the worklogs (PMK-80).
  */
-export function historyOperations({ client, ops, getContext, now = () => new Date(), timeTracking = async () => true }) {
+export function historyOperations({ client, ops, getContext, now = () => new Date(), timeTracking }) {
   const fromSince = (since) => (event) => since === undefined || compareTimes(event.at, since) >= 0
 
   const changelogOf = async (key) => (await client.paginate(issuePath(key, '/changelog'), { key: 'values', pageSize: PAGE_SIZE, maxPages: 1000 })).items

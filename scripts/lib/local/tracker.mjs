@@ -1242,9 +1242,8 @@ export function createLocalTracker(root, {
         try { sprints.push(readSprint(sprintsDir, path.basename(name, '.yaml'))) } catch { sprintsUnread.push(path.basename(name, '.yaml')) }
       }
     }
-    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes }))
     return {
-      ...summarizeTimeEntries({ issue: id, entries, sprints, ignored: logged.length - valid.length }),
+      ...summarizeTimeEntries({ issue: id, entries: valid, sprints, ignored: logged.length - valid.length }),
       ...(sprintsUnread.length > 0 ? { sprintsUnread } : {}),
     }
   }
