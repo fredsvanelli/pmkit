@@ -50,6 +50,8 @@ const HANDLERS = {
     for (const label of filter.labels) out.clauses.push(`labels = ${jqlString(label)}`)
   },
   sprint(filter, out, context, { activeId }) {
+    // null is no sprint filter, as on Linear.
+    if (typeof filter.sprint !== 'string') return
     const unsupported = sprintUnsupported(context)
     if (unsupported) throw unsupported
     if (filter.sprint === 'none') out.clauses.push('(sprint is EMPTY OR sprint not in openSprints())')

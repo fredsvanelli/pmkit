@@ -108,6 +108,13 @@ test('a sprint id, current and none become clauses and the sprint step', async (
   assert.deepEqual(translateFilter({ sprint: 'none' }, ctx), { jql: `project = "ENG" AND (sprint is EMPTY OR sprint not in openSprints())${TAIL}`, clientSteps: ['sprint'], serverLimit: undefined })
 })
 
+test('a null sprint is no sprint filter, as on Linear', async () => {
+  const ctx = await context()
+  assert.deepEqual(translateFilter({ sprint: null }, ctx), { jql: `project = "ENG"${TAIL}`, clientSteps: [], serverLimit: undefined })
+  const noBoard = await context({ edit: (raw) => { raw.board = null } })
+  assert.doesNotThrow(() => translateFilter({ sprint: null }, noBoard))
+})
+
 test('a sprint filter without a Scrum board or a sprint field is NOT_SUPPORTED', async () => {
   const noBoard = await context({ edit: (raw) => { raw.board = null } })
   assert.throws(() => translateFilter({ sprint: '41' }, noBoard), { code: 'NOT_SUPPORTED', message: /Scrum board in space ENG/, nextStep: '/pmkit:setup' })

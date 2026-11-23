@@ -124,12 +124,12 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
     node scripts/pmkit.mjs cycle list --json
     ```
 
-    Expect exit 2 and `error.code` `NOT_SUPPORTED`.
+    Expect exit 2, `error.code` `NOT_SUPPORTED` and `error.nextStep` `Sprints need a Scrum board in space ENG`.
 
 ## Failures
 
 | Case | Code | Next step |
 |---|---|---|
-| `cycle` in a space without a Scrum board (step 10) | `NOT_SUPPORTED` | Create a Scrum board for the space in Jira |
+| `cycle` in a space without a Scrum board (step 10) | `NOT_SUPPORTED` | `Sprints need a Scrum board in space ENG`: create a Scrum board for the space in Jira |
 | A move to done without `--field` for a required screen field (step 8) | `INVALID_INPUT` | Run with `--dry-run`, then pass `--field <id>=<value>` |
 | `issues list --sprint none` or `current` with no sprint field in `mappings.fields` | `NOT_SUPPORTED` | Run `/pmkit:setup` (covered by `scripts/lib/jira/filter.test.mjs`, not by this runbook's steps) |

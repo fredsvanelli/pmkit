@@ -18,13 +18,13 @@ const AGILE = '/rest/agile/1.0'
 const ACTIVE = { id: 1, state: 'active', name: 'Sprint 1', startDate: '2026-11-16T12:00:00.000Z', endDate: '2026-11-27T12:00:00.000Z' }
 const UNDATED = { id: 2, state: 'future', name: 'Sprint 2' }
 
-/** A tracker over a fresh fake; `routes` wrap or replace the fake's routes, given the fake. */
+/** A tracker over a fresh fake; `routes` wrap or replace the fake's routes, given the fake. `fetch.calls` logs every request. */
 function setup({ sprints, routes = () => ({}) } = {}) {
   const fake = fakeJiraIssues({ requireResolution: false, sprints })
   const fetch = fakeJiraFetch({ ...fake.routes, ...routes(fake) })
   const config = { root: tempDir(), pmkit: { version: 1, tracker: TRACKER, mappings: { types: { story: 'Story' } } } }
   const tracker = createJiraTracker(config, { env: { ...FAKE_ENV, ...userStoreEnv().env }, now: NOW, fetch })
-  return { fake, tracker }
+  return { fake, fetch, tracker }
 }
 
 const sent = (fake) => fake.writes().map((write) => `${write.method} ${write.path}`)
@@ -57,6 +57,7 @@ test('openCycle checks its input and refuses an overlap with the active sprint, 
   await assert.rejects(tracker.openCycle({ start: '2026-11-22' }, ME), { code: 'INVALID_INPUT', message: 'sprint 2026-11-22 to 2026-12-05 overlaps 1 (2026-11-16 to 2026-11-27)' })
   await assert.rejects(tracker.openCycle({ start: '2026-11-22', team: 'x' }, ME), { code: 'INVALID_INPUT', message: 'unknown field "team"' })
   await assert.rejects(tracker.openCycle({ start: 'soon' }, ME), { code: 'INVALID_INPUT', message: 'start must be a date as YYYY-MM-DD' })
+  for (const missing of [null, undefined]) await assert.rejects(tracker.openCycle(missing, ME), { code: 'INVALID_INPUT', message: 'start must be a date as YYYY-MM-DD' })
   await assert.rejects(tracker.openCycle({ start: '2026-12-07', end: '2026-12-01' }, ME), { code: 'INVALID_INPUT', message: 'start 2026-12-07 is after end 2026-12-01' })
   await assert.rejects(tracker.openCycle({ start: '2026-12-07', name: 'a\nb' }, ME), { code: 'INVALID_INPUT', message: 'name must not contain a line break' })
   await assert.rejects(tracker.openCycle({ start: '2026-12-07' }, 'someone-else'), { code: 'INVALID_INPUT' })
@@ -147,4 +148,16 @@ test('moveTargetIn picks the target of a move; checkMoveInput checks ids and to'
   assert.throws(() => checkMoveInput([], null), { code: 'INVALID_INPUT', message: 'ids must be a non-empty list' })
   assert.throws(() => checkMoveInput(['ENG-1'], 3), { code: 'INVALID_INPUT', message: 'to must be a sprint id, current or null' })
   assert.doesNotThrow(() => checkMoveInput(['ENG-1'], 'current'))
+})
+
+test('moveToCycle reads the board sprints once for every issue it moves', async () => {
+  const { fetch, tracker } = setup({ sprints: [ACTIVE, UNDATED] })
+  const a = (await tracker.createIssue({ title: 'A' }, ME)).after.id
+  const b = (await tracker.createIssue({ title: 'B' }, ME)).after.id
+  const reads = () => fetch.calls.filter((call) => call.method === 'GET' && new URL(call.url).pathname === `${AGILE}/board/1/sprint`).length
+  const start = reads()
+  const moved = await tracker.moveToCycle([a, b], '2', ME)
+  assert.deepEqual(moved.map((entry) => entry.after.sprint), ['2', '2'])
+  assert.equal(reads() - start, 1)
+  assert.equal((await tracker.updateIssue(a, { sprint: 'current' }, ME)).after.sprint, '1')
 })

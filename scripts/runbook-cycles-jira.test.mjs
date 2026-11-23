@@ -166,5 +166,7 @@ test('a space with only a Kanban board has no sprints', () => {
   const { pmkit } = session()
   const result = pmkit(['cycle', 'list', '--json'], { PMKIT_FAKE_KANBAN_ONLY: '1' })
   assert.equal(result.code, 2, result.stdout)
-  assert.equal(JSON.parse(result.stdout).error.code, 'NOT_SUPPORTED')
+  const { error } = JSON.parse(result.stdout)
+  assert.equal(error.code, 'NOT_SUPPORTED')
+  assert.equal(error.nextStep, 'Sprints need a Scrum board in space ENG')
 })

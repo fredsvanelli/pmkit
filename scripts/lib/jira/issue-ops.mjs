@@ -155,12 +155,12 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     }
   }
 
-  /** The board's Jira sprints, read only when the patch names a sprint to move to. */
-  async function sprintsFor(patch, context) {
+  /** The board's Jira sprints, read only when the patch names a sprint to move to; `known` is a list the caller already read. */
+  async function sprintsFor(patch, context, known) {
     if (typeof patch.sprint !== 'string') return []
     const unsupported = sprintUnsupported(context)
     if (unsupported) throw unsupported
-    return sprints()
+    return known ?? sprints()
   }
 
   /** Puts a work item into a sprint, or into the backlog for `to` null. */
@@ -206,10 +206,11 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     return name === null ? client.request('DELETE', path) : client.request('PUT', path, { body: name })
   }
 
-  async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
+  /** `sprints`, internal, is the board's raw Jira sprints when the caller (moveToCycle) has read them. */
+  async function updateIssue(id, patch, actor, { dryRun = false, sprints: known } = {}) {
     await requireActor(actor)
     const { issue: before, context } = await readItem(id)
-    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context) })
+    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context, known) })
     const changed = Object.keys(plan.fields).length > 0
     if (!changed && !plan.property && !plan.sprint) return { before, after: before }
     if (dryRun) return { before, after: plan.after }

@@ -62,8 +62,9 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
   }
 
   /** The checked { start, end, name, goal } of an openCycle input, with Local's checks and messages. */
-  function checkedOpen(input) {
-    for (const key of Object.keys(input ?? {})) {
+  function checkedOpen(given) {
+    const input = given ?? {}
+    for (const key of Object.keys(input)) {
       if (!OPEN_KEYS.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${OPEN_KEYS.join(', ')}`)
     }
     const { start } = input
@@ -126,14 +127,16 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     await ops.requireActor(actor)
     checkMoveInput(ids, to)
     const found = await scope()
-    const target = to === null ? null : moveTargetIn(await readSprints(found), to)
+    // The board's sprints are read once here and handed to every updateIssue, so N issues read them once.
+    const raw = to === null ? [] : await readBoardSprints(client, found.boardId)
+    const target = to === null ? null : moveTargetIn(raw.map((sprint) => toSprint(sprint)), to)
     for (const id of ids) await ops.readItem(id)
     const results = []
     const moved = []
     // ponytail: one Agile move per issue; batch 50 keys per call if large scopes get slow
     for (const id of ids) {
       try {
-        results.push(await ops.updateIssue(id, { sprint: target?.id ?? null }, actor, { dryRun }))
+        results.push(await ops.updateIssue(id, { sprint: target?.id ?? null }, actor, { dryRun, sprints: raw }))
       } catch (error) {
         throw stoppedHalfway(error, moved, 'Jira')
       }
