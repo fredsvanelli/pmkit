@@ -81,6 +81,9 @@ export function parseMappingFlags(ctx) {
   return { status: read('status'), fields: read('field'), types: read('type-label'), priority: read('priority-label'), estimate: read('estimate-label') }
 }
 
+/** The groups of a mappings object, each a map: an absent group is {}. */
+export const mapsOf = (source, groups) => Object.fromEntries(groups.map((group) => [group, source[group] ?? {}]))
+
 /** The team of the description whose key is `key`, or undefined. */
 const teamOf = (description, key) => description.teams.find((team) => team.key === key)
 
@@ -91,9 +94,10 @@ const flagOf = {
 }
 
 /** The keys setup asks, then the other keys the file sets by hand, which setup asks again only when they break. */
-const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((key) => !asked.includes(key) && isSet(held[key]))]
+export const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((key) => !asked.includes(key) && isSet(held[key]))]
 
-function checkKeys(group, answers, allowed, flag) {
+/** Refuses each answered key setup does not map. */
+export function checkKeys(answers, allowed, flag) {
   for (const key of Object.keys(answers ?? {})) {
     if (!allowed.includes(key)) throw invalid(`${flag} ${key} is not something setup maps`, `Use ${flag} with one of: ${allowed.join(', ')}`)
   }
@@ -114,9 +118,9 @@ export function proposeMappings(description, current = {}, answers = {}) {
   const statusKeys = keysOf(STATUS_KEYS, status)
   const fieldKeys = keysOf(FIELD_KEYS, fields)
   const typeKeys = keysOf(description.types ?? [], types)
-  checkKeys('status', given.status, statusKeys, '--status')
-  checkKeys('fields', given.fields, fieldKeys, '--field')
-  checkKeys('types', given.types, typeKeys, '--type-label')
+  checkKeys(given.status, statusKeys, '--status')
+  checkKeys(given.fields, fieldKeys, '--field')
+  checkKeys(given.types, typeKeys, '--type-label')
 
   const applied = []
   const questions = []

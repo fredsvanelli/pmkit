@@ -94,7 +94,8 @@ const EXTRA_STATUSES = [
   { id: '8', name: 'Canceled', statusCategory: { key: 'done', name: 'Done' } },
 ]
 
-export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false } = {}) {
+// taskType adds a standard Task work type, as a Jira Software space has (Story, Bug, Task, Epic).
+export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false, taskType = false } = {}) {
   const team = style === 'team-managed'
   const extra = extraStatuses ? EXTRA_STATUSES : []
   const scope = (id) => (team ? { scope: { type: 'PROJECT', project: { id } } } : {})
@@ -103,6 +104,7 @@ export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = fals
     { id: '10001', name: 'Story', subtask: false, hierarchyLevel: 0, ...scope('10001') },
     { id: '10002', name: 'Bug', subtask: false, hierarchyLevel: 0, ...scope('10001') },
     { id: '10003', name: 'Sub-task', subtask: true, hierarchyLevel: -1, ...scope('10001') },
+    ...(taskType ? [{ id: '10004', name: 'Task', subtask: false, hierarchyLevel: 0, ...scope('10001') }] : []),
   ]
   const estimate = team
     ? [
@@ -129,6 +131,7 @@ export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = fals
         { id: '10001', name: 'Story', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.review, STATUS.done, ...extra] },
         { id: '10002', name: 'Bug', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] },
         { id: '10003', name: 'Sub-task', subtask: true, statuses: [STATUS.todo, STATUS.done, ...extra] },
+        ...(taskType ? [{ id: '10004', name: 'Task', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] }] : []),
       ],
     },
     'GET /rest/api/3/field': {

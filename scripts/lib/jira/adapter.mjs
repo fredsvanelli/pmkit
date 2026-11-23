@@ -2,9 +2,9 @@
 // See docs/superpowers/specs/2026-11-22-pmk-76-jira-discovery-and-manifest-design.md, "Config" and "The tracker".
 
 import { builtInDefaults } from '../config.mjs'
-import { HOST } from './client.mjs'
+import { createJiraClient, HOST } from './client.mjs'
 
-const SPACE_KEY = /^[A-Z][A-Z0-9_]+$/
+export const SPACE_KEY = /^[A-Z][A-Z0-9_]+$/
 
 /** The Jira rules on a .pmkit/config.yaml whose shape is valid: a site host and a space key (ADR 0013). */
 export function jiraConfigProblems(pmkit) {
@@ -24,6 +24,8 @@ export function jiraDescriptor({ fetch } = {}) {
     hosted: true,
     configProblems: jiraConfigProblems,
     settings: () => ({ defaults: builtInDefaults(), epicPrefix: null }),
+    // The client of one site, for setup to list the spaces before a space is chosen.
+    connect: async ({ env, site }) => createJiraClient({ env, tracker: { scope: { site } }, fetch: fetch ?? globalThis.fetch }),
     create: async (config, { now, env }) => {
       const { createJiraTracker } = await import('./tracker.mjs')
       return createJiraTracker(config, { env, now, fetch: fetch ?? globalThis.fetch })

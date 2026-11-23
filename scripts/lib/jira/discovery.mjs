@@ -77,7 +77,8 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
   const session = await client.session()
   const unread = []
   const path = `/rest/api/3/project/${encodeURIComponent(space)}`
-  const project = client.request('GET', path).catch((error) => {
+  // Both reads of the space answer 404 for a space the site lacks, so either one says so.
+  const ofSpace = (read) => read.catch((error) => {
     if (error instanceof PmkitError && error.code === 'NOT_FOUND') {
       throw new PmkitError('NOT_CONFIGURED', `tracker.scope.space names ${space}, which ${session.site} does not have or the token's owner cannot browse`, '/pmkit:setup')
     }
@@ -85,8 +86,8 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
   })
   const [spaces, found, statusLists, fields, labels, license, config, users, priorityList, linkTypeList] = await Promise.all([
     client.paginate('/rest/api/3/project/search'),
-    project,
-    client.request('GET', `${path}/statuses`),
+    ofSpace(client.request('GET', path)),
+    ofSpace(client.request('GET', `${path}/statuses`)),
     client.request('GET', '/rest/api/3/field'),
     optional(() => client.paginate('/rest/api/3/label', { pageSize: 100 }), 'labels', unread),
     optional(() => client.request('GET', '/rest/api/3/instance/license'), 'license', unread),
@@ -121,6 +122,7 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
       name: field.name,
       system: field.schema?.system ?? null,
       customType: field.schema?.custom ?? null,
+      type: field.schema?.type ?? null,
     })),
     labels: labels === null ? null : labels.items.filter((label) => typeof label === 'string'),
     license: licenseOf(license),

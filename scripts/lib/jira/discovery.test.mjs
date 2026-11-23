@@ -119,6 +119,12 @@ test('scoped fields of another space are dropped', async () => {
   assert.equal(view.workTypes.length, 4)
 })
 
+test('raw fields keep their schema type', async () => {
+  const { raw } = await discover()
+  assert.deepEqual(raw.fields.find((f) => f.id === 'customfield_10016'), { id: 'customfield_10016', name: 'Story Points', system: null, customType: 'com.atlassian.jira.plugin.system.customfieldtypes:float', type: 'number' })
+  assert.equal(raw.fields.find((f) => f.id === 'summary').type, 'string')
+})
+
 test('optional reads degrade to warnings', async () => {
   const { raw, view } = await discover({
     routes: { 'GET /rest/api/3/label': denied, 'GET /rest/api/3/instance/license': denied, 'GET /rest/api/3/configuration': denied, 'GET /rest/agile/1.0/board': denied },
@@ -141,6 +147,14 @@ test('an unknown space is NOT_CONFIGURED', async () => {
   await assert.rejects(discover({ routes: { 'GET /rest/api/3/project/ENG': { status: 404, json: { errorMessages: ['No project'] } } } }), {
     code: 'NOT_CONFIGURED',
     message: "tracker.scope.space names ENG, which acme.atlassian.net does not have or the token's owner cannot browse",
+    nextStep: '/pmkit:setup',
+  })
+})
+
+test('an unknown space is NOT_CONFIGURED when its statuses are 404 too, as on a real site', async () => {
+  const missing = { status: 404, json: { errorMessages: ['No project'] } }
+  await assert.rejects(discover({ routes: { 'GET /rest/api/3/project/ENG': missing, 'GET /rest/api/3/project/ENG/statuses': missing } }), {
+    code: 'NOT_CONFIGURED',
     nextStep: '/pmkit:setup',
   })
 })
