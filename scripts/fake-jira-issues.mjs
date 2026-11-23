@@ -16,7 +16,6 @@ const WORK_TYPES = SPACE.issueTypes
 const statusesByType = (site) => Object.fromEntries(site[`GET ${API}/project/ENG/statuses`].json.map((type) => [type.id, type.statuses]))
 const PRIORITIES = SITE[`GET ${API}/priority`].json
 const USERS = SITE[`GET ${API}/user/assignable/search`].json
-const LINK_TYPES = SITE[`GET ${API}/issueLinkType`].json.issueLinkTypes
 const FIELD_NAMES = Object.fromEntries(SITE[`GET ${API}/field`].json.map((field) => [field.id, field.name]))
 const SETTABLE = new Set([...Object.keys(FIELD_NAMES), 'description', 'labels', 'issuetype', 'parent', 'fixVersions'])
 const VIEWER = { accountId: 'acc-1' }
@@ -137,7 +136,7 @@ function linkItem(otherKey, verb, added) {
 const TOKEN = /\s*(?:("(?:[^"\\]|\\.)*")|(>=|[=~<(),])|([A-Za-z_][\w.-]*))/y
 const FORMS = { '=': ['project', 'assignee', 'labels', 'parent', 'sprint', 'fixVersion'], in: ['status', 'issuetype', 'parent', 'key'], is: ['assignee', 'sprint', 'fixVersion'], '>=': ['updated'], '<': ['updated'] }
 const VALUE = {
-  project: () => SPACE.key,
+  project: (item) => item.key.slice(0, item.key.lastIndexOf('-')),
   status: (item) => item.fields.status.id,
   issuetype: (item) => item.fields.issuetype.id,
   assignee: (item) => item.fields.assignee?.accountId ?? null,
@@ -147,7 +146,7 @@ const VALUE = {
   fixVersion: (item) => (item.fields.fixVersions ?? []).map((version) => version.id),
 }
 const KEYED = ['project', 'parent', 'key']
-const ORDERS = { 'created ASC , key ASC': 'created', 'updated DESC': 'updated' }
+const ORDERS = { 'created ASC , key ASC': 'created', 'created DESC , key DESC': 'newest', 'updated DESC': 'updated' }
 
 function tokenize(jql, fail) {
   const tokens = []
@@ -230,6 +229,7 @@ function parseJql(jql, sprintOf) {
 const keyNumber = (key) => Number(key.split('-')[1])
 const SORTS = {
   created: (a, b) => a.fields.created.localeCompare(b.fields.created) || keyNumber(a.key) - keyNumber(b.key),
+  newest: (a, b) => b.fields.created.localeCompare(a.fields.created) || keyNumber(b.key) - keyNumber(a.key),
   updated: (a, b) => b.fields.updated.localeCompare(a.fields.updated) || keyNumber(a.key) - keyNumber(b.key),
 }
 
@@ -252,6 +252,17 @@ const PLAN_FULL = {
   crossProjectReleases: [{ name: 'Spring launch', releaseIds: [10001] }],
 }
 
+// Jira Product Discovery (PMK-83): a JPD project IDEA with a project-scoped Votes field, the delivery link type and two ideas.
+const IDEA_PROJECT = { id: '10003', key: 'IDEA', name: 'Ideas', projectTypeKey: 'product_discovery' }
+const VOTES_FIELD = { id: 'customfield_10101', name: 'Votes', schema: { type: 'number', custom: 'jira.polaris:votes' }, scope: { type: 'PROJECT', project: { id: '10003' } } }
+const DELIVERY_LINK = { id: '10010', name: 'Polaris work item link', inward: 'is implemented by', outward: 'implements' }
+const DISCOVERY = { id: '10200', name: 'Discovery', statusCategory: { key: 'new' } }
+const idea = (number, summary, created, votes) => ({
+  id: String(20000 + number),
+  key: `IDEA-${number}`,
+  fields: { summary, description: null, status: { ...DISCOVERY }, issuetype: { id: '10100', name: 'Idea' }, fixVersions: [], priority: null, assignee: null, labels: [], parent: null, duedate: null, resolution: null, creator: { ...VIEWER }, created, updated: created, ...(votes === undefined ? {} : { [VOTES_FIELD.id]: votes }) },
+})
+
 const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value) => value.trim()).filter(Boolean)
 
 /**
@@ -261,8 +272,9 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
  * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78), `versions` the space's versions (PMK-79),
  * `worklogs` the raw worklogs per work item key; `timeTracking: false` serves a site with time tracking off, which refuses every worklog call (PMK-80).
  * `plans` serves a Premium site's Plans routes (plan 12 "Q1 roadmap", default scenario 34, team 5 "Payments" capacity 30 Scrum, story points); `plans: false` answers 403 on every Plans route (PMK-82).
+ * `discovery` adds a Jira Product Discovery project IDEA with a Votes field and the delivery link type, and, when the state has no idea, IDEA-1 "Bulk export" (7 votes) and the newer IDEA-2 "Dark mode" (votes not returned) (PMK-83).
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {}, timeTracking = true, plans = true } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {}, timeTracking = true, plans = true, discovery = false } = {}) {
   state.worklogs ??= {}
   state.next.worklog ??= 10000
   for (const [key, list] of Object.entries(worklogs)) (state.worklogs[key] ??= []).push(...structuredClone(list))
@@ -276,6 +288,16 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   state.next.sprint = Math.max(state.next.sprint, ...state.sprints.map((sprint) => sprint.id + 1))
   const site = jiraSiteRoutes({ extraStatuses })
   if (!timeTracking) site['GET /rest/api/3/configuration'] = { json: { issueLinkingEnabled: true, timeTrackingEnabled: false } }
+  if (discovery) {
+    const projects = site[`GET ${API}/project/search`].json
+    site[`GET ${API}/project/search`] = { json: { ...projects, total: projects.total + 1, values: [...projects.values, IDEA_PROJECT] } }
+    site[`GET ${API}/field`] = { json: [...site[`GET ${API}/field`].json, VOTES_FIELD] }
+    site[`GET ${API}/issueLinkType`] = { json: { issueLinkTypes: [...site[`GET ${API}/issueLinkType`].json.issueLinkTypes, DELIVERY_LINK] } }
+    if (!Object.keys(state.items).some((key) => key.startsWith('IDEA-'))) {
+      for (const item of [idea(1, 'Bulk export', '2026-11-01T10:00:00.000+0000', 7), idea(2, 'Dark mode', '2026-11-02T10:00:00.000+0000')]) state.items[item.key] = item
+    }
+  }
+  const linkTypes = site[`GET ${API}/issueLinkType`].json.issueLinkTypes
   const timeTrackingOn = () => timeTracking || refuse(400, {}, ['Time Tracking is not enabled.'])
   const plansOn = () => plans || refuse(403, {}, ['Plans are not available.'])
   const typeStatuses = statusesByType(site)
@@ -316,7 +338,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
 
   function linksOf(key) {
     return state.links.flatMap((link) => {
-      const type = LINK_TYPES.find((entry) => entry.id === link.typeId)
+      const type = linkTypes.find((entry) => entry.id === link.typeId)
       if (link.inward === key) return [{ id: link.id, type, outwardIssue: brief(link.outward) }]
       if (link.outward === key) return [{ id: link.id, type, inwardIssue: brief(link.inward) }]
       return []
@@ -541,7 +563,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       return { status: 201, json: structuredClone(worklog) }
     },
     [`POST ${API}/issueLink`]({ body, at }) {
-      const type = LINK_TYPES.find((entry) => lower(entry.name) === lower(body?.type?.name) || entry.id === String(body?.type?.id))
+      const type = linkTypes.find((entry) => lower(entry.name) === lower(body?.type?.name) || entry.id === String(body?.type?.id))
       if (!type) notFound(`No issue link type with name '${body?.type?.name}' found.`)
       const inward = itemOf(body.inwardIssue?.key)
       const outward = itemOf(body.outwardIssue?.key)
@@ -557,7 +579,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     },
     [`DELETE ${API}/issueLink/{id}`]({ params, at }) {
       const link = state.links.find((entry) => entry.id === params.id) ?? notFound(`No issue link with id '${params.id}' exists.`)
-      const type = LINK_TYPES.find((entry) => entry.id === link.typeId)
+      const type = linkTypes.find((entry) => entry.id === link.typeId)
       state.links = state.links.filter((entry) => entry !== link)
       const time = at()
       record(state.items[link.inward], [linkItem(link.outward, type.outward, false)], time)
