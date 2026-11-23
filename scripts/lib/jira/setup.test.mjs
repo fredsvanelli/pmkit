@@ -12,8 +12,8 @@ globalThis.fetch = () => {
 const TYPES = ['feature', 'bug', 'task', 'chore']
 const CRITERIA = { id: 'customfield_10050', name: 'Acceptance criteria', custom: true, schema: { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea' } }
 
-async function rawOf({ extraStatuses = false, extraFields = [] } = {}) {
-  const routes = jiraSiteRoutes({ extraStatuses })
+async function rawOf({ extraStatuses = false, extraFields = [], taskType = false } = {}) {
+  const routes = jiraSiteRoutes({ extraStatuses, taskType })
   routes['GET /rest/api/3/field'] = { json: [...routes['GET /rest/api/3/field'].json, ...extraFields] }
   const fetch = fakeJiraFetch(routes)
   const client = createJiraClient({ env: FAKE_ENV, tracker: { scope: { site: 'acme.atlassian.net', space: 'ENG' } }, fetch, sleep: async () => {} })
@@ -55,7 +55,9 @@ test('a held blocked is kept', async () => {
 
 test('one status cannot answer two keys', async () => {
   const raw = await rawOf()
-  refused(() => proposeJiraSetup(raw, {}, { status: { in_review: 'Review', canceled: 'Review' } }, TYPES))
+  refused(() => proposeJiraSetup(raw, {}, { status: { in_review: 'Review', canceled: 'Review' } }, TYPES), {
+    nextStep: (step) => step === 'Pass one of: To Do, In Progress, Done, none',
+  })
 })
 
 test('an unknown status answer lists the candidates', async () => {
@@ -109,7 +111,24 @@ test('types offer the standard work types', async () => {
 
 test('two types cannot share a work type', async () => {
   const raw = await rawOf()
-  refused(() => proposeJiraSetup(raw, {}, { types: { feature: 'Story', task: 'Story', bug: 'Bug', chore: 'none' } }, TYPES))
+  refused(() => proposeJiraSetup(raw, {}, { types: { feature: 'Story', task: 'Story', bug: 'Bug', chore: 'none' } }, TYPES), {
+    nextStep: (step) => step === 'Pass one of: none',
+  })
+})
+
+test('accepting every recommendation on a space with Task is valid', async () => {
+  const raw = await rawOf({ taskType: true })
+  const first = proposeJiraSetup(raw, {}, {}, TYPES)
+  assert.equal(questionAt(first, 'mappings.types.task').recommended, 'Task')
+  assert.equal(questionAt(first, 'mappings.types.chore').recommended, 'none')
+  const answers = { status: {}, fields: {}, types: {} }
+  for (const question of first.questions) {
+    const [, group, key] = question.path.split('.')
+    answers[group][key] = question.recommended
+  }
+  const result = proposeJiraSetup(raw, {}, answers, TYPES)
+  assert.deepEqual(result.questions, [])
+  assert.deepEqual(result.values.types, { feature: 'Story', bug: 'Bug', task: 'Task' })
 })
 
 test('all answered', async () => {
@@ -143,7 +162,7 @@ test('held types are kept and a held type that broke is asked again', async () =
 test('proposeSpace', () => {
   const spaces = [{ key: 'ENG', name: 'Engineering' }, { key: 'OPS', name: 'Operations' }]
   const { question, broken } = proposeSpace({ spaces })
-  assert.deepEqual(question, { path: SPACE_PATH, flag: '--space <KEY>', candidates: ['ENG', 'OPS'], titles: { ENG: 'Engineering', OPS: 'Operations' }, recommended: null, none: null })
+  assert.deepEqual(question, { path: SPACE_PATH, flag: '--space <KEY>', candidates: ['ENG', 'OPS'], titles: { ENG: 'Engineering', OPS: 'Operations' }, recommended: null, none: null, required: true })
   assert.deepEqual(broken, [])
   assert.equal(proposeSpace({ spaces: spaces.slice(0, 1) }).question.recommended, 'ENG')
   assert.deepEqual(proposeSpace({ answer: 'OPS', spaces }), { value: 'OPS' })

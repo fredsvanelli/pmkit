@@ -8,8 +8,6 @@ import { NONE } from '../mappings.mjs'
 import { fieldRoles } from './discovery.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
 
-export { NONE }
-
 export const SPACE_PATH = 'tracker.scope.space'
 // todo, in_progress and done come from the Jira status categories; blocked comes from Blocks links (Interview Q1).
 const STATUS_KEYS = ['backlog', 'in_review', 'canceled']
@@ -65,6 +63,7 @@ export function proposeSpace({ answer, held, heldMissing = false, spaces = [], s
     titles: Object.fromEntries(spaces.map((space) => [space.key, space.name])),
     recommended: keys.length === 1 ? keys[0] : null,
     none: null,
+    required: true,
   }
   const broken = []
   if (isSet(held) && heldMissing) {
@@ -96,12 +95,13 @@ function heldOr(state, path, value, question) {
   return undefined
 }
 
-/** Refuses one value that answers two keys of a group. */
-function refuseShared(values, what) {
+/** Refuses one value that answers two keys of a group; the next step lists the candidates no key took. */
+function refuseShared(values, what, candidates) {
   const usedBy = new Map()
+  const taken = new Set(Object.values(values))
   for (const [key, value] of Object.entries(values)) {
     if (value === NONE) continue
-    if (usedBy.has(value)) throw invalid(`${what} ${value} cannot answer both ${usedBy.get(value)} and ${key}`, `Pick another ${what} for ${key}`)
+    if (usedBy.has(value)) throw invalid(`${what} ${value} cannot answer both ${usedBy.get(value)} and ${key}`, pass(candidates.filter((name) => !taken.has(name))))
     usedBy.set(value, key)
   }
 }
@@ -128,11 +128,13 @@ export function proposeJiraSetup(raw, current = {}, answers = {}, types = []) {
   const state = { raw, held, given, applied: [], questions: [], broken, notes: [], brokenAt: new Map(broken.map((item) => [item.path, item])), rules: fieldRoles(raw, {}).fields }
   const values = { status: {}, fields: {} }
 
+  // A recommendation skips a value an earlier key already got as its answer, held value or recommendation.
+  const taken = new Set()
   for (const key of statusKeys) {
-    const value = statusValue(state, key)
+    const value = statusValue(state, key, taken)
     if (value !== undefined) values.status[key] = value
   }
-  refuseShared(values.status, 'status')
+  refuseShared(values.status, 'status', statusNames(raw))
   for (const key of fieldKeys) {
     const value = fieldValue(state, key)
     if (value !== undefined) values.fields[key] = value
@@ -148,15 +150,17 @@ function statusNames(raw) {
   return [...raw.statuses].sort((a, b) => rank(a) - rank(b)).map((status) => status.name)
 }
 
-/** The status of one key: the answer, the held value, or undefined with a question recorded. */
-function statusValue(state, key) {
+/** The status of one key: the answer, the held value, or undefined with a question recorded. taken gathers the values so far. */
+function statusValue(state, key, taken) {
   const names = statusNames(state.raw)
   const answer = state.given.status[key]
   if (answer !== undefined) {
     if (answer !== NONE && !names.includes(answer)) throw invalid(`--status ${key}=${answer} is not a status of space ${state.raw.space.key}`, pass(names))
+    taken.add(answer)
     return answer
   }
-  const match = matchOf(STATUS_MATCHES[key], names)
+  const match = matchOf(STATUS_MATCHES[key], names.filter((name) => !taken.has(name)))
+  taken.add(match ?? state.held.status[key])
   const question = {
     path: `mappings.status.${key}`,
     flag: `--status ${key}=<value>`,
@@ -201,18 +205,20 @@ function fieldValue(state, key) {
   return undefined
 }
 
-/** The work type of one pmkit type: the answer, the held value, none, or undefined when asked. */
-function typeValue(state, type, names) {
+/** The work type of one pmkit type: the answer, the held value, none, or undefined when asked. taken gathers the values so far. */
+function typeValue(state, type, names, taken) {
   const path = `mappings.types.${type}`
   const answer = state.given.types[type]
   if (answer !== undefined) {
     if (answer !== NONE && !names.includes(answer)) throw invalid(`--type-label ${type}=${answer} is not a work type of space ${state.raw.space.key}`, pass(names))
+    taken.add(answer)
     return answer
   }
   const held = state.held.types?.[type]
   // A types object without this type means it was answered none.
   if (state.held.types !== undefined && !isSet(held) && !state.brokenAt.has(path)) return NONE
-  const match = matchOf(TYPE_MATCHES[type] ?? [type.toLowerCase()], names)
+  const match = matchOf(TYPE_MATCHES[type] ?? [type.toLowerCase()], names.filter((name) => !taken.has(name)))
+  taken.add(match ?? held)
   const question = {
     path,
     flag: `--type-label ${type}=<work type>`,
@@ -230,13 +236,14 @@ function typeValue(state, type, names) {
 function typesOf(state, typeKeys) {
   const names = state.raw.workTypes.filter((type) => type.level === 'standard').map((type) => type.name)
   const values = {}
+  const taken = new Set()
   let pending = false
   for (const type of typeKeys) {
-    const value = typeValue(state, type, names)
+    const value = typeValue(state, type, names, taken)
     if (value === undefined) pending = true
     else values[type] = value
   }
-  refuseShared(values, 'work type')
+  refuseShared(values, 'work type', names)
   if (pending) return undefined
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== NONE))
 }

@@ -84,6 +84,7 @@ test('without --space it returns the space question', async () => {
   assert.equal(fs.existsSync(configFile(root)), false)
   const text = await cli([...INIT, '--dry-run'])
   assert.match(text.stdout, /^site: acme\.atlassian\.net, viewer Test User\nspace: \(not chosen yet\)\n/)
+  assert.match(text.stdout, /\n  tracker\.scope\.space  --space <KEY>  one of: ENG, OPS\n/)
 })
 
 test('with --space it returns the status, field and type questions', async () => {
@@ -165,6 +166,32 @@ test('--space the site lacks is INVALID_INPUT naming the keys', async () => {
   const error = errorOf(await cli([...INIT, '--space', 'NOPE', '--dry-run', '--json']))
   assert.equal(error.code, 'INVALID_INPUT')
   assert.equal(error.nextStep, 'Pass one of: ENG, OPS')
+})
+
+test('--space on a site with no browsable space is NOT_CONFIGURED and writes nothing', async () => {
+  const empty = { json: { startAt: 0, maxResults: 50, total: 0, isLast: true, values: [] } }
+  const { root, cli } = session({ routes: { 'GET /rest/api/3/project/search': empty, 'GET /rest/api/3/project/NOPE': MISSING, 'GET /rest/api/3/project/NOPE/statuses': MISSING } })
+  const error = errorOf(await cli([...INIT, '--space', 'NOPE', '--json']))
+  assert.equal(error.code, 'NOT_CONFIGURED')
+  assert.equal(fs.existsSync(configFile(root)), false)
+})
+
+test('a --space that is not a space key is refused before any request', async () => {
+  for (const space of ['eng', 'E', 'EN-G']) {
+    const { cli, fetch } = session()
+    const error = errorOf(await cli([...INIT, '--space', space, '--dry-run', '--json']))
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, `--space ${space} is not a space key`)
+    assert.equal(error.nextStep, 'Pass --space <KEY>, such as --space ENG')
+    assert.equal(fetch.calls.length, 0)
+  }
+})
+
+test('a mixed-case --site is written lowercase', async () => {
+  const { root, cli } = session()
+  const data = dataOf(await cli(['init', '--tracker', 'jira', '--site', 'Acme.Atlassian.NET', '--space', 'ENG', ...ANSWERS, '--json']))
+  assert.equal(data.site, 'acme.atlassian.net')
+  assert.match(fs.readFileSync(configFile(root), 'utf8'), /site: acme\.atlassian\.net\n/)
 })
 
 test('--team, --project and --prefix are refused with --tracker jira', async () => {

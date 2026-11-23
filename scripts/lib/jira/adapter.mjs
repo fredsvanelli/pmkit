@@ -4,7 +4,7 @@
 import { builtInDefaults } from '../config.mjs'
 import { createJiraClient, HOST } from './client.mjs'
 
-const SPACE_KEY = /^[A-Z][A-Z0-9_]+$/
+export const SPACE_KEY = /^[A-Z][A-Z0-9_]+$/
 
 /** The Jira rules on a .pmkit/config.yaml whose shape is valid: a site host and a space key (ADR 0013). */
 export function jiraConfigProblems(pmkit) {

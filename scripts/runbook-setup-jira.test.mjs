@@ -105,6 +105,7 @@ test('first run: the space, the questions, the preview, the write and the check 
   assert.equal(byPath['mappings.fields.estimate'].titles.customfield_10016, 'Story Points')
   assert.equal(byPath['mappings.types.feature'].recommended, 'Story')
   assert.equal(byPath['mappings.types.bug'].recommended, 'Bug')
+  assert.ok(second.notes.includes('the site has no field for the acceptance criteria'), second.notes.join('\n'))
   assert.equal(fs.existsSync(configFile(root)), false)
 
   // Step 3: every answer, the preview.

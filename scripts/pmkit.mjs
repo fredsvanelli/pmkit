@@ -39,6 +39,7 @@ import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { chooseRemote, inferHost, parseRemoteUrl, webHost } from './lib/git-remote.mjs'
 import { HOST_NAME } from './lib/github/client.mjs'
+import { SPACE_KEY as JIRA_SPACE_KEY } from './lib/jira/adapter.mjs'
 import { HOST as JIRA_HOST } from './lib/jira/client.mjs'
 import { discoveryView as jiraDiscoveryView } from './lib/jira/discovery.mjs'
 import { SPACE_PATH, proposeJiraSetup, proposeSpace } from './lib/jira/setup.mjs'
@@ -4749,10 +4750,13 @@ async function runInitJira(ctx) {
   const { current } = hostedDraft(text)
 
   // The site cannot be discovered, so setup asks the user for it. Only a host reaches the client: a URL is refused here.
-  const site = ctx.opt('site') === undefined ? current.scope.site : String(ctx.opt('site'))
-  if (typeof site !== 'string' || !JIRA_HOST.test(site.toLowerCase())) {
-    throw usageError(site === undefined ? 'setup needs the Jira site' : `--site ${site} is not a host name`, 'Pass --site <host>, such as --site acme.atlassian.net')
+  const given = ctx.opt('site') === undefined ? current.scope.site : String(ctx.opt('site'))
+  if (typeof given !== 'string' || !JIRA_HOST.test(given.toLowerCase())) {
+    throw usageError(given === undefined ? 'setup needs the Jira site' : `--site ${given} is not a host name`, 'Pass --site <host>, such as --site acme.atlassian.net')
   }
+  const site = given.toLowerCase()
+  const spaceFlag = ctx.opt('space')
+  if (spaceFlag !== undefined && !JIRA_SPACE_KEY.test(String(spaceFlag))) throw usageError(`--space ${spaceFlag} is not a space key`, 'Pass --space <KEY>, such as --space ENG')
   const spaceStep = await resolveJiraSpace(ctx, adapter, site, current.scope.space)
   const { view } = spaceStep
   const defaults = withLocalDefaults({}).types
