@@ -58,7 +58,11 @@ export function releaseOperations({ client, ops, getContext, now = () => new Dat
   /** The live raw versions of the space. */
   const versions = async () => liveVersions(await readVersions(client, (await getContext()).space))
 
-  const findVersion = async (id) => (await versions()).find((version) => version.name === id) ?? (() => { throw notFound(id) })()
+  async function findVersion(id) {
+    const found = (await versions()).find((version) => version.name === id)
+    if (!found) throw notFound(id)
+    return found
+  }
 
   async function listReleases({ state } = {}) {
     if (state !== undefined && !STATES.includes(state)) throw invalid('state must be planned or released', 'pmkit release list')
