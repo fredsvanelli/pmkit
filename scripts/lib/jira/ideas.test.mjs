@@ -13,12 +13,20 @@ const SITE = TRACKER.scope.site
 const LAB = { id: '10004', key: 'LAB', name: 'Lab', style: 'team-managed', type: 'product_discovery' }
 const REVERSED = { id: '10010', name: 'Polaris work item link', inward: 'implements', outward: 'is implemented by' }
 
-/** The ideas operations over the stateful fake with JPD, and `edit(raw)` to change the discovery before the test reads it. */
-async function setup({ edit = (raw) => raw, ...options } = {}) {
+/**
+ * The ideas operations over the stateful fake with JPD, and `edit(raw)` to change the discovery before the test reads it.
+ * `cached(raw)` gives the discovery read from the cache (fresh: false); a refresh reads `raw`. `fields(list)` edits Jira's fields.
+ */
+async function setup({ edit = (raw) => raw, cached, fields = (list) => list, ...options } = {}) {
   const fake = fakeJiraIssues({ discovery: true, ...options })
-  const fetch = fakeJiraFetch(fake.routes)
+  const fetch = fakeJiraFetch({ ...fake.routes, 'GET /rest/api/3/field': { json: fields(fake.routes['GET /rest/api/3/field'].json) } })
   const client = createJiraClient({ env: FAKE_ENV, tracker: TRACKER, fetch })
   const raw = edit(await fetchDiscovery(client, { space: 'ENG' }))
+  const reads = []
+  const discovery = async ({ refresh = false } = {}) => {
+    reads.push(refresh)
+    return cached && !refresh ? { raw: cached(raw), fresh: false } : { raw, fresh: true }
+  }
   const epics = {
     async getDeliverable(id) {
       if (String(id).toUpperCase() === 'ENG-1') return { id: 'ENG-1' }
@@ -28,10 +36,10 @@ async function setup({ edit = (raw) => raw, ...options } = {}) {
   const requireActor = async (actor) => {
     if (actor !== 'acc-1') throw new PmkitError('INVALID_INPUT', 'Jira records every write as the owner of JIRA_API_TOKEN (Test User)')
   }
-  const ideas = ideaOperations({ client, site: SITE, raw: async () => raw, epics, requireActor })
+  const ideas = ideaOperations({ client, site: SITE, discovery, epics, requireActor })
   const epic = async (summary) => (await client.request('POST', '/rest/api/3/issue', { body: { fields: { project: { key: 'ENG' }, issuetype: { name: 'Epic' }, summary } } })).key
   const link = (name, inward, outward) => client.request('POST', '/rest/api/3/issueLink', { body: { type: { name }, inwardIssue: { key: inward }, outwardIssue: { key: outward } } })
-  return { fake, fetch, ideas, epic, link, calls: () => fetch.calls.length }
+  return { fake, fetch, ideas, epic, link, reads, calls: () => fetch.calls.length }
 }
 const searches = (fetch) => fetch.calls.filter((call) => new URL(call.url).pathname === '/rest/api/3/search/jql')
 const posts = (fake) => fake.writes().filter((write) => write.path === '/rest/api/3/issueLink')
@@ -171,4 +179,69 @@ test('connect refuses a delivery link type where neither side says implements', 
     message: "Jira Product Discovery's delivery link type Polaris work item link does not say which side implements the idea",
   })
   assert.equal(posts(fake).length, 0)
+})
+
+const noJpd = (raw) => ({ ...raw, spaces: raw.spaces.filter((space) => space.type !== 'product_discovery') })
+
+test('list reads Jira again once when the cached discovery has no JPD project or lacks the named one', async () => {
+  const none = await setup({ cached: noJpd })
+  assert.equal((await none.ideas.list()).available, true)
+  assert.deepEqual(none.reads, [false, true])
+  const named = await setup({ cached: (raw) => raw, edit: (raw) => ({ ...raw, spaces: [...raw.spaces, LAB] }) })
+  const lab = await setup({ cached: (raw) => ({ ...raw, spaces: raw.spaces.filter((space) => space.key !== 'LAB') }), edit: (raw) => ({ ...raw, spaces: [...raw.spaces, LAB] }) })
+  assert.deepEqual((await lab.ideas.list({ project: 'LAB' })).project, { key: 'LAB', name: 'Lab' })
+  assert.deepEqual(lab.reads, [false, true])
+  await named.ideas.list({ project: 'IDEA' })
+  assert.deepEqual(named.reads, [false], 'a cached discovery that has the project is not read again')
+})
+
+test('list does not read Jira again when the discovery is fresh', async () => {
+  const { ideas, reads } = await setup({ edit: noJpd })
+  assert.equal((await ideas.list()).available, false)
+  assert.deepEqual(reads, [false])
+})
+
+test('connect reads Jira again once when the cached discovery lacks the idea\'s project or the delivery link type', async () => {
+  const project = await setup({ cached: noJpd })
+  await project.epic('Exports')
+  assert.deepEqual((await project.ideas.connect('IDEA-1', 'ENG-1', 'acc-1')).after, { epics: ['ENG-1'] })
+  assert.deepEqual(project.reads, [false, true])
+  const type = await setup({ cached: (raw) => ({ ...raw, linkTypes: raw.linkTypes.filter((entry) => entry.id !== '10010') }) })
+  await type.epic('Exports')
+  assert.deepEqual((await type.ideas.connect('IDEA-1', 'ENG-1', 'acc-1')).after, { epics: ['ENG-1'] })
+  assert.deepEqual(type.reads, [false, true])
+})
+
+test('connect is not a no-op when the only link has the idea on the implementing side', async () => {
+  const { fake, ideas, epic, link } = await setup()
+  await epic('Exports')
+  await link('Polaris work item link', 'IDEA-1', 'ENG-1')
+  const written = posts(fake).length
+  const result = await ideas.connect('IDEA-1', 'ENG-1', 'acc-1')
+  assert.deepEqual(result.before, { epics: [] })
+  assert.deepEqual(result.after, { epics: ['ENG-1'] })
+  assert.equal(posts(fake).length, written + 1)
+  assert.deepEqual(posts(fake).at(-1).body.inwardIssue, { key: 'ENG-1' })
+})
+
+test('list with --project on a site with no JPD project is NOT_FOUND', async () => {
+  const { ideas } = await setup({ edit: noJpd })
+  await assert.rejects(ideas.list({ project: 'IDEA' }), (error) => error.code === 'NOT_FOUND' && error.message === `${SITE} has no Jira Product Discovery project IDEA` && error.nextStep === IDEAS_HINT(SITE))
+})
+
+test('connect says the link types could not be read when discovery has none', async () => {
+  const { fake, ideas, epic } = await setup({ edit: (raw) => ({ ...raw, linkTypes: null }) })
+  await epic('Exports')
+  await assert.rejects(ideas.connect('IDEA-1', 'ENG-1', 'acc-1'), {
+    code: 'NOT_SUPPORTED',
+    message: `Jira's link types could not be read on ${SITE}, so pmkit cannot find Jira Product Discovery's delivery link type`,
+  })
+  assert.equal(posts(fake).length, 0)
+})
+
+test('list warns when the project has no votes field', async () => {
+  const { ideas } = await setup({ fields: (list) => list.filter((field) => field.schema?.custom !== 'jira.polaris:votes') })
+  const result = await ideas.list()
+  assert.ok(result.ideas.every((idea) => idea.votes.length === 0))
+  assert.ok(result.warnings.includes('IDEA has no votes field, so votes are unread'))
 })

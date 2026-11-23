@@ -22,7 +22,12 @@ test('an empty or cut list says so', () => {
 
 test('connectText says would connect, connected, or already connected', () => {
   const result = { idea: 'IDEA-1', epic: 'ENG-1', linkType: 'Polaris work item link', before: { epics: [] }, after: { epics: ['ENG-1'] } }
-  assert.equal(connectText(result, true), 'would connect IDEA-1 to ENG-1')
+  assert.equal(connectText(result, true), 'would connect IDEA-1 to ENG-1\ndry run: nothing was written')
   assert.equal(connectText(result, false), 'connected IDEA-1 to ENG-1')
   assert.equal(connectText({ ...result, before: { epics: ['ENG-1'] } }, false), 'IDEA-1 is already connected to ENG-1')
+})
+
+test('a list line names each votes field when an idea has several', () => {
+  const result = { available: true, site: SITE, project: { key: 'IDEA', name: 'Ideas' }, ideas: [idea({ votes: [{ field: 'Votes', value: 7 }, { field: 'Impact', value: null }] })], hasMore: false }
+  assert.equal(listText(result), 'IDEA-1  Bulk export  (Discovery)  votes Votes 7, Impact unread  insights unread  delivery ENG-1')
 })

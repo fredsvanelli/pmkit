@@ -156,11 +156,10 @@ test('the Jira Product Discovery flows, step by step', () => {
   // Step 9: a limit that is not a number.
   const usage = failure(pmkit(['jira', 'ideas', 'list', '--limit', 'abc', '--json']))
   assert.deepEqual([usage.code, usage.message], ['INVALID_INPUT', '--limit must be a whole number'])
-
 })
 
 test('a site without Jira Product Discovery answers available: false with the hint', () => {
-  // Step 10, in a fresh repository: the cached discovery of the first one still names the IDEA project.
+  // Step 10, in a fresh repository: the cached discovery of the first one still names the IDEA project, and a cache that has a JPD project is not read again.
   const { pmkit } = session()
   const off = { PMKIT_FAKE_NO_DISCOVERY: '1' }
   const hint = "Create a Jira Product Discovery project on acme.atlassian.net, or check that the token's owner can browse one"

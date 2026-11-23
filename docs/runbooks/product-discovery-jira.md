@@ -58,7 +58,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
    node scripts/pmkit.mjs jira ideas list --limit 1 --json
    ```
 
-   Expect the same two ideas for both project keys. With `--limit 1`, expect `IDEA-2` alone and `hasMore: true`. On a site with several Jira Product Discovery projects and no `--project`, the list fails with `INVALID_INPUT` and lists the keys.
+   Expect the same two ideas for both project keys. With `--limit 1`, expect `IDEA-2` alone and `hasMore: true`. On a site with several Jira Product Discovery projects and no `--project`, the list fails with `INVALID_INPUT` and lists the keys. A project with several votes fields names each in the text (`votes Votes 7, Impact 3`), and a project with none warns `<KEY> has no votes field, so votes are unread`.
 
 ## Connect an idea to an epic
 
@@ -77,7 +77,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
    node scripts/pmkit.mjs jira ideas connect IDEA-1 ENG-1 --dry-run --json
    ```
 
-   Expect `idea: IDEA-1`, `epic: ENG-1`, `linkType: Polaris work item link`, `before` `{ epics: [] }` and `after` `{ epics: ["ENG-1"] }`. Nothing is written: the list still shows `delivery none` for `IDEA-1`.
+   Expect `idea: IDEA-1`, `epic: ENG-1`, `linkType: Polaris work item link`, `before` `{ epics: [] }` and `after` `{ epics: ["ENG-1"] }`. Nothing is written: the list still shows `delivery none` for `IDEA-1`. The text output ends with `dry run: nothing was written`.
 
 6. Connect them:
 
@@ -94,7 +94,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
    node scripts/pmkit.mjs jira ideas connect IDEA-1 ENG-1 --json
    ```
 
-   Expect exit 0 with `before` and `after` both `{ epics: ["ENG-1"] }`, and no new link. The text output is `IDEA-1 is already connected to ENG-1`.
+   Expect exit 0 with `before` and `after` both `{ epics: ["ENG-1"] }`, and no new link. Only a delivery link with the epic on the implementing side counts: a link the other way round does not make the connect a no-op. The text output is `IDEA-1 is already connected to ENG-1`.
 
 ## Errors
 
@@ -120,7 +120,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
     node scripts/pmkit.mjs jira ideas list --json
     ```
 
-    Expect `available: false`, `reason: no_discovery_project`, `ideas: []` and `enableHint`: `Create a Jira Product Discovery project on acme.atlassian.net, or check that the token's owner can browse one`. The text output is one line, `Jira Product Discovery is not available on acme.atlassian.net:` and that hint.
+    Expect `available: false`, `reason: no_discovery_project`, `ideas: []` and `enableHint`: `Create a Jira Product Discovery project on acme.atlassian.net, or check that the token's owner can browse one`. The text output is one line, `Jira Product Discovery is not available on acme.atlassian.net:` and that hint. When the cached discovery has no Jira Product Discovery project (or not the one named, or not the idea's project or the delivery link type for a connect), pmkit reads Jira once more, so a project created since shows up.
 
 ## Failures
 
@@ -129,6 +129,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
 | The idea and the epic swapped (step 8), or a key that is not an idea or not an epic of the space | `NOT_FOUND` | Pass an idea key from `pmkit jira ideas list` first, then an epic of `tracker.scope.space` |
 | A `--limit` that is not a whole number from 1 up (step 9) | `INVALID_INPUT` | Use a whole number from 1 up |
 | Several Jira Product Discovery projects and no `--project` | `INVALID_INPUT` | Pass `--project KEY` with one of the keys listed |
-| A `--project` that is not a Jira Product Discovery project | `NOT_FOUND` | Pass one of the keys the error lists |
+| A `--project` that is not a Jira Product Discovery project, even on a site with none | `NOT_FOUND` | Pass one of the keys the error lists |
 | No delivery link type on the site | `NOT_SUPPORTED` | Check that Jira Product Discovery is installed and its `Polaris work item link` type exists |
+| The site's link types could not be read | `NOT_SUPPORTED` | Check that the token's owner can browse the link types, then run `pmkit discover` |
 | No Jira Product Discovery project (step 10) | none: `available: false`, exit 0 | Create a Jira Product Discovery project, or use a token whose owner can browse one |

@@ -66,6 +66,18 @@ test('jira ideas connect previews with --dry-run, then connects the idea to the 
   assert.deepEqual(listed.ideas.find((idea) => idea.id === 'IDEA-1').epics, ['ENG-1'])
 })
 
+test('jira ideas list reads Jira again when the cached discovery has no JPD project', async () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^ {2}system: local$/m, '  system: jira\n  scope:\n    site: acme.atlassian.net\n    space: ENG'))
+  const env = { ...FAKE_ENV, ...userStoreEnv().env, PMKIT_NOW: '2026-11-23T12:00:00Z' }
+  const cli = (discovery) => run(['jira', 'ideas', 'list', '--json'], { cwd: root, env, adapters: { ...ADAPTERS, jira: jiraDescriptor({ fetch: fakeJiraFetch(fakeJiraIssues({ discovery }).routes) }) } })
+  assert.equal(data(await cli(false)).available, false, 'the first run caches a discovery with no JPD project')
+  const after = await cli(true)
+  assert.equal(after.code, 0, after.stdout + after.stderr)
+  assert.equal(data(after).available, true)
+})
+
 test('jira ideas list on a Local tracker is NOT_SUPPORTED', async () => {
   const result = await run(['jira', 'ideas', 'list', '--json'], { cwd: makeRepo('basic'), env: { ...FAKE_ENV, ...userStoreEnv().env } })
   assert.equal(result.code, 2, result.stdout)
