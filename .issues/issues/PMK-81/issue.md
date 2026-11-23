@@ -2,13 +2,15 @@
 id: PMK-81
 title: Add the Bitbucket Cloud git host
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 8
+assignee: fred
 parent: EPC-7
 milestone: jira
+branch: fredsvanelli/pmk-81-bitbucket-cloud
 created: 2026-10-25T19:13:23Z
-updated: 2026-10-25T19:13:23Z
+updated: 2026-11-23T18:28:16Z
 ---
 
 ## Description
