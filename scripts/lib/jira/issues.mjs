@@ -11,6 +11,8 @@ import { adfToText, textToAdf } from './adf.mjs'
 import { categoryOfStatus, discoveryView } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
 import { sprintOf } from './sprints.mjs'
+import { closedSprint, unknownSprint } from '../issue-filter.mjs'
+import { sprintUnsupported } from './filter.mjs'
 
 const BRANCH_PROPERTY = 'pmkit.branch'
 const HOURS = 'timeoriginalestimate'
@@ -24,7 +26,7 @@ const PRIORITY_READ = {
   low: 'low', lowest: 'low', minor: 'low', trivial: 'low',
 }
 // The issue that serves each field PMK-77 leaves unset.
-const LATER = { sprint: 'PMK-78', milestone: 'PMK-79', release: 'PMK-79' }
+const LATER = { milestone: 'PMK-79', release: 'PMK-79' }
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', message, nextStep)
@@ -292,8 +294,34 @@ function planBranch(patch, state, create) {
   state.set('branch', patch.branch)
 }
 
-// The Jira fields a patch sends (only the changed ones on update) and the issue it leaves; a changed branch is `property`.
-export function toFields(patch, before, context, { create = false, now = new Date().toISOString() } = {}) {
+/** A changed sprint is `sprint: { to }`, the Jira sprint id or null for the backlog. `sprints` is the board's raw Jira sprints, read when the patch has a sprint id. */
+function planSprint(patch, state, context, sprints) {
+  if (patch.sprint === undefined) return
+  if (patch.sprint === null || patch.sprint === 'none') {
+    if (state.after.sprint === undefined) return
+    state.result.sprint = { to: null }
+    state.set('sprint', null)
+    return
+  }
+  const unsupported = sprintUnsupported(context)
+  if (unsupported) throw unsupported
+  let found
+  if (patch.sprint === 'current') {
+    found = sprints.find((sprint) => sprint.state === 'active')
+    if (!found) throw invalid('there is no active sprint', 'pmkit cycle list')
+  } else {
+    found = sprints.find((sprint) => String(sprint.id) === patch.sprint)
+    if (!found) throw unknownSprint(patch.sprint)
+  }
+  const to = String(found.id)
+  if (to === state.after.sprint) return
+  if (found.state === 'closed') throw closedSprint(to)
+  state.result.sprint = { to }
+  state.set('sprint', to)
+}
+
+// The Jira fields a patch sends (only the changed ones on update) and the issue it leaves; a changed branch is `property`, a changed sprint is `sprint`.
+export function toFields(patch, before, context, { create = false, now = new Date().toISOString(), sprints = [] } = {}) {
   checkPatch(patch, create)
   const start = create ? skeleton(context, (typeof patch.type === 'string' ? context.workTypeOf(patch.type) : undefined) ?? defaultWorkType(context), now) : before
   const state = plan(start)
@@ -307,5 +335,6 @@ export function toFields(patch, before, context, { create = false, now = new Dat
   planDue(patch, state, create)
   if (create) planCreateOnly(patch, state, context)
   planBranch(patch, state, create)
+  planSprint(patch, state, context, sprints)
   return state.result
 }

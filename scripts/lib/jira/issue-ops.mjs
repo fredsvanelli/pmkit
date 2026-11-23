@@ -153,18 +153,38 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     }
   }
 
+  /** The board's Jira sprints, read only when the patch names a sprint to move to. */
+  async function sprintsFor(patch, context) {
+    if (typeof patch.sprint !== 'string') return []
+    const unsupported = sprintUnsupported(context)
+    if (unsupported) throw unsupported
+    return sprints()
+  }
+
+  /** Puts a work item into a sprint, or into the backlog for `to` null. */
+  const moveToSprint = (key, to) => (to === null
+    ? client.request('POST', '/rest/agile/1.0/backlog/issue', { body: { issues: [key] } })
+    : client.request('POST', `/rest/agile/1.0/sprint/${encodeURIComponent(to)}/issue`, { body: { issues: [key] } }))
+
   const afterOf = async (key) => (await readItem(key)).issue
   const statusAt = (target, context) => ({ name: target.name, category: context.categoryOf(target.name) })
 
   async function createIssue(request, actor, { dryRun = false } = {}) {
     await requireActor(actor)
     const input = request ?? {}
-    const { value: plan, context } = await withRefresh((current) => toFields(input, null, current, { create: true, now: now().toISOString() }))
+    const { value: plan, context } = await withRefresh(async (current) => toFields(input, null, current, { create: true, now: now().toISOString(), sprints: await sprintsFor(input, current) }))
     const category = input.status ?? undefined
     // The target is checked before the create, so a work type with no status in the category sends nothing.
     const target = category === undefined ? null : pickTarget({ item: { fields: { issuetype: plan.fields.issuetype } }, category, context })
     if (dryRun) return { before: null, after: target ? { ...plan.after, status: statusAt(target, context) } : plan.after }
     const { key } = await client.request('POST', `${API}/issue`, { body: { fields: plan.fields } })
+    if (plan.sprint) {
+      try {
+        await moveToSprint(key, plan.sprint.to)
+      } catch (error) {
+        throw new PmkitError('UPSTREAM', `Jira created ${key}, but moving it to sprint ${plan.sprint.to} failed: ${error.message}`, `pmkit cycle add ${key} --to ${plan.sprint.to}`, { created: key, cause: error.code ?? error.name })
+      }
+    }
     if (target) {
       try {
         await move(key, category, {})
@@ -187,9 +207,9 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
   async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
     await requireActor(actor)
     const { issue: before, context } = await readItem(id)
-    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString() })
+    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context) })
     const changed = Object.keys(plan.fields).length > 0
-    if (!changed && !plan.property) return { before, after: before }
+    if (!changed && !plan.property && !plan.sprint) return { before, after: before }
     if (dryRun) return { before, after: plan.after }
     if (changed) await client.request('PUT', issuePath(before.id), { body: { fields: plan.fields } })
     if (plan.property) {
@@ -198,6 +218,15 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
       } catch (error) {
         if (!changed) throw error
         throw new PmkitError('UPSTREAM', `Jira updated ${before.id}, but writing its branch failed: ${error.message}`, `pmkit issues update ${before.id} --branch <name>`, { cause: error.code ?? error.name })
+      }
+    }
+    if (plan.sprint) {
+      try {
+        await moveToSprint(before.id, plan.sprint.to)
+      } catch (error) {
+        if (!changed && !plan.property) throw error
+        const to = plan.sprint.to ?? 'none'
+        throw new PmkitError('UPSTREAM', `Jira updated ${before.id}, but moving it to sprint ${to} failed: ${error.message}`, `pmkit cycle add ${before.id} --to ${to}`, { cause: error.code ?? error.name })
       }
     }
     return { before, after: await afterOf(before.id) }

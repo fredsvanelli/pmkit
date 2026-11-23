@@ -356,3 +356,61 @@ test('reading a work item of another space does not refresh a cached discovery',
   assert.equal((await second.tracker.getIssue('OPS-1')).status.name, 'Elsewhere')
   assert.equal(callsTo(second.fetch, 'GET', '/rest/api/3/project/ENG/statuses').length, 0)
 })
+
+const FUTURE = { id: 2, state: 'future', name: 'Sprint 2' }
+const CLOSED = { id: 3, state: 'closed', name: 'Sprint 3', completeDate: '2026-11-08T12:00:00.000Z' }
+const agileWrites = (fake) => fake.writes().map((write) => `${write.method} ${write.path}`).filter((line) => line.includes('/agile/'))
+
+test('createIssue with a sprint moves the new item into it before the status move', async () => {
+  const { fake, tracker } = setup({ sprints: [SPRINT] })
+  const dry = await tracker.createIssue({ title: 'First', sprint: '1' }, ME, { dryRun: true })
+  assert.equal(dry.after.sprint, '1')
+  assert.deepEqual(fake.writes(), [])
+  const made = await tracker.createIssue({ title: 'First', sprint: '1', status: 'in_progress' }, ME)
+  assert.equal(made.after.sprint, '1')
+  assert.equal((await tracker.getIssue('ENG-1')).sprint, '1')
+  assert.deepEqual(fake.writes().map((write) => `${write.method} ${write.path}`), ['POST /rest/api/3/issue', 'POST /rest/agile/1.0/sprint/1/issue', 'POST /rest/api/3/issue/ENG-1/transitions'])
+  assert.equal((await tracker.createIssue({ title: 'Second', sprint: null }, ME)).after.sprint, undefined)
+  assert.equal(agileWrites(fake).length, 1)
+})
+
+test('createIssue with a sprint that moves wrongly is UPSTREAM naming the created key', async () => {
+  const { fake, tracker } = setup({ sprints: [SPRINT], routes: { 'POST /rest/agile/1.0/sprint/1/issue': { status: 500, json: {} } } })
+  await assert.rejects(tracker.createIssue({ title: 'First', sprint: '1' }, ME), (error) => error.code === 'UPSTREAM' && error.details.created === 'ENG-1' && error.nextStep === 'pmkit cycle add ENG-1 --to 1')
+  assert.equal(fake.writes().length, 1)
+})
+
+test('updateIssue moves an item between sprints and to none; an unchanged sprint sends nothing', async () => {
+  const { fake, tracker } = setup({ sprints: [SPRINT, FUTURE] })
+  const [key] = seed(fake.state)
+  assert.deepEqual(fake.writes(), [])
+  await tracker.updateIssue(key, { sprint: null }, ME)
+  assert.deepEqual(fake.writes(), [])
+  const dry = await tracker.updateIssue(key, { sprint: '1' }, ME, { dryRun: true })
+  assert.equal(dry.after.sprint, '1')
+  assert.deepEqual(fake.writes(), [])
+  assert.equal((await tracker.updateIssue(key, { sprint: 'current', title: 'Renamed' }, ME)).after.sprint, '1')
+  assert.deepEqual(fake.writes().map((write) => `${write.method} ${write.path}`), ['PUT /rest/api/3/issue/ENG-1', 'POST /rest/agile/1.0/sprint/1/issue'])
+  const count = fake.writes().length
+  await tracker.updateIssue(key, { sprint: '1' }, ME)
+  assert.equal(fake.writes().length, count)
+  assert.equal((await tracker.updateIssue(key, { sprint: '2' }, ME)).after.sprint, '2')
+  const after = await tracker.updateIssue(key, { sprint: null }, ME)
+  assert.equal(after.after.sprint, undefined)
+  assert.deepEqual(fake.writes().at(-1), { method: 'POST', path: '/rest/agile/1.0/backlog/issue', body: { issues: [key] } })
+})
+
+test('updateIssue to a closed or unknown sprint, or current with none active, sends nothing', async () => {
+  const { fake, tracker } = setup({ sprints: [CLOSED, FUTURE] })
+  const [key] = seed(fake.state)
+  await assert.rejects(tracker.updateIssue(key, { sprint: '3' }, ME), { code: 'CONFLICT' })
+  await assert.rejects(tracker.updateIssue(key, { sprint: '99' }, ME), { code: 'INVALID_INPUT' })
+  await assert.rejects(tracker.updateIssue(key, { sprint: 'current' }, ME), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+  assert.deepEqual(fake.writes(), [])
+})
+
+test('updateIssue whose sprint move fails after the field write is UPSTREAM with the next step', async () => {
+  const { fake, tracker } = setup({ sprints: [SPRINT], routes: { 'POST /rest/agile/1.0/sprint/1/issue': { status: 500, json: {} } } })
+  const [key] = seed(fake.state)
+  await assert.rejects(tracker.updateIssue(key, { sprint: '1', title: 'Renamed' }, ME), (error) => error.code === 'UPSTREAM' && error.message.startsWith('Jira updated ENG-1, but moving it to sprint 1 failed') && error.nextStep === 'pmkit cycle add ENG-1 --to 1')
+})

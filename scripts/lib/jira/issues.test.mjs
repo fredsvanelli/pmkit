@@ -245,10 +245,9 @@ test('labels holding a space are refused', async () => {
   assert.deepEqual(set.after.labels, ['new', 'z'])
 })
 
-test('sprint, milestone and release values name the issue that serves them; null passes', async () => {
+test('milestone and release values name the issue that serves them; null passes', async () => {
   const ctx = await context()
   const old = await before(ctx)
-  assert.throws(() => toFields({ sprint: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-78/ })
   assert.throws(() => toFields({ milestone: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-79/ })
   assert.throws(() => toFields({ release: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-79/ })
   assert.deepEqual(toFields({ sprint: null, milestone: null, release: null }, old, ctx, {}).fields, {})
