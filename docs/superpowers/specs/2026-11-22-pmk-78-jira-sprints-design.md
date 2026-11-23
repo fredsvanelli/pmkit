@@ -48,7 +48,14 @@ Unverified and filed for EPC-14: what Jira does with the incomplete work items o
 2. **Membership through the Sprint field.** `PUT /issue/{key}` with `{ customfield_10020: 42 }` and `null`. One write fewer per update, but Jira refuses it when the field is off the screen, and Scrum spaces often keep Sprint off the create screen. Rejected.
 3. **Sprints read through JQL alone.** No state, dates or goal, and no empty sprints. Rejected.
 
-Q1 (for the reviewer): starting a future sprint someone created in Jira needs a new contract operation (`startCycle`) that every adapter and Local would implement. This design keeps Local's behaviour and leaves that to a follow-up, recommended for EPC-14.
+## Interview answers (owner, 2026-11-22)
+
+- Q1: starting a future sprint created in Jira needs a new contract operation (`startCycle`). Out of scope; filed as PMK-369 under EPC-14.
+- Q2: the sprint rule of "An issue's sprint" is accepted and recorded as ADR 0016.
+- Q3: a future sprint without dates reads `start` and `end` as `null`; days off on it are refused, capacity is accepted.
+- Q4: only the first Scrum board's sprints count.
+- Q5: Sprint changelog items become `sprint` history events, in scope.
+- Q6: pmkit writes sprint dates at 12:00 UTC.
 
 ## The sprint model
 
