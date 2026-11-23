@@ -85,7 +85,8 @@ test('pr status returns the pull request and its checks, with the blockers not v
   assert.deepEqual(data.blockers, { blocked: null, blocking: [], pending: [], unknown: [], unchecked: [NOT_VERIFIED] })
   const text = (await ok('pr', 'status', '--branch', 'b')).stdout
   assert.match(text, /Build fail \(ci logs --run 42\)/)
-  assert.match(text, /blockers not verified/)
+  assert.match(text, /^blockers: not verified on Bitbucket$/m)
+  assert.doesNotMatch(text, /blockers not verified/)
 })
 
 test('pr status without BITBUCKET_TOKEN is AUTH', async () => {
@@ -188,5 +189,46 @@ test('capabilities names Bitbucket and the commands it does not support', async 
   const { ok } = setup()
   const data = JSON.parse((await ok('capabilities', '--json')).stdout)
   const linked = data.capabilities.find((entry) => entry.id === 'linked_code')
-  assert.deepEqual(linked.detail, { source: 'git', host: 'bitbucket', unsupported: ['pr review', 'pr blockers'] })
+  assert.deepEqual(linked.detail, { source: 'git', host: 'bitbucket', unsupported: ['pr review', 'pr blockers'], degraded: ['inbox review requests'] })
+})
+
+test('risks names the pull requests whose checks Bitbucket refused, and exits 0', async () => {
+  const { ok } = setup({
+    [PRS]: { json: { values: [rawPr(), rawPr({ id: 8, source: { branch: { name: 'c' } } })] } },
+    [`GET ${BB}/pullrequests/7/statuses`]: { status: 403, json: { type: 'error', error: { message: 'Forbidden' } } },
+    [`GET ${BB}/pullrequests/8/statuses`]: { json: { values: [] } },
+    [PIPELINES]: { json: { values: [] } },
+  })
+  const result = await ok('risks', '--json')
+  assert.match(result.stderr, /warning: checks of #7 not read/)
+  assert.doesNotMatch(result.stderr, /#8 not read/)
+})
+
+test('release-readiness shows the checks of a pull request whose statuses Bitbucket refused as not read', async () => {
+  const { ok, root } = setup({
+    [PRS]: { json: { values: [rawPr()] } },
+    [STATUSES]: { status: 403, json: { type: 'error', error: { message: 'Forbidden' } } },
+    ...deployRoutes(),
+  })
+  const issue = path.join(root, '.issues', 'issues', 'ISS-8C4W', 'issue.md')
+  fs.writeFileSync(issue, fs.readFileSync(issue, 'utf8').replace(/^status: .*$/m, (line) => `${line}\nbranch: b`))
+  await ok('release', 'create', '1.0', '--tag', 'v1.0')
+  await ok('issues', 'update', 'ISS-8C4W', '--release', '1.0')
+  const result = await ok('release-readiness', '--json')
+  assert.equal(JSON.parse(result.stdout).pullRequests[0].checks, null)
+  assert.match(result.stderr, /warning: checks of #7 not read/)
+  assert.match((await ok('release-readiness')).stdout, /checks not read/)
+})
+
+test('deploys list warns that older deployments of an environment may be missing when the read was cut', async () => {
+  const many = Array.from({ length: 100 }, (_, i) => deployment(i + 1, '{env-s}', 'SUCCESSFUL'))
+  const { ok } = setup({
+    [ENVIRONMENTS]: { json: { values: [{ uuid: '{env-p}', name: 'Production' }, { uuid: '{env-s}', name: 'Staging' }] } },
+    [DEPLOYMENTS]: [1, 2, 3, 4, 5].map((n) => ({ json: { values: many, next: `https://api.bitbucket.org${BB}/deployments?page=${n + 1}` } })),
+  })
+  const result = await ok('deploys', 'list', '--environment', 'Production')
+  assert.equal(result.stdout, 'no deployments\n')
+  assert.match(result.stderr, /warning: only the 500 newest deployments were read, so older deployments of Production may be missing/)
+  const staging = await ok('deploys', 'list', '--environment', 'Staging', '--limit', '5')
+  assert.doesNotMatch(staging.stderr, /500 newest/)
 })

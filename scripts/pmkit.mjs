@@ -2375,7 +2375,8 @@ export const COMMANDS = [
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
       if (failed) lines.push(`blockers: not verified (${failed.message})`)
-      else if (pr?.state === 'OPEN') lines.push(`blockers: ${blockedText(prSummary(pr, found))}`)
+      // Bitbucket has no blocker reads at all: one plain line, not the "not verified: <areas>" list of a GitHub read that failed.
+      else if (pr?.state === 'OPEN') lines.push(host.system === 'bitbucket' ? 'blockers: not verified on Bitbucket' : `blockers: ${blockedText(prSummary(pr, found))}`)
       const blockers = found && { blocked: found.blocked, blocking: found.blocking, pending: found.pending, unknown: found.unknown, unchecked: found.unchecked }
       return { data: { branch, pr: withoutDetail(pr), checks, reviews, blockers }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
@@ -2390,6 +2391,7 @@ export const COMMANDS = [
       // A Bitbucket deploy has no ref, and may have no commit: what is missing is left out, never printed as null.
       const lines = deploys.map((d) => [d.environment, d.state ?? 'unknown', d.ref, d.sha?.slice(0, 7), d.createdAt, d.url].filter((part) => part !== null && part !== undefined && part !== '').join(' '))
       const warnings = unknownDeployWarnings(deploys)
+      if (ctx.host().deploysCut?.()) warnings.push(deploysCutWarning(ctx.opt('environment')))
       return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), warnings, notes: await capabilityNotesOrNone(ctx) }
     },
   },
@@ -2823,6 +2825,7 @@ async function runRisks(ctx) {
     try {
       prs = await host.listPullRequests()
       if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
+      hostWarnings.push(...uncheckedPrsWarnings(host, prs))
       openPrsByBranch = prsByBranch(prs)
     } catch (error) {
       if (!affectsOneCall(error)) throw error
@@ -3126,6 +3129,7 @@ async function runReleaseReadiness(ctx) {
         prsIncomplete = true
         hostWarnings.push('only the 200 most recently created open pull requests were read')
       }
+      hostWarnings.push(...uncheckedPrsWarnings(host, prs))
     } catch (error) {
       if (!affectsOneCall(error)) throw error
       prs = { error: errorOf(error) }
@@ -3133,6 +3137,7 @@ async function runReleaseReadiness(ctx) {
     }
     try {
       deploys = await host.listDeploys({})
+      if (host.deploysCut?.()) hostWarnings.push(deploysCutWarning())
       // The tag's own deploy may be older than the newest 20: ask for the deploys made for the tag, as `v1` and as `refs/tags/v1`.
       // A Bitbucket deploy has no ref, so there is no deploy of the tag to ask for (PMK-81).
       if (choice.basis === 'release' && choice.source.tag && host.system !== 'bitbucket') {
@@ -5036,9 +5041,19 @@ function makeHost(ctx) {
   const { system, repo } = ctx.config().pmkit.git_host ?? {}
   if (system === 'bitbucket') return createBitbucketHost({ root: ctx.root, env: ctx.env, repo, fetch: ctx.fetch })
   if (system !== 'github') {
-    throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup')
+    throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github or bitbucket in .pmkit/config.yaml, or run /pmkit:setup')
   }
   return createGithubHost({ root: ctx.root, env: ctx.env })
+}
+
+/** Bitbucket reads its 500 newest deploys then filters them (PMK-81): a cut read that kept too few may miss older ones. */
+const deploysCutWarning = (environment) => `only the 500 newest deployments were read, so older deployments${environment === undefined ? '' : ` of ${environment}`} may be missing`
+
+/** One warning naming the open pull requests whose checks were not read (Bitbucket refused their statuses), or none. */
+const uncheckedPrsWarnings = (host, prs) => {
+  if (host.system !== 'bitbucket') return []
+  const numbers = prs.filter((pr) => pr.statusCheckRollup === null).map((pr) => `#${pr.number}`)
+  return numbers.length === 0 ? [] : [`checks of ${numbers.join(', ')} not read`]
 }
 
 /** The name of a host for messages that would otherwise say GitHub on any host. */

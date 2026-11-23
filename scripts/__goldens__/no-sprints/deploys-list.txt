@@ -4,7 +4,7 @@ exit 2
 (empty)
 --- stderr
 error: this repository has no git host configured
-next: Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup
+next: Set git_host.system to github or bitbucket in .pmkit/config.yaml, or run /pmkit:setup
 
 $ pmkit deploys list --json
 exit 2
@@ -13,7 +13,7 @@ exit 2
   "error": {
     "code": "NOT_SUPPORTED",
     "message": "this repository has no git host configured",
-    "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+    "nextStep": "Set git_host.system to github or bitbucket in .pmkit/config.yaml, or run /pmkit:setup"
   }
 }
 --- stderr

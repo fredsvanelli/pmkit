@@ -167,3 +167,9 @@ test('PMK-81: the readiness text says a Bitbucket deploy is not verified against
   assert.match(text, /not verified on Bitbucket/)
   assert.doesNotMatch(text, /null/)
 })
+
+test('PMK-81: a pull request whose checks were not read has checks null, and the text says so', () => {
+  const data = build({ issues: [issue('A-1', 'todo', 'a1')], gitHost: { system: 'bitbucket', available: true }, prs: [pr(1, 'a1', { statusCheckRollup: null })] })
+  assert.equal(data.pullRequests[0].checks, null)
+  assert.match(readinessText(data), /checks not read/)
+})

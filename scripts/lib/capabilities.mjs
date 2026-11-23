@@ -41,7 +41,7 @@ const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
  * reads that before it calls them.
  */
 export function linkedCodeDetail(gitHost) {
-  return gitHost === 'bitbucket' ? { source: 'git', host: 'bitbucket', unsupported: ['pr review', 'pr blockers'] } : { source: 'git' }
+  return gitHost === 'bitbucket' ? { source: 'git', host: 'bitbucket', unsupported: ['pr review', 'pr blockers'], degraded: ['inbox review requests'] } : { source: 'git' }
 }
 const absentHint = (id) => `No pmkit command serves ${id} in the Local tracker yet`
 

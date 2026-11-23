@@ -142,6 +142,9 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
     return found ? toPullRequest(found, { detail }) : null
   }
 
+  // Whether the last listDeploys read was cut at DEPLOY_SCAN with fewer than limit deploys kept, so older ones may be missing.
+  let deploysCut = false
+
   const statuses = async (number) => (await api().list(`pullrequests/${number}/statuses`, { pagelen: 100 }, { limit: STATUS_LIMIT })).values
 
   return {
@@ -242,12 +245,13 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         throw new PmkitError('INVALID_INPUT', `limit "${limit}" is not valid`, 'Use a whole number from 1 to 100')
       }
+      deploysCut = false
       if (ref !== undefined) return []
       const environments = (await api().list('environments', { pagelen: 100 }, { limit: ENVIRONMENT_LIMIT })).values
       const names = new Map(environments.map((e) => [e.uuid, e.name]))
-      const { values } = await api().list('deployments', { sort: '-release.created_on', pagelen: 100 }, { limit: DEPLOY_SCAN })
+      const { values, cut } = await api().list('deployments', { sort: '-release.created_on', pagelen: 100 }, { limit: DEPLOY_SCAN })
       const createdAt = (d) => d.release?.created_on ?? d.state?.started_on ?? null
-      return values
+      const deploys = values
         .map((d) => {
           const state = deployState(d.state)
           const deploy = { id: d.uuid, environment: names.get(d.environment?.uuid) ?? null, ref: null, sha: d.release?.commit?.hash ?? null, createdAt: createdAt(d), state, url: d.release?.url ?? null }
@@ -256,6 +260,11 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
         .filter((d) => environment === undefined || d.environment === environment)
         .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0))
         .slice(0, limit)
+      deploysCut = cut && deploys.length < limit
+      return deploys
     },
+
+    /** True when the last listDeploys read only the DEPLOY_SCAN newest deploys and kept fewer than its limit. */
+    deploysCut: () => deploysCut,
   }
 }

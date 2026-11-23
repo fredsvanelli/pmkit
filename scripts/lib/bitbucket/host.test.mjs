@@ -519,3 +519,21 @@ test('listDeploys refuses a limit outside 1 to 100', async () => {
   const { host } = setup(deployRoutes())
   for (const limit of [0, 101, 1.5]) await assert.rejects(host.listDeploys({ limit }), (error) => error.code === 'INVALID_INPUT', String(limit))
 })
+
+test('listDeploys says the read was cut when 500 deploys hold fewer than limit of the environment', async () => {
+  const many = Array.from({ length: 100 }, (_, i) => deployment(i + 1, '{env-s}', done('SUCCESSFUL')))
+  const { host } = setup({
+    [ENVIRONMENTS]: { json: { values: [{ uuid: '{env-p}', name: 'Production' }, { uuid: '{env-s}', name: 'Staging' }] } },
+    [DEPLOYMENTS]: [1, 2, 3, 4, 5].map((n) => ({ json: { values: many, next: `${API}${BB}/deployments?page=${n + 1}` } })),
+  })
+  assert.deepEqual(await host.listDeploys({ environment: 'Production' }), [])
+  assert.equal(host.deploysCut(), true)
+  assert.equal((await host.listDeploys({ environment: 'Staging', limit: 5 })).length, 5)
+  assert.equal(host.deploysCut(), false)
+})
+
+test('listDeploys is not cut when the deploys fit in one read', async () => {
+  const { host } = setup(deployRoutes())
+  await host.listDeploys({ environment: 'Production' })
+  assert.equal(host.deploysCut(), false)
+})
