@@ -4,7 +4,7 @@
 import { PmkitError } from '../errors.mjs'
 import { createGitLocal, refArg } from '../git-local.mjs'
 import { FAILED_RUN, newerSuccess } from '../risks.mjs'
-import { createBitbucketClient } from './client.mjs'
+import { createBitbucketClient, pageValues } from './client.mjs'
 
 const STATES = { OPEN: 'OPEN', MERGED: 'MERGED', DECLINED: 'CLOSED', SUPERSEDED: 'CLOSED' }
 const BUCKETS = { SUCCESSFUL: 'pass', FAILED: 'fail', STOPPED: 'cancel', INPROGRESS: 'pending' }
@@ -16,6 +16,8 @@ const ALL_STATES = Object.keys(STATES)
 const LIST_LIMIT = 200
 // A pull request with more statuses than this is not a case pmkit meets; the limit only bounds the read.
 const STATUS_LIMIT = 1000
+// listPullRequests reads this many pull requests' statuses at once.
+const STATUS_BATCH = 8
 // GitHub refuses a diff over its limit; Bitbucket answers these two, and a body over this size is treated the same.
 const DIFF_REFUSED = new Set([406, 413])
 const MAX_DIFF = 50 * 1024 * 1024
@@ -94,7 +96,7 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
   async function pipelineOf(runId) {
     for (let page = 1; page <= RUN_PAGES; page += 1) {
       const answer = await api().get('pipelines', { sort: '-created_on', pagelen: RUN_PAGE, page })
-      const found = (answer?.values ?? []).find((p) => p.build_number === runId)
+      const found = pageValues(answer, 'pipelines').find((p) => p.build_number === runId)
       if (found) return found
       if (!answer?.next) break
     }
@@ -121,23 +123,27 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
 
   /** The pull request of a number or a head branch, or null. A head with several takes the open one, else the newest, as gh does. */
   async function getPullRequest(selector, { detail = false } = {}) {
-    if (selector?.number !== undefined) {
-      const number = prNumber(selector.number)
-      try {
-        return toPullRequest(await api().get(`pullrequests/${number}`), { detail })
-      } catch (error) {
-        if (error instanceof PmkitError && error.code === 'UPSTREAM' && error.httpStatus === 404) return null
-        throw error
-      }
-    }
+    if (selector?.number !== undefined) return pullRequestOfNumber(prNumber(selector.number), detail)
     if (selector?.head === undefined || selector.head === '') {
       throw new PmkitError('INVALID_INPUT', 'getPullRequest needs a number or a head', 'Pass a pull request number or a branch name')
     }
-    const head = refArg('head', selector.head)
+    return pullRequestOfHead(refArg('head', selector.head), detail)
+  }
+
+  async function pullRequestOfNumber(number, detail) {
+    try {
+      return toPullRequest(await api().get(`pullrequests/${number}`), { detail })
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'UPSTREAM' && error.httpStatus === 404) return null
+      throw error
+    }
+  }
+
+  async function pullRequestOfHead(head, detail) {
     // Bitbucket's query language quotes strings with "; a quote or backslash in the name is escaped so it cannot end the string.
     const q = `source.branch.name="${head.replace(/[\\"]/g, '\\$&')}"`
     const page = await api().get('pullrequests', { q, state: ALL_STATES, sort: '-created_on', pagelen: 50 })
-    const values = page?.values ?? []
+    const values = pageValues(page, 'pullrequests')
     const found = values.find((pr) => pr.state === 'OPEN') ?? values[0]
     return found ? toPullRequest(found, { detail }) : null
   }
@@ -146,6 +152,23 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
   let deploysCut = false
 
   const statuses = async (number) => (await api().list(`pullrequests/${number}/statuses`, { pagelen: 100 }, { limit: STATUS_LIMIT })).values
+
+  /** The build statuses of a pull request as GitHub status contexts, or null when Bitbucket refuses them (403). */
+  async function rollupOf(number) {
+    try {
+      return (await statuses(number)).map((s) => ({ context: s.key, state: CONTEXT_STATES[s.state] ?? s.state }))
+    } catch (error) {
+      // A refused read leaves the checks unknown (risks counts the pull request as not failing); anything else stops the list.
+      if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM' || error.httpStatus !== 403) throw error
+      return null
+    }
+  }
+
+  /** An open pull request of listPullRequests, with its checks. */
+  async function withRollup(raw) {
+    const { number, url, title, headRefName, isDraft, author } = toPullRequest(raw)
+    return { number, url, title, headRefName, isDraft, updatedAt: raw.updated_on ?? null, author, statusCheckRollup: await rollupOf(raw.id) }
+  }
 
   return {
     system: 'bitbucket',
@@ -197,18 +220,8 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
     async listPullRequests() {
       const { values } = await api().list('pullrequests', { state: 'OPEN', sort: '-created_on', pagelen: 50 }, { limit: LIST_LIMIT })
       const prs = []
-      for (const raw of values) {
-        let statusCheckRollup
-        try {
-          statusCheckRollup = (await statuses(raw.id)).map((s) => ({ context: s.key, state: CONTEXT_STATES[s.state] ?? s.state }))
-        } catch (error) {
-          // A refused read leaves the checks unknown (risks counts the pull request as not failing); anything else stops the list.
-          if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM' || error.httpStatus !== 403) throw error
-          statusCheckRollup = null
-        }
-        const { number, url, title, headRefName, isDraft, author } = toPullRequest(raw)
-        prs.push({ number, url, title, headRefName, isDraft, updatedAt: raw.updated_on ?? null, author, statusCheckRollup })
-      }
+      // The statuses are read STATUS_BATCH at a time: one read per pull request, without sending up to 200 at once.
+      for (let i = 0; i < values.length; i += STATUS_BATCH) prs.push(...(await Promise.all(values.slice(i, i + STATUS_BATCH).map(withRollup))))
       return prs
     },
 

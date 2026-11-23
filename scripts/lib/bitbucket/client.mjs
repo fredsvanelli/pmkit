@@ -37,6 +37,15 @@ function queryString(query = {}) {
   return text === '' ? '' : `?${text}`
 }
 
+/** The UPSTREAM error of a page Bitbucket answered without a values list, or with a next link that cannot be followed. */
+const brokenPage = (path) => new PmkitError('UPSTREAM', `Bitbucket returned a broken page for ${path || 'the repository'}`, RETRY_STEP)
+
+/** The values of one page, or UPSTREAM when the page has no values list. */
+export function pageValues(page, path) {
+  if (!Array.isArray(page?.values)) throw brokenPage(path)
+  return page.values
+}
+
 export function createBitbucketClient({
   env,
   repo,
@@ -197,18 +206,16 @@ export function createBitbucketClient({
   async function list(path, query, { limit } = {}) {
     checkPath(path)
     if (!Number.isInteger(limit) || limit < 1) throw new TypeError('limit must be an integer of at least 1')
-    const broken = () => new PmkitError('UPSTREAM', `Bitbucket returned a broken page for ${path || 'the repository'}`, RETRY_STEP)
     const values = []
     let url = urlOf(path, query)
     for (;;) {
       const page = await send('GET', path, url)
-      if (!Array.isArray(page?.values)) throw broken()
-      values.push(...page.values)
+      values.push(...pageValues(page, path))
       const next = page.next
       if (next === undefined || next === null) return { values: values.slice(0, limit), cut: values.length > limit }
       if (values.length >= limit) return { values: values.slice(0, limit), cut: true }
       // An empty page that points on could loop forever; a next link elsewhere would carry the token there.
-      if (page.values.length === 0 || typeof next !== 'string') throw broken()
+      if (page.values.length === 0 || typeof next !== 'string') throw brokenPage(path)
       let nextUrl
       try {
         nextUrl = new URL(next)

@@ -537,3 +537,42 @@ test('listDeploys is not cut when the deploys fit in one read', async () => {
   await host.listDeploys({ environment: 'Production' })
   assert.equal(host.deploysCut(), false)
 })
+
+// Review findings (PMK-81 Secure).
+
+test('listPullRequests reads the statuses 8 at a time, keeps the order, and a 403 on one leaves only that one null', async () => {
+  const prs = Array.from({ length: 9 }, (_, i) => raw({ id: i + 1 }))
+  const inner = fakeBitbucketFetch({
+    [PRS]: { json: { values: prs } },
+    [`GET ${BB}/pullrequests/{id}/statuses`]: (call) => (call.params.id === '4'
+      ? { status: 403, json: { type: 'error', error: { message: 'no' } } }
+      : { json: { values: [{ key: `build-${call.params.id}`, state: 'SUCCESSFUL' }] } }),
+  })
+  // Each status read waits a turn, so reads made one after another never overlap and reads made together do.
+  let inFlight = 0
+  let most = 0
+  const fetch = async (url, init) => {
+    if (!/\/statuses/.test(url)) return inner(url, init)
+    inFlight += 1
+    most = Math.max(most, inFlight)
+    await new Promise((resolve) => setImmediate(resolve))
+    inFlight -= 1
+    return inner(url, init)
+  }
+  const host = createBitbucketHost({ root: '/repo', env: FAKE_BB_ENV, repo: 'acme/widgets', fetch })
+  const found = await host.listPullRequests()
+  assert.deepEqual(found.map((pr) => pr.number), [1, 2, 3, 4, 5, 6, 7, 8, 9])
+  assert.deepEqual(found.map((pr) => pr.statusCheckRollup?.[0]?.context ?? null), ['build-1', 'build-2', 'build-3', null, 'build-5', 'build-6', 'build-7', 'build-8', 'build-9'])
+  assert.equal(found[3].statusCheckRollup, null)
+  assert.equal(most, 8)
+})
+
+test('getPullRequest by head is UPSTREAM on a page whose values is not a list', async () => {
+  const { host } = setup({ [PRS]: { json: { values: 'nope' } } })
+  await assert.rejects(host.getPullRequest({ head: 'iss-7k3q-retry' }), (error) => error.code === 'UPSTREAM' && error.message === 'Bitbucket returned a broken page for pullrequests')
+})
+
+test('ciLogs by run id is UPSTREAM on a pipelines page whose values is not a list', async () => {
+  const { host } = setup({ [`GET ${BB}/pipelines`]: { json: { next: `${API}${BB}/pipelines?page=2` } } })
+  await assert.rejects(host.ciLogs({ runId: 3 }), (error) => error.code === 'UPSTREAM' && error.message === 'Bitbucket returned a broken page for pipelines')
+})

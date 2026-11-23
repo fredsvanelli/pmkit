@@ -10,6 +10,7 @@ import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
 import { ACME_TEAM, ACME_USERS, FAKE_KEY, customView, fakeCustomViews, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { BB, FAKE_BB_ENV, fakeBitbucketFetch } from './fake-bitbucket-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -2250,4 +2251,16 @@ test('issues get on Linear says the release is unknown when its read fails, and 
   assert.equal(result.code, 0, result.stderr)
   assert.match(result.stdout, /\nrelease: unknown \(/)
   assert.match(result.stderr, /note: the release of ACME-2 is unknown, because pmkit could not read it: /)
+})
+
+test('init --git-host bitbucket writes the repo of a bitbucket.org origin after one repository read (PMK-81)', async () => {
+  const context = fresh({ remote: false })
+  git(context.root, 'remote', 'add', 'origin', 'git@bitbucket.org:acme/widgets.git')
+  const bitbucket = fakeBitbucketFetch({ [`GET ${BB}`]: { json: { full_name: 'acme/widgets' } } })
+  const args = ['init', '--tracker', 'linear', '--git-host', 'bitbucket', ...RECOMMENDED, ...NO_TYPES, '--json']
+  const result = await run(args, { cwd: context.root, env: { ...context.env, ...FAKE_BB_ENV }, fetch: bitbucket, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch: fakeLinearFetch(fakeWorkspace()) }) } })
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const { system, repo } = parseYaml(read(context, '.pmkit/config.yaml')).git_host
+  assert.deepEqual({ system, repo }, { system: 'bitbucket', repo: 'acme/widgets' })
+  assert.deepEqual(bitbucket.calls.map((call) => call.url), ['https://api.bitbucket.org/2.0/repositories/acme/widgets'])
 })
