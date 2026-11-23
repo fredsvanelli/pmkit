@@ -8,7 +8,7 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { repoDocPath, storedDocPath } from './lib/doc-path.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, GIT_HOSTS_TEXT, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
+import { BITBUCKET_REPO, ESTIMATE_UNITS, GIT_HOSTS, GIT_HOSTS_TEXT, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError, unarchiveNotSupported } from './lib/errors.mjs'
@@ -55,6 +55,7 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
+import { createBitbucketClient } from './lib/bitbucket/client.mjs'
 import { createBitbucketHost } from './lib/bitbucket/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
 import { listText as plansListText, getText as plansGetText } from './lib/jira/plans-text.mjs'
@@ -952,12 +953,12 @@ async function flowInputs(ctx, tracker, statuses) {
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear, github or jira writes only .pmkit/config.yaml and returns what setup must ask',
-    usage: '[--tracker local|linear|github|jira] [--git-host github|none] [--workspace key] [--team KEY] [--site h] [--space KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    usage: '[--tracker local|linear|github|jira] [--git-host github|bitbucket|none] [--workspace key] [--team KEY] [--site h] [--space KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
     flags: ['tracker', 'git-host', 'workspace', 'team', 'site', 'space', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'priority-label', 'estimate-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
-    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
+    usage: '[--git-host github|bitbucket|none] [--repo owner/name|workspace/repo_slug] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
     flags: ['git-host', 'repo', 'default-branch', 'remote', 'team', 'recheck-team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
   },
   {
@@ -3999,7 +4000,7 @@ function rejectFlags(ctx, flags, system) {
   }
 }
 
-function runInit(ctx) {
+async function runInit(ctx) {
   const { opt } = ctx
   const update = ctx.flag('update')
   // A Linear repository takes the hosted branch. setup cannot move a repository from one tracker to another.
@@ -4082,14 +4083,14 @@ function runInit(ctx) {
     pmkit = read(pmkitFile)
     local = read(issuesConfig)
     if (host !== undefined) pmkit = edit(pmkitFile, 'git_host.system', () => setScalar(pmkit, ['git_host', 'system'], host))
-    pmkit = withGithubRepo(pmkit, root, host)
+    pmkit = await withHostRepo(ctx, pmkit, host)
   } else {
-    const repo = originRepo(root)
+    const repo = originRepo(root, host)
     pmkit = template('pmkit.config.yaml').replace(
       /git_host:\n {2}system: .*\n {2}repo: .*\n/,
       `git_host:\n  system: ${host ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`,
     )
-    withGithubRepo(pmkit, root, host)
+    await withHostRepo(ctx, pmkit, host)
     local = setScalar(template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`), ['version'], FORMAT_VERSION)
   }
   // pmkit is final here. This check runs first and alone, before any .issues/config.yaml parse and before entries exist.
@@ -4181,25 +4182,46 @@ function runInit(ctx) {
   }
 }
 
-// The GitHub repository the origin remote names, read the way link-repo reads it, or undefined when there is none.
-const originRepo = (root) => {
+// The git hosts that need git_host.repo, and the name a message gives each.
+const REPO_HOSTS = ['github', 'bitbucket']
+const HOST_NAMES = { github: 'GitHub', bitbucket: 'Bitbucket Cloud' }
+const REPO_FORMS = { github: 'owner/name', bitbucket: 'workspace/repo_slug' }
+
+// The repository the origin remote names on `host`, read the way link-repo reads it, or undefined when there is none.
+// Any host but bitbucket reads a GitHub origin, as init always did, so a Bitbucket repo never lands under github.
+const originRepo = (root, host) => {
   const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS })
-  return remote.status === 0 ? (inferHost(remote.stdout.trim()).repo ?? undefined) : undefined
+  if (remote.status !== 0) return undefined
+  const inferred = inferHost(remote.stdout.trim())
+  return inferred.system === (host === 'bitbucket' ? 'bitbucket' : 'github') ? inferred.repo : undefined
 }
 
-// init never writes git_host.system github without a repo, which validate reports. A config that has none takes the origin's, or the call is refused.
-function withGithubRepo(text, root, host) {
-  if (host !== 'github') return text
+// Reads the Bitbucket repository once, so a missing or refused token (AUTH) or a repository Bitbucket does not find (NOT_CONFIGURED) stops the call before it writes.
+async function verifyBitbucketRepo(ctx, repo) {
+  await createBitbucketClient({ env: ctx.env, repo, fetch: ctx.fetch }).get('')
+}
+
+// init never writes a repo host without a repo, which validate reports. A config that has none takes the origin's, or the call is refused.
+// --git-host bitbucket then reads the repository once.
+async function withHostRepo(ctx, text, host) {
+  if (!REPO_HOSTS.includes(host)) return text
   let held
   try {
     held = parseYaml(text)?.git_host?.repo
   } catch {
     return text // the caller reports a file that does not parse
   }
-  if (held) return text
-  const repo = originRepo(root)
-  if (!repo) throw usageError('git_host github needs a repo, and the origin remote is not a GitHub repository', 'Add a GitHub origin remote, or leave out --git-host and run /pmkit:link-repo --git-host github --repo owner/name')
-  return setScalar(text, ['git_host', 'repo'], repo)
+  let repo = held
+  if (!repo) {
+    repo = originRepo(ctx.root, host)
+    if (!repo) {
+      throw usageError(`git_host ${host} needs a repo, and the origin remote is not a ${HOST_NAMES[host]} repository`,
+        `Add a ${HOST_NAMES[host]} origin remote, or leave out --git-host and run /pmkit:link-repo --git-host ${host} --repo ${REPO_FORMS[host]}`)
+    }
+    text = setScalar(text, ['git_host', 'repo'], repo)
+  }
+  if (host === 'bitbucket') await verifyBitbucketRepo(ctx, repo)
+  return text
 }
 
 // link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
@@ -4295,19 +4317,23 @@ async function runLinkRepo(ctx) {
     notes.push(`could not read the git remotes (${read.reason}), so the git host was not inferred`)
   }
   const inferred = chosen.remote ? inferHost(chosen.remote.url) : { system: null, repo: null, host: null }
-  if (read.ok && chosen.state === 'none') notes.push('there is no git remote, so the git host was not inferred; pass --git-host github or none')
+  if (read.ok && chosen.state === 'none') notes.push(`there is no git remote, so the git host was not inferred; pass --git-host ${GIT_HOSTS_TEXT}`)
   // An inference never lowers a configured host. Only --git-host none does.
   if (chosen.remote && inferred.system === null && flagHost === undefined) {
     notes.push(inferred.host === null
       ? `the URL of remote ${chosen.remote.name} is not recognized (${chosen.remote.url}), so git_host was not changed`
-      : `remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, so git_host was not changed; pass --git-host github if it is GitHub (Enterprise or an SSH alias), or --git-host none to lower it`)
+      : `remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub or Bitbucket Cloud, so git_host was not changed; pass --git-host github if it is GitHub (Enterprise or an SSH alias), --git-host bitbucket --repo workspace/repo_slug if it is Bitbucket Cloud behind an SSH alias, or --git-host none to lower it`)
   }
 
   const held = { system: parsed.git_host.system, repo: parsed.git_host.repo ?? null, branch: parsed.git_host.default_branch ?? null }
-  const hostAfter = flagHost ?? (inferred.system === 'github' ? 'github' : held.system)
-  const hostSource = flagHost !== undefined ? 'flag' : inferred.system === 'github' ? 'remote' : 'file'
-  if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github', 'Pass --git-host github, or remove --repo')
-  if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github', 'Pass --git-host github, or remove --default-branch')
+  const fromRemote = REPO_HOSTS.includes(inferred.system)
+  const hostAfter = flagHost ?? (fromRemote ? inferred.system : held.system)
+  const hostSource = flagHost !== undefined ? 'flag' : fromRemote ? 'remote' : 'file'
+  if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github or bitbucket', 'Pass --git-host github or bitbucket, or remove --repo')
+  if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github or bitbucket', 'Pass --git-host github or bitbucket, or remove --default-branch')
+  if (flagRepo !== undefined && hostAfter === 'bitbucket' && !BITBUCKET_REPO.test(flagRepo)) throw usageError('--repo must be workspace/repo_slug on Bitbucket, like acme/widgets')
+  // The remote names the repository only when it is on the host being written.
+  const remoteNamesRepo = fromRemote && inferred.system === hostAfter
   let repoAfter = held.repo
   let invalidRemote = null
   let repoSource = 'file'
@@ -4317,7 +4343,7 @@ async function runLinkRepo(ctx) {
   } else if (flagRepo !== undefined) {
     repoAfter = flagRepo
     repoSource = 'flag'
-  } else if (inferred.system === 'github') {
+  } else if (remoteNamesRepo) {
     repoAfter = inferred.repo
     repoSource = 'remote'
   } else if (flagHost === 'github' && chosen.remote) {
@@ -4337,20 +4363,20 @@ async function runLinkRepo(ctx) {
   let branchAfter = held.branch
   let branchSource = 'file'
   // The branch comes from the remote only when that remote is the repository being written.
-  const inferredBranch = inferred.system === 'github' && sameRepo(repoAfter, inferred.repo) ? readDefaultBranch(ctx, chosen.remote.name) : null
+  const inferredBranch = remoteNamesRepo && sameRepo(repoAfter, inferred.repo) ? readDefaultBranch(ctx, chosen.remote.name) : null
   if (flagHost === 'none') {
     branchAfter = null
     branchSource = 'flag'
   } else if (flagBranch !== undefined) {
     branchAfter = flagBranch
     branchSource = 'flag'
-  } else if (inferredBranch !== null && hostAfter === 'github') {
+  } else if (inferredBranch !== null) {
     branchAfter = inferredBranch
     branchSource = 'remote'
   }
-  // A file that is already github without a repo is not made worse, so --team or --default-branch still work on it.
-  if (hostAfter === 'github' && repoAfter === null) {
-    if (held.system !== 'github') throw usageError(`git_host github needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, 'Pass --repo owner/name, or --git-host none')
+  // A file that is already github without a repo is not made worse, so --team or --default-branch still work on it. Bitbucket always needs one.
+  if (REPO_HOSTS.includes(hostAfter) && repoAfter === null) {
+    if (held.system !== hostAfter || hostAfter === 'bitbucket') throw usageError(`git_host ${hostAfter} needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, `Pass --repo ${REPO_FORMS[hostAfter]}, or --git-host none`)
     warnings.push('git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name')
   }
   // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
@@ -4359,9 +4385,9 @@ async function runLinkRepo(ctx) {
   }
   if (chosen.remote && flagHost !== undefined) {
     if (inferred.system !== null && inferred.system !== flagHost) {
-      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is GitHub, and --git-host ${flagHost} was used as given`)
-    } else if (inferred.system === null && inferred.host !== null && flagHost === 'github') {
-      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, and --git-host github was used as given`)
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is ${HOST_NAMES[inferred.system]}, and --git-host ${flagHost} was used as given`)
+    } else if (inferred.system === null && inferred.host !== null && REPO_HOSTS.includes(flagHost)) {
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as ${HOST_NAMES[flagHost]}, and --git-host ${flagHost} was used as given`)
     }
   }
   if (flagRepo !== undefined && inferred.repo !== null && !sameRepo(inferred.repo, flagRepo)) {
@@ -4420,6 +4446,8 @@ async function runLinkRepo(ctx) {
     }
     if (problems.length > 0) throw usageError(`the new .pmkit/config.yaml would not be valid: ${problems.join('; ')}`, 'Fix the values you passed')
   }
+  // The dry run and the write both read the repository, so the preview fails the way the write would.
+  if (hostAfter === 'bitbucket') await verifyBitbucketRepo(ctx, repoAfter)
 
   if (!ctx.dryRun && teamChanged && broken.length > 0) {
     throw new PmkitError('NOT_CONFIGURED', `team ${scope.team.after} does not fit the mappings in .pmkit/config.yaml: ${broken.map((item) => item.problem).join('; ')}`, '/pmkit:setup', { mappings: broken })
@@ -4510,7 +4538,7 @@ function hostedInitFile(ctx, system, label) {
     text = before
   } else {
     if (fs.existsSync(file)) throw new PmkitError('CONFLICT', `${slash(pmkitFile)} already exists`, 'Edit it, or delete it to start over')
-    const repo = originRepo(ctx.root)
+    const repo = originRepo(ctx.root, gitHost)
     text = fs.readFileSync(path.join(TEMPLATES, 'pmkit.config.yaml'), 'utf8')
       .replace(/tracker:\n {2}system: .*\n {2}path: .*\n/, `tracker:\n  system: ${system}\n`)
       .replace(/git_host:\n {2}system: .*\n {2}repo: .*\n {2}default_branch: .*\n/, `git_host:\n  system: ${gitHost ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`)
@@ -4663,6 +4691,7 @@ async function runInitGithub(ctx) {
   if ((draft?.git_host?.system ?? file.gitHost) === 'github' && !draft?.git_host?.repo) {
     text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], originRepo(ctx.root) ?? scope.repo))
   }
+  if (file.gitHost === 'bitbucket') text = await withHostRepo(ctx, text, 'bitbucket')
 
   // The repository first, with the default scopes. The Project is read only once it is chosen (ADR 0007).
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
@@ -4707,7 +4736,7 @@ async function runInitLinear(ctx) {
   const file = hostedInitFile(ctx, 'linear', 'Linear')
   const { edit } = file
   const root = ctx.root
-  let text = withGithubRepo(file.text, root, file.gitHost)
+  let text = await withHostRepo(ctx, file.text, file.gitHost)
   const { draft, current } = hostedDraft(text)
 
   // Only the workspace pins the key. The team and the mappings are what this call decides, so the discovery ignores them.
@@ -4794,7 +4823,7 @@ async function runInitJira(ctx) {
   const adapter = adapterFor('jira', ctx.adapters)
   const file = hostedInitFile(ctx, 'jira', 'Jira')
   const { edit } = file
-  let text = withGithubRepo(file.text, ctx.root, file.gitHost)
+  let text = await withHostRepo(ctx, file.text, file.gitHost)
   const { current } = hostedDraft(text)
 
   // The site cannot be discovered, so setup asks the user for it. Only a host reaches the client: a URL is refused here.

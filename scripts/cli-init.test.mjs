@@ -9,7 +9,8 @@ import { hashTree, tempDir } from './test-helpers.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { FORMAT_VERSION } from './lib/local/migrations.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { pmkitConfigRefusal } from './pmkit.mjs'
+import { pmkitConfigRefusal, run as runCli } from './pmkit.mjs'
+import { BB, FAKE_BB_ENV, fakeBitbucketFetch } from './fake-bitbucket-api.mjs'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const CLI = path.join(ROOT, 'scripts', 'pmkit.mjs')
@@ -591,4 +592,70 @@ test('init --update --git-host github with no repo and no origin is refused and 
   assert.equal(result.status, 2)
   assert.match(JSON.parse(result.stdout).error.message, /github needs a repo/)
   assert.equal(read(dir, '.pmkit/config.yaml'), before)
+})
+
+// Bitbucket Cloud (PMK-81): init takes workspace/slug from a bitbucket.org origin and reads the repository once before it writes.
+const tmpWithBitbucketOrigin = () => {
+  const dir = tmp()
+  git(dir, 'init', '-q')
+  git(dir, 'remote', 'add', 'origin', 'git@bitbucket.org:acme/widgets.git')
+  return dir
+}
+const initBitbucket = (dir, args, env = FAKE_BB_ENV, routes = { [`GET ${BB}`]: { json: { full_name: 'acme/widgets' } } }) => {
+  const fetch = fakeBitbucketFetch(routes)
+  const baseEnv = { ...process.env, PMKIT_USER: 'fred', GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' }
+  delete baseEnv.BITBUCKET_TOKEN
+  return { fetch, result: runCli(['init', ...args, '--json'], { cwd: dir, env: { ...baseEnv, ...env }, fetch }) }
+}
+
+test('init --git-host bitbucket with a GitHub origin and no repo is a usage error naming --repo, and writes nothing', () => {
+  const dir = tmpWithOrigin()
+  const result = run(dir, ['init', '--git-host', 'bitbucket', '--json'])
+  assert.equal(result.status, 2)
+  const error = JSON.parse(result.stdout).error
+  assert.match(error.message, /bitbucket needs a repo/)
+  assert.match(error.nextStep, /--repo/)
+  assert.equal(fs.existsSync(path.join(dir, '.pmkit')), false)
+})
+
+test('init --git-host github with a bitbucket.org origin does not take the Bitbucket repo', () => {
+  const result = run(tmpWithBitbucketOrigin(), ['init', '--git-host', 'github', '--json'])
+  assert.equal(result.status, 2)
+  assert.match(JSON.parse(result.stdout).error.message, /github needs a repo/)
+})
+
+test('init --git-host bitbucket takes workspace/slug from a bitbucket.org origin after one read, and validate is clean', async () => {
+  const dir = tmpWithBitbucketOrigin()
+  const { fetch, result } = initBitbucket(dir, ['--git-host', 'bitbucket'])
+  const done = await result
+  assert.equal(done.code, 0, done.stdout)
+  const { system, repo } = parseYaml(read(dir, '.pmkit/config.yaml')).git_host
+  assert.deepEqual({ system, repo }, { system: 'bitbucket', repo: 'acme/widgets' })
+  assert.deepEqual(fetch.calls.map((call) => call.url), ['https://api.bitbucket.org/2.0/repositories/acme/widgets'])
+  validateClean(dir)
+})
+
+test('init --git-host bitbucket without BITBUCKET_TOKEN is AUTH and writes nothing', async () => {
+  const dir = tmpWithBitbucketOrigin()
+  const { result } = initBitbucket(dir, ['--git-host', 'bitbucket'], {})
+  const done = await result
+  assert.equal(JSON.parse(done.stdout).error.code, 'AUTH')
+  assert.equal(fs.existsSync(path.join(dir, '.pmkit')), false)
+})
+
+test('init --git-host bitbucket on a repository Bitbucket does not find is NOT_CONFIGURED and writes nothing', async () => {
+  const dir = tmpWithBitbucketOrigin()
+  const { result } = initBitbucket(dir, ['--git-host', 'bitbucket'], FAKE_BB_ENV, { [`GET ${BB}`]: { status: 404, json: { error: { message: 'not found' } } } })
+  const done = await result
+  assert.equal(JSON.parse(done.stdout).error.code, 'NOT_CONFIGURED')
+  assert.equal(fs.existsSync(path.join(dir, '.pmkit')), false)
+})
+
+test('init without --git-host on a bitbucket.org origin writes no repo and makes no read', async () => {
+  const dir = tmpWithBitbucketOrigin()
+  const { fetch, result } = initBitbucket(dir, [])
+  assert.equal((await result).code, 0)
+  const { system, repo } = parseYaml(read(dir, '.pmkit/config.yaml')).git_host
+  assert.deepEqual({ system, repo }, { system: 'none', repo: undefined })
+  assert.equal(fetch.calls.length, 0)
 })
