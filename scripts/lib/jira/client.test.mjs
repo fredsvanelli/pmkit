@@ -309,6 +309,13 @@ test('paginate follows nextPageCursor as cursor until last', async () => {
   ])
 })
 
+test('paginate stops at a first cursor page that is last, with no nextPageCursor', async () => {
+  const plans = 'GET /rest/api/3/plans/plan'
+  const { fetch, client } = setup({ [plans]: answers([{ values: [1], last: true }]) })
+  assert.deepEqual(await client.paginate('/rest/api/3/plans/plan'), { items: [1], hasMore: false })
+  assert.equal(pageCalls(fetch, plans).length, 1)
+})
+
 test('paginate fails on a repeated nextPageCursor', async () => {
   const plans = 'GET /rest/api/3/plans/plan'
   const { client } = setup({ [plans]: answers([{ values: [1], nextPageCursor: 'c1', last: false }, { values: [2], nextPageCursor: 'c1', last: false }]) })

@@ -77,7 +77,8 @@ function nextPosition(page, list, { token, cursor, startAt }) {
   if (cursor !== undefined) return { more: false, cursor, startAt, broken: false }
   const offset = startAt + list.length
   const atTotal = typeof page.total === 'number' && offset >= page.total
-  return { more: page.isLast !== true && list.length > 0 && !atTotal, token, startAt: offset, broken: false }
+  // A cursor list's only page has no nextPageCursor and says last, not isLast.
+  return { more: page.isLast !== true && page.last !== true && list.length > 0 && !atTotal, token, startAt: offset, broken: false }
 }
 
 /** The rate-limit reset as an ISO time: Retry-After seconds first, then X-RateLimit-Reset. Null when neither reads. */
