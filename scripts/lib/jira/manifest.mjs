@@ -5,18 +5,16 @@ import { CAPABILITIES } from '../capabilities.mjs'
 import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldRoles } from './discovery.mjs'
 
-/** The capabilities the Jira adapter serves. PMK-77 to PMK-80 add theirs as they implement the operations behind them. */
+/** The capabilities the Jira adapter serves. PMK-77 to PMK-80 added theirs with the operations behind them. */
 export const SERVED = Object.freeze({
   cycles: true, capacity: true, linked_code: true, estimation: true, multilevel_hierarchy: true, dependencies: true, native_metrics: true,
-  deliverables: true, status_update: true, releases: true,
+  deliverables: true, status_update: true, releases: true, time_tracking: true,
 })
 
 /** Why Jira has no goals in pmkit: the strategic_goals hint, and the refusal of a goal on an epic. */
 export const NO_GOALS = 'Jira goals live in Atlassian Home, which pmkit does not read'
 
-/** The issue that serves each capability, for the hint of an unserved one. */
-const SERVED_IN = { time_tracking: 'PMK-80' }
-const unservedHint = (id) => `The Jira adapter does not serve ${id} yet${SERVED_IN[id] ? ` (${SERVED_IN[id]})` : ''}`
+const unservedHint = (id) => `The Jira adapter does not serve ${id} yet`
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const absent = (enableHint) => ({ path: 'absent', enableHint })
 

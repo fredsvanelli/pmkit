@@ -1,6 +1,7 @@
 // The Jira tracker. discover and capabilities read one site and one space (PMK-76); the Issues family reads and writes work
 // items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's Scrum board (PMK-78); the Releases family reads and writes
-// the space's versions, the Deliverables family reads and writes its epics and their status updates, and Jira has no milestones (PMK-79). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
+// the space's versions, the Deliverables family reads and writes its epics and their status updates, and Jira has no milestones (PMK-79); the
+// Time tracking family reads and writes worklogs (PMK-80). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
 // later issues stay stubs. See docs/superpowers/specs/2026-11-22-pmk-77-jira-work-items-transitions-links-jql-design.md,
 // "Discovery additions, cache and mapping check".
 
@@ -19,6 +20,7 @@ import { releaseOperations } from './releases.mjs'
 import { buildJiraCapabilities, NO_GOALS } from './manifest.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
 import { readBoardSprints } from './sprints.mjs'
+import { timeOperations } from './time-ops.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -147,10 +149,23 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   // releases is defined below; versions() is called later, so the reference is safe.
   const issues = issueOperations({ client, getContext, now, sprints, versions: () => releases.versions() })
   const relations = relationOperations({ client, ops: issues })
-  const history = historyOperations({ client, ops: issues, getContext, now })
+  // A manifest entry. With refreshIfAbsent, an absent answer read from the cache is read from Jira once more, so a setting just turned on counts.
+  const capability = async (id, { refreshIfAbsent = false } = {}) => {
+    let found = await discovery()
+    let entry = buildJiraCapabilities(found.raw, config.pmkit).find((candidate) => candidate.id === id)
+    if (refreshIfAbsent && entry.path === 'absent' && !found.fresh) {
+      found = await discovery({ refresh: true })
+      entry = buildJiraCapabilities(found.raw, config.pmkit).find((candidate) => candidate.id === id)
+    }
+    return entry
+  }
+  // Jira refuses the worklog calls when time tracking is off, so the history reads worklogs only when it is on.
+  const timeTracking = async () => (await capability('time_tracking')).path !== 'absent'
+  const history = historyOperations({ client, ops: issues, getContext, now, timeTracking })
   const cycles = cycleOperations({ client, ops: issues, config, getContext, now })
   const releases = releaseOperations({ client, ops: issues, getContext, now })
   const epics = epicOperations({ client, ops: issues, getContext, now })
+  const time = timeOperations({ client, ops: issues, now, sprints, capability: () => capability('time_tracking', { refreshIfAbsent: true }) })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -167,6 +182,8 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     comment: history.comment,
     resolveThread: history.resolveThread,
     metricEvents: history.metricEvents,
+    logTime: time.logTime,
+    listTimeEntries: time.listTimeEntries,
     ...cycles,
     ...epics,
     listReleases: releases.listReleases,
@@ -181,8 +198,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   }
   // delegate carries the manifest's hint, as GitHub's absent operations do.
   const delegate = guarded(async () => {
-    const { raw } = await discovery()
-    const entry = buildJiraCapabilities(raw, config.pmkit).find((candidate) => candidate.id === 'agent_delegation')
+    const entry = await capability('agent_delegation')
     throw new PmkitError('NOT_SUPPORTED', entry.enableHint, entry.enableHint)
   })
   const refused = {

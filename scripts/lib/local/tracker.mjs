@@ -7,7 +7,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
 import { goalPrefixOf, loadConfig, validateLocalConfig } from '../config.mjs'
-import { formatMinutes, isPositiveMinutes } from '../duration.mjs'
+import { isPositiveMinutes } from '../duration.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
@@ -20,7 +20,8 @@ import {
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
-import { eventInstant, lastEntry } from '../metrics.mjs'
+import { lastEntry } from '../metrics.mjs'
+import { summarizeTimeEntries } from '../time-entries.mjs'
 import { AGENT_ID, delegationComment } from '../delegation.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { mentionedIn } from '../mentions.mjs'
@@ -1240,29 +1241,9 @@ export function createLocalTracker(root, {
       for (const name of fs.readdirSync(sprintsDir).filter((file) => file.endsWith('.yaml')).sort()) {
         try { sprints.push(readSprint(sprintsDir, path.basename(name, '.yaml'))) } catch { sprintsUnread.push(path.basename(name, '.yaml')) }
       }
-      sprints.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.id < b.id ? -1 : 1))
     }
-    const sprintOf = (at) => {
-      const instant = eventInstant(at)
-      if (Number.isNaN(instant)) return null
-      const day = new Date(instant).toISOString().slice(0, 10)
-      return sprints.find((sprint) => sprint.start <= day && day <= sprint.end)?.id ?? null
-    }
-    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes, time: formatMinutes(event.minutes), sprint: sprintOf(event.at) }))
-    const sum = (key) => {
-      const totals = new Map()
-      for (const entry of entries) totals.set(entry[key], (totals.get(entry[key]) ?? 0) + entry.minutes)
-      return [...totals].map(([value, minutes]) => ({ [key]: value, minutes, time: formatMinutes(minutes) }))
-    }
-    const total = entries.reduce((acc, entry) => acc + entry.minutes, 0)
     return {
-      issue: id,
-      entries: entries.map(({ sprint: _sprint, ...entry }) => entry),
-      total,
-      totalTime: formatMinutes(total),
-      byPerson: sum('by'),
-      bySprint: sum('sprint'),
-      ignored: logged.length - valid.length,
+      ...summarizeTimeEntries({ issue: id, entries: valid, sprints, ignored: logged.length - valid.length }),
       ...(sprintsUnread.length > 0 ? { sprintsUnread } : {}),
     }
   }
