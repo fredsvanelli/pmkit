@@ -8,7 +8,7 @@ Today a Jira repository needs a hand-written `.pmkit/config.yaml`. `init --track
 
 ## Goals
 
-- `init --tracker jira --site <host> [--space <KEY>]` reads the site through `discover` and returns the questions setup must ask: the space (when not given), the statuses for `backlog`, `in_review`, `canceled` and `blocked`, each field role it maps (offered by name, written as the field id), and the work type of each pmkit type.
+- `init --tracker jira --site <host> [--space <KEY>]` reads the site through `discover` and returns the questions setup must ask: the space (when not given), the statuses for `backlog`, `in_review` and `canceled`, the field roles `estimate` and `acceptance_criteria` (offered by name, written as the field id), and the work type of each pmkit type.
 - `init --update` on a Jira config asks only what is broken (`brokenJiraMappings`) or never answered, and keeps the rest.
 - `commands/setup.md` offers Jira in step 1 and has "Jira first run" and "Existing Jira config" sections, with the AUTH and NOT_SUPPORTED guidance of ADR 0013.
 - `docs/runbooks/setup-jira.md` and `scripts/runbook-setup-jira.test.mjs`, on the fake Jira fetch.
@@ -50,7 +50,7 @@ Flags: `--site <host>`, `--space <KEY>`, `--git-host`, `--status <key>=<name>`, 
 
 The order every rule follows, for each key: an answer from the flags (checked against the candidates, else `INVALID_INPUT` with `Pass one of: ...`), else the held value when it is not broken, else a question (with `broken` when the held value broke), else applied or a note as below.
 
-**Statuses: `backlog`, `in_review`, `canceled`, `blocked`.** Jira has three status categories, so `todo`, `in_progress` and `done` come from them and are never asked; these four are always asked on a first run, as the issue's first criterion lists them. Open for the Interview: on Jira a `blocked` mapping changes nothing today (blocked comes from Blocks links, `brokenJiraMappings` and `discoveryView` skip it), unlike Linear, where an issue in that state is blocked. Candidates: every status of the space, the recommended one first. Recommended: the status whose name matches without case (backlog: `backlog`; in_review: `in review`, `review`, `code review`; canceled: `canceled`, `cancelled`, `won't do`, `declined`; blocked: `blocked`, `on hold`), else `none`. `none` label: "No status means <key>". One status cannot answer two keys: `INVALID_INPUT`, as GitHub refuses a shared option. A held key outside the four (hand-written `triage`, say) is kept, and asked again only when broken.
+**Statuses: `backlog`, `in_review`, `canceled`.** Jira has three status categories, so `todo`, `in_progress` and `done` come from them and are never asked; these three are always asked on a first run. `blocked` is not asked (Interview Q1): on Jira blocked comes from Blocks links, and `brokenJiraMappings` and `discoveryView` skip a `blocked` mapping, unlike Linear, where an issue in that state is blocked. A held `blocked` is kept as it is. Candidates: every status of the space, the recommended one first. Recommended: the status whose name matches without case (backlog: `backlog`; in_review: `in review`, `review`, `code review`; canceled: `canceled`, `cancelled`, `won't do`, `declined`), else `none`. `none` label: "No status means <key>". One status cannot answer two keys: `INVALID_INPUT`, as GitHub refuses a shared option. A held key outside the three (hand-written `triage`, say) is kept, and asked again only when broken.
 
 **Field roles.** Setup asks only the roles the Jira code reads through `mappings.fields`: `estimate` and `acceptance_criteria` (`makeContext` in `scripts/lib/jira/issues.mjs`). The discovery keeps each field's `schema.type`, a new `type` key of the raw field, to pick candidates:
 
@@ -59,7 +59,7 @@ The order every rule follows, for each key: an answer from the flags (checked ag
 | `estimate` | number fields that are custom, plus `timeoriginalestimate` | the PMK-76 rule (board estimation field, then the story-points type, then the name) |
 | `acceptance_criteria` | custom `string` fields | the PMK-76 rule (`Acceptance criteria` by name) |
 
-The other roles are not asked **(builder's call)**: `priority`, `assignee` and `target_date` are Jira system fields the work-item code reads and writes directly (`priority`, `assignee`, `duedate` in `BASE_FIELDS`), so a mapping would change nothing or misstate what pmkit uses; `start_date`, `time_spent` and `sprint` are read by no Jira command yet (sprints are PMK-78, which adds its question; `init --update` asks a never-answered key then). A held mapping of any role is kept and broken-checked as today.
+The other roles are not asked (Interview Q2): `priority`, `assignee` and `target_date` are Jira system fields the work-item code reads and writes directly (`priority`, `assignee`, `duedate` in `BASE_FIELDS`), so a mapping would change nothing or misstate what pmkit uses; `start_date`, `time_spent` and `sprint` are read by no Jira command yet (sprints are PMK-78, which adds its question; `init --update` asks a never-answered key then). A held mapping of any role is kept and broken-checked as today.
 
 For an asked role: exactly one candidate and it is the recommended one: applied, reason "the site offers only this field". Otherwise one or more candidates: a question, `recommended` the rule's pick or `none`, `candidates` the field ids recommended first, `titles` `{ id: name }`, `none` label "No field holds the <role words>". No candidate: a note, "the site has no field for the <role>", and nothing written, as Linear does. An answer is a field id; setup offers names and passes the id (ADR 0014).
 
@@ -69,7 +69,7 @@ For an asked role: exactly one candidate and it is the recommended one: applied,
 
 ### `commands/setup.md`
 
-- Parameters paragraph: what Jira setup asks (the site, the space when you can browse several, the four statuses, the field roles with more than one candidate, the work type of each type).
+- Parameters paragraph: what Jira setup asks (the site, the space when you can browse several, the three statuses, the estimate and acceptance-criteria fields when the site offers more than one, the work type of each type).
 - Step 1: `jira` goes to "Existing Jira config"; the tracker question adds "Jira", for a Jira Cloud site reached with an API token from the environment. `AskUserQuestion` takes four options, so the four are Local (Recommended), Linear, GitHub Issues, Jira.
 - **Jira first run.** 2: detect the git host as in "First run". 3: ask the site host as free text (`acme.atlassian.net`); pass only the host. 4: run `init --tracker jira --git-host <...> --site <host> --dry-run --json`. On `AUTH`: tell the user to create an API token at id.atlassian.com and export `JIRA_EMAIL` and `JIRA_API_TOKEN` in the shell profile or in `~/.claude/settings.json` under `env`, never in a file inside the repository, then run setup again; never ask for the token. On `NOT_SUPPORTED`: say pmkit supports Jira Cloud only, and stop. 5: the space question alone, as the Linear team question (up to four candidates with their names; one candidate recommended, else "Stop setup" last). 6: the other questions as step 5 of "Linear first run", offering each field by name with its id. 7: the full dry run; 8: one summary (site, viewer, space, statuses with categories, applied, field roles, work types, notes, the file), saying Jira numbers its own work items so setup asks no prefix or ID style, and creates nothing in Jira; 9: the real run; 10: `validate`, `discover`, `capabilities`, naming the capabilities reported absent.
 - **Existing Jira config.** As "Existing GitHub config": `validate`, `init --update --dry-run --json`, AUTH and NOT_SUPPORTED as above, "already up to date" when nothing is asked and the file is `keep`, otherwise ask, preview the diff, confirm once, write, then the three checks.
@@ -82,6 +82,13 @@ For an asked role: exactly one candidate and it is the recommended one: applied,
 ### ADR 0013
 
 ADR 0013 says setup runs `discover --json`, maps AUTH and NOT_SUPPORTED, and writes the site and space. Here `init --tracker jira` runs the same discovery and returns the same errors, and setup runs `discover --json` after writing, as for the other trackers. The ADR's decision holds; its Consequences line gets one clause naming `init --tracker jira` as the call that does it.
+
+## Interview answers (2026-11-22, coordinator)
+
+- Q1: setup does not ask `blocked` on Jira; criterion 1 of PMK-365 is reworded to match.
+- Q2: setup asks only `estimate` and `acceptance_criteria`, the roles the Jira code reads through `mappings.fields`.
+- No new glossary term and no new ADR: the choices follow ADR 0013 and ADR 0014. ADR 0013 gets one clause naming `init --tracker jira`.
+- The doc is approved.
 
 ## Constraints
 
