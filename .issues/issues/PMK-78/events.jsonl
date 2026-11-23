@@ -3,3 +3,5 @@
 {"at":"2026-11-23T01:22:34Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-23T01:22:34Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-23T01:22:51Z","by":"fred","op":"update","field":"branch","from":null,"to":"fredsvanelli/pmk-78-map"}
+{"at":"2026-11-23T03:19:01Z","by":"fred","op":"comment","to":"2026-11-23T03-19-01Z-fred.md"}
+{"at":"2026-11-23T03:19:01Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
