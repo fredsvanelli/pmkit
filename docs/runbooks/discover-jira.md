@@ -50,7 +50,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs capabilities --json
    ```
 
-   Expect `tracker: jira`, the `site`, `space` and `plan`, and 20 entries. `linked_code`, `estimation`, `multilevel_hierarchy`, `dependencies` and `native_metrics` are served (PMK-77): each keeps the site's answer in `detail`, such as `detail.site` or the estimate field. Until PMK-78 to PMK-80 implement the other operations, every remaining entry is `absent`: one Jira offers on this site keeps the site's path in `detail.site` and names the issue that serves it; one the site lacks names what to change (for example `Sprints need a Scrum board in space ENG`).
+   Expect `tracker: jira`, the `site`, `space` and `plan`, and 20 entries. `linked_code`, `estimation`, `multilevel_hierarchy`, `dependencies` and `native_metrics` are served (PMK-77), and `cycles` (`native`) and `capacity` (`derived` from `.pmkit/capacity.yaml`) are served (PMK-78): each takes the site's answer, such as the estimate field in `detail`. Until PMK-79 and PMK-80 implement the other operations, every remaining entry is `absent`: one Jira offers on this site keeps the site's path in `detail.site` and names the issue that serves it. A capability the site lacks is `absent` and names what to change (for example `Sprints need a Scrum board in space ENG` or `No sprint field in space ENG`).
 
 ## Failures
 

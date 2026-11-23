@@ -262,11 +262,12 @@ const AGILE = 'https://acme.atlassian.net/rest/agile/1.0'
 const post = (fetch, path, body) => fetch(`${AGILE}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
 const SPRINT = { id: 1, state: 'active', name: 'Sprint 1', startDate: '2026-11-09T12:00:00.000Z', endDate: '2026-11-20T12:00:00.000Z' }
 
-test('searchIssues by sprint: none keeps the unfinished item of a closed sprint, current is empty without an active sprint, an unknown id is INVALID_INPUT', async () => {
+test('searchIssues by sprint: current is the active sprint, none keeps the unfinished item of a closed sprint, current is empty without an active sprint, an unknown id is INVALID_INPUT', async () => {
   const { fake, fetch, tracker } = setup({ sprints: [SPRINT] })
   const [open, done, never] = [seed(fake.state)[0], seed(fake.state, 1, { status: STATUS.done })[0], seed(fake.state)[0]]
   await post(fetch, '/sprint/1/issue', { issues: [open, done] })
   assert.deepEqual((await tracker.searchIssues({ sprint: '1' })).issues.map((issue) => issue.id), [open, done])
+  assert.deepEqual((await tracker.searchIssues({ sprint: 'current' })).issues.map((issue) => issue.id), [open, done])
   assert.equal((await tracker.getIssue(open)).sprint, '1')
   await post(fetch, '/sprint/1', { state: 'closed' })
   assert.deepEqual((await tracker.searchIssues({ sprint: 'none' })).issues.map((issue) => issue.id), [open, never])

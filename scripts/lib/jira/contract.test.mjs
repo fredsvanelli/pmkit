@@ -18,9 +18,9 @@ function jiraContract() {
   return { tracker, fake, today: '2026-11-22', actor: 'acc-1', teardown: () => {} }
 }
 
-// Jira archives work items only on Premium, so archive is out; threads, time, cycles and the rest wait for later issues.
+// Jira archives work items only on Premium, so archive is out; threads, time and the rest wait for later issues.
 runTrackerContract({
   name: 'Jira tracker contract over the fake',
-  families: ['discovery', 'issues', 'relations', 'history'],
+  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'cycle-lifecycle'],
   setup: jiraContract,
 })

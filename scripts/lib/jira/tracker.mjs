@@ -1,5 +1,5 @@
 // The Jira tracker. discover and capabilities read one site and one space (PMK-76); the Issues family reads and writes work
-// items (PMK-77). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
+// items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's Scrum board (PMK-78). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
 // later issues stay stubs. See docs/superpowers/specs/2026-11-22-pmk-77-jira-work-items-transitions-links-jql-design.md,
 // "Discovery additions, cache and mapping check".
 
@@ -7,6 +7,7 @@ import { TRACKER_OPERATIONS } from '../contract.mjs'
 import { PmkitError } from '../errors.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createJiraClient } from './client.mjs'
+import { cycleOperations } from './cycle-ops.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
@@ -143,6 +144,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   const issues = issueOperations({ client, getContext, now, sprints })
   const relations = relationOperations({ client, ops: issues })
   const history = historyOperations({ client, ops: issues, getContext, now })
+  const cycles = cycleOperations({ client, ops: issues, config, getContext, now })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -159,6 +161,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     comment: history.comment,
     resolveThread: history.resolveThread,
     metricEvents: history.metricEvents,
+    ...cycles,
   }
   // delegate carries the manifest's hint, as GitHub's absent operations do.
   const delegate = guarded(async () => {

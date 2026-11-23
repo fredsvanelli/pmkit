@@ -119,7 +119,9 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     const { items, hasMore } = await client.paginate(SEARCH, { query, key: 'issues', pageSize: PAGE_SIZE, limit: translated.serverLimit })
     const issues = await toIssues(items, await contextFor(items))
     const sort = filter.sort ?? 'created'
-    const kept = issues.filter((issue) => translated.clientSteps.every((step) => STEPS[step](issue, filter))).sort(issueComparator(sort, PRIORITIES))
+    // The sprint step compares ids, so current stands for the active sprint's id.
+    const stepFilter = filter.sprint === 'current' ? { ...filter, sprint: String(activeId) } : filter
+    const kept = issues.filter((issue) => translated.clientSteps.every((step) => STEPS[step](issue, stepFilter))).sort(issueComparator(sort, PRIORITIES))
     // Jira's order is created, so a created read that kept limit issues needed no more: hasMore is then false.
     const enough = sort === 'created' && filter.limit !== undefined && kept.length >= filter.limit
     return { issues: filter.limit === undefined ? kept : kept.slice(0, filter.limit), problems: [], hasMore: hasMore && !enough }
