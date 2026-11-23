@@ -1,6 +1,6 @@
 # PMK-83: The jira-product-discovery command
 
-Issue PMK-83, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criteria: "Lists ideas with insights and votes" and "Connects an idea to an epic after confirmation". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0017, the PMK-82 (`/pmkit:jira:plans-scenarios`) and PMK-90 (`/pmkit:github:discussions`) system-specific commands, the Jira adapter code, Atlassian's Jira Product Discovery (JPD) docs and Atlassian's JPD reference app (`github.com/Jira-Product-Discovery-Integrations/polaris-forge-ref-app`, read on 2026-11-23). Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Status: draft, waiting for the owner's answers in Interview. No Jira credentials exist, so nothing here was checked against a live site.
+Issue PMK-83, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criteria: "Lists ideas with insights and votes" and "Connects an idea to an epic after confirmation". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0017, the PMK-82 (`/pmkit:jira:plans-scenarios`) and PMK-90 (`/pmkit:github:discussions`) system-specific commands, the Jira adapter code, Atlassian's Jira Product Discovery (JPD) docs and Atlassian's JPD reference app (`github.com/Jira-Product-Discovery-Integrations/polaris-forge-ref-app`, read on 2026-11-23). Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Status: approved by the owner (Orca coordinator) on 2026-11-23, with the alternative to Q1 and yes to Q2 to Q4 (see "Interview answers"). No Jira credentials exist, so nothing here was checked against a live site.
 
 ## Intent
 
@@ -9,7 +9,7 @@ The Unified model lists `jira-product-discovery` as a Jira-only skill: "Manages 
 ## Goals
 
 - `/pmkit:jira:product-discovery` in `commands/jira/product-discovery.md`, as `/pmkit:jira:plans-scenarios` is for Plans.
-- `pmkit jira ideas list [--project KEY] [--limit n]`: the ideas of one JPD project, each with its status, its votes, its insights and the epics it is connected to.
+- `pmkit jira ideas list [--project KEY] [--limit n]`: the ideas of one JPD project, each with its status, its votes, its insights (reported unreadable, Q1) and the epics it is connected to.
 - `pmkit jira ideas connect <idea> <epic> [--dry-run]`: links the idea to an epic of `tracker.scope.space` with JPD's delivery link, as the "Link existing work item" button of the idea's Delivery tab does. The command file shows the dry run and asks before the real run.
 - On a site with no JPD project, `jira ideas list` answers `available: false` with a reason and a hint, and the command file says so and stops.
 
@@ -38,13 +38,13 @@ The Unified model lists `jira-product-discovery` as a Jira-only skill: "Manages 
 
 ## Approaches
 
-1. **Ideas and votes through REST, insights through the experimental GraphQL API, connect through the delivery link (recommended).** Meets both criteria with real insight content (count, text, source links). Cost: the client gains one more allowed path (`POST /gateway/api/graphql`, nothing else), the API can change without notice, and the token may be refused; when it is, the list still answers with `insights: null` and a warning (Q1).
-2. **REST only; insights reported unread.** No new path, nothing experimental, but the first criterion ("with insights") is met only as "unreadable", on every site.
+1. **Ideas and votes through REST, insights through the experimental GraphQL API, connect through the delivery link.** Rejected by the owner (Q1) for now: unverified without credentials, and it bends ADR 0013. An EPC-14 follow-up evaluates `polarisInsights` on a live site, with an ADR then. Meets both criteria with real insight content (count, text, source links). Cost: the client gains one more allowed path (`POST /gateway/api/graphql`, nothing else), the API can change without notice, and the token may be refused; when it is, the list still answers with `insights: null` and a warning (Q1).
+2. **REST only; insights reported unreadable (chosen, Q1).** No new path, nothing experimental. The first criterion ("with insights") is met as an explicit `insights: null` per idea and one warning that names the reason and the follow-up.
 3. **REST only; insights counted from "Polaris datapoint issue link" links.** Cheap, but those links join ideas to other work items used as evidence, not JPD's insights; the count would be wrong on most sites. Rejected (anti-goal).
 
 ## Which JPD project (Q2)
 
-Ideas live in a JPD project, not in `tracker.scope.space`. `jira ideas list` takes `--project KEY`; without it, it uses the site's only JPD project, and with several it answers `INVALID_INPUT` listing their keys so the command file can ask which one. No config key **(builder's call: recommended)**. Alternative: a new `tracker.scope.discovery` key set in setup.
+Ideas live in a JPD project, not in `tracker.scope.space`. `jira ideas list` takes `--project KEY`; without it, it uses the site's only JPD project, and with several it answers `INVALID_INPUT` listing their keys so the command file can ask which one. No config key. A `--project` that is not a JPD project of the site is `NOT_FOUND`.
 
 ## Result shapes
 
@@ -54,13 +54,13 @@ Ideas live in a JPD project, not in `tracker.scope.space`. `jira ideas list` tak
 { "available": true, "site": "acme.atlassian.net", "project": { "key": "IDEA", "name": "Ideas" },
   "ideas": [{ "id": "IDEA-12", "title": "Bulk export", "status": "Discovery",
               "votes": [{ "field": "Votes", "value": 7 }],
-              "insights": { "count": 2, "items": [{ "id": "ari:...:polaris-insight/10004", "text": "Three customers asked …", "urls": ["https://…"], "created": "2026-11-20T10:00:00Z" }] },
+              "insights": null,
               "epics": ["PAY-40"] }],
-  "hasMore": false, "warnings": [] }
+  "hasMore": false, "warnings": ["Jira's REST API does not return Jira Product Discovery insights, so insights are unread"] }
 ```
 
 - `votes`: one entry per `jira.polaris:votes` field of the project, by field name, with `value` a number or `null` when Jira did not return it (then one warning for the list). A project with no votes field gives `[]`.
-- `insights`: `null` with one warning when the GraphQL call is refused or fails (Q1); `text` is the ADF description as plain text, cut to 200 characters **(builder's call)**.
+- `insights`: always `null`, with one warning for the list (Q1). The key stays so the EPC-14 follow-up can fill it without changing callers.
 - `epics`: the keys linked by the delivery link, either direction, any project (delivery work can be a non-epic too; the command labels the column "delivery") **(builder's call)**.
 - No JPD project on the site: `{ "available": false, "reason": "no_discovery_project", "enableHint": "Create a Jira Product Discovery project on <site>, or check that the token's owner can browse one", "site": "..." }`.
 
@@ -78,19 +78,20 @@ Ideas live in a JPD project, not in `tracker.scope.space`. `jira ideas list` tak
 ## Wiring
 
 - `scripts/lib/jira/discovery-ideas.mjs` **(builder's call on the name)**: `ideaOperations({ client, site, getContext, epics })` with `list(options)` and `connect(idea, epic, { dryRun })`, and pure mappers. Exposed as `tracker.ideas` beside `tracker.plans`. `connect` runs through `guarded` (it reads the epic mapping); `list` reads the discovery context for spaces and link types.
-- `scripts/lib/jira/client.mjs`: `graphql(query, variables)` posts to `/gateway/api/graphql` with `X-ExperimentalApi: polaris-v0`; the REST path guard is unchanged. The cloud id for the ARIs comes from the GraphQL query `tenantContexts(hostNames: [site]) { cloudId }` (unverified).
+- `scripts/lib/jira/client.mjs`: unchanged; every call is REST v3.
 - `scripts/pmkit.mjs`: `jira ideas list` and `jira ideas connect`, `jira: true`, with text output in `scripts/lib/jira/ideas-text.mjs`.
 - `commands/jira/product-discovery.md`: (1) `capabilities`, stop when not `jira`; (2) `jira ideas list`, ask which project when several; on `available: false` print the hint and stop; (3) table of ideas sorted by votes, with insights count, delivery and warnings; (4) when the user wants to connect an idea, `jira ideas connect --dry-run`, show before and after, ask once, then the real run. One confirmation point.
 - Listed in `skills/pmkit/SKILL.md`, `README.md` and `scripts/plugin.test.mjs`.
-- `docs/runbooks/product-discovery-jira.md` with `scripts/runbook-product-discovery-jira.test.mjs` on the fake Jira (a JPD project with votes and a GraphQL route; a site without JPD; a GraphQL refusal). Live check: skipped, with an EPC-14 follow-up.
-- CONTEXT.md gains **Idea**, **Insight** and **Vote** (distinct from **Demand signal**). An ADR only if Q1 chooses the GraphQL path, since widening the client's allowed paths is hard to take back once commands rely on it.
+- `docs/runbooks/product-discovery-jira.md` with `scripts/runbook-product-discovery-jira.test.mjs` on the fake Jira (a JPD project with votes and a connected epic; a site without JPD). Live check: skipped, with an EPC-14 follow-up.
+- CONTEXT.md gains **Idea**, **Insight** and **Vote** (distinct from **Demand signal**). No ADR: every decision here is reversible, and the client stays REST-only (ADR 0013).
 
-## Open questions for the owner (Interview)
+## Interview answers (owner, 2026-11-23)
 
-- **Q1. Insights source.** Approach 1 (experimental GraphQL, degrade to `null` with a warning) or approach 2 (insights always reported unreadable)? Recommended: 1.
-- **Q2. Which JPD project.** `--project KEY`, else the only JPD project, else ask; or a config key? Recommended: the flag.
-- **Q3. Connect target.** Only epics of `tracker.scope.space`, or any epic-level work item on the site? Recommended: the configured space, as every other pmkit epic command.
-- **Q4. Votes when Jira returns none.** Show `null` with a warning (recommended) or leave the votes column out?
+- **Q1. Insights: the alternative.** REST only. Every idea has `insights: null` and the list carries one warning. No experimental GraphQL path now: it is unverified without credentials and would bend ADR 0013. A follow-up in EPC-14 evaluates `polarisInsights` on a live site, with an ADR then.
+- **Q2. Which JPD project: yes.** `--project KEY`, else the site's only JPD project, else `INVALID_INPUT` listing the keys; no config key.
+- **Q3. Connect target: yes.** Only epics of `tracker.scope.space` (ADR 0017); the idea must be a work item of a JPD project.
+- **Q4. Votes Jira does not return: yes.** `null` with one warning for the list, never `0`; a project with no votes field gives `[]`.
+- CONTEXT.md gains **Idea**, **Insight** and **Vote**; no ADR.
 
 ## Left to the builder
 
