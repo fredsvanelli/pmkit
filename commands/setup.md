@@ -10,7 +10,7 @@ Arguments: `$ARGUMENTS`
 
 ## Parameters
 
-None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect. With the Local tracker, that is the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label. With Linear, it is the team when you belong to several, the status that means in review, the status that means blocked, the label for each issue type, and a field only when the workspace offers more than one. With GitHub Issues, it is the Project, the Status option of each category, the field of each field role and the issue type of each pmkit type.
+None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect. With the Local tracker, that is the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label. With Linear, it is the team when you belong to several, the status that means in review, the status that means blocked, the label for each issue type, and a field only when the workspace offers more than one. With GitHub Issues, it is the Project, the Status option of each category, the field of each field role and the issue type of each pmkit type. With Jira, it is the site, the space when you can browse several, the statuses that mean backlog, in review and canceled, the estimate and acceptance-criteria fields when the site offers more than one, and the work type of each pmkit type.
 
 It is safe to run again. When `.pmkit/config.yaml` exists, it only updates and never starts over.
 
@@ -20,7 +20,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 Its first rule (stop when there is no config) does not apply here, because this command creates the config.
 
-1. Check whether `.pmkit/config.yaml` exists. When it does, read its `tracker.system`. `local` goes to "Existing config", `linear` goes to "Existing Linear config" and `github` goes to "Existing GitHub config". When it does not exist, ask with `AskUserQuestion` which tracker holds the issues. Offer "Local (Recommended)", for files in this repository, "Linear", for a Linear workspace reached with a personal API key, and "GitHub Issues", for the issues of a GitHub repository reached through the `gh` login. Local continues with "First run". Linear goes to "Linear first run". GitHub Issues goes to "GitHub first run".
+1. Check whether `.pmkit/config.yaml` exists. When it does, read its `tracker.system`. `local` goes to "Existing config", `linear` goes to "Existing Linear config", `github` goes to "Existing GitHub config" and `jira` goes to "Existing Jira config". When it does not exist, ask with `AskUserQuestion` which tracker holds the issues. Offer "Local (Recommended)", for files in this repository, "Linear", for a Linear workspace reached with a personal API key, "GitHub Issues", for the issues of a GitHub repository reached through the `gh` login, and "Jira", for a Jira Cloud site reached with an API token from the environment. Local continues with "First run". Linear goes to "Linear first run". GitHub Issues goes to "GitHub first run". Jira goes to "Jira first run".
 
 ### First run
 
@@ -124,6 +124,31 @@ pmkit reaches GitHub through `gh api` with the `gh` login and holds no token (AD
 6. After the user approves, run the command of step 5 without `--dry-run`.
 7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
 
+### Jira first run
+
+pmkit reaches Jira with the API token in `JIRA_EMAIL` and `JIRA_API_TOKEN` and stores no credential (ADR 0013). Never ask for the token and never write it.
+
+2. Detect the git host as in step 2 of "First run".
+3. Ask for the site host as free text, such as `acme.atlassian.net`. Pass only the host: when the user gives a URL, strip `https://` and any path, since a URL fails with `INVALID_INPUT`.
+4. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker jira --git-host <github|none> --site <host> --dry-run --json`. It reads the site with the token and writes nothing.
+   - On `AUTH`, tell the user to create an API token at id.atlassian.com and export `JIRA_EMAIL` and `JIRA_API_TOKEN` in the shell profile or in `~/.claude/settings.json` under `env`, never in a file inside the repository, then run setup again. Stop. A token Jira rejects may have expired.
+   - On `NOT_SUPPORTED`, the site runs Server or Data Center. Say that pmkit supports Jira Cloud only, and stop.
+5. When `questions` holds `tracker.scope.space`, ask it alone as step 4 of "Linear first run" asks the team: up to four of its `candidates`, each with its name from `titles`; one candidate first with "(Recommended)" and "Stop setup" second; with two or three, "Stop setup" last and no space recommended. The user can type another space key. Then run the command of step 4 with `--space <KEY>`. On `INVALID_INPUT` naming the space keys, ask again with those keys.
+6. Ask every item of its `questions` with `AskUserQuestion`, as step 5 of "Linear first run" does, in batches of four. Name what each one decides: which status means backlog, in review or canceled, which field holds the estimate or the acceptance criteria, which work type stands for each pmkit type. Offer each field by its name from `titles`, with its id, and pass the id. Jira's status categories give `todo`, `in_progress` and `done`, and blocked comes from Blocks links, so setup asks none of them.
+7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker jira --git-host <github|none> --site <host> --space <KEY> --status <key>=<status> --field <role>=<field id> --type-label <type>=<work type> --dry-run --json`, with one `--status`, `--field` or `--type-label` per answer. On `INVALID_INPUT` naming a value, ask that question again with the values its next step lists.
+8. Show one summary: the site, the viewer, the space and its style, each status of the space with its category, the `applied` items, each field role and its field, the work type of each pmkit type, the `notes`, and `.pmkit/config.yaml` as the dry run would create it. Say that Jira numbers its own work items, so setup asks for no prefix and no ID style, and that setup creates nothing in Jira. When the user declines the summary, setup stops and writes nothing.
+9. After the user approves, run the command of step 7 without `--dry-run`.
+10. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Name the capabilities that `capabilities` reports absent. Go to "Output".
+
+### Existing Jira config
+
+2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. A problem in `.pmkit/config.yaml` makes `init --update` refuse, so ask the user to fix the file by hand first and run the check again.
+3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. On `AUTH` or `NOT_SUPPORTED`, follow step 4 of "Jira first run". `broken` lists each mapping that names a space, status, field or work type the site no longer has, and `questions` holds each of them plus any mapping never answered. Add `--git-host`, `--site`, `--space`, `--status`, `--field` or `--type-label` only when the user asks to change them.
+4. When `questions` is empty and the file is `keep`, say "already up to date" and go to step 7. When `questions` holds `tracker.scope.space`, ask it alone as step 5 of "Jira first run" does, then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --space <KEY> --dry-run --json` with the flags of step 3, and take its `questions`. Ask the other questions as step 6 of "Jira first run" does. For a broken mapping, name its old value (`broken.was`) and its `problem` in the question.
+5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --space <KEY> --status <key>=<status> --field <role>=<field id> --type-label <type>=<work type> --dry-run --json` with the answers of step 4 and the flags of step 3. Show the diff of `.pmkit/config.yaml` and the summary of step 8 of "Jira first run", and ask once with `AskUserQuestion` whether to apply it. When the user declines, stop and change nothing.
+6. After the user approves, run the command of step 5 without `--dry-run`.
+7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
+
 ## Confirmation points
 
 - First run: the one summary of step 7 of the first run, before any file is written.
@@ -133,7 +158,9 @@ pmkit reaches GitHub through `gh api` with the `gh` login and holds no token (AD
 - Existing Linear config: one question in step 5 before `init --update` writes. With nothing to write, there is no question.
 - GitHub first run: the one summary of step 7, before `.pmkit/config.yaml` is written.
 - Existing GitHub config: one question in step 5 before `init --update` writes. With nothing to write, there is no question.
-- The tracker question of step 1, the questions of step 4 of the first run, the label question of step 3 of the existing config, the questions of steps 4 and 5 of the Linear first run, the questions of step 4 of the existing Linear config, the questions of steps 4 and 5 of the GitHub first run and the questions of step 4 of the existing GitHub config are inputs, not confirmations.
+- Jira first run: the one summary of step 8, before `.pmkit/config.yaml` is written.
+- Existing Jira config: one question in step 5 before `init --update` writes. With nothing to write, there is no question.
+- The tracker question of step 1, the questions of step 4 of the first run, the label question of step 3 of the existing config, the questions of steps 4 and 5 of the Linear first run, the questions of step 4 of the existing Linear config, the questions of steps 4 and 5 of the GitHub first run, the questions of step 4 of the existing GitHub config, the site and the questions of steps 3, 5 and 6 of the Jira first run and the questions of step 4 of the existing Jira config are inputs, not confirmations.
 
 ## Output
 
@@ -150,4 +177,5 @@ Lead with what was created or updated. Then:
 - Not a git repository: say that `/pmkit:upgrade` and the commit step need git, and continue only if the user wants a tracker without it.
 - `LINEAR_API_KEY` is not set, or belongs to another workspace: follow step 3 of "Linear first run". Never ask for the key.
 - GitHub Issues and `gh` is not installed, not logged in or lacks the `project` scope: follow step 3 of "GitHub first run". Never ask for a token.
+- `JIRA_EMAIL` or `JIRA_API_TOKEN` is not set, or Jira rejects the token: follow step 4 of "Jira first run". Never ask for the token.
 - An error from the CLI: apply the rules for reading errors in the conventions.
