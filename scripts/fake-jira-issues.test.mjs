@@ -344,3 +344,54 @@ test('sprints: a sprint state change shows on the items and PUT of the Sprint fi
   await api('POST', `${AGILE}/sprint/1`, { state: 'active' })
   assert.equal((await read('ENG-1')).fields.customfield_10020[0].state, 'active')
 })
+
+test('versions: create, list, refuse a duplicate name, release, read', async () => {
+  const { api } = setup({ versions: [{ id: '10050', name: 'v0', released: false, archived: false, projectId: '10001' }] })
+  const made = await api('POST', '/rest/api/3/version', { name: 'v1', projectId: 10001, description: 'First' })
+  assert.equal(made.status, 201)
+  assert.deepEqual(made.json, { id: '10100', name: 'v1', description: 'First', released: false, archived: false, projectId: '10001' })
+  const list = await api('GET', '/rest/api/3/project/ENG/version')
+  assert.deepEqual(list.json.values.map((version) => version.name), ['v0', 'v1'])
+  assert.equal(list.json.isLast, true)
+  assert.equal((await api('POST', '/rest/api/3/version', { name: 'v1', projectId: 10001 })).status, 400)
+  assert.equal((await api('POST', '/rest/api/3/version', { projectId: 10001 })).status, 400)
+  assert.equal((await api('POST', '/rest/api/3/version', { name: 'x', projectId: 99 })).status, 400)
+  const put = await api('PUT', '/rest/api/3/version/10100', { released: true, releaseDate: '2026-12-01' })
+  assert.equal(put.status, 200)
+  assert.deepEqual([put.json.released, put.json.releaseDate, put.json.name], [true, '2026-12-01', 'v1'])
+  assert.equal((await api('GET', '/rest/api/3/version/10100')).json.released, true)
+  assert.equal((await api('GET', '/rest/api/3/version/1')).status, 404)
+})
+
+test('fixVersions: written by id, read as version objects, found by JQL, logged as Fix Version', async () => {
+  const { create, read, search, api } = setup({ versions: [{ id: '10050', name: 'v0', released: false, archived: false, projectId: '10001' }] })
+  await create({ summary: 'a' })
+  await create({ summary: 'b' })
+  assert.deepEqual((await read('ENG-1')).fields.fixVersions, [])
+  assert.equal((await api('PUT', '/rest/api/3/issue/ENG-1', { fields: { fixVersions: [{ id: '404' }] } })).status, 400)
+  assert.equal((await api('PUT', '/rest/api/3/issue/ENG-1', { fields: { fixVersions: [{ id: '10050' }] } })).status, 204)
+  assert.deepEqual((await read('ENG-1')).fields.fixVersions, [{ id: '10050', name: 'v0', released: false, archived: false }])
+  assert.deepEqual(keysOf(await search('project = "ENG" AND fixVersion = "10050" ORDER BY created ASC, key ASC')), ['ENG-1'])
+  assert.deepEqual(keysOf(await search('project = "ENG" AND fixVersion is EMPTY ORDER BY created ASC, key ASC')), ['ENG-2'])
+  const item = (await api('GET', '/rest/api/3/issue/ENG-1/changelog')).json.values[0].items[0]
+  assert.deepEqual([item.field, item.toString], ['Fix Version', 'v0'])
+})
+
+test('issuetype not in drops an Epic', async () => {
+  const { create, search } = setup()
+  await create({ summary: 'Epic', issuetype: { id: '10000' } })
+  await create({ summary: 'Story' })
+  assert.deepEqual(keysOf(await search('project = "ENG" AND issuetype not in ("10000") ORDER BY created ASC, key ASC')), ['ENG-2'])
+})
+
+test('comment properties come back only under expand=properties', async () => {
+  const { create, api } = setup()
+  await create({ summary: 'a' })
+  const properties = [{ key: 'pmkit.status-update', value: { n: 1 } }]
+  await api('POST', '/rest/api/3/issue/ENG-1/comment', { body: textToAdf('with'), properties })
+  await api('POST', '/rest/api/3/issue/ENG-1/comment', { body: textToAdf('without') })
+  const plain = await api('GET', '/rest/api/3/issue/ENG-1/comment')
+  assert.equal(plain.json.comments.every((comment) => !('properties' in comment)), true)
+  const expanded = await api('GET', '/rest/api/3/issue/ENG-1/comment?expand=properties')
+  assert.deepEqual(expanded.json.comments.map((comment) => comment.properties), [properties, []])
+})
