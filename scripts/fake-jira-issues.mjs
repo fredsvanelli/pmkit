@@ -46,7 +46,7 @@ const cannotSet = (id) => badField(id, `Field '${id}' cannot be set. It is not o
 
 /** A fresh, empty state. */
 function emptyState() {
-  return { next: { item: 1, link: 10100, comment: 10000, history: 1, sprint: 1, version: 10100 }, clock: 0, items: {}, links: [], comments: {}, properties: {}, changelog: {}, sprints: [], versions: [] }
+  return { next: { item: 1, link: 10100, comment: 10000, history: 1, sprint: 1, version: 10100, worklog: 10000 }, clock: 0, items: {}, links: [], comments: {}, properties: {}, changelog: {}, sprints: [], versions: [], worklogs: {} }
 }
 
 // Field values: the stored form of a written value, and the [id, string] sides of a changelog item.
@@ -246,9 +246,13 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
  * The fake work-item routes, spread over jiraSiteRoutes(), the state they read and mutate in place, and writes() the
  * non-GET calls. `now` returns the time of each write; the default clock starts at 2026-11-22T10:00:00.000Z and
  * advances one second per write, and lives in the state so a restored state keeps counting. `extraStatuses` passes on to
- * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78), `versions` the space's versions (PMK-79).
+ * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78), `versions` the space's versions (PMK-79),
+ * `worklogs` the raw worklogs per work item key (PMK-80).
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [] } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {} } = {}) {
+  state.worklogs ??= {}
+  state.next.worklog ??= 10000
+  for (const [key, list] of Object.entries(worklogs)) (state.worklogs[key] ??= []).push(...structuredClone(list))
   state.sprints ??= []
   state.versions ??= []
   state.next.version ??= 10100
@@ -305,7 +309,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
 
   /** The item as a read returns it; `propertyKeys` limits the properties (all when undefined). */
   function render(item, propertyKeys) {
-    const fields = { ...item.fields, fixVersions: (item.fields.fixVersions ?? []).map((entry) => versionField(versionOf(entry.id))), subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
+    const logged = state.worklogs[item.key] ?? []
+    const fields = { ...item.fields, worklog: { startAt: 0, maxResults: 20, total: logged.length, worklogs: structuredClone(logged.slice(0, 20)) }, fixVersions: (item.fields.fixVersions ?? []).map((entry) => versionField(versionOf(entry.id))), subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
     if (item.sprintIds?.length) fields[SPRINT_FIELD] = item.sprintIds.map((id) => sprintField(sprintOf(id)))
     else fields[SPRINT_FIELD] = null
     const read = structuredClone({ id: item.id, key: item.key, fields })
@@ -325,7 +330,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   function removeItem(key) {
     delete state.items[key]
     state.links = state.links.filter((link) => link.inward !== key && link.outward !== key)
-    for (const store of [state.comments, state.properties, state.changelog]) delete store[key]
+    for (const store of [state.comments, state.properties, state.changelog, state.worklogs]) delete store[key]
     for (const other of Object.values(state.items)) if (other.fields.parent?.key === key) other.fields.parent = null
   }
 
@@ -481,6 +486,25 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       ;(state.comments[item.key] ??= []).push(comment)
       item.fields.updated = created
       return { status: 201, json: omitProperties(structuredClone(comment)) }
+    },
+    [`GET ${API}/issue/{key}/worklog`]({ params, query }) {
+      const { values, isLast, ...page } = offsetPage(structuredClone(state.worklogs[itemOf(params.key).key] ?? []), query, 5000)
+      return { json: { ...page, worklogs: values } }
+    },
+    [`POST ${API}/issue/{key}/worklog`]({ params, body, at }) {
+      const item = itemOf(params.key)
+      if (!Number.isInteger(body?.timeSpentSeconds) || body.timeSpentSeconds <= 0) badField('timeLogged', 'You must indicate the time spent working.')
+      const created = at()
+      const worklog = { id: String(state.next.worklog++), author: { ...VIEWER }, started: body.started ?? created, created, updated: created, timeSpentSeconds: body.timeSpentSeconds }
+      const list = (state.worklogs[item.key] ??= [])
+      const before = list.reduce((sum, entry) => sum + entry.timeSpentSeconds, 0)
+      list.push(worklog)
+      const spent = (value) => (value === 0 ? null : String(value))
+      record(item, [
+        { field: 'timespent', fieldId: 'timespent', fieldtype: 'jira', from: spent(before), fromString: spent(before), to: spent(before + worklog.timeSpentSeconds), toString: spent(before + worklog.timeSpentSeconds) },
+        { field: 'WorklogId', fieldtype: 'jira', from: null, fromString: null, to: worklog.id, toString: worklog.id },
+      ], created)
+      return { status: 201, json: structuredClone(worklog) }
     },
     [`POST ${API}/issueLink`]({ body, at }) {
       const type = LINK_TYPES.find((entry) => lower(entry.name) === lower(body?.type?.name) || entry.id === String(body?.type?.id))

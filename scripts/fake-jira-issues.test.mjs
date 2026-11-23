@@ -395,3 +395,25 @@ test('comment properties come back only under expand=properties', async () => {
   const expanded = await api('GET', '/rest/api/3/issue/ENG-1/comment?expand=properties')
   assert.deepEqual(expanded.json.comments.map((comment) => comment.properties), [properties, []])
 })
+
+test('worklogs: added, listed, logged in the changelog as timespent, refused at zero seconds (PMK-80)', async () => {
+  const { create, api } = setup()
+  await create({ summary: 'Timed' })
+  const added = await api('POST', '/rest/api/3/issue/ENG-1/worklog', { timeSpentSeconds: 2700, started: '2026-11-22T12:00:00.000+0000' })
+  assert.equal(added.status, 201)
+  assert.deepEqual([added.json.id, added.json.author.accountId, added.json.timeSpentSeconds, added.json.started], ['10000', 'acc-1', 2700, '2026-11-22T12:00:00.000+0000'])
+  const listed = (await api('GET', '/rest/api/3/issue/ENG-1/worklog')).json
+  assert.deepEqual([listed.total, listed.worklogs.map((worklog) => worklog.timeSpentSeconds)], [1, [2700]])
+  const items = (await api('GET', '/rest/api/3/issue/ENG-1/changelog')).json.values.at(-1).items
+  assert.deepEqual(items.map((item) => [item.field, item.from, item.to]), [['timespent', null, '2700'], ['WorklogId', null, '10000']])
+  assert.equal((await api('POST', '/rest/api/3/issue/ENG-1/worklog', { timeSpentSeconds: 0, started: '2026-11-22T12:00:00.000+0000' })).status, 400)
+  assert.equal((await api('POST', '/rest/api/3/issue/ENG-9/worklog', { timeSpentSeconds: 60, started: '2026-11-22T12:00:00.000+0000' })).status, 404)
+})
+
+test('worklogs: the worklog field of a read carries the first 20 and the total (PMK-80)', async () => {
+  const seeded = Array.from({ length: 25 }, (_, n) => ({ id: String(20000 + n), author: { accountId: 'acc-1' }, started: '2026-11-21T10:00:00.000+0000', timeSpentSeconds: 60 }))
+  const { create, read } = setup({ worklogs: { 'ENG-1': seeded } })
+  await create({ summary: 'Busy' })
+  const { worklog } = (await read('ENG-1')).fields
+  assert.deepEqual([worklog.total, worklog.worklogs.length], [25, 20])
+})
