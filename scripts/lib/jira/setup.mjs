@@ -4,7 +4,7 @@
 // for the space and field questions, so /pmkit:setup asks Jira's questions as it asks Linear's and GitHub's.
 
 import { PmkitError } from '../errors.mjs'
-import { NONE } from '../mappings.mjs'
+import { NONE, keysOf } from '../mappings.mjs'
 import { fieldRoles } from './discovery.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
 
@@ -35,13 +35,7 @@ const isSet = (value) => typeof value === 'string' && value !== ''
 const pass = (candidates) => `Pass one of: ${[...candidates, NONE].join(', ')}`
 
 /** The first of `names` that matches one of `wanted`, without case, or undefined. */
-function matchOf(wanted = [], names) {
-  for (const name of wanted) {
-    const found = names.find((value) => value.toLowerCase() === name)
-    if (found !== undefined) return found
-  }
-  return undefined
-}
+const matchOf = (wanted = [], names) => wanted.map((name) => names.find((value) => value.toLowerCase() === name)).find((found) => found !== undefined)
 
 const recommendedFirst = (names, recommended) => (recommended !== undefined ? [recommended, ...names.filter((name) => name !== recommended)] : [...names])
 
@@ -79,9 +73,6 @@ function checkKeys(given, allowed, flag) {
     if (!allowed.includes(key)) throw invalid(`${flag} ${key} is not something setup maps`, `Use ${flag} with one of: ${allowed.join(', ')}`)
   }
 }
-
-/** The keys setup asks, then the other keys the file sets by hand, which setup asks again only when they break. */
-const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((key) => !asked.includes(key) && isSet(held[key]))]
 
 /** The groups of a mappings object, each a map: an absent group is {}. */
 const mapsOf = (source, groups) => Object.fromEntries(groups.map((group) => [group, source[group] ?? {}]))
@@ -125,7 +116,7 @@ export function proposeJiraSetup(raw, current = {}, answers = {}, types = []) {
 
   const pmkit = { mappings: { status: held.status, fields: held.fields, ...(held.types === undefined ? {} : { types: held.types }) } }
   const broken = brokenJiraMappings(raw, pmkit).map(({ key, value, problem }) => ({ path: key, value, problem }))
-  const state = { raw, held, given, applied: [], questions: [], broken, notes: [], brokenAt: new Map(broken.map((item) => [item.path, item])), rules: fieldRoles(raw, {}).fields }
+  const state = { raw, held, given, applied: [], questions: [], broken, notes: [], brokenAt: new Map(broken.map((item) => [item.path, item])), rules: fieldRoles(raw, {}).fields, statusNames: statusNames(raw) }
   const values = { status: {}, fields: {} }
 
   // A recommendation skips a value an earlier key already got as its answer, held value or recommendation.
@@ -134,7 +125,7 @@ export function proposeJiraSetup(raw, current = {}, answers = {}, types = []) {
     const value = statusValue(state, key, taken)
     if (value !== undefined) values.status[key] = value
   }
-  refuseShared(values.status, 'status', statusNames(raw))
+  refuseShared(values.status, 'status', state.statusNames)
   for (const key of fieldKeys) {
     const value = fieldValue(state, key)
     if (value !== undefined) values.fields[key] = value
@@ -152,7 +143,7 @@ function statusNames(raw) {
 
 /** The status of one key: the answer, the held value, or undefined with a question recorded. taken gathers the values so far. */
 function statusValue(state, key, taken) {
-  const names = statusNames(state.raw)
+  const names = state.statusNames
   const answer = state.given.status[key]
   if (answer !== undefined) {
     if (answer !== NONE && !names.includes(answer)) throw invalid(`--status ${key}=${answer} is not a status of space ${state.raw.space.key}`, pass(names))

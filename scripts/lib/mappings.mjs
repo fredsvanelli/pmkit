@@ -91,7 +91,7 @@ const flagOf = {
 }
 
 /** The keys setup asks, then the other keys the file sets by hand, which setup asks again only when they break. */
-const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((key) => !asked.includes(key) && isSet(held[key]))]
+export const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((key) => !asked.includes(key) && isSet(held[key]))]
 
 function checkKeys(group, answers, allowed, flag) {
   for (const key of Object.keys(answers ?? {})) {
