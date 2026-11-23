@@ -1,6 +1,6 @@
 # PMK-80: Map Jira time tracking
 
-Issue PMK-80, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criterion: "`log_time` and `list_time_entries` read and write Jira worklogs". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0017, the PMK-76 to PMK-79 specs, the Local time tracking code and the code. Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Status: draft for the Interview. No Jira credentials exist, so nothing here was checked against a live site.
+Issue PMK-80, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criterion: "`log_time` and `list_time_entries` read and write Jira worklogs". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0017, the PMK-76 to PMK-79 specs, the Local time tracking code and the code. Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Status: approved by the owner (Orca coordinator) on 2026-11-23, with yes to Q1 to Q3 in "Interview answers". No Jira credentials exist, so nothing here was checked against a live site.
 
 ## Intent
 
@@ -86,10 +86,11 @@ When time tracking is off, `getHistory` and `metricEvents` still return what Jir
 - Every REST shape above comes from the documents, not a site (EPC-14): the `started` format, the `worklog` field's cap of 20, the changelog items a worklog writes.
 - `started` is written as now; Jira may show it in the user's zone, which is display only.
 
-## Open questions for the Interview
+## Interview answers (owner, 2026-11-23)
 
-- Q1 Entry time: `at` is the worklog's `started` (when the work is dated, which a Jira user can backdate) rather than `created` (when it was logged). Recommended: `started`, because sprint attribution and Jira's own reports use it; for time pmkit logs the two are the same.
-- Q2 Seconds that are not whole minutes (Jira's API accepts any seconds): round to the nearest minute, and ignore an entry that rounds to 0. Recommended over ignoring every non-whole entry, which would drop time Jira counts.
+- Q1 Entry time: `at` is the worklog's `started` (when the work is dated, which a Jira user can backdate), not `created`; sprint attribution and Jira's own reports use it, and for time pmkit logs the two are the same.
+- Q2 Seconds that are not whole minutes: rounded to the nearest minute; an entry that rounds to 0 is ignored and counted in `ignored`.
+- Q3 Language: "Time entry" is added to `CONTEXT.md`. No ADR: nothing here is hard to reverse.
 
 ## Left to the builder
 

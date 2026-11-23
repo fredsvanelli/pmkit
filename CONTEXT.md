@@ -164,6 +164,10 @@ _Avoid_: longest path, critical chain
 An issue in `in_progress` or `in_review`, or an open pull request, with no activity for more than `stuck_business_days` business days. An issue's activity is its newest event and, with a git host, the last update of the open pull request of its branch. `pmkit risks` lists stalled issues and pull requests.
 _Avoid_: stale (backlog grooming's term for old backlog issues), idle
 
+**Time entry**:
+One amount of whole minutes logged on an issue by a member, dated by when the work was done. On the Local tracker it is a `log_time` event; on Jira it is a worklog, dated by its start and rounded to the nearest minute. `issues time-entries` lists them with the total per member and per sprint.
+_Avoid_: worklog (outside Jira), timesheet
+
 **Thread**:
 A root comment and its replies. Replies attach to the root, so a thread is one level deep. Resolving a thread resolves all of it. `resolveThread` on a reply's ID marks the root of its thread.
 _Avoid_: conversation, discussion
