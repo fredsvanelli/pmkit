@@ -177,3 +177,16 @@ test('an Atlassian team id is encoded in the path', async () => {
   await plans.get('12')
   assert.ok(fetch.calls.some((call) => call.url.includes('/team/atlassian/a%20b')))
 })
+
+test('get warns when the default scenario is not in the plan list', async () => {
+  const { plans } = setup({ [LIST]: page([{ ...LISTED, id: '99' }]), [PLAN]: { json: FULL_PLAN }, [TEAMS]: page([]) })
+  const { plan, warnings } = await plans.get('12')
+  assert.equal(plan.scenario, null)
+  assert.ok(warnings.includes('the default scenario of plan 12 was not found in the plan list (1 plans read)'), warnings.join('|'))
+})
+
+test('a 403 with the CAPTCHA header stays AUTH, not "no Premium"', async () => {
+  const captcha = { status: 403, headers: { 'X-Seraph-LoginReason': 'AUTHENTICATION_DENIED' }, json: {} }
+  await assert.rejects(setup({ [LIST]: captcha }).plans.list(), { code: 'AUTH' })
+  await assert.rejects(setup({ [LIST]: page([LISTED]), [PLAN]: captcha, [TEAMS]: page([]) }).plans.get('12'), { code: 'AUTH' })
+})

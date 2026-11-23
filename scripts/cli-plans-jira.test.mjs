@@ -65,3 +65,10 @@ test('jira plans get without an id is a usage error', async () => {
   assert.equal(result.code, 2, result.stdout)
   assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
 })
+
+test('jira plans list --limit 0 is a usage error', async () => {
+  const result = await session()(['jira', 'plans', 'list', '--limit', '0', '--json'])
+  assert.equal(result.code, 2, result.stdout)
+  assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  assert.match(JSON.parse(result.stdout).error.message, /--limit must be at least 1/)
+})

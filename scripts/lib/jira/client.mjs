@@ -134,9 +134,11 @@ export function createJiraClient({
     }
     const found = jiraErrors(body)
     const details = { jira: { status, ...found } }
+    const captcha = (headers.get('x-seraph-loginreason') ?? '').includes('AUTHENTICATION_DENIED')
     const fail = (code, message, nextStep) => ({ error: new PmkitError(code, message, nextStep, details), retry: false })
 
-    if ((headers.get('x-seraph-loginreason') ?? '').includes('AUTHENTICATION_DENIED')) {
+    if (captcha) {
+      details.jira.captcha = true
       return fail('AUTH', "Jira wants a CAPTCHA before it accepts this account's token", `Sign in to ${site} in a browser once to clear the CAPTCHA, then retry`)
     }
     if (status === 401) {

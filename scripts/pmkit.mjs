@@ -2702,12 +2702,13 @@ export const COMMANDS = [
       return { data: result, text: draftConvertText(result, ctx.dryRun), warnings: result.warnings }
     },
   },
-  // Jira Plans (PMK-82): read the site's plans, their scenario, scheduling, releases and teams' capacity, for /pmkit:jira:plans.
+  // Jira Plans (PMK-82): read the site's plans, their scenario, scheduling, releases and teams' capacity, for /pmkit:jira:plans-scenarios.
   {
     name: 'jira plans list', summary: "the site's Jira Plans, with their default scenario; says so when the site has no Premium or the token lacks Administer Jira",
     usage: '[--archived] [--trashed] [--limit n]', jira: true, flags: ['archived', 'trashed', 'limit'],
     run: async (ctx) => {
       const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      if (limit !== undefined && limit < 1) throw usageError('--limit must be at least 1')
       const result = await (await ctx.jira('plans')).list({ archived: ctx.flag('archived'), trashed: ctx.flag('trashed'), limit })
       return { data: result, text: plansListText(result), warnings: result.warnings }
     },

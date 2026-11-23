@@ -8,7 +8,7 @@ const PLANS = '/rest/api/3/plans/plan'
 
 /** A Jira enum value (PascalCase) in pmkit's snake case: AnySprintDates is any_sprint_dates. */
 const snake = (value) => (typeof value === 'string' ? value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase() : null)
-const isPremiumRefusal = (error) => error instanceof PmkitError && error.code === 'AUTH' && error.details?.jira?.status === 403
+const isPremiumRefusal = (error) => error instanceof PmkitError && error.code === 'AUTH' && error.details?.jira?.status === 403 && !error.details.jira.captcha
 const array = (value) => (Array.isArray(value) ? value : [])
 const idOf = (value) => (value === undefined || value === null ? null : String(value))
 
@@ -95,9 +95,11 @@ export function planOperations({ client, site }) {
       const plan = raw ?? {}
       const teams = await client.paginate(`${PLANS}/${id}/team`, { key: 'values', pageSize: 50 })
       // getPlan has no scenarioId: the default scenario comes from the list, archived and trashed plans included.
-      const listed = (await readList({ archived: true, trashed: true })).items.find((item) => String(item.id) === id)
+      const all = (await readList({ archived: true, trashed: true })).items
+      const listed = all.find((item) => String(item.id) === id)
       const scheduling = toScheduling(plan.scheduling)
       const warnings = teams.hasMore ? [`plan ${id} has more teams than pmkit read`] : []
+      if (!listed) warnings.push(`the default scenario of plan ${id} was not found in the plan list (${all.length} plans read)`)
       const read = await Promise.all(teams.items.map((team) => readTeam(id, team, scheduling, warnings)))
       return {
         available: true,

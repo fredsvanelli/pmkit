@@ -12,7 +12,7 @@ export function listText(result) {
 export function getText(result) {
   if (!result.available) return off(result)
   const { plan } = result
-  const scenario = plan.scenario ? `${plan.scenario.id} (default; other scenarios are not readable through Jira's public API)` : 'none found'
+  const scenario = plan.scenario ? `${plan.scenario.id} (default; other scenarios are not readable through Jira's public API)` : 'not read'
   return [
     `${plan.id}  ${plan.name}  (${plan.status})`,
     ...(plan.scheduling ? [`dependencies: ${plan.scheduling.dependencies}`, `estimation: ${plan.scheduling.estimation}`] : []),
