@@ -4,9 +4,8 @@
 
 import { entryFor, readCapacity, writeEntry } from '../capacity-store.mjs'
 import { builtInDefaults } from '../config.mjs'
-import { stoppedHalfway } from '../cycle-moves.mjs'
+import { checkMoveInput, moveTargetIn, stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
-import { closedSprint } from '../issue-filter.mjs'
 import { addDays, baseField, overlaps, SPRINT_STATES, validDate } from '../local/sprints.mjs'
 import { TERMINAL } from '../model.mjs'
 import { buildJiraCapabilities } from './manifest.mjs'
@@ -119,28 +118,15 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     return { sprint: toSprint(await client.request('GET', sprintPath(id)), entry), unfinished, problems: [] }
   }
 
-  /** The sprint a move goes to: null for none, the active one for current, or the one with the id `to`. */
-  async function moveTarget(found, to) {
-    if (to === null) return null
-    const sprints = await readSprints(found)
-    const target = to === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === to)
-    if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
-    // The sprint is where the issues go, a value of the move: INVALID_INPUT, as in createIssue and updateIssue.
-    if (!target) throw invalid(`sprint ${to} does not exist`, 'pmkit cycle list')
-    // A closed sprint's velocity is fixed, so it takes no issue (PMK-166).
-    if (target.state === 'closed') throw closedSprint(to)
-    return target
-  }
-
   /**
    * `to` is a sprint id, 'current' for the active sprint, or null to take the issues out of their sprint. The actor, the input, the
    * target and every issue are checked before the first write, so a bad id writes nothing; each issue then gets one updateIssue.
    */
   async function moveToCycle(ids, to, actor, { dryRun = false } = {}) {
     await ops.requireActor(actor)
-    if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
-    if (to !== null && typeof to !== 'string') throw invalid('to must be a sprint id, current or null')
-    const target = await moveTarget(await scope(), to)
+    checkMoveInput(ids, to)
+    const found = await scope()
+    const target = to === null ? null : moveTargetIn(await readSprints(found), to)
     for (const id of ids) await ops.readItem(id)
     const results = []
     const moved = []

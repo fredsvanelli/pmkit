@@ -5,6 +5,7 @@ import test from 'node:test'
 import { FAKE_ENV, TRACKER, fakeJiraFetch } from '../../fake-jira-api.mjs'
 import { fakeJiraIssues } from '../../fake-jira-issues.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
+import { checkMoveInput, moveTargetIn } from '../cycle-moves.mjs'
 import { createJiraTracker } from './tracker.mjs'
 
 globalThis.fetch = () => {
@@ -132,4 +133,18 @@ test('a space whose only board is Kanban has no sprints', async () => {
   const { tracker } = setup({ routes: () => kanban })
   await assert.rejects(tracker.listCycles(), { code: 'NOT_SUPPORTED', message: 'Sprints need a Scrum board in space ENG', nextStep: 'Sprints need a Scrum board in space ENG' })
   await assert.rejects(tracker.openCycle({ start: '2026-11-22' }, ME), { code: 'NOT_SUPPORTED' })
+})
+
+// The shared helpers of scripts/lib/cycle-moves.mjs, which GitHub and Jira both call; cycle-moves has no test file of its own.
+test('moveTargetIn picks the target of a move; checkMoveInput checks ids and to', () => {
+  const sprints = [{ id: '1', state: 'closed' }, { id: '2', state: 'active' }, { id: '3', state: 'planned' }]
+  assert.equal(moveTargetIn(sprints, null), null)
+  assert.equal(moveTargetIn(sprints, 'current').id, '2')
+  assert.equal(moveTargetIn(sprints, '3').id, '3')
+  assert.throws(() => moveTargetIn([], 'current'), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+  assert.throws(() => moveTargetIn(sprints, 'none'), { code: 'INVALID_INPUT', message: 'sprint none does not exist', nextStep: 'pmkit cycle list' })
+  assert.throws(() => moveTargetIn(sprints, '1'), { code: 'CONFLICT' })
+  assert.throws(() => checkMoveInput([], null), { code: 'INVALID_INPUT', message: 'ids must be a non-empty list' })
+  assert.throws(() => checkMoveInput(['ENG-1'], 3), { code: 'INVALID_INPUT', message: 'to must be a sprint id, current or null' })
+  assert.doesNotThrow(() => checkMoveInput(['ENG-1'], 'current'))
 })
