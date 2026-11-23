@@ -107,7 +107,7 @@ Every operation starts with `scope()`: the context, the board and the sprint fie
 
 ## Issue writes and search
 
-- `toFields` stops refusing `sprint`. With a value, the caller passes the board's sprints; `planSprint` resolves `current` (none active: `INVALID_INPUT`, next step `pmkit cycle list`), an id (unknown or `none`: `unknownSprint`; closed: `closedSprint`), or `null`, sets `after.sprint` and `result.sprint = { to: id | null }` when it changes.
+- `toFields` stops refusing `sprint`. With a value, the caller passes the board's sprints; `planSprint` leaves the sprint the item is already in (closed or not) as it is, and resolves any other value with `moveTargetIn` from `scripts/lib/cycle-moves.mjs`, the same path as `cycle add` (`current` with none active, an unknown id or `none`: `INVALID_INPUT`, "sprint <id> does not exist", next step `pmkit cycle list`; closed: `closedSprint`), or `null`, sets `after.sprint` and `result.sprint = { to: id | null }` when it changes.
 - `updateIssue`: after the field `PUT`, a changed sprint is `POST /sprint/{id}/issue` or `POST /backlog/issue`; a failure after a field write is `UPSTREAM`, as the branch write. `createIssue`: the move runs after the create; a failure is `UPSTREAM` with `details.created`, as the status move.
 - `searchIssues({ sprint })`: `checkFilter` gets `sprintExists` from the board's sprints. JQL: an id is `sprint = <id>`; `current` is the active id, or nothing matches; `none` is `(sprint is EMPTY OR sprint not in openSprints())`. A client step `sprint` keeps the issues whose `sprint` (the rule above) equals the asked id, or is unset for `none`.
 

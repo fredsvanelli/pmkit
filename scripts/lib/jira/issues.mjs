@@ -10,8 +10,8 @@ import { isCategory, validDate, PRIORITY_LABEL_LEVELS as PRIORITIES } from '../m
 import { adfToText, textToAdf } from './adf.mjs'
 import { categoryOfStatus, discoveryView } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
-import { sprintOf } from './sprints.mjs'
-import { closedSprint, unknownSprint } from '../issue-filter.mjs'
+import { moveTargetIn } from '../cycle-moves.mjs'
+import { sprintOf, toSprint } from './sprints.mjs'
 
 const BRANCH_PROPERTY = 'pmkit.branch'
 const HOURS = 'timeoriginalestimate'
@@ -302,17 +302,10 @@ function planSprint(patch, state, context, sprints) {
     state.set('sprint', null)
     return
   }
-  let found
-  if (patch.sprint === 'current') {
-    found = sprints.find((sprint) => sprint.state === 'active')
-    if (!found) throw invalid('there is no active sprint', 'pmkit cycle list')
-  } else {
-    found = sprints.find((sprint) => String(sprint.id) === patch.sprint)
-    if (!found) throw unknownSprint(patch.sprint)
-  }
-  const to = String(found.id)
+  // The sprint the item is already in, closed or not, is no change; anything else resolves as cycle add does.
+  if (patch.sprint === state.after.sprint) return
+  const to = moveTargetIn(sprints.map((sprint) => toSprint(sprint)), patch.sprint).id
   if (to === state.after.sprint) return
-  if (found.state === 'closed') throw closedSprint(to)
   state.result.sprint = { to }
   state.set('sprint', to)
 }

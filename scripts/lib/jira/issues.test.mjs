@@ -302,3 +302,17 @@ test('branch is a property, not a field, on update only', async () => {
 test('jiraTime returns an unparseable time as it came', () => {
   assert.equal(jiraTime('not a time'), 'not a time')
 })
+
+test('a sprint write resolves its target as cycle add does, and keeps a closed sprint the item is already in', async () => {
+  const ctx = await context()
+  const old = await before(ctx)
+  const sprints = [{ id: 41, state: 'closed', name: 'S41' }, { id: 42, state: 'active', name: 'S42' }]
+  const plan = (sprint, from = old) => toFields({ sprint }, from, ctx, { sprints })
+  for (const value of ['999', 'none']) {
+    assert.throws(() => plan(value), { code: 'INVALID_INPUT', message: `sprint ${value} does not exist`, nextStep: 'pmkit cycle list' })
+  }
+  assert.throws(() => toFields({ sprint: 'current' }, old, ctx, { sprints: [sprints[0]] }), { code: 'INVALID_INPUT', message: 'there is no active sprint' })
+  assert.throws(() => plan('41'), { code: 'CONFLICT' })
+  assert.deepEqual(plan('current').sprint, { to: '42' })
+  assert.equal(plan('41', { ...old, sprint: '41' }).sprint, undefined)
+})
