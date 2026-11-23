@@ -4,7 +4,7 @@
 // for the space and field questions, so /pmkit:setup asks Jira's questions as it asks Linear's and GitHub's.
 
 import { PmkitError } from '../errors.mjs'
-import { NONE, keysOf } from '../mappings.mjs'
+import { NONE, checkKeys, keysOf, mapsOf } from '../mappings.mjs'
 import { fieldRoles } from './discovery.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
 
@@ -67,15 +67,6 @@ export function proposeSpace({ answer, held, heldMissing = false, spaces = [], s
   }
   return { question, broken }
 }
-
-function checkKeys(given, allowed, flag) {
-  for (const key of Object.keys(given)) {
-    if (!allowed.includes(key)) throw invalid(`${flag} ${key} is not something setup maps`, `Use ${flag} with one of: ${allowed.join(', ')}`)
-  }
-}
-
-/** The groups of a mappings object, each a map: an absent group is {}. */
-const mapsOf = (source, groups) => Object.fromEntries(groups.map((group) => [group, source[group] ?? {}]))
 
 /** The held value when it is set and not broken; otherwise it records the question, with the broken item when there is one. */
 function heldOr(state, path, value, question) {
