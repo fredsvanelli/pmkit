@@ -71,6 +71,15 @@ export function createGitLocal({ root, env, exec = defaultExec({ root, env }) })
     return { uncommitted: lines.length > untracked, untracked }
   }
 
+  /** The commits the local branch and origin/<branch> point to, of those that exist. */
+  const branchTips = (branch) => {
+    refArg('branch', branch)
+    return [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]
+      .map((ref) => run('git', ['rev-parse', '--verify', '--quiet', ref], { timeout: DIFF_TIMEOUT_MS }))
+      .filter((r) => r.status === 0)
+      .map((r) => r.stdout.trim())
+  }
+
   return {
     currentBranch: () => check('git', ['branch', '--show-current']).stdout.trim(),
 
@@ -129,17 +138,17 @@ export function createGitLocal({ root, env, exec = defaultExec({ root, env }) })
      */
     workingTree,
 
+    /** Whether the local branch or origin/<branch> exists, so a caller reads the commit it asks branchHas about only when it can be on it. */
+    branchExists: (branch) => branchTips(branch).length > 0,
+
     /**
-     * Whether the commit `oidOf()` returns is on the branch: a tip of the local branch or of origin/<branch>, or behind one of them. Null when the
+     * Whether the commit `oid` is on the branch: a tip of the local branch or of origin/<branch>, or behind one of them. Null when the
      * branch exists in neither place. The local branch may be ahead of or behind what a pull request merged, so one tip is not enough.
      */
-    branchHas(branch, oidOf) {
-      refArg('branch', branch)
-      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
-      const tips = [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`].map((ref) => git(['rev-parse', '--verify', '--quiet', ref])).filter((r) => r.status === 0).map((r) => r.stdout.trim())
+    branchHas(branch, oid) {
+      const tips = branchTips(branch)
       if (tips.length === 0) return null
-      const oid = oidOf()
-      return tips.some((tip) => tip === oid || git(['merge-base', '--is-ancestor', oid, tip]).status === 0)
+      return tips.some((tip) => tip === oid || run('git', ['merge-base', '--is-ancestor', oid, tip], { timeout: DIFF_TIMEOUT_MS }).status === 0)
     },
 
     /** The commits of the local branch that origin/<branch> lacks, or null when either ref is missing. */
