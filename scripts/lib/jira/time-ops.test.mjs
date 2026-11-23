@@ -18,12 +18,15 @@ const UNDATED = { id: 2, state: 'future', name: 'Sprint 2' }
 const TIME_OFF = { 'GET /rest/api/3/configuration': { json: { issueLinkingEnabled: true, timeTrackingEnabled: false } } }
 const HINT = "Turn on time tracking in Jira's global settings"
 
-function setup({ routes = {}, sprints = [] } = {}) {
-  const fake = fakeJiraIssues({ sprints })
+function setup({ routes = {}, sprints = [], timeTracking } = {}) {
+  const fake = fakeJiraIssues({ sprints, timeTracking })
   const fetch = fakeJiraFetch({ ...fake.routes, ...routes })
   const config = { root: tempDir(), pmkit: { version: 1, tracker: TRACKER, mappings: { types: { story: 'Story' } } } }
-  const tracker = createJiraTracker(config, { env: { ...FAKE_ENV, ...userStoreEnv().env }, now: NOW, fetch })
-  return { fake, fetch, tracker }
+  const env = { ...FAKE_ENV, ...userStoreEnv().env }
+  const tracker = createJiraTracker(config, { env, now: NOW, fetch })
+  // Another run on the same repository and user store: it reads the discovery cache the first one wrote.
+  const nextRun = () => createJiraTracker(config, { env, now: NOW, fetch })
+  return { fake, fetch, tracker, nextRun }
 }
 
 const created = async (tracker) => (await tracker.createIssue({ title: 'Timed' }, ME)).after.id
@@ -101,4 +104,21 @@ test('metricEvents reads every worklog of an item that has more than the 20 a se
   fake.state.worklogs[id] = Array.from({ length: 25 }, (_, n) => worklog(String(n + 1), 60, '2026-11-21T10:00:00.000+0000'))
   assert.equal((await tracker.metricEvents()).filter((event) => event.op === 'log_time').length, 25)
   assert.equal((await tracker.getHistory(id)).filter((event) => event.op === 'log_time').length, 25)
+})
+
+test('time tracking off: the history still reads, with no log_time event', async () => {
+  const { tracker } = setup({ timeTracking: false })
+  const id = await created(tracker)
+  assert.deepEqual((await tracker.getHistory(id)).map((event) => event.op), ['create'])
+})
+
+test('a cached answer that time tracking is off is read again before logTime refuses', async () => {
+  let on = false
+  const configuration = () => ({ status: 200, json: on ? { issueLinkingEnabled: true, timeTrackingEnabled: true } : { issueLinkingEnabled: true, timeTrackingEnabled: false } })
+  const { fetch, tracker, nextRun } = setup({ routes: { 'GET /rest/api/3/configuration': configuration } })
+  const id = await created(tracker)
+  await assert.rejects(tracker.logTime(id, 10, ME), code('NOT_SUPPORTED', HINT))
+  on = true
+  await nextRun().logTime(id, 10, ME)
+  assert.equal(posts(fetch).length, 1)
 })

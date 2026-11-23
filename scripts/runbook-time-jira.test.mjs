@@ -24,9 +24,8 @@ import { fakeJiraFetch } from ${JSON.stringify(url('fake-jira-api.mjs'))}
 import { fakeJiraIssues } from ${JSON.stringify(url('fake-jira-issues.mjs'))}
 const stateFile = ${JSON.stringify(path.join(dir, 'state.json'))}
 const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : undefined
-const fake = fakeJiraIssues(state ? { state } : {})
+const fake = fakeJiraIssues({ ...(state ? { state } : {}), timeTracking: !process.env.PMKIT_FAKE_NO_TIME })
 const routes = { ...fake.routes }
-if (process.env.PMKIT_FAKE_NO_TIME) routes['GET /rest/api/3/configuration'] = { json: { issueLinkingEnabled: true, timeTrackingEnabled: false } }
 globalThis.fetch = fakeJiraFetch(routes)
 const { run } = await import(${JSON.stringify(url('pmkit.mjs'))})
 const result = await run(process.argv.slice(2))
@@ -141,4 +140,7 @@ test('the time tracking flows, step by step', () => {
     assert.deepEqual([error.code, error.message], ['NOT_SUPPORTED', hint])
   }
   assert.deepEqual(timeTracking(pmkit(['capabilities', '--json'], off)), { id: 'time_tracking', path: 'absent', enableHint: hint })
+  const offHistory = body(pmkit(['issues', 'get', 'ENG-1', '--history', '--json'], off)).history
+  assert.ok(offHistory.some((event) => event.op === 'create'))
+  assert.ok(!offHistory.some((event) => event.op === 'log_time'))
 })

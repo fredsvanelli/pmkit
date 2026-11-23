@@ -247,9 +247,9 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
  * non-GET calls. `now` returns the time of each write; the default clock starts at 2026-11-22T10:00:00.000Z and
  * advances one second per write, and lives in the state so a restored state keeps counting. `extraStatuses` passes on to
  * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78), `versions` the space's versions (PMK-79),
- * `worklogs` the raw worklogs per work item key (PMK-80).
+ * `worklogs` the raw worklogs per work item key; `timeTracking: false` serves a site with time tracking off, which refuses every worklog call (PMK-80).
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {} } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {}, timeTracking = true } = {}) {
   state.worklogs ??= {}
   state.next.worklog ??= 10000
   for (const [key, list] of Object.entries(worklogs)) (state.worklogs[key] ??= []).push(...structuredClone(list))
@@ -262,6 +262,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   for (const sprint of sprints) state.sprints.push({ originBoardId: BOARD, goal: '', ...structuredClone(sprint) })
   state.next.sprint = Math.max(state.next.sprint, ...state.sprints.map((sprint) => sprint.id + 1))
   const site = jiraSiteRoutes({ extraStatuses })
+  if (!timeTracking) site['GET /rest/api/3/configuration'] = { json: { issueLinkingEnabled: true, timeTrackingEnabled: false } }
+  const timeTrackingOn = () => timeTracking || refuse(400, {}, ['Time Tracking is not enabled.'])
   const typeStatuses = statusesByType(site)
   const writes = []
   const stamp = () => jiraFormat(now ? now() : START + 1000 * state.clock++)
@@ -488,10 +490,12 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       return { status: 201, json: omitProperties(structuredClone(comment)) }
     },
     [`GET ${API}/issue/{key}/worklog`]({ params, query }) {
+      timeTrackingOn()
       const { values, isLast, ...page } = offsetPage(structuredClone(state.worklogs[itemOf(params.key).key] ?? []), query, 5000)
       return { json: { ...page, worklogs: values } }
     },
     [`POST ${API}/issue/{key}/worklog`]({ params, body, at }) {
+      timeTrackingOn()
       const item = itemOf(params.key)
       if (!Number.isInteger(body?.timeSpentSeconds) || body.timeSpentSeconds <= 0) badField('timeLogged', 'You must indicate the time spent working.')
       const created = at()

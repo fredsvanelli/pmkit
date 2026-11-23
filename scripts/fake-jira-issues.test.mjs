@@ -417,3 +417,11 @@ test('worklogs: the worklog field of a read carries the first 20 and the total (
   const { worklog } = (await read('ENG-1')).fields
   assert.deepEqual([worklog.total, worklog.worklogs.length], [25, 20])
 })
+
+test('worklogs: a site with time tracking off reports it and refuses every worklog call (PMK-80)', async () => {
+  const { create, api } = setup({ timeTracking: false })
+  await create({ summary: 'Timed' })
+  assert.deepEqual((await api('GET', '/rest/api/3/configuration')).json, { issueLinkingEnabled: true, timeTrackingEnabled: false })
+  assert.equal((await api('GET', '/rest/api/3/issue/ENG-1/worklog')).status, 400)
+  assert.equal((await api('POST', '/rest/api/3/issue/ENG-1/worklog', { timeSpentSeconds: 60 })).status, 400)
+})

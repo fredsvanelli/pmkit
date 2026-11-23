@@ -15,8 +15,11 @@ const METRIC_FIELDS = 'created,creator,status,summary,labels,assignee,priority,i
 const CAP_WARNING = 'Jira has more updated work items than the 1000 pmkit read; metrics cover the most recently updated'
 const noThreads = () => new PmkitError('NOT_SUPPORTED', 'Jira comments have no threads', 'Post a new comment with pmkit issues comment')
 
-/** The history and comment operations over a Jira client and the issue operations `ops` (readItem, requireActor). */
-export function historyOperations({ client, ops, getContext, now = () => new Date() }) {
+/**
+ * The history and comment operations over a Jira client and the issue operations `ops` (readItem, requireActor). `timeTracking()` says
+ * whether the site has time tracking on, so getHistory reads the worklogs (PMK-80).
+ */
+export function historyOperations({ client, ops, getContext, now = () => new Date(), timeTracking = async () => true }) {
   const fromSince = (since) => (event) => since === undefined || compareTimes(event.at, since) >= 0
 
   const changelogOf = async (key) => (await client.paginate(issuePath(key, '/changelog'), { key: 'values', pageSize: PAGE_SIZE, maxPages: 1000 })).items
@@ -29,7 +32,7 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
 
   async function getHistory(id, { since } = {}) {
     const { item, context } = await ops.readItem(id)
-    const [{ histories, comments }, worklogs] = await Promise.all([readAll(item.key), worklogsOf(client, item.key)])
+    const [{ histories, comments }, worklogs] = await Promise.all([readAll(item.key), (await timeTracking()) ? worklogsOf(client, item.key) : []])
     return toEvents(item, histories, context, comments, worklogs).filter(fromSince(since))
   }
 

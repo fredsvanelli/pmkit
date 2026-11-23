@@ -149,12 +149,23 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   // releases is defined below; versions() is called later, so the reference is safe.
   const issues = issueOperations({ client, getContext, now, sprints, versions: () => releases.versions() })
   const relations = relationOperations({ client, ops: issues })
-  const history = historyOperations({ client, ops: issues, getContext, now })
+  // A manifest entry. With refreshIfAbsent, an absent answer read from the cache is read from Jira once more, so a setting just turned on counts.
+  const capability = async (id, { refreshIfAbsent = false } = {}) => {
+    let found = await discovery()
+    let entry = buildJiraCapabilities(found.raw, config.pmkit).find((candidate) => candidate.id === id)
+    if (refreshIfAbsent && entry.path === 'absent' && !found.fresh) {
+      found = await discovery({ refresh: true })
+      entry = buildJiraCapabilities(found.raw, config.pmkit).find((candidate) => candidate.id === id)
+    }
+    return entry
+  }
+  // Jira refuses the worklog calls when time tracking is off, so the history reads worklogs only when it is on.
+  const timeTracking = async () => (await capability('time_tracking')).path !== 'absent'
+  const history = historyOperations({ client, ops: issues, getContext, now, timeTracking })
   const cycles = cycleOperations({ client, ops: issues, config, getContext, now })
   const releases = releaseOperations({ client, ops: issues, getContext, now })
   const epics = epicOperations({ client, ops: issues, getContext, now })
-  const capability = async (id) => buildJiraCapabilities((await discovery()).raw, config.pmkit).find((entry) => entry.id === id)
-  const time = timeOperations({ client, ops: issues, now, sprints, capability: () => capability('time_tracking') })
+  const time = timeOperations({ client, ops: issues, now, sprints, capability: () => capability('time_tracking', { refreshIfAbsent: true }) })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,

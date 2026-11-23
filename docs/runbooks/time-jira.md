@@ -88,7 +88,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs discover --json
    ```
 
-   Then the same `issues log-time ENG-1 1h30 --json` and `issues time-entries ENG-1 --json` exit 2 with `NOT_SUPPORTED`, `Turn on time tracking in Jira's global settings`, and `capabilities` shows `time_tracking` absent with that hint.
+   Then the same `issues log-time ENG-1 1h30 --json` and `issues time-entries ENG-1 --json` exit 2 with `NOT_SUPPORTED`, `Turn on time tracking in Jira's global settings`, and `capabilities` shows `time_tracking` absent with that hint. `issues get ENG-1 --history --json` still works, with no `log_time` event: Jira refuses the worklog calls while time tracking is off, so pmkit does not read them. A site that turns time tracking on is read again on the next `issues log-time` or `issues time-entries`, so they work at once.
 
 ## Failures
 
