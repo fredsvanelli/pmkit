@@ -9,8 +9,9 @@ import { dayOf, epicTypeIds, jqlString } from './filter.mjs'
 import { API, issuePath, PAGE_SIZE } from './ids.mjs'
 import { ISSUE_FIELDS } from './issues.mjs'
 import { toComment, toEvents } from './history.mjs'
+import { worklogsOf } from './worklogs.mjs'
 
-const METRIC_FIELDS = 'created,creator,status,summary,labels,assignee,priority,issuetype,duedate'
+const METRIC_FIELDS = 'created,creator,status,summary,labels,assignee,priority,issuetype,duedate,worklog'
 const CAP_WARNING = 'Jira has more updated work items than the 1000 pmkit read; metrics cover the most recently updated'
 const noThreads = () => new PmkitError('NOT_SUPPORTED', 'Jira comments have no threads', 'Post a new comment with pmkit issues comment')
 
@@ -28,8 +29,8 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
 
   async function getHistory(id, { since } = {}) {
     const { item, context } = await ops.readItem(id)
-    const { histories, comments } = await readAll(item.key)
-    return toEvents(item, histories, context, comments).filter(fromSince(since))
+    const [{ histories, comments }, worklogs] = await Promise.all([readAll(item.key), worklogsOf(client, item.key)])
+    return toEvents(item, histories, context, comments, worklogs).filter(fromSince(since))
   }
 
   async function listComments(id) {
@@ -62,6 +63,12 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
     return carried
   }
 
+  /** The worklogs of an item from a search: those it carries, or all of them when Jira cut the list at 20. */
+  async function worklogsIn(item) {
+    const carried = item.fields.worklog?.worklogs ?? []
+    return item.fields.worklog && item.fields.worklog.total > carried.length ? worklogsOf(client, item.key) : carried
+  }
+
   /**
    * The events of every work item of the space updated since `since` (comments left out), each tagged with its issue, cut at
    * `until` (a date alone covers that whole day) and sorted by `at`. When Jira has more updated items than the search read,
@@ -77,7 +84,7 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
     const last = until !== undefined && !until.includes('T') ? `${until}T23:59:59.999Z` : until
     const tagged = []
     for (const item of items) {
-      for (const event of toEvents(item, await historiesOf(item), context)) tagged.push({ ...event, issue: item.key })
+      for (const event of toEvents(item, await historiesOf(item), context, [], await worklogsIn(item))) tagged.push({ ...event, issue: item.key })
     }
     const events = tagged
       .filter((event) => fromSince(since)(event) && (last === undefined || compareTimes(event.at, last) <= 0))

@@ -20,7 +20,7 @@ const raw = (overrides = {}) => ({
 const GIT = { git_host: { system: 'github' } }
 const entry = (entries, id) => entries.find((item) => item.id === id)
 
-const SERVED_NOW = ['cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'capacity', 'native_metrics', 'linked_code', 'deliverables', 'status_update', 'releases']
+const SERVED_NOW = ['cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'capacity', 'native_metrics', 'linked_code', 'deliverables', 'status_update', 'releases', 'time_tracking']
 
 test('the manifest has every capability in order, absent until served', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
@@ -51,7 +51,6 @@ test('an unserved capability keeps the site answer and names its issue', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
   assert.deepEqual(entry(entries, 'saved_views').detail, { site: 'native', source: 'filters' })
   assert.equal(entry(entries, 'saved_views').enableHint, 'The Jira adapter does not serve saved_views yet')
-  assert.equal(entry(entries, 'time_tracking').detail.site, 'native')
 })
 
 test('a capability the site lacks gives the site hint and no site path', () => {
@@ -79,7 +78,7 @@ test('free Jira Software still has sprints; an unread license defers to the boar
 test('unread settings assume linking and time tracking are on', () => {
   const entries = buildJiraCapabilities(raw({ settings: null }), GIT)
   assert.equal(entry(entries, 'dependencies').path, 'native')
-  assert.equal(entry(entries, 'time_tracking').detail.site, 'native')
+  assert.deepEqual(entry(entries, 'time_tracking'), { id: 'time_tracking', path: 'native' })
 })
 
 test('linked_code is served through git', () => {
@@ -100,4 +99,8 @@ test('PMK-79 serves deliverables as epics, releases as versions and status updat
 test('a served capability takes the site answer as its path', () => {
   const entries = buildJiraCapabilities(raw(), GIT, { linked_code: true, cycles: true })
   assert.deepEqual(entry(entries, 'cycles'), { id: 'cycles', path: 'native' })
+})
+
+test('PMK-80 serves time tracking as worklogs when the site has it on', () => {
+  assert.deepEqual(entry(buildJiraCapabilities(raw(), GIT), 'time_tracking'), { id: 'time_tracking', path: 'native' })
 })

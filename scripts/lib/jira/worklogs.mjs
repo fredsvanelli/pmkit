@@ -1,7 +1,7 @@
 // Jira worklogs as pmkit time entries and log_time events (PMK-80). Pure except worklogsOf, which only reads.
 // See docs/superpowers/specs/2026-11-23-pmk-80-map-jira-time-tracking-design.md, "The entry model".
 
-import { issuePath } from './ids.mjs'
+import { issuePath, PAGE_SIZE } from './ids.mjs'
 import { jiraTime } from './issues.mjs'
 
 /** The entry of a worklog: dated by its start, in minutes rounded to the nearest one; null when it rounds to 0 or has no seconds. */
@@ -20,5 +20,5 @@ export const jiraStarted = (date) => date.toISOString().replace('Z', '+0000')
 
 /** Every worklog of the work item `key`. */
 export async function worklogsOf(client, key) {
-  return (await client.paginate(issuePath(key, '/worklog'), { key: 'worklogs', pageSize: 5000, maxPages: 1000 })).items
+  return (await client.paginate(issuePath(key, '/worklog'), { key: 'worklogs', pageSize: PAGE_SIZE, maxPages: 1000 })).items
 }

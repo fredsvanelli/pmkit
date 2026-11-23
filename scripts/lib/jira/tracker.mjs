@@ -1,6 +1,7 @@
 // The Jira tracker. discover and capabilities read one site and one space (PMK-76); the Issues family reads and writes work
 // items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's Scrum board (PMK-78); the Releases family reads and writes
-// the space's versions, the Deliverables family reads and writes its epics and their status updates, and Jira has no milestones (PMK-79). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
+// the space's versions, the Deliverables family reads and writes its epics and their status updates, and Jira has no milestones (PMK-79); the
+// Time tracking family reads and writes worklogs (PMK-80). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
 // later issues stay stubs. See docs/superpowers/specs/2026-11-22-pmk-77-jira-work-items-transitions-links-jql-design.md,
 // "Discovery additions, cache and mapping check".
 
@@ -19,6 +20,7 @@ import { releaseOperations } from './releases.mjs'
 import { buildJiraCapabilities, NO_GOALS } from './manifest.mjs'
 import { brokenJiraMappings } from './mappings.mjs'
 import { readBoardSprints } from './sprints.mjs'
+import { timeOperations } from './time-ops.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -151,6 +153,8 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   const cycles = cycleOperations({ client, ops: issues, config, getContext, now })
   const releases = releaseOperations({ client, ops: issues, getContext, now })
   const epics = epicOperations({ client, ops: issues, getContext, now })
+  const capability = async (id) => buildJiraCapabilities((await discovery()).raw, config.pmkit).find((entry) => entry.id === id)
+  const time = timeOperations({ client, ops: issues, now, sprints, capability: () => capability('time_tracking') })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -167,6 +171,8 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     comment: history.comment,
     resolveThread: history.resolveThread,
     metricEvents: history.metricEvents,
+    logTime: time.logTime,
+    listTimeEntries: time.listTimeEntries,
     ...cycles,
     ...epics,
     listReleases: releases.listReleases,
@@ -181,8 +187,7 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   }
   // delegate carries the manifest's hint, as GitHub's absent operations do.
   const delegate = guarded(async () => {
-    const { raw } = await discovery()
-    const entry = buildJiraCapabilities(raw, config.pmkit).find((candidate) => candidate.id === 'agent_delegation')
+    const entry = await capability('agent_delegation')
     throw new PmkitError('NOT_SUPPORTED', entry.enableHint, entry.enableHint)
   })
   const refused = {
