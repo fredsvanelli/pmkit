@@ -757,3 +757,7 @@ test('a gh api error still sets its HTTP status when a path shares the line', ()
     return true
   })
 })
+
+test('the host says it is github', () => {
+  assert.equal(host(fakeExec().exec).system, 'github')
+})

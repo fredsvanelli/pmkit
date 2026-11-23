@@ -114,6 +114,7 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
   }
 
   return {
+    system: 'github',
     ...createGitLocal({ root, env, exec }),
 
     openPullRequest({ title, body, head, base, draft }) {

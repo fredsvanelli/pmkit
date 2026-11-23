@@ -277,3 +277,28 @@ test('getText maps an HTTP error with its status', async () => {
   assert.equal(error.code, 'UPSTREAM')
   assert.equal(error.httpStatus, 413)
 })
+
+test('a 5xx that never gets a good answer carries its httpStatus, on a read and on a write', async () => {
+  const read = setup({ [PRS]: { status: 503, text: '' } })
+  assert.equal((await failure(() => read.client.get('pullrequests'))).httpStatus, 503)
+  const write = setup({ [`POST ${BB}/pullrequests`]: { status: 502, text: '' } })
+  assert.equal((await failure(() => write.client.post('pullrequests', {}))).httpStatus, 502)
+})
+
+test('a next link or redirect whose workspace and slug differ only in case stays in the repository', async () => {
+  const { client, fetch } = setup({
+    [PRS]: [{ json: { values: [1], next: `${API}/2.0/repositories/ACME/Widgets/pullrequests?page=2` } }],
+    'GET /2.0/repositories/ACME/Widgets/pullrequests': { json: { values: [2] } },
+    [`GET ${BB}/pullrequests/7/diff`]: { status: 302, headers: { location: `${API}/2.0/repositories/Acme/WIDGETS/diff/x` } },
+    'GET /2.0/repositories/Acme/WIDGETS/diff/x': { text: 'd' },
+  })
+  assert.deepEqual(await client.list('pullrequests', {}, { limit: 5 }), { values: [1, 2], cut: false })
+  assert.equal(await client.getText('pullrequests/7/diff'), 'd')
+  assert.equal(fetch.calls.length, 4)
+})
+
+test('a next link to a repository whose name only starts with the slug is refused', async () => {
+  const { client, fetch } = setup({ [PRS]: { json: { values: [1], next: `${API}/2.0/repositories/acme/WIDGETS2/pullrequests` } } })
+  assert.equal((await failure(() => client.list('pullrequests', {}, { limit: 5 }))).code, 'UPSTREAM')
+  assert.equal(fetch.calls.length, 1)
+})

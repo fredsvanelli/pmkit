@@ -52,9 +52,14 @@ export function createBitbucketClient({
 
   const urlOf = (path, query) => `${API}${base}${path === '' ? '' : `/${path.split('/').map(encodeURIComponent).join('/')}`}${queryString(query)}`
 
-  /** True when a URL Bitbucket handed back (a next link, a redirect) stays on this repository on api.bitbucket.org. */
+  /**
+   * True when a URL Bitbucket handed back (a next link, a redirect) stays on this repository on api.bitbucket.org.
+   * Bitbucket names workspaces and slugs case-insensitively and its links may be lowercase where git_host.repo is not.
+   */
   function inRepository(url) {
-    return url.origin === API && url.username === '' && url.password === '' && (url.pathname === base || url.pathname.startsWith(`${base}/`))
+    const path = url.pathname
+    const sameRepo = path.slice(0, base.length).toLowerCase() === base.toLowerCase() && (path.length === base.length || path[base.length] === '/')
+    return url.origin === API && url.username === '' && url.password === '' && sameRepo
   }
 
   /** Bitbucket's error.message from a body as one line of at most 200 characters, with the token cut out in case it is echoed. */
@@ -134,7 +139,11 @@ export function createBitbucketClient({
           continue
         }
       }
-      if (status >= 500) return unanswered(`HTTP ${status}`, write)
+      if (status >= 500) {
+        const result = unanswered(`HTTP ${status}`, write)
+        result.error.httpStatus = status
+        return result
+      }
       if (status < 200 || status >= 300) return { error: httpError(method, path, status, text), retry: false }
       return { text }
     }
