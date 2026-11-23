@@ -154,6 +154,13 @@ test('metricEvents feed throughput per pmkit type', async () => {
   assert.deepEqual(throughput(byIssue, { categoryOf }).byType, { bug: 1, story: 1 })
 })
 
+test('metricEvents leave epics out (ADR 0017)', async () => {
+  const { fake, tracker } = setup()
+  seed(fake.state, 1, { status: STATUS.done })
+  seed(fake.state, 1, { status: STATUS.done, issuetype: WORK_TYPE.epic })
+  assert.deepEqual([...new Set((await tracker.metricEvents()).map((e) => e.issue))], ['ENG-1'])
+})
+
 test('metricEvents searches the space by update date, newest first, with the changelog', async () => {
   const seen = []
   const fake = fakeJiraIssues()
@@ -164,7 +171,7 @@ test('metricEvents searches the space by update date, newest first, with the cha
   seed(fake.state)
   await tracker.metricEvents({ since: '2026-11-10T08:00:00Z' })
   assert.equal(seen.length, 1)
-  assert.equal(seen[0].jql, 'project = "ENG" AND updated >= "2026-11-09" ORDER BY updated DESC')
+  assert.equal(seen[0].jql, 'project = "ENG" AND issuetype not in ("10000") AND updated >= "2026-11-09" ORDER BY updated DESC')
   assert.equal(seen[0].expand, 'changelog')
   assert.equal(seen[0].maxResults, '100')
 })

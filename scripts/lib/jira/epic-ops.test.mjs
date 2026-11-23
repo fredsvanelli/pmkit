@@ -156,4 +156,16 @@ test('a space without an epic work type refuses every deliverable operation', as
   await assert.rejects(tracker.createDeliverable({ title: 'x' }, ME), refused)
   await assert.rejects(tracker.listStatusUpdates('ENG-1'), refused)
   await assert.rejects(tracker.publishStatusUpdate({ epic: 'ENG-1', health: 'on_track', body: 'x' }, ME), refused)
+  await assert.rejects(tracker.moveDeliverable('ENG-1', 'done', ME), refused)
+  await assert.rejects(tracker.updateDeliverable('ENG-1', { title: 'x' }, ME), refused)
+  await assert.rejects(tracker.deliverableProgress('ENG-1'), refused)
+})
+
+test('createDeliverable with a start date refuses a space with no start date field', async () => {
+  const fake = fakeJiraIssues()
+  const fetch = fakeJiraFetch(fake.routes)
+  const config = { root: tempDir(), pmkit: { version: 1, tracker: TRACKER, mappings: { types: TYPES, fields: { start_date: 'none' } } } }
+  const tracker = createJiraTracker(config, { env: { ...FAKE_ENV, ...userStoreEnv().env }, now: NOW, fetch })
+  await assert.rejects(tracker.createDeliverable({ title: 'x', start: '2026-12-01' }, ME), code('NOT_SUPPORTED', 'No start date field in space ENG'))
+  assert.equal(writes(fetch), 0)
 })

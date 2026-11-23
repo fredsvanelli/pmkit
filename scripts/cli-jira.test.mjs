@@ -121,3 +121,24 @@ test('pr sync reports a merged item whose move to done needs Resolution as a pro
   }
   assert.equal((await ok(cli, ['issues', 'get', 'ENG-1'])).status.category, 'in_review')
 })
+
+test('epic progress warns in Jira words when the read is cut at 1000 issues', async () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^ {2}system: local$/m, '  system: jira\n  scope:\n    site: acme.atlassian.net\n    space: ENG'))
+  const fake = fakeJiraIssues()
+  const fetch = fakeJiraFetch(fake.routes)
+  const env = { ...FAKE_ENV, ...userStoreEnv().env, PMKIT_NOW: '2026-11-22T12:00:00Z' }
+  const cli = (args) => run(args, { cwd: root, env, adapters: { ...ADAPTERS, jira: jiraDescriptor({ fetch }) } })
+  const made = JSON.parse((await cli(['epic', 'create', '--title', 'Big', '--json'])).stdout)
+  const epic = (made.data ?? made).after.id
+  const status = { id: '1', name: 'To Do', statusCategory: { key: 'new' } }
+  for (let number = 100; number < 1101; number += 1) {
+    const key = `ENG-${number}`
+    fake.state.items[key] = { id: String(10000 + number), key, fields: { summary: key, description: null, status, issuetype: { id: '10001', name: 'Story' }, priority: null, assignee: null, labels: [], parent: { key: epic }, duedate: null, resolution: null, creator: { accountId: 'acc-1' }, created: '2026-11-01T00:00:00.000+0000', updated: '2026-11-01T00:00:00.000+0000' } }
+  }
+  const result = await cli(['epic', 'progress', epic])
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stderr, /Jira has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000/)
+  assert.doesNotMatch(result.stderr, /Linear/)
+})
