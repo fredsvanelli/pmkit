@@ -91,8 +91,7 @@ export function planOperations({ client, site }) {
       throw new PmkitError('INVALID_INPUT', `"${id}" is not a plan id`, 'Pass the plan id that jira plans list shows')
     }
     try {
-      const raw = await client.request('GET', `${PLANS}/${id}`)
-      const plan = raw ?? {}
+      const plan = (await client.request('GET', `${PLANS}/${id}`)) ?? {}
       const teams = await client.paginate(`${PLANS}/${id}/team`, { key: 'values', pageSize: 50 })
       // getPlan has no scenarioId: the default scenario comes from the list, archived and trashed plans included.
       const all = (await readList({ archived: true, trashed: true })).items
@@ -105,7 +104,7 @@ export function planOperations({ client, site }) {
         available: true,
         site,
         plan: {
-          id: idOf(plan.id) ?? id,
+          id,
           name: plan.name ?? null,
           status: snake(plan.status),
           lead: plan.leadAccountId ?? null,
