@@ -1,0 +1,2 @@
+{"at":"2026-11-23T16:11:26Z","by":"fred","op":"create","to":{"id":"PMK-382","title":"Read every scenario of a Jira plan when Jira publishes a scenarios API","type":"chore","status":"backlog","priority":"low","labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-23T16:11:26.918Z","updated":"2026-11-23T16:11:26Z"}}
+{"at":"2026-11-23T16:11:39Z","by":"fred","op":"link","field":"related","to":"PMK-82"}

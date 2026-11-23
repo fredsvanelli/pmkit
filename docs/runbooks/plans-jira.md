@@ -2,7 +2,7 @@
 
 Reading Jira Plans (Advanced Roadmaps) on a repository whose tracker is Jira Cloud (PMK-82): `jira plans list` lists the plans, and `jira plans get <id>` reads one plan's dependency mode, default scenario, releases and teams with their capacity. The commands only read; the command `/pmkit:jira:plans-scenarios` walks this flow with the user. `scripts/runbook-plans-jira.test.mjs` runs every step below with the real CLI and a stateful fake Jira in place of `fetch`, with the clock fixed at 2026-11-22 12:00 UTC (`PMKIT_NOW`), so `npm test` checks this runbook.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; EPC-14 lists what a follow-up settles: the real shapes of the Plans calls, the cursor paging of the plan list, the 403 wording for a site without Premium against a token whose owner lacks Administer Jira, the capacity unit Jira shows for Scrum and for Kanban teams, and whether Jira has a scenarios API at all.
+Live check: skipped. No Jira credentials exist, so no step has run against a real site; PMK-381 in EPC-14 lists what a follow-up settles: the real shapes of the Plans calls, the cursor paging of the plan list, the 403 wording for a site without Premium against a token whose owner lacks Administer Jira, the capacity unit Jira shows for Scrum and for Kanban teams, and whether Jira has a scenarios API at all.
 
 ## Before you start
 
