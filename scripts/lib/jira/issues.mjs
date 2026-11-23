@@ -297,7 +297,7 @@ function planBranch(patch, state, create) {
 /** A changed sprint is `sprint: { to }`, the Jira sprint id or null for the backlog. `sprints` is the board's raw Jira sprints, read when the patch has a sprint id. */
 function planSprint(patch, state, context, sprints) {
   if (patch.sprint === undefined) return
-  if (patch.sprint === null || patch.sprint === 'none') {
+  if (patch.sprint === null) {
     if (state.after.sprint === undefined) return
     state.result.sprint = { to: null }
     state.set('sprint', null)

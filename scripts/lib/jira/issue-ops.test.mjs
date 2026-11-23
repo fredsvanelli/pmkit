@@ -414,3 +414,11 @@ test('updateIssue whose sprint move fails after the field write is UPSTREAM with
   const [key] = seed(fake.state)
   await assert.rejects(tracker.updateIssue(key, { sprint: '1', title: 'Renamed' }, ME), (error) => error.code === 'UPSTREAM' && error.message.startsWith('Jira updated ENG-1, but moving it to sprint 1 failed') && error.nextStep === 'pmkit cycle add ENG-1 --to 1')
 })
+
+test('the string none is not a sprint value in a write', async () => {
+  const { fake, tracker } = setup({ sprints: [SPRINT] })
+  const [key] = seed(fake.state)
+  await assert.rejects(tracker.createIssue({ title: 'First', sprint: 'none' }, ME), { code: 'INVALID_INPUT' })
+  await assert.rejects(tracker.updateIssue(key, { sprint: 'none' }, ME), { code: 'INVALID_INPUT' })
+  assert.deepEqual(fake.writes(), [])
+})
