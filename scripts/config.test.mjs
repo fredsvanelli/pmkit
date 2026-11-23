@@ -90,7 +90,7 @@ test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitC
   assert.deepEqual(pmkitConfigMessages(trello), [TRACKER_MSG])
   const gitlab = template('pmkit.config.yaml')
   gitlab.git_host.system = 'gitlab'
-  assert.deepEqual(pmkitConfigMessages(gitlab), ['git_host.system must be github or none'])
+  assert.deepEqual(pmkitConfigMessages(gitlab), ['git_host.system must be github, bitbucket or none'])
   for (const value of [null, 'local', ['local'], { tracker: 'linear' }]) {
     assert.deepEqual(pmkitConfigMessages(value), validatePmkitConfig(value), JSON.stringify(value))
   }
@@ -163,7 +163,7 @@ test('loadConfig returns pmkitProblems on an older tracker format', () => {
   writeFileSync(file, readFileSync(file, 'utf8').replace(/^version: \d+$/m, 'version: 1'))
   const config = loadConfig(root)
   assert.equal(config.format.state, 'behind')
-  assert.deepEqual(config.pmkitProblems, ['git_host.system must be github or none'])
+  assert.deepEqual(config.pmkitProblems, ['git_host.system must be github, bitbucket or none'])
 })
 
 test('a .pmkit/config.yaml with no tracker.system carries its problems', () => {
@@ -191,7 +191,7 @@ test('an unknown tracker.system or a non-string tracker.path is INVALID_INPUT wi
   })
   const both = basicWith(['system: local', 'system: trello'], ['system: none', 'system: gitlab'])
   assert.throws(() => loadConfig(both), (error) => error.code === 'INVALID_INPUT' &&
-    error.message === `.pmkit/config.yaml is not valid: ${TRACKER_MSG}; git_host.system must be github or none`)
+    error.message === `.pmkit/config.yaml is not valid: ${TRACKER_MSG}; git_host.system must be github, bitbucket or none`)
   const path = basicWith(['path: .issues', 'path: 5'])
   assert.throws(() => loadConfig(path), (error) => error.code === 'INVALID_INPUT' &&
     error.message === '.pmkit/config.yaml is not valid: tracker.path must be a string' && error.nextStep === 'pmkit validate')
@@ -319,9 +319,23 @@ test('an empty or non-map .pmkit/config.yaml and a non-string tracker.path are I
   assert.throws(() => loadConfig(root), (error) => error.code === 'INVALID_INPUT' && /tracker\.path/.test(error.message))
 })
 
+test('git_host.system bitbucket needs a repo of workspace/repo_slug', () => {
+  const config = (repo) => {
+    const c = template('pmkit.config.yaml')
+    c.git_host.system = 'bitbucket'
+    if (repo === undefined) delete c.git_host.repo
+    else c.git_host.repo = repo
+    return c
+  }
+  const problem = 'git_host.repo must be workspace/repo_slug when git_host.system is bitbucket'
+  assert.deepEqual(validatePmkitConfig(config('acme/widgets')), [])
+  assert.deepEqual(validatePmkitConfig(config()), [problem])
+  assert.deepEqual(validatePmkitConfig(config('a/b/c')), [problem])
+})
+
 test('config.mjs exports the constants the schemas mirror', () => {
   assert.deepEqual(TRACKERS, ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops'])
-  assert.deepEqual(GIT_HOSTS, ['github', 'none'])
+  assert.deepEqual(GIT_HOSTS, ['github', 'bitbucket', 'none'])
   assert.deepEqual(CONFIRM, ['all_writes', 'single_writes', 'none'])
   assert.deepEqual(PREVIEW, ['bulk', 'delete', 'publish_update', 'move_scope'])
   assert.deepEqual(WEEKDAYS, ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])

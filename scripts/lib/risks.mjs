@@ -132,6 +132,17 @@ export function epicRisks(epics, { updatesByEpic, today, windowDays }) {
 }
 
 export const FAILED_RUN =new Set(['failure', 'timed_out', 'startup_failure'])
+
+/**
+ * The newest run of the failed run's workflow that completed with success after it, as { runId, conclusion, createdAt, headSha },
+ * or null. Such a run makes the failure old news; a cancelled, skipped or unfinished run says nothing about the code.
+ */
+export function newerSuccess(runs, failed) {
+  const newest = runs
+    .filter((r) => r.workflowName === failed.workflowName && r.status === 'completed' && r.conclusion === 'success' && Date.parse(r.createdAt) > Date.parse(failed.createdAt))
+    .reduce((a, r) => (a === null || Date.parse(r.createdAt) > Date.parse(a.createdAt) ? r : a), null)
+  return newest ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha ?? null } : null
+}
 const FAILED_CHECK = new Set(['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED'])
 const FAILED_STATUS = new Set(['FAILURE', 'ERROR'])
 

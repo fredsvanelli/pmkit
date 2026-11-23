@@ -9,6 +9,7 @@ import { capWarning, run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { githubDescriptor } from './lib/github/adapter.mjs'
 import { fakeGhExec, linkedReply, projectReply, repoReply, SCOPE_ERROR, standardFixture } from './fake-github-api.mjs'
+import { BB, FAKE_BB_ENV, fakeBitbucketFetch } from './fake-bitbucket-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -264,4 +265,31 @@ test('a --status answer may name a label past the first 100 labels', async () =>
   const answers = ['triage=none', 'backlog=none', 'in_progress=Label 115', 'in_review=none'].flatMap((item) => ['--status', item])
   dataOf(await cli(context, [...INIT, '--project', 'none', ...answers, ...FIELDS, ...TYPES, '--json'], fixture))
   assert.match(read(context), /in_progress: "?label:Label 115"?/)
+})
+
+// PMK-81: --git-host bitbucket takes workspace/slug from a bitbucket.org origin and reads the Bitbucket repository once before it writes.
+const BB_ANSWERS = ['init', '--tracker', 'github', '--git-host', 'bitbucket', '--host', 'github.com', '--repo', 'acme/widgets', '--project', 'acme/7', ...STATUS, ...FIELDS, ...TYPES]
+async function cliBitbucket(context, args, env) {
+  const fetch = fakeBitbucketFetch({ [`GET ${BB}`]: { json: { full_name: 'acme/widgets' } } })
+  const fake = fakeGhExec(standardFixture())
+  const runEnv = { ...context.env, ...env }
+  if (env.BITBUCKET_TOKEN === undefined) delete runEnv.BITBUCKET_TOKEN
+  const result = await run(args, { cwd: context.root, env: runEnv, fetch, adapters: { ...ADAPTERS, github: githubDescriptor({ exec: fake.exec }) } })
+  return { ...result, fetch }
+}
+
+test('--git-host bitbucket writes the repo of a bitbucket.org origin as workspace/slug after one repository read', async () => {
+  const context = fresh({ remote: 'git@bitbucket.org:acme/widgets.git' })
+  const result = await cliBitbucket(context, [...BB_ANSWERS, '--json'], FAKE_BB_ENV)
+  assert.deepEqual(dataOf(result).files, [{ path: '.pmkit/config.yaml', action: 'create' }])
+  assert.match(read(context), /git_host:\n {2}system: bitbucket\n {2}repo: acme\/widgets\n/)
+  assert.deepEqual(result.fetch.calls.map((call) => call.url), ['https://api.bitbucket.org/2.0/repositories/acme/widgets'])
+})
+
+test('--git-host bitbucket without BITBUCKET_TOKEN is AUTH and writes nothing', async () => {
+  const context = fresh({ remote: 'git@bitbucket.org:acme/widgets.git' })
+  const result = await cliBitbucket(context, [...BB_ANSWERS, '--json'], {})
+  assert.equal(errorOf(result).code, 'AUTH')
+  assert.equal(result.fetch.calls.length, 0)
+  assert.equal(fs.existsSync(path.join(context.root, '.pmkit', 'config.yaml')), false)
 })

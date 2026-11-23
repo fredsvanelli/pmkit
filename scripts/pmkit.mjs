@@ -8,7 +8,7 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { repoDocPath, storedDocPath } from './lib/doc-path.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
+import { BITBUCKET_REPO, ESTIMATE_UNITS, GIT_HOSTS, GIT_HOSTS_TEXT, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError, unarchiveNotSupported } from './lib/errors.mjs'
@@ -55,6 +55,8 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
+import { createBitbucketClient } from './lib/bitbucket/client.mjs'
+import { createBitbucketHost } from './lib/bitbucket/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
 import { listText as plansListText, getText as plansGetText } from './lib/jira/plans-text.mjs'
 import { listText as ideasListText, connectText as ideasConnectText } from './lib/jira/ideas-text.mjs'
@@ -951,12 +953,12 @@ async function flowInputs(ctx, tracker, statuses) {
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear, github or jira writes only .pmkit/config.yaml and returns what setup must ask',
-    usage: '[--tracker local|linear|github|jira] [--git-host github|none] [--workspace key] [--team KEY] [--site h] [--space KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    usage: '[--tracker local|linear|github|jira] [--git-host github|bitbucket|none] [--workspace key] [--team KEY] [--site h] [--space KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
     flags: ['tracker', 'git-host', 'workspace', 'team', 'site', 'space', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'priority-label', 'estimate-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
-    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
+    usage: '[--git-host github|bitbucket|none] [--repo owner/name|workspace/repo_slug] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
     flags: ['git-host', 'repo', 'default-branch', 'remote', 'team', 'recheck-team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
   },
   {
@@ -1758,7 +1760,7 @@ export const COMMANDS = [
       if (ctx.list('login').length > 0 && !ctx.flag('reviews')) throw usageError('--login matches review requests, so it needs --reviews', 'Add --reviews, or drop --login')
       const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
       const { user, since, hidden, items, complete, problems } = result
-      const reviews = ctx.flag('reviews') ? reviewRequests(ctx, user, ctx.list('login')) : null
+      const reviews = ctx.flag('reviews') ? await reviewRequests(ctx, user, ctx.list('login')) : null
       const lines = []
       if (items.length === 0) lines.push(`no unseen mentions, assignments or status changes for ${user}${since === null ? '' : ` since ${since}`}`)
       else lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text', 'Seen', 'Key'], items.map((i) => [i.at, i.kind, i.issue, i.title ?? '(unreadable)', i.by ?? '', i.in, inboxText(i), i.seen ? 'yes' : 'no', i.key])))
@@ -2244,7 +2246,7 @@ export const COMMANDS = [
         const notes = [...syncNote, ...linked(dry, false)]
         return { data: { branch, from, ...(notes.length > 0 ? { notes } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
       }
-      host.createBranch(branch, { from })
+      await host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor, { base })
       const notes = [...createdNote, ...linked(result, true)]
       return { data: { branch, from, ...result, ...(notes.length > 0 ? { notes } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
@@ -2260,7 +2262,7 @@ export const COMMANDS = [
       const body = ctx.opt('body-file') !== undefined ? readInput(ctx.opt('body-file')) : defaultPrBody(issue)
       const request = { title: `${issue.title} (${issue.id})`, body, head: issue.branch, base: defaultBranch(ctx), draft: ctx.flag('draft') }
       // gh refuses a second pull request for a branch, so an open one is pushed to and returned as it is.
-      const found = host.getPullRequest({ head: issue.branch })
+      const found = await host.getPullRequest({ head: issue.branch })
       const open = found?.state === 'OPEN' ? found : null
       // In the JSON too, as `issues branch` does: the agent reads the JSON. The push is never refused for it.
       const behind = behindNotes(ctx, issue.branch, request.base, !ctx.dryRun)
@@ -2271,9 +2273,9 @@ export const COMMANDS = [
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
         return { data: { ...request, existing: open !== null, pr: open, ...behindData }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...behind, ...(await capabilityNotesOrNone(ctx))] }
       }
-      host.push(issue.branch)
+      await host.push(issue.branch)
       if (open) return { data: { ...open, existing: true, ...behindData }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
-      const pr = host.openPullRequest(request)
+      const pr = await host.openPullRequest(request)
       return { data: { ...pr, existing: false, ...behindData }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
@@ -2285,7 +2287,7 @@ export const COMMANDS = [
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
       // The detail read gives the base of the pull request in the same gh call (PMK-308); the default branch only when gh leaves it out.
-      const found = host.getPullRequest({ head: issue.branch }, { detail: true })
+      const found = await host.getPullRequest({ head: issue.branch }, { detail: true })
       const pr = withoutDetail(found)
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
       if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
@@ -2293,12 +2295,13 @@ export const COMMANDS = [
       const behind = behindNotes(ctx, issue.branch, found.detail?.baseRefName || defaultBranch(ctx), true)
       const behindData = behind.length > 0 ? { notes: behind } : {}
       if (ctx.dryRun) return { data: { ...pr, isDraft: false, ...behindData }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
-      const ready = host.markReady(pr.number)
+      const ready = await host.markReady(pr.number)
       return { data: { ...ready, ...behindData }, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
     name: 'pr review', summary: 'posts one review that comments on the open pull request of an issue, with inline comments on lines of its diff', usage: '--issue <id> --body-file f [--comments-file f] [--redact]', write: true, args: [], flags: ['issue', 'body-file', 'comments-file', 'redact'],
+    unsupportedOn: { bitbucket: 'Post the review on the pull request page, or post it on the issue with pmkit issues comment' },
     run: async (ctx) => {
       if (ctx.opt('issue') === undefined) throw usageError('pr review needs --issue', 'pmkit pr review --issue <id> --body-file <file>')
       if (ctx.opt('body-file') === undefined) throw usageError('pr review needs --body-file', 'pmkit pr review --issue <id> --body-file <file>')
@@ -2322,14 +2325,14 @@ export const COMMANDS = [
       }
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
-      const found = host.getPullRequest({ head: issue.branch })
+      const found = await host.getPullRequest({ head: issue.branch })
       if (found?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}, or post the review on the issue with pmkit issues comment`)
       // Every inline line is checked against the diff before any write, so a dry run shows what GitHub would refuse.
       let commitId = null
       if (comments.length > 0) {
         // The head is read before the diff, so the lines checked are never newer than the commit the review is pinned to.
-        commitId = host.prRefs(found.number).headRefOid
-        const diff = host.prDiff(found.number)
+        commitId = (await host.prRefs(found.number)).headRefOid
+        const diff = await host.prDiff(found.number)
         if (diff === null) throw usageError(`GitHub refused the diff of pull request #${found.number} as too large, so the lines of the inline comments cannot be checked`, 'Put the findings in the body and post the review without --comments-file')
         const lines = new Map()
         for (const section of splitDiff(diff)) lines.set(section.path, new Set([...(lines.get(section.path) ?? []), ...rightLines(section.text)]))
@@ -2341,7 +2344,7 @@ export const COMMANDS = [
       const notes = [...(redacted?.count > 0 ? [`redacted ${redacted.count} ${redacted.count === 1 ? 'value' : 'values'}: ${Object.entries(redacted.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`] : []), ...(await capabilityNotesOrNone(ctx))]
       const what = `a review with ${comments.length} inline ${comments.length === 1 ? 'comment' : 'comments'} on pull request #${pr.number} ${pr.url}`
       if (ctx.dryRun) return { data, text: `would post ${what}\ndry run: nothing was written`, notes }
-      const review = host.postReview(pr.number, { body, comments, commitId })
+      const review = await host.postReview(pr.number, { body, comments, commitId })
       return { data: { ...data, review }, text: `posted ${what}\n${review.url}`, notes }
     },
   },
@@ -2349,10 +2352,10 @@ export const COMMANDS = [
     name: 'pr status', summary: 'pull request, checks, reviews and the blockers verdict of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
     run: async (ctx) => {
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch }, { detail: true })
-      const checks = pr ? host.prChecks(pr.number) : []
+      const pr = await host.getPullRequest({ head: branch }, { detail: true })
+      const checks = pr ? await host.prChecks(pr.number) : []
       const reviews = pr?.detail.reviews ?? []
       // The checks are read once: collectBlockers gets the list this command already has. A merged or closed pull request reads nothing more.
       // A blocker read that fails for a reason that may pass (rate limit, 5xx, network) must not lose the pull request and its checks:
@@ -2361,7 +2364,7 @@ export const COMMANDS = [
       let failed = null
       if (pr) {
         try {
-          found = collectBlockers({ ...host, prChecks: () => checks }, pr)
+          found = hostBlockers({ ...host, prChecks: () => checks }, pr)
         } catch (error) {
           if (!isPmkitError(error) || (error.code !== 'UPSTREAM' && error.code !== 'RATE_LIMITED')) throw error
           failed = { area: 'blockers', code: error.code, message: error.message, nextStep: error.nextStep }
@@ -2372,7 +2375,7 @@ export const COMMANDS = [
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
       if (failed) lines.push(`blockers: not verified (${failed.message})`)
-      else if (pr?.state === 'OPEN') lines.push(`blockers: ${blockedText(prSummary(pr, found))}`)
+      else if (pr?.state === 'OPEN') lines.push(openBlockersLine(host, pr, found))
       const blockers = found && { blocked: found.blocked, blocking: found.blocking, pending: found.pending, unknown: found.unknown, unchecked: found.unchecked }
       return { data: { branch, pr: withoutDetail(pr), checks, reviews, blockers }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
@@ -2383,9 +2386,11 @@ export const COMMANDS = [
       const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
       if (limit !== undefined && (limit < 1 || limit > 100)) throw usageError('--limit must be from 1 to 100')
       if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
-      const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
-      const lines = deploys.map((d) => `${d.environment} ${d.state ?? 'unknown'} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
+      const deploys = await ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
+      // A Bitbucket deploy has no ref, and may have no commit: what is missing is left out, never printed as null.
+      const lines = deploys.map((d) => [d.environment, d.state ?? 'unknown', d.ref, d.sha?.slice(0, 7), d.createdAt, d.url].filter((part) => part !== null && part !== undefined && part !== '').join(' '))
       const warnings = unknownDeployWarnings(deploys)
+      if (ctx.host().deploysCut?.()) warnings.push(deploysCutWarning(ctx.opt('environment')))
       return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), warnings, notes: await capabilityNotesOrNone(ctx) }
     },
   },
@@ -2398,9 +2403,9 @@ export const COMMANDS = [
       const tail = ctx.opt('tail') === undefined ? 200 : whole('tail', ctx.opt('tail'))
       if (tail < 1) throw usageError('--tail must be at least 1')
       const host = ctx.host()
-      const branch = runId === undefined ? ctx.opt('branch') ?? host.currentBranch() : undefined
+      const branch = runId === undefined ? ctx.opt('branch') ?? await host.currentBranch() : undefined
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch> or --run <id>, or switch to a branch')
-      const found = host.ciLogs({ branch, runId })
+      const found = await host.ciLogs({ branch, runId })
       if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const { log, truncated } = tailLines(found.log, tail)
       const failed = FAILED_RUN.has(found.conclusion)
@@ -2410,7 +2415,7 @@ export const COMMANDS = [
         : !failed ? `${label} did not fail (${found.conclusion ?? found.status}), ${hasLog ? 'the log below holds its failed steps' : 'so it has no failed-step log'}`
           : hasLog ? null
             : found.conclusion === 'startup_failure' ? `${label} ended with startup_failure: it never started a job, so it has no log`
-              : `${label} failed (${found.conclusion}) but GitHub returned no log for it`
+              : `${label} failed (${found.conclusion}) but ${hostName(host)} returned no log for it`
       const newer = found.newerRun
       const supersededNote = newer ? `newer run ${newer.runId} of ${found.workflowName ?? 'the same workflow'} ended ${newer.conclusion} on ${newer.createdAt}, so this failure may already be fixed` : null
       const run = { ...found, log, failed, hasLog, logNote, supersededNote }
@@ -2428,55 +2433,52 @@ export const COMMANDS = [
       const requested = ctx.opt('base')
       if (requested !== undefined && (requested === '' || requested.startsWith('-'))) throw new PmkitError('INVALID_INPUT', `base "${requested}" is not a valid branch name`, 'Use a branch name that does not start with -')
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const found = host.getPullRequest({ head: branch })
+      const found = await host.getPullRequest({ head: branch })
       const notes = []
       // Only an open or merged pull request holds the work of the branch. A closed one is not what the review looks at.
       let pr = found && (found.state === 'OPEN' || found.state === 'MERGED') ? found : null
       if (found && !pr) notes.push(`pull request #${found.number} is closed without merge, so this is the local diff`)
-      // The refs of a pull request are read once, and only by the paths that need them.
+      // The refs of a pull request are read once, and only by the paths that need them. A Bitbucket read is a promise, kept as one.
       let refsOf
       const prRefs = () => (refsOf ??= host.prRefs(found.number))
       // gh returns the newest merged pull request of a name, so a reused branch name finds an old one. Its head is then not on the branch
       // (a tip of the local branch or of origin, or behind one: the local branch may be ahead of or behind what was merged).
-      if (pr?.state === 'MERGED') {
-        const onBranch = host.branchHas(branch, () => prRefs().headRefOid)
-        if (onBranch === false) {
-          notes.push(`pull request #${pr.number} is merged and its head is not on ${branch}, so it is not used and this is the local diff`)
-          pr = null
-        }
+      if (pr?.state === 'MERGED' && await mergedHeadOnBranch(host, branch, prRefs) === false) {
+        notes.push(`pull request #${pr.number} is merged and its head is not on ${branch}, so it is not used and this is the local diff`)
+        pr = null
       }
       let full = null
       let local = null
       let incomplete = false
       if (pr) {
-        full = host.prDiff(pr.number)
+        full = await host.prDiff(pr.number)
         if (full === null) {
-          notes.push(`GitHub refused the diff of pull request #${pr.number} because it is too large, so this is the local diff`)
+          notes.push(`${hostName(host)} refused the diff of pull request #${pr.number} because it is too large, so this is the local diff`)
         } else {
-          const unpushed = host.unpushedCommits(branch)
+          const unpushed = await host.unpushedCommits(branch)
           if (unpushed > 0) notes.push(unpushed === 1 ? `${branch} has 1 local commit that is not on origin, so the pull request diff does not include it` : `${branch} has ${unpushed} local commits that are not on origin, so the pull request diff does not include them`)
         }
       }
       const source = full === null ? 'local' : 'pull_request'
       if (full === null) {
         // A stacked pull request is compared with its own base, not the default branch. --base still wins.
-        const prBase = requested === undefined && pr ? prRefs().baseRefName : undefined
+        const prBase = requested === undefined && pr ? (await prRefs()).baseRefName : undefined
         const diffAgainst = (name) => host.localDiff({ branch, base: name })
         if (prBase !== undefined) {
           try {
-            local = diffAgainst(prBase)
+            local = await diffAgainst(prBase)
           } catch (error) {
             if (error.code !== 'INVALID_INPUT' || !/base branch/.test(error.message)) throw error
             incomplete = true
             notes.push(...defaultBranchNotes(ctx))
-            local = diffAgainst(defaultBranch(ctx))
+            local = await diffAgainst(defaultBranch(ctx))
             notes.push(`the base ${prBase} of pull request #${pr.number} does not exist here or on origin, so this is the local diff against ${local.base}; run git fetch origin`)
           }
         } else {
           if (requested === undefined) notes.push(...defaultBranchNotes(ctx))
-          local = diffAgainst(requested ?? defaultBranch(ctx))
+          local = await diffAgainst(requested ?? defaultBranch(ctx))
         }
         full = local.diff
         if (local.uncommitted) notes.push('the local diff includes the uncommitted changes of tracked files')
@@ -2484,14 +2486,14 @@ export const COMMANDS = [
         // whatever the working tree adds to the diff.
         if (pr?.state === 'MERGED' && local.committedEmpty) {
           incomplete = true
-          notes.push(`pull request #${pr.number} is merged and GitHub refused its diff as too large, and the commits of ${branch} no longer differ from ${local.base}, so the diff is not available`)
+          notes.push(`pull request #${pr.number} is merged and ${hostName(host)} refused its diff as too large, and the commits of ${branch} no longer differ from ${local.base}, so the diff is not available`)
         }
       }
       // The notes about the working tree are warnings: a tree that cannot be read must not stop the command.
       let tree = local
       let treeError = local?.treeError ?? null
       if (local === null) {
-        try { tree = host.workingTree(branch) } catch (error) { treeError = error.message }
+        try { tree = await host.workingTree(branch) } catch (error) { treeError = error.message }
       }
       if (treeError !== null) {
         incomplete = true
@@ -2524,11 +2526,12 @@ export const COMMANDS = [
   },
   {
     name: 'pr blockers', summary: 'what blocks the pull request of a branch: checks, reviews, conflicts, open threads and policies; reads only', usage: '[--branch b]', args: [], flags: ['branch'],
+    unsupportedOn: { bitbucket: 'Read the merge checks on the pull request page' },
     run: async (ctx) => {
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch }, { detail: true })
+      const pr = await host.getPullRequest({ head: branch }, { detail: true })
       if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const found = collectBlockers(host, pr)
       return { data: { branch, pr: withoutDetail(pr), ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
@@ -2547,7 +2550,7 @@ export const COMMANDS = [
       const problems = found.problems.map(({ id, code, message }) => ({ id, code, message }))
       for (const issue of candidates) {
         try {
-          const pr = host.getPullRequest({ head: issue.branch })
+          const pr = await host.getPullRequest({ head: issue.branch })
           if (pr?.mergedAt) {
             await moveOrRefuse(tracker, issue.id, 'done', actor, { dryRun: ctx.dryRun })
             moved.push({ id: issue.id, pr: pr.number })
@@ -2814,8 +2817,9 @@ async function runRisks(ctx) {
   try {
     const host = ctx.host()
     try {
-      prs = host.listPullRequests()
+      prs = await host.listPullRequests()
       if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
+      hostWarnings.push(...uncheckedPrsWarnings(host, prs))
       openPrsByBranch = prsByBranch(prs)
     } catch (error) {
       if (!affectsOneCall(error)) throw error
@@ -2825,7 +2829,7 @@ async function runRisks(ctx) {
     if (Array.isArray(prs)) {
       for (const issue of needsPrLookup(all, { eventsByIssue, openPrsByBranch, today, stuckBusinessDays })) {
         try {
-          const pr = host.getPullRequest({ head: issue.branch })
+          const pr = await host.getPullRequest({ head: issue.branch })
           if (pr !== null && pr.state !== 'OPEN') closedPrsByBranch[issue.branch] = pr
         } catch (error) {
           // A branch hand-edited to something gh rejects (INVALID_INPUT) fails only this lookup.
@@ -2836,7 +2840,7 @@ async function runRisks(ctx) {
     }
     let defaultBranchCi
     try {
-      defaultBranchCi = { branch, ...failingWorkflows(host.listRuns({ branch })) }
+      defaultBranchCi = { branch, ...failingWorkflows(await host.listRuns({ branch })) }
     } catch (error) {
       if (!affectsOneCall(error)) throw error
       defaultBranchCi = { branch, error: errorOf(error) }
@@ -3108,38 +3112,9 @@ async function runReleaseReadiness(ctx) {
   let prs = null
   let prsIncomplete = false
   let deploys = null
-  const affectsOneCall = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
-  // Collected apart from `warnings`, so a host that turns out to be unavailable drops what it said about the lists it read.
-  const hostWarnings = []
   try {
-    const host = ctx.host()
-    try {
-      prs = host.listPullRequests()
-      if (prs.length === 200) {
-        prsIncomplete = true
-        hostWarnings.push('only the 200 most recently created open pull requests were read')
-      }
-    } catch (error) {
-      if (!affectsOneCall(error)) throw error
-      prs = { error: errorOf(error) }
-      hostWarnings.push(`pull requests not checked: ${error.message}`)
-    }
-    try {
-      deploys = host.listDeploys({})
-      // The tag's own deploy may be older than the newest 20: ask for the deploys made for the tag, as `v1` and as `refs/tags/v1`.
-      if (choice.basis === 'release' && choice.source.tag) {
-        const known = new Set(deploys.map((d) => d.id))
-        for (const ref of [choice.source.tag, `refs/tags/${choice.source.tag}`]) {
-          for (const deploy of host.listDeploys({ ref, limit: 100 })) if (!known.has(deploy.id)) { known.add(deploy.id); deploys.push(deploy) }
-        }
-        deploys.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-      }
-    } catch (error) {
-      if (!affectsOneCall(error)) throw error
-      deploys = { error: errorOf(error) }
-      hostWarnings.push(`deploys not checked: ${error.message}`)
-    }
-    if (Array.isArray(deploys)) hostWarnings.push(...unknownDeployWarnings(deploys))
+    let hostWarnings
+    ({ prs, prsIncomplete, deploys, hostWarnings } = await readReadinessHost(ctx.host(), choice))
     warnings.push(...hostWarnings)
   } catch (error) {
     if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') warnings.push(`no git host is configured, ${NO_HOST_READ}`)
@@ -3152,6 +3127,58 @@ async function runReleaseReadiness(ctx) {
   }
   const report = buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gitHost, problems, truncated })
   return { data: report, text: readinessText(report), warnings, notes }
+}
+
+/** A host error that stops one release-readiness read (rate limit, 5xx, network), not the report. */
+const failsOneRead = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
+
+/**
+ * The host reads of release-readiness: the open pull requests and the deploys, each `{ error }` when a read that may pass failed.
+ * The warnings are returned apart, so a host that turns out to be unavailable drops what it said about the lists it read.
+ */
+async function readReadinessHost(host, choice) {
+  const hostWarnings = []
+  const prs = await readReadinessPrs(host, hostWarnings)
+  const deploys = await readReadinessDeploys(host, choice, hostWarnings)
+  if (Array.isArray(deploys)) hostWarnings.push(...unknownDeployWarnings(deploys))
+  return { prs, prsIncomplete: Array.isArray(prs) && prs.length === 200, deploys, hostWarnings }
+}
+
+async function readReadinessPrs(host, hostWarnings) {
+  try {
+    const prs = await host.listPullRequests()
+    if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
+    hostWarnings.push(...uncheckedPrsWarnings(host, prs))
+    return prs
+  } catch (error) {
+    if (!failsOneRead(error)) throw error
+    hostWarnings.push(`pull requests not checked: ${error.message}`)
+    return { error: errorOf(error) }
+  }
+}
+
+async function readReadinessDeploys(host, choice, hostWarnings) {
+  try {
+    const deploys = await host.listDeploys({})
+    if (host.deploysCut?.()) hostWarnings.push(deploysCutWarning())
+    // The tag's own deploy may be older than the newest 20: ask for the deploys made for the tag, as `v1` and as `refs/tags/v1`.
+    // A Bitbucket deploy has no ref, so there is no deploy of the tag to ask for (PMK-81).
+    if (choice.basis === 'release' && choice.source.tag && host.system !== 'bitbucket') await addTagDeploys(host, choice.source.tag, deploys)
+    return deploys
+  } catch (error) {
+    if (!failsOneRead(error)) throw error
+    hostWarnings.push(`deploys not checked: ${error.message}`)
+    return { error: errorOf(error) }
+  }
+}
+
+/** Adds the deploys made for a tag that `deploys` lacks, then sorts the list newest first. */
+async function addTagDeploys(host, tag, deploys) {
+  const known = new Set(deploys.map((d) => d.id))
+  for (const ref of [tag, `refs/tags/${tag}`]) {
+    for (const deploy of await host.listDeploys({ ref, limit: 100 })) if (!known.has(deploy.id)) { known.add(deploy.id); deploys.push(deploy) }
+  }
+  deploys.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
 }
 
 // Errors a dry run reports for one issue. Any other error is about the change or the tracker, so it stops the whole command.
@@ -3325,11 +3352,11 @@ async function runTrackAgents(ctx) {
     if (read.problem) row.problems.push(read.problem)
     if (host !== null) {
       if (!row.branch) row.pr = { state: 'no_branch' }
-      else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+      else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: `not read: ${hostName(host)} rate limit reached earlier in this run` }
       else {
         try {
-          const pr = cachedHost.getPullRequest({ head: row.branch }, { detail: true })
-          row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'no_pr' }
+          const pr = await cachedHost.getPullRequest({ head: row.branch }, { detail: true })
+          row.pr = pr ? prSummary(pr, hostBlockers(cachedHost, pr)) : { state: 'no_pr' }
         } catch (error) {
           // A missing or logged out gh fails every lookup the same way, so it stops the command.
           if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
@@ -3348,8 +3375,8 @@ async function runTrackAgents(ctx) {
   if (found.problems.length > 0) causes.push('an issue file did not parse')
   if (found.hasMore === true) causes.push('the issue read was cut')
   if (rows.some((row) => row.delegation.state === 'unknown')) causes.push('the comments of an issue could not be read or were cut')
-  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
-  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push(`a pull request could not be read from ${hostName(host)}`)
+  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push(notVerifiedCause(host))
   const incompleteLine = `the list is incomplete: ${causes.join('; ') || 'some reads failed'}, so what is marked unknown or not verified is not confirmed`
   if (incomplete) warnings.push(incompleteLine)
   if (host !== null) notes.push(...(await capabilityNotesOrNone(ctx)))
@@ -3379,7 +3406,7 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
   let list = []
   let cut = false
   try {
-    list = host.listPullRequests()
+    list = await host.listPullRequests()
     if (list.length === 200) {
       cut = true
       causes.push('only the 200 most recently created open pull requests were read')
@@ -3421,11 +3448,11 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
     if (!issue) {
       // A pull request with no issue is not read in detail: that read costs several calls, and a bot with no work behind it is noise.
       row.pr = { state: item.isDraft === true ? 'draft' : 'open', number: item.number, url: item.url, blocked: null, blocking: [], unknown: ['not read: no issue has this branch'], unchecked: [] }
-    } else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+    } else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: `not read: ${hostName(host)} rate limit reached earlier in this run` }
     else {
       try {
-        const pr = cachedHost.getPullRequest({ number: item.number }, { detail: true })
-        row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'unknown', code: 'UPSTREAM', message: `pull request #${item.number} was listed but could not be read` }
+        const pr = await cachedHost.getPullRequest({ number: item.number }, { detail: true })
+        row.pr = pr ? prSummary(pr, hostBlockers(cachedHost, pr)) : { state: 'unknown', code: 'UPSTREAM', message: `pull request #${item.number} was listed but could not be read` }
       } catch (error) {
         if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
         row.pr = { state: 'unknown', code: error.code, message: error.message }
@@ -3437,8 +3464,8 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
     rows.push(row)
   }
   if (rows.some((row) => row.problems.some((problem) => problem.message.startsWith('the comments')) || (row.delegation?.state === 'unknown' && row.delegate !== null))) causes.push('the comments of an issue could not be read or were cut')
-  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
-  if (rows.some((row) => row.issueMatch === 'found' && (row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0))) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push(`a pull request could not be read from ${hostName(host)}`)
+  if (rows.some((row) => row.issueMatch === 'found' && (row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0))) causes.push(notVerifiedCause(host))
   const incomplete = causes.length > 0
   const incompleteLine = `the list is incomplete: ${causes.join('; ')}, so what is marked unknown or not verified is not confirmed`
   if (incomplete) warnings.push(incompleteLine)
@@ -3992,7 +4019,7 @@ function rejectFlags(ctx, flags, system) {
   }
 }
 
-function runInit(ctx) {
+async function runInit(ctx) {
   const { opt } = ctx
   const update = ctx.flag('update')
   // A Linear repository takes the hosted branch. setup cannot move a repository from one tracker to another.
@@ -4026,7 +4053,7 @@ function runInit(ctx) {
   }
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
   const host = opt('git-host')
-  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   const idStyle = opt('id-style')
   if (idStyle !== undefined && !ID_STYLES.includes(idStyle)) throw usageError(`--id-style must be ${ID_STYLES.join(' or ')}`)
   const unit = opt('estimate-unit')
@@ -4075,14 +4102,14 @@ function runInit(ctx) {
     pmkit = read(pmkitFile)
     local = read(issuesConfig)
     if (host !== undefined) pmkit = edit(pmkitFile, 'git_host.system', () => setScalar(pmkit, ['git_host', 'system'], host))
-    pmkit = withGithubRepo(pmkit, root, host)
+    pmkit = await withHostRepo(ctx, pmkit, host)
   } else {
-    const repo = originRepo(root)
+    const repo = originRepo(root, host)
     pmkit = template('pmkit.config.yaml').replace(
       /git_host:\n {2}system: .*\n {2}repo: .*\n/,
       `git_host:\n  system: ${host ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`,
     )
-    withGithubRepo(pmkit, root, host)
+    await withHostRepo(ctx, pmkit, host)
     local = setScalar(template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`), ['version'], FORMAT_VERSION)
   }
   // pmkit is final here. This check runs first and alone, before any .issues/config.yaml parse and before entries exist.
@@ -4174,25 +4201,46 @@ function runInit(ctx) {
   }
 }
 
-// The GitHub repository the origin remote names, read the way link-repo reads it, or undefined when there is none.
-const originRepo = (root) => {
+// The git hosts that need git_host.repo, and the name a message gives each.
+const REPO_HOSTS = ['github', 'bitbucket']
+const HOST_NAMES = { github: 'GitHub', bitbucket: 'Bitbucket Cloud' }
+const REPO_FORMS = { github: 'owner/name', bitbucket: 'workspace/repo_slug' }
+
+// The repository the origin remote names on `host`, read the way link-repo reads it, or undefined when there is none.
+// Any host but bitbucket reads a GitHub origin, as init always did, so a Bitbucket repo never lands under github.
+const originRepo = (root, host) => {
   const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS })
-  return remote.status === 0 ? (inferHost(remote.stdout.trim()).repo ?? undefined) : undefined
+  if (remote.status !== 0) return undefined
+  const inferred = inferHost(remote.stdout.trim())
+  return inferred.system === (host === 'bitbucket' ? 'bitbucket' : 'github') ? inferred.repo : undefined
 }
 
-// init never writes git_host.system github without a repo, which validate reports. A config that has none takes the origin's, or the call is refused.
-function withGithubRepo(text, root, host) {
-  if (host !== 'github') return text
+// Reads the Bitbucket repository once, so a missing or refused token (AUTH) or a repository Bitbucket does not find (NOT_CONFIGURED) stops the call before it writes.
+async function verifyBitbucketRepo(ctx, repo) {
+  await createBitbucketClient({ env: ctx.env, repo, fetch: ctx.fetch }).get('')
+}
+
+// init never writes a repo host without a repo, which validate reports. A config that has none takes the origin's, or the call is refused.
+// --git-host bitbucket then reads the repository once.
+async function withHostRepo(ctx, text, host) {
+  if (!REPO_HOSTS.includes(host)) return text
   let held
   try {
     held = parseYaml(text)?.git_host?.repo
   } catch {
     return text // the caller reports a file that does not parse
   }
-  if (held) return text
-  const repo = originRepo(root)
-  if (!repo) throw usageError('git_host github needs a repo, and the origin remote is not a GitHub repository', 'Add a GitHub origin remote, or leave out --git-host and run /pmkit:link-repo --git-host github --repo owner/name')
-  return setScalar(text, ['git_host', 'repo'], repo)
+  let repo = held
+  if (!repo) {
+    repo = originRepo(ctx.root, host)
+    if (!repo) {
+      throw usageError(`git_host ${host} needs a repo, and the origin remote is not a ${HOST_NAMES[host]} repository`,
+        `Add a ${HOST_NAMES[host]} origin remote, or leave out --git-host and run /pmkit:link-repo --git-host ${host} --repo ${REPO_FORMS[host]}`)
+    }
+    text = setScalar(text, ['git_host', 'repo'], repo)
+  }
+  if (host === 'bitbucket') await verifyBitbucketRepo(ctx, repo)
+  return text
 }
 
 // link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
@@ -4257,12 +4305,40 @@ async function linkTeam(ctx, parsed, wanted, source) {
   return { description, truncated }
 }
 
+/**
+ * The git host link-repo writes and where it comes from: --git-host, else a remote on a host that names a repository, else the file.
+ * remoteNamesRepo: the remote names the repository only when it is on the host being written.
+ */
+function resolveLinkHost({ flagHost, flagRepo, flagBranch, inferred, heldSystem }) {
+  const fromRemote = REPO_HOSTS.includes(inferred.system)
+  const hostAfter = flagHost ?? (fromRemote ? inferred.system : heldSystem)
+  const hostSource = flagHost !== undefined ? 'flag' : fromRemote ? 'remote' : 'file'
+  checkLinkFlags(hostAfter, flagRepo, flagBranch)
+  return { hostAfter, hostSource, remoteNamesRepo: fromRemote && inferred.system === hostAfter }
+}
+
+/** Refuses --repo and --default-branch on no host, and a --repo that is not workspace/repo_slug on Bitbucket. */
+function checkLinkFlags(hostAfter, flagRepo, flagBranch) {
+  if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github or bitbucket', 'Pass --git-host github or bitbucket, or remove --repo')
+  if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github or bitbucket', 'Pass --git-host github or bitbucket, or remove --default-branch')
+  if (flagRepo !== undefined && hostAfter === 'bitbucket' && !BITBUCKET_REPO.test(flagRepo)) throw usageError('--repo must be workspace/repo_slug on Bitbucket, like acme/widgets')
+}
+
+/**
+ * A repo host link-repo would write without a repo: refused, except a file that is already github without one, which is not made
+ * worse (so --team or --default-branch still work on it) and gets the warning returned here. Bitbucket always needs a repo.
+ */
+function linkRepoMissing(heldSystem, hostAfter, invalidRemote) {
+  if (heldSystem !== hostAfter || hostAfter === 'bitbucket') throw usageError(`git_host ${hostAfter} needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, `Pass --repo ${REPO_FORMS[hostAfter]}, or --git-host none`)
+  return 'git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name'
+}
+
 async function runLinkRepo(ctx) {
   const flagHost = ctx.opt('git-host')
   const flagRepo = ctx.opt('repo')
   const flagBranch = ctx.opt('default-branch')
   const wantedRemote = ctx.opt('remote')
-  if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   if (flagRepo !== undefined && !/^[^/\s]+\/[^/\s]+$/.test(flagRepo)) throw usageError('--repo must be owner/name, like acme/app')
   if (flagBranch !== undefined && !validBranch(flagBranch)) throw usageError(`--default-branch ${flagBranch} is not a branch name`, 'Pass a branch name such as main')
 
@@ -4288,19 +4364,16 @@ async function runLinkRepo(ctx) {
     notes.push(`could not read the git remotes (${read.reason}), so the git host was not inferred`)
   }
   const inferred = chosen.remote ? inferHost(chosen.remote.url) : { system: null, repo: null, host: null }
-  if (read.ok && chosen.state === 'none') notes.push('there is no git remote, so the git host was not inferred; pass --git-host github or none')
+  if (read.ok && chosen.state === 'none') notes.push(`there is no git remote, so the git host was not inferred; pass --git-host ${GIT_HOSTS_TEXT}`)
   // An inference never lowers a configured host. Only --git-host none does.
   if (chosen.remote && inferred.system === null && flagHost === undefined) {
     notes.push(inferred.host === null
       ? `the URL of remote ${chosen.remote.name} is not recognized (${chosen.remote.url}), so git_host was not changed`
-      : `remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, so git_host was not changed; pass --git-host github if it is GitHub (Enterprise or an SSH alias), or --git-host none to lower it`)
+      : `remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub or Bitbucket Cloud, so git_host was not changed; pass --git-host github if it is GitHub (Enterprise or an SSH alias), --git-host bitbucket --repo workspace/repo_slug if it is Bitbucket Cloud behind an SSH alias, or --git-host none to lower it`)
   }
 
   const held = { system: parsed.git_host.system, repo: parsed.git_host.repo ?? null, branch: parsed.git_host.default_branch ?? null }
-  const hostAfter = flagHost ?? (inferred.system === 'github' ? 'github' : held.system)
-  const hostSource = flagHost !== undefined ? 'flag' : inferred.system === 'github' ? 'remote' : 'file'
-  if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github', 'Pass --git-host github, or remove --repo')
-  if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github', 'Pass --git-host github, or remove --default-branch')
+  const { hostAfter, hostSource, remoteNamesRepo } = resolveLinkHost({ flagHost, flagRepo, flagBranch, inferred, heldSystem: held.system })
   let repoAfter = held.repo
   let invalidRemote = null
   let repoSource = 'file'
@@ -4310,7 +4383,7 @@ async function runLinkRepo(ctx) {
   } else if (flagRepo !== undefined) {
     repoAfter = flagRepo
     repoSource = 'flag'
-  } else if (inferred.system === 'github') {
+  } else if (remoteNamesRepo) {
     repoAfter = inferred.repo
     repoSource = 'remote'
   } else if (flagHost === 'github' && chosen.remote) {
@@ -4330,31 +4403,27 @@ async function runLinkRepo(ctx) {
   let branchAfter = held.branch
   let branchSource = 'file'
   // The branch comes from the remote only when that remote is the repository being written.
-  const inferredBranch = inferred.system === 'github' && sameRepo(repoAfter, inferred.repo) ? readDefaultBranch(ctx, chosen.remote.name) : null
+  const inferredBranch = remoteNamesRepo && sameRepo(repoAfter, inferred.repo) ? readDefaultBranch(ctx, chosen.remote.name) : null
   if (flagHost === 'none') {
     branchAfter = null
     branchSource = 'flag'
   } else if (flagBranch !== undefined) {
     branchAfter = flagBranch
     branchSource = 'flag'
-  } else if (inferredBranch !== null && hostAfter === 'github') {
+  } else if (inferredBranch !== null) {
     branchAfter = inferredBranch
     branchSource = 'remote'
   }
-  // A file that is already github without a repo is not made worse, so --team or --default-branch still work on it.
-  if (hostAfter === 'github' && repoAfter === null) {
-    if (held.system !== 'github') throw usageError(`git_host github needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, 'Pass --repo owner/name, or --git-host none')
-    warnings.push('git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name')
-  }
+  if (REPO_HOSTS.includes(hostAfter) && repoAfter === null) warnings.push(linkRepoMissing(held.system, hostAfter, invalidRemote))
   // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
   if (branchSource === 'file' && held.branch !== null && held.repo !== null && !sameRepo(repoAfter, held.repo)) {
     notes.push(`the repo changed from ${held.repo} to ${repoAfter ?? 'none'} and the default branch could not be inferred, so default_branch ${held.branch} may be wrong; pass --default-branch <name>, or run git remote set-head <remote> --auto and run this again`)
   }
   if (chosen.remote && flagHost !== undefined) {
     if (inferred.system !== null && inferred.system !== flagHost) {
-      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is GitHub, and --git-host ${flagHost} was used as given`)
-    } else if (inferred.system === null && inferred.host !== null && flagHost === 'github') {
-      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, and --git-host github was used as given`)
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is ${HOST_NAMES[inferred.system]}, and --git-host ${flagHost} was used as given`)
+    } else if (inferred.system === null && inferred.host !== null && REPO_HOSTS.includes(flagHost)) {
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as ${HOST_NAMES[flagHost]}, and --git-host ${flagHost} was used as given`)
     }
   }
   if (flagRepo !== undefined && inferred.repo !== null && !sameRepo(inferred.repo, flagRepo)) {
@@ -4413,6 +4482,8 @@ async function runLinkRepo(ctx) {
     }
     if (problems.length > 0) throw usageError(`the new .pmkit/config.yaml would not be valid: ${problems.join('; ')}`, 'Fix the values you passed')
   }
+  // The dry run and the write both read the repository, so the preview fails the way the write would.
+  if (hostAfter === 'bitbucket') await verifyBitbucketRepo(ctx, repoAfter)
 
   if (!ctx.dryRun && teamChanged && broken.length > 0) {
     throw new PmkitError('NOT_CONFIGURED', `team ${scope.team.after} does not fit the mappings in .pmkit/config.yaml: ${broken.map((item) => item.problem).join('; ')}`, '/pmkit:setup', { mappings: broken })
@@ -4491,7 +4562,7 @@ function hostedInitFile(ctx, system, label) {
     if (ctx.opt(flag) !== undefined || ctx.list(flag).length > 0) throw usageError(`${label} sets --${flag} itself`, `Remove --${flag}`)
   }
   const gitHost = ctx.opt('git-host')
-  if (gitHost !== undefined && !GIT_HOSTS.includes(gitHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (gitHost !== undefined && !GIT_HOSTS.includes(gitHost)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   const update = ctx.flag('update')
   const pmkitFile = path.join('.pmkit', 'config.yaml')
   const file = path.join(ctx.root, pmkitFile)
@@ -4503,7 +4574,7 @@ function hostedInitFile(ctx, system, label) {
     text = before
   } else {
     if (fs.existsSync(file)) throw new PmkitError('CONFLICT', `${slash(pmkitFile)} already exists`, 'Edit it, or delete it to start over')
-    const repo = originRepo(ctx.root)
+    const repo = originRepo(ctx.root, gitHost)
     text = fs.readFileSync(path.join(TEMPLATES, 'pmkit.config.yaml'), 'utf8')
       .replace(/tracker:\n {2}system: .*\n {2}path: .*\n/, `tracker:\n  system: ${system}\n`)
       .replace(/git_host:\n {2}system: .*\n {2}repo: .*\n {2}default_branch: .*\n/, `git_host:\n  system: ${gitHost ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`)
@@ -4642,6 +4713,17 @@ function githubInitHeader(scope, raw, viewer, project, answered) {
 }
 
 // init --tracker github. See docs/specs/2026-11-16-pmk-86-github-discovery-and-setup-design.md, "Setup".
+/**
+ * The git_host.repo of init --tracker github. git_host github needs a repo: a remote that is not github.com (GHES, GHE.com) names
+ * none, so the tracker's repository fills it. git_host bitbucket takes the origin's and reads the repository once.
+ */
+async function githubInitHostRepo(ctx, file, draft, text, scope) {
+  if ((draft?.git_host?.system ?? file.gitHost) === 'github' && !draft?.git_host?.repo) {
+    text = file.edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], originRepo(ctx.root) ?? scope.repo))
+  }
+  return file.gitHost === 'bitbucket' ? withHostRepo(ctx, text, 'bitbucket') : text
+}
+
 async function runInitGithub(ctx) {
   for (const flag of ['workspace', 'team']) {
     if (ctx.opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker linear`, `Remove --${flag}`)
@@ -4652,10 +4734,7 @@ async function runInitGithub(ctx) {
   const { draft, current } = hostedDraft(file.text)
   let { text } = file
   const scope = githubScope(ctx, current.scope)
-  // git_host github needs a repo. A remote that is not github.com (GHES, GHE.com) names none, so the tracker's repository fills it.
-  if ((draft?.git_host?.system ?? file.gitHost) === 'github' && !draft?.git_host?.repo) {
-    text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], originRepo(ctx.root) ?? scope.repo))
-  }
+  text = await githubInitHostRepo(ctx, file, draft, text, scope)
 
   // The repository first, with the default scopes. The Project is read only once it is chosen (ADR 0007).
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
@@ -4700,7 +4779,7 @@ async function runInitLinear(ctx) {
   const file = hostedInitFile(ctx, 'linear', 'Linear')
   const { edit } = file
   const root = ctx.root
-  let text = withGithubRepo(file.text, root, file.gitHost)
+  let text = await withHostRepo(ctx, file.text, file.gitHost)
   const { draft, current } = hostedDraft(text)
 
   // Only the workspace pins the key. The team and the mappings are what this call decides, so the discovery ignores them.
@@ -4787,7 +4866,7 @@ async function runInitJira(ctx) {
   const adapter = adapterFor('jira', ctx.adapters)
   const file = hostedInitFile(ctx, 'jira', 'Jira')
   const { edit } = file
-  let text = withGithubRepo(file.text, ctx.root, file.gitHost)
+  let text = await withHostRepo(ctx, file.text, file.gitHost)
   const { current } = hostedDraft(text)
 
   // The site cannot be discovered, so setup asks the user for it. Only a host reaches the client: a URL is refused here.
@@ -4956,7 +5035,11 @@ function inboxText(item) {
  * The open pull requests that request a review of one of `logins` (ignoring case), from one gh call (PMK-225). A request made to a
  * team never matches and is listed apart. A failed read is `verified: false` with the reason, never an empty list.
  */
-function reviewRequests(ctx, user, logins) {
+async function reviewRequests(ctx, user, logins) {
+  // Bitbucket review requests are not read yet (PMK-81): the inbox still lists the tracker items, and says this part is not verified.
+  if (ctx.config().pmkit.git_host?.system === 'bitbucket') {
+    return { verified: false, requested: null, teamRequests: null, complete: false, reason: 'review requests are not read on Bitbucket yet', code: 'NOT_SUPPORTED' }
+  }
   // A Linear member id is a Linear user id, never a GitHub login, so without --login there is nothing to match: not verified, never 0.
   if (ctx.config().pmkit.tracker?.system === 'linear' && logins.length === 0) {
     return { verified: false, requested: null, teamRequests: null, complete: false, reason: 'the Linear member id is not a GitHub login; pass --login <github login> to match review requests', code: 'INVALID_INPUT' }
@@ -4964,7 +5047,7 @@ function reviewRequests(ctx, user, logins) {
   const wanted = new Set([user, ...logins].map((login) => String(login).toLowerCase()))
   let prs
   try {
-    prs = ctx.host().listReviewRequests()
+    prs = await ctx.host().listReviewRequests()
   } catch (error) {
     if (!isPmkitError(error)) throw error
     return { verified: false, requested: null, teamRequests: null, complete: false, reason: error.message, code: error.code }
@@ -4993,14 +5076,66 @@ function reviewLines(reviews, user) {
 }
 
 function makeHost(ctx) {
-  if (ctx.config().pmkit.git_host?.system !== 'github') {
-    throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup')
+  const { system, repo } = ctx.config().pmkit.git_host ?? {}
+  if (system === 'bitbucket') return createBitbucketHost({ root: ctx.root, env: ctx.env, repo, fetch: ctx.fetch })
+  if (system !== 'github') {
+    throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github or bitbucket in .pmkit/config.yaml, or run /pmkit:setup')
   }
   return createGithubHost({ root: ctx.root, env: ctx.env })
 }
 
+/** Bitbucket reads its 500 newest deploys then filters them (PMK-81): a cut read that kept too few may miss older ones. */
+const deploysCutWarning = (environment) => `only the 500 newest deployments were read, so older deployments${environment === undefined ? '' : ` of ${environment}`} may be missing`
+
+/** One warning naming the open pull requests whose checks were not read (Bitbucket refused their statuses), or none. */
+const uncheckedPrsWarnings = (host, prs) => {
+  if (host.system !== 'bitbucket') return []
+  const numbers = prs.filter((pr) => pr.statusCheckRollup === null).map((pr) => `#${pr.number}`)
+  return numbers.length === 0 ? [] : [`checks of ${numbers.join(', ')} not read`]
+}
+
+/** The name of a host for messages that would otherwise say GitHub on any host. */
+const hostName = (host) => (host?.system === 'bitbucket' ? 'Bitbucket' : 'GitHub')
+
+/**
+ * Whether the head of a merged pull request is on the branch (see branchHas), or null when the branch does not exist. The head is read
+ * only when the branch exists, so a missing branch costs no host read.
+ */
+async function mergedHeadOnBranch(host, branch, prRefs) {
+  if (!host.branchExists(branch)) return null
+  return host.branchHas(branch, (await prRefs()).headRefOid)
+}
+
+/**
+ * The git host of a command, made once. A command whose unsupportedOn names the host's system is refused here, when the command
+ * first asks for the host: after the checks it makes before that, and before any read (PMK-81).
+ */
+function commandHost(ctx, command) {
+  const host = makeHost(ctx)
+  const nextStep = command.unsupportedOn?.[host.system]
+  if (nextStep !== undefined) throw new PmkitError('NOT_SUPPORTED', `${command.name} is not supported on ${hostName(host)} yet`, nextStep)
+  return host
+}
+
+/**
+ * The blockers of a pull request. Bitbucket has no blocker reads yet (PMK-81): the verdict is unknown, never "nothing blocks it",
+ * with one unchecked entry the existing text shows as not verified.
+ */
+function hostBlockers(host, pr) {
+  if (host.system !== 'bitbucket') return collectBlockers(host, pr)
+  return { blocked: null, blocking: [], pending: [], unknown: [], unchecked: [{ area: 'blockers', code: 'NOT_SUPPORTED', message: 'blockers are not verified on Bitbucket' }] }
+}
+
+/** The blockers line of pr status for an open pull request. Bitbucket has no blocker reads at all: one plain line, not the "not verified: <areas>" list of a GitHub read that failed. */
+const openBlockersLine = (host, pr, found) => (host.system === 'bitbucket' ? 'blockers: not verified on Bitbucket' : `blockers: ${blockedText(prSummary(pr, found))}`)
+
+/** The cause of a blockers verdict that is not verified, for the incomplete line of track-agents. */
+const notVerifiedCause = (host) => (host?.system === 'bitbucket'
+  ? 'blockers are not verified on Bitbucket'
+  : 'a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+
 /** Runs one command line. Resolves to the text for each stream and the exit code. */
-export async function run(argv, { env = process.env, cwd = process.cwd(), adapters = ADAPTERS } = {}) {
+export async function run(argv, { env = process.env, cwd = process.cwd(), adapters = ADAPTERS, fetch } = {}) {
   const stdout = []
   const stderr = []
   let code = 0
@@ -5042,6 +5177,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     let host
     const ctx = {
       root, cwd, env, dryRun, now, args: parsed.positionals, json, adapters,
+      // The fetch of the Bitbucket host: a test's fake, else the global one, read when the host is made.
+      get fetch() { return fetch ?? globalThis.fetch },
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,
@@ -5077,7 +5214,7 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         return tracker[feature]
       },
       settings: () => adapterFor(ctx.config().system, adapters).settings(ctx.config()),
-      host: () => (host ??= makeHost(ctx)),
+      host: () => (host ??= commandHost(ctx, command)),
       actor: async () => (typeof options.as === 'string' ? options.as : (await requireMember(ctx)).id),
     }
     kind = configClass(command, options)

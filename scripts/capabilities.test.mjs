@@ -92,6 +92,13 @@ test('linked_code has an enable hint only when git_host is none', () => {
   assert.equal('enableHint' in linked(github), false)
 })
 
+test('PMK-81: linked_code on Bitbucket names the host and the commands it does not support', () => {
+  const linked = (t) => t.capabilities().capabilities.find((entry) => entry.id === 'linked_code')
+  const bitbucket = withGitHost('bitbucket\n  repo: acme/widgets')
+  assert.deepEqual(linked(bitbucket), { id: 'linked_code', path: 'derived', detail: { source: 'git', host: 'bitbucket', unsupported: ['pr review', 'pr blockers'], degraded: ['inbox review requests'] } })
+  assert.deepEqual(linked(withGitHost('github')).detail, { source: 'git' })
+})
+
 test('estimation detail comes from the config', () => {
   const entry = tracker().capabilities().capabilities.find((item) => item.id === 'estimation')
   assert.deepEqual(entry, { id: 'estimation', path: 'native', detail: { unit: 'points', scale: [1, 2, 3, 5, 8, 13] } })

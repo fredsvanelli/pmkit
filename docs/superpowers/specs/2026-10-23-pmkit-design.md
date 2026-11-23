@@ -340,7 +340,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 
 | Command | Does |
 |---|---|
-| `init --tracker local [--git-host github\|none] [--prefix ISS] [--estimate-unit points\|hours\|sizes] [--member id --name n --email e] [--members-file f\|-]` | writes `.pmkit/config.yaml` and scaffolds `.issues/` from the templates; refuses to overwrite |
+| `init --tracker local [--git-host github\|bitbucket\|none] [--prefix ISS] [--estimate-unit points\|hours\|sizes] [--member id --name n --email e] [--members-file f\|-]` | writes `.pmkit/config.yaml` and scaffolds `.issues/` from the templates; refuses to overwrite |
 | `init --update [--replace path ...]` plus the `init` flags to change | runs setup again on a configured project: keeps the answers and the comments in both config files, edits only the lines its flags name, adds missing template files, reports `differs` for a template file the user edited and replaces it only when `--replace` names it **(builder's call)** |
 | `capabilities` | prints the manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members, estimate scale |

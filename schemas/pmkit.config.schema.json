@@ -55,8 +55,8 @@
       "properties": {
         "system": {
           "title": "Git host system",
-          "description": "github opens pull requests with the gh CLI; none turns pull requests off.",
-          "enum": ["github", "none"]
+          "description": "github opens pull requests with the gh CLI; bitbucket opens pull requests through the Bitbucket Cloud REST API with BITBUCKET_TOKEN; none turns pull requests off.",
+          "enum": ["github", "bitbucket", "none"]
         },
         "repo": {
           "title": "Repository",

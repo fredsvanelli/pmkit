@@ -269,7 +269,7 @@ test('a bad .pmkit/config.yaml is reported with its path', () => {
   const root = makeRepo('basic')
   breakPmkit(root)
   assert.deepEqual(validateRepo(root).problems, [
-    { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.system must be github or none' },
+    { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.system must be github, bitbucket or none' },
     { path: '.pmkit/config.yaml', code: 'config', message: 'write_policy.confirm must be one of all_writes, single_writes, none' },
   ])
 })
@@ -420,7 +420,7 @@ test('azure-devops and git_host.system gitlab list both problems', () => {
   const root = makeRepo('basic')
   editPmkit(root, 'system: local', 'system: azure-devops')
   editPmkit(root, 'system: none', 'system: gitlab')
-  assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github or none', MSG])
+  assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github, bitbucket or none', MSG])
 })
 
 test('azure-devops and breakPmkit list three problems', () => {
@@ -430,7 +430,7 @@ test('azure-devops and breakPmkit list three problems', () => {
   const result = validateRepo(root)
   assert.ok(result.problems.every((problem) => problem.path === '.pmkit/config.yaml' && problem.code === 'config'))
   assert.deepEqual(messages(result), [
-    'git_host.system must be github or none',
+    'git_host.system must be github, bitbucket or none',
     'write_policy.confirm must be one of all_writes, single_writes, none',
     MSG,
   ])
@@ -446,7 +446,7 @@ test('azure-devops with a broken .issues/config.yaml lists only the tracker prob
 test('tracker.system local with another bad key lists no tracker problem', () => {
   const root = makeRepo('basic')
   editPmkit(root, 'system: none', 'system: gitlab')
-  assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github or none'])
+  assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github, bitbucket or none'])
 })
 
 test('an empty .pmkit/config.yaml gets no tracker problem', () => {
@@ -455,7 +455,7 @@ test('an empty .pmkit/config.yaml gets no tracker problem', () => {
   assert.deepEqual(messages(validateRepo(root)), [
     'version must be 1',
     'tracker.system must be one of local, linear, jira, github, gitlab, azure-devops',
-    'git_host.system must be github or none',
+    'git_host.system must be github, bitbucket or none',
     'write_policy.confirm must be one of all_writes, single_writes, none',
   ])
 })
@@ -479,7 +479,7 @@ test('a bad git_host still checks the whole tracker', () => {
   const root = makeRepo('team')
   editPmkit(root, 'system: none', 'system: gitlab')
   const result = validateRepo(root)
-  assert.ok(result.problems.some((p) => p.path === '.pmkit/config.yaml' && p.code === 'config' && p.message === 'git_host.system must be github or none'))
+  assert.ok(result.problems.some((p) => p.path === '.pmkit/config.yaml' && p.code === 'config' && p.message === 'git_host.system must be github, bitbucket or none'))
   assert.ok(result.checked.issues > 0)
 })
 

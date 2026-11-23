@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, needsPrLookup, newerSuccess, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 
 const TODAY = '2026-10-26' // a Monday
 const issue = (id, category, extra = {}) => ({
@@ -333,4 +333,20 @@ test('a late epic whose update read failed has an unknown last update, not none'
   const report = baseReport({ epics: rows, updatesNotChecked: ['X1'] })
   const cells = risksText(report).split('\n').filter((l) => /^(X1|X2) /.test(l)).map((l) => l.split('|')[4].trim())
   assert.deepEqual(cells, ['not checked', 'none'])
+})
+
+test('newerSuccess is the newest later successful completed run of the same workflow, or null', () => {
+  const run = (databaseId, workflowName, createdAt, extra = {}) => ({ databaseId, workflowName, status: 'completed', conclusion: 'success', createdAt, headSha: `sha${databaseId}`, ...extra })
+  const failed = run(1, 'CI', '2026-11-01T10:00:00Z', { conclusion: 'failure' })
+  const runs = [
+    run(5, 'CI', '2026-11-05T10:00:00Z', { status: 'in_progress', conclusion: null }),
+    run(4, 'Other', '2026-11-04T10:00:00Z'),
+    run(3, 'CI', '2026-11-03T10:00:00Z'),
+    run(2, 'CI', '2026-11-02T10:00:00Z'),
+    run(0, 'CI', '2026-10-31T10:00:00Z'),
+    failed,
+  ]
+  assert.deepEqual(newerSuccess(runs, failed), { runId: 3, conclusion: 'success', createdAt: '2026-11-03T10:00:00Z', headSha: 'sha3' })
+  assert.equal(newerSuccess([failed, run(6, 'CI', '2026-11-06T10:00:00Z', { conclusion: 'cancelled' })], failed), null)
+  assert.equal(newerSuccess([run(7, 'CI', '2026-11-07T10:00:00Z', { headSha: undefined })], failed).headSha, null)
 })

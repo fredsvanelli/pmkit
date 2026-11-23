@@ -1,7 +1,7 @@
 // The capability manifest of the GitHub tracker: one entry per capability, from the raw discovery and the config.
 // See docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md, "Capabilities".
 
-import { CAPABILITIES } from '../capabilities.mjs'
+import { CAPABILITIES, linkedCodeDetail } from '../capabilities.mjs'
 import { estimateLabelScale, estimateOf } from './discovery.mjs'
 import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldOf, iterationFieldOf, labelOf, parseLabelValue } from './mappings.mjs'
@@ -27,7 +27,7 @@ export function buildGithubCapabilities(raw, pmkit = {}) {
     multilevel_hierarchy: { path: 'native' },
     dependencies: raw.features?.relatesTo === false ? { path: 'native', detail: { unsupported: ['related'] } } : { path: 'native' },
     native_metrics: { path: 'derived', detail: { source: 'history' } },
-    linked_code: { path: 'derived', detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
+    linked_code: { path: 'derived', detail: linkedCodeDetail(gitHost), ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
     native_triage: { path: 'absent', enableHint: 'GitHub has no triage; map a Status option to triage in .pmkit/config.yaml' },
     agent_delegation: { path: 'absent', enableHint: 'The GitHub adapter does not delegate to agents yet' },
     time_tracking: { path: 'absent', enableHint: 'GitHub has no time tracking' },

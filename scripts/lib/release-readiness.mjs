@@ -43,7 +43,8 @@ const issueRow = (issue) => ({ id: issue.id, title: issue.title, status: issue.s
  * @param {object} input
  * @param {object} input.choice from chooseReadinessBasis
  * @param {object[]} input.issues the non-archived issues of the basis
- * @param {object[] | null | {error: object}} input.prs open pull requests of the repository; null when no host, {error} when the call failed
+ * @param {object[] | null | {error: object}} input.prs open pull requests of the repository; null when no host, {error} when the call failed.
+ *   On Bitbucket, a pull request whose statusCheckRollup is null (its checks were not read) gets checks null, never "no checks".
  * @param {boolean} input.prsIncomplete the pull request list hit its limit
  * @param {object[] | null | {error: object}} input.deploys repository deployments, same convention
  * @param {object} input.gitHost
@@ -58,11 +59,17 @@ export function buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gi
     if (OPEN(category)) counts.open += 1
     else counts[category] += 1
   }
+  // Only the Bitbucket host leaves statusCheckRollup null, for a refused statuses read; a GitHub row keeps its counts as before.
+  const notRead = (pr) => gitHost?.system === 'bitbucket' && pr.statusCheckRollup === null
   const byBranch = new Map(issues.filter((issue) => issue.branch).map((issue) => [issue.branch, issue.id]))
   const pullRequests = Array.isArray(prs)
-    ? prs.filter((pr) => byBranch.has(pr.headRefName)).map((pr) => ({ number: pr.number, title: pr.title, url: pr.url, isDraft: pr.isDraft === true, issue: byBranch.get(pr.headRefName), checks: { total: (pr.statusCheckRollup ?? []).length, failing: failingPullRequests([pr])[0]?.failing ?? [], pending: (pr.statusCheckRollup ?? []).filter(isPending).length } })).sort((a, b) => a.number - b.number)
+    ? prs.filter((pr) => byBranch.has(pr.headRefName)).map((pr) => ({ number: pr.number, title: pr.title, url: pr.url, isDraft: pr.isDraft === true, issue: byBranch.get(pr.headRefName), checks: notRead(pr) ? null : { total: (pr.statusCheckRollup ?? []).length, failing: failingPullRequests([pr])[0]?.failing ?? [], pending: (pr.statusCheckRollup ?? []).filter(isPending).length } })).sort((a, b) => a.number - b.number)
     : prs
-  const matches = (deploy) => basis === 'release' && Boolean(source.tag) && (deploy.ref === source.tag || deploy.ref === `refs/tags/${source.tag}`)
+  // A deploy with no ref (Bitbucket's names a pipeline, not a tag) cannot be matched to the tag: null, never false (PMK-81).
+  const matches = (deploy) => {
+    if (basis !== 'release' || !source.tag) return false
+    return deploy.ref === null ? null : deploy.ref === source.tag || deploy.ref === `refs/tags/${source.tag}`
+  }
   const deployRows = Array.isArray(deploys) ? deploys.map((deploy) => ({ ...deploy, matchesRelease: matches(deploy) })) : deploys
   const complete = problems.length === 0 && !truncated
   const openWork = counts.open + (Array.isArray(pullRequests) ? pullRequests.length : 0)

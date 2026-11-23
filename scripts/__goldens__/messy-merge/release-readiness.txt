@@ -64,7 +64,7 @@ exit 0
     "reason": {
       "code": "NOT_SUPPORTED",
       "message": "this repository has no git host configured",
-      "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+      "nextStep": "Set git_host.system to github or bitbucket in .pmkit/config.yaml, or run /pmkit:setup"
     }
   },
   "truncated": false,

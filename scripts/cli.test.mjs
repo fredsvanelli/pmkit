@@ -652,7 +652,7 @@ test('validate exits 0 and prints a .pmkit/config.yaml problem as path, code and
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: none/, 'system: gitlab'))
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github or none$/m)
+  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github, bitbucket or none$/m)
   const problem = json(root, ['validate']).problems.find((p) => p.path === '.pmkit/config.yaml')
   assert.equal(problem.code, 'config')
 })
@@ -685,7 +685,7 @@ test('validate with linear and a bad git_host lists both and exits 0', () => {
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
   assert.match(text.stdout, UNSUPPORTED_LINE)
-  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github or none$/m)
+  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github, bitbucket or none$/m)
 })
 
 test('issues list with linear still exits 2 with NOT_SUPPORTED', () => {
@@ -1744,7 +1744,7 @@ const editPmkit = (root, from, to) => {
 const MAYBE = ['confirm: single_writes', 'confirm: maybe']
 const GITLAB = ['system: none', 'system: gitlab']
 const CONFIRM_MSG = 'write_policy.confirm must be one of all_writes, single_writes, none'
-const HOST_MSG = 'git_host.system must be github or none'
+const HOST_MSG = 'git_host.system must be github, bitbucket or none'
 const REFUSAL = (...p) => `.pmkit/config.yaml is not valid, so writes are refused: ${p.join('; ')}`
 const WARNING = (...p) => `warning: ${REFUSAL(...p)}; run pmkit validate`
 const errorOf = (result) => JSON.parse(result.stdout).error

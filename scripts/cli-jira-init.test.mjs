@@ -5,6 +5,8 @@ import test from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { ADAPTERS } from './lib/adapters.mjs'
+import { spawnSync } from 'node:child_process'
+import { BB, FAKE_BB_ENV, fakeBitbucketFetch } from './fake-bitbucket-api.mjs'
 import { FAKE_EMAIL, FAKE_ENV, FAKE_HEADER, FAKE_TOKEN, fakeJiraFetch, jiraSiteRoutes } from './fake-jira-api.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 import { run } from './pmkit.mjs'
@@ -223,4 +225,16 @@ test('a Server site is NOT_SUPPORTED', async () => {
   for (const args of [[...INIT, '--dry-run', '--json'], [...INIT, '--space', 'ENG', '--dry-run', '--json']]) {
     assert.equal(errorOf(await cli(args)).code, 'NOT_SUPPORTED')
   }
+})
+
+test('--git-host bitbucket writes the repo of a bitbucket.org origin after one repository read (PMK-81)', async () => {
+  const { root, fetch } = session()
+  spawnSync('git', ['init', '-q'], { cwd: root })
+  spawnSync('git', ['remote', 'add', 'origin', 'git@bitbucket.org:acme/widgets.git'], { cwd: root })
+  const bitbucket = fakeBitbucketFetch({ [`GET ${BB}`]: { json: { full_name: 'acme/widgets' } } })
+  const args = [...INIT, '--space', 'ENG', ...ANSWERS, '--git-host', 'bitbucket', '--json']
+  const result = await run(args, { cwd: root, env: { ...FAKE_ENV, ...FAKE_BB_ENV, ...userStoreEnv().env }, fetch: bitbucket, adapters: { ...ADAPTERS, jira: jiraDescriptor({ fetch }) } })
+  dataOf(result)
+  assert.match(fs.readFileSync(configFile(root), 'utf8'), /git_host:\n {2}system: bitbucket\n {2}repo: acme\/widgets\n/)
+  assert.deepEqual(bitbucket.calls.map((call) => call.url), ['https://api.bitbucket.org/2.0/repositories/acme/widgets'])
 })
