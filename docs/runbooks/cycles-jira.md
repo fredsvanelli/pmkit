@@ -92,19 +92,20 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs cycle capacity 1 --set acc-1=8 --json
    ```
 
-   Expect `after.capacity` `{ "acc-1": 8 }`. Jira is not called: pmkit writes `.pmkit/capacity.yaml`, and `cycle list` shows the capacity from then on.
+   Expect `after.capacity` `{ "acc-1": 8 }`. pmkit writes `.pmkit/capacity.yaml` (the entry sits under `jira:acme.atlassian.net/1`), and `cycle list` shows the capacity from then on.
 
 ## Close
 
-8. Finish `ENG-2` (Jira's Done screen needs a Resolution, as in `issues-jira.md`), then preview the close and close the sprint:
+8. Finish `ENG-2`. Jira's Done screen needs a Resolution, so the first move is refused (exit 2, `INVALID_INPUT`) and the second supplies it, as in `issues-jira.md`. Then preview the close and close the sprint:
 
    ```
+   node scripts/pmkit.mjs issues move ENG-2 done --json
    node scripts/pmkit.mjs issues move ENG-2 done --field resolution=Done --json
    node scripts/pmkit.mjs cycle close 1 --dry-run --json
    node scripts/pmkit.mjs cycle close 1 --json
    ```
 
-   Expect the move to give `after.status.category` `done`. The dry run shows `sprint` in state `closed` and `unfinished` with `ENG-1` only, and changes nothing (`cycle list` still shows sprint `1` `active`). The real run completes the sprint and returns `sprint` (state `closed`, capacity kept), `unfinished` with `ENG-1`, and `problems: []`.
+   Expect the first move to fail, and the second to give `after.status.category` `done`. The dry run shows `sprint` in state `closed` and `unfinished` with `ENG-1` only, and changes nothing (`cycle list` still shows sprint `1` `active`). The real run completes the sprint and returns `sprint` (state `closed`, capacity kept), `unfinished` with `ENG-1`, and `problems: []`.
 
 9. Read the work items after the close:
 
@@ -117,13 +118,18 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 
 ## A Kanban-only space
 
-10. In a space whose only board is Kanban (the test serves one board of type `kanban`), `cycle list` fails with exit 2 and `NOT_SUPPORTED`.
+10. In a space whose only board is Kanban (the test serves one board of type `kanban`):
+
+    ```
+    node scripts/pmkit.mjs cycle list --json
+    ```
+
+    Expect exit 2 and `error.code` `NOT_SUPPORTED`.
 
 ## Failures
 
 | Case | Code | Next step |
 |---|---|---|
-| Any `cycle` command in a space without a Scrum board | `NOT_SUPPORTED` | Create a Scrum board for the space in Jira |
-| No sprint field in `mappings.fields` | `NOT_SUPPORTED` | Run `/pmkit:setup` |
-| A move to done without `--field` for a required screen field | `INVALID_INPUT` | Run with `--dry-run`, then pass `--field <id>=<value>` |
-| `issues list --sprint none` or `current` with no sprint field | `NOT_SUPPORTED` | Run `/pmkit:setup` |
+| `cycle` in a space without a Scrum board (step 10) | `NOT_SUPPORTED` | Create a Scrum board for the space in Jira |
+| A move to done without `--field` for a required screen field (step 8) | `INVALID_INPUT` | Run with `--dry-run`, then pass `--field <id>=<value>` |
+| `issues list --sprint none` or `current` with no sprint field in `mappings.fields` | `NOT_SUPPORTED` | Run `/pmkit:setup` (covered by `scripts/lib/jira/filter.test.mjs`, not by this runbook's steps) |

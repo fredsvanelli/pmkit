@@ -94,19 +94,22 @@ test('the runbook names every command the test runs', () => {
     'cycle close 1 --json',
     'issues list --sprint none --json',
     'issues get ENG-2 --json',
+    'issues move ENG-2 done --json',
+    'cycle list --json',
   ]
   for (const command of commands) assert.ok(text.includes(`node scripts/pmkit.mjs ${command}`), command)
   assert.ok(text.includes('PMK-370'))
 })
 
 test('the sprint flows, step by step', () => {
-  const { pmkit, write } = session()
+  const { pmkit, write, root } = session()
   write('title-1.txt', 'Plan the sprint')
   write('title-2.txt', 'Ship the sprint')
 
   // Capabilities
   const capabilities = body(pmkit(['capabilities', '--json'])).capabilities
   assert.equal(capabilities.find((entry) => entry.id === 'cycles').path, 'native')
+  assert.equal(capabilities.find((entry) => entry.id === 'capacity').path, 'derived')
 
   // Open: a dry run, the active sprint, a planned one
   const dry = body(pmkit(['cycle', 'open', '--start', '2026-11-22', '--goal', 'Ship sprints', '--dry-run', '--json']))
@@ -134,8 +137,12 @@ test('the sprint flows, step by step', () => {
   // Capacity lands in .pmkit/capacity.yaml, not in Jira
   const capacity = body(pmkit(['cycle', 'capacity', '1', '--set', 'acc-1=8', '--json']))
   assert.deepEqual(capacity.after.capacity, { 'acc-1': 8 })
+  assert.match(fs.readFileSync(path.join(root, '.pmkit', 'capacity.yaml'), 'utf8'), /jira:acme\.atlassian\.net\/1/)
 
   // Close: ENG-2 is done, ENG-1 is not
+  const refused = pmkit(['issues', 'move', 'ENG-2', 'done', '--json'])
+  assert.equal(refused.code, 2, refused.stdout)
+  assert.equal(JSON.parse(refused.stdout).error.code, 'INVALID_INPUT')
   const moved = body(pmkit(['issues', 'move', 'ENG-2', 'done', '--field', 'resolution=Done', '--json']))
   assert.equal(moved.after.status.category, 'done')
   const closeDry = body(pmkit(['cycle', 'close', '1', '--dry-run', '--json']))
