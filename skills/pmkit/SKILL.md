@@ -56,6 +56,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | review the draft issues of a GitHub Project, or convert drafts into issues | `/pmkit:github:draft-issues` | `${CLAUDE_PLUGIN_ROOT}/commands/github/draft-issues.md` |
 | see who is on triage duty in Linear, change the triage rotation, or read Triage Intelligence suggestions | `/pmkit:linear:triage-rotation` | `${CLAUDE_PLUGIN_ROOT}/commands/linear/triage-rotation.md` |
 | read the Jira Premium Plans of the site: scheduling settings, cross-project releases, and the capacity of each team | `/pmkit:jira:plans-scenarios` | `${CLAUDE_PLUGIN_ROOT}/commands/jira/plans-scenarios.md` |
+| read the ideas of a Jira Product Discovery project with their votes and delivery work, or connect an idea to an epic | `/pmkit:jira:product-discovery` | `${CLAUDE_PLUGIN_ROOT}/commands/jira/product-discovery.md` |
 | check the tracker files, fix what can be fixed and resolve git conflict markers | `/pmkit:local:doctor` | `${CLAUDE_PLUGIN_ROOT}/commands/local/doctor.md` |
 | render a board, roadmap or sprint view as Markdown or HTML to share with people outside the agent | `/pmkit:local:render` | `${CLAUDE_PLUGIN_ROOT}/commands/local/render.md` |
 | move the tracker to Linear, import a Linear team into .issues/, undo or finish a migration | `/pmkit:local:migrate` | `${CLAUDE_PLUGIN_ROOT}/commands/local/migrate.md` |
