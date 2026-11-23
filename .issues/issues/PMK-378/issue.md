@@ -8,7 +8,7 @@ parent: EPC-14
 related: [PMK-80]
 milestone: jira
 created: 2026-11-23T05:37:43.860Z
-updated: 2026-11-23T05:37:48Z
+updated: 2026-11-23T05:58:20Z
 ---
 
 ## Description
@@ -21,3 +21,5 @@ Source: PMK-80 (docs/superpowers/specs/2026-11-23-pmk-80-map-jira-time-tracking-
 - [ ] The worklog field on a search carries at most 20 worklogs with the total, so metricEvents reads the rest
 - [ ] A worklog writes timespent and WorklogId changelog items (dropped from the events) and nothing else that would count the time twice
 - [ ] With time tracking off, the configuration read reports it and capabilities shows time_tracking absent
+- [ ] Editing or deleting a worklog in Jira writes no changelog item (such as WorklogTimeSpent) that issues get --history shows as a jira: update; if it does, drop it as timespent is dropped
+- [ ] With time tracking off, issues get --history works and the worklog calls are refused as the fake assumes
