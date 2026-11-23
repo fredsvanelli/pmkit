@@ -9,6 +9,7 @@ export function listText(result) {
 }
 
 export function connectText(result, dryRun) {
-  if (result.before.epics.includes(result.epic)) return `${result.idea} is already connected to ${result.epic}`
-  return dryRun ? `would connect ${result.idea} to ${result.epic}\ndry run: nothing was written` : `connected ${result.idea} to ${result.epic}`
+  const done = result.before.epics.includes(result.epic)
+  const line = done ? `${result.idea} is already connected to ${result.epic}` : `${dryRun ? 'would connect' : 'connected'} ${result.idea} to ${result.epic}`
+  return dryRun ? `${line}\ndry run: nothing was written` : line
 }

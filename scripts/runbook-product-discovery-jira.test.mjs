@@ -123,7 +123,7 @@ test('the Jira Product Discovery flows, step by step', () => {
   ])
   assert.equal(listed.hasMore, false)
   assert.ok(listed.warnings.includes(insights))
-  assert.ok(listed.warnings.includes('Jira did not return the votes of 1 ideas'))
+  assert.ok(listed.warnings.includes('Jira did not return the votes of 1 idea'))
 
   // Step 3: one project named, in any case, and a cut list.
   for (const key of ['IDEA', 'idea']) assert.deepEqual(body(pmkit(['jira', 'ideas', 'list', '--project', key, '--json'])).ideas.map((idea) => idea.id), ['IDEA-2', 'IDEA-1'], key)

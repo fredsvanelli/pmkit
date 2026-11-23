@@ -48,7 +48,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
    IDEA-1  Bulk export  (Discovery)  votes 7  insights unread  delivery none
    ```
 
-   The JSON has `available: true`, `project` `{ key: "IDEA", name: "Ideas" }`, `IDEA-1` with `votes` `[{ field: "Votes", value: 7 }]`, `IDEA-2` with `value: null`, `insights: null` and `epics: []` on both, and `hasMore: false`. The warnings are `Jira's REST API does not return Jira Product Discovery insights, so insights are unread` and `Jira did not return the votes of 1 ideas`.
+   The JSON has `available: true`, `project` `{ key: "IDEA", name: "Ideas" }`, `IDEA-1` with `votes` `[{ field: "Votes", value: 7 }]`, `IDEA-2` with `value: null`, `insights: null` and `epics: []` on both, and `hasMore: false`. The warnings are `Jira's REST API does not return Jira Product Discovery insights, so insights are unread` and `Jira did not return the votes of 1 idea`.
 
 3. Name the project, in any case, and cut the list:
 

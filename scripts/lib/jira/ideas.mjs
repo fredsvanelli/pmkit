@@ -84,7 +84,7 @@ export function ideaOperations({ client, site, discovery, epics, requireActor })
     const warnings = [
       ...(ideas.length > 0 ? [INSIGHTS_UNREAD] : []),
       ...(votes.length === 0 ? [`${chosen.key} has no votes field, so votes are unread`] : []),
-      ...(unvoted > 0 ? [`Jira did not return the votes of ${unvoted} ideas`] : []),
+      ...(unvoted > 0 ? [`Jira did not return the votes of ${unvoted} ${unvoted === 1 ? 'idea' : 'ideas'}`] : []),
     ]
     return { available: true, site, project: { key: chosen.key, name: chosen.name }, ideas, hasMore, warnings }
   }

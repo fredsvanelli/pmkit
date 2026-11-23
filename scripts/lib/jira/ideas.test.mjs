@@ -56,7 +56,7 @@ test('list reads the only JPD project\'s ideas, newest first, with votes and unr
   assert.deepEqual(result.ideas.find((idea) => idea.id === 'IDEA-2').votes, [{ field: 'Votes', value: null }])
   assert.ok(result.ideas.every((idea) => idea.insights === null))
   assert.ok(result.warnings.includes(INSIGHTS_UNREAD))
-  assert.ok(result.warnings.includes('Jira did not return the votes of 1 ideas'))
+  assert.ok(result.warnings.includes('Jira did not return the votes of 1 idea'))
   assert.equal(result.hasMore, false)
   const query = new URL(searches(fetch)[0].url).searchParams
   assert.equal(query.get('jql'), 'project = "IDEA" ORDER BY created DESC, key DESC')

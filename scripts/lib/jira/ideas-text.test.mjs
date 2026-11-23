@@ -25,6 +25,7 @@ test('connectText says would connect, connected, or already connected', () => {
   assert.equal(connectText(result, true), 'would connect IDEA-1 to ENG-1\ndry run: nothing was written')
   assert.equal(connectText(result, false), 'connected IDEA-1 to ENG-1')
   assert.equal(connectText({ ...result, before: { epics: ['ENG-1'] } }, false), 'IDEA-1 is already connected to ENG-1')
+  assert.equal(connectText({ ...result, before: { epics: ['ENG-1'] } }, true), 'IDEA-1 is already connected to ENG-1\ndry run: nothing was written')
 })
 
 test('a list line names each votes field when an idea has several', () => {
