@@ -6,3 +6,7 @@
 {"at":"2026-11-23T05:05:01Z","by":"fred","op":"comment","to":"2026-11-23T05-05-01Z-fred.md"}
 {"at":"2026-11-23T05:05:02Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-11-23T05:05:02Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-374"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-375"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-376"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-377"}

@@ -8,10 +8,11 @@ estimate: 5
 assignee: fred
 parent: EPC-7
 blocked_by: [PMK-77]
+related: [PMK-374, PMK-375, PMK-376, PMK-377]
 milestone: jira
 branch: fredsvanelli/pmk-79-map
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-23T05:05:02Z
+updated: 2026-11-23T05:13:22Z
 ---
 
 ## Description
