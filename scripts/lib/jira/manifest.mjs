@@ -1,7 +1,7 @@
 // The capability manifest of the Jira tracker: one entry per capability, from the raw discovery and the config.
 // See "The manifest" in docs/superpowers/specs/2026-11-22-pmk-76-jira-discovery-and-manifest-design.md.
 
-import { CAPABILITIES } from '../capabilities.mjs'
+import { CAPABILITIES, linkedCodeDetail } from '../capabilities.mjs'
 import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldRoles } from './discovery.mjs'
 
@@ -55,7 +55,7 @@ function siteAnswers(raw, pmkit) {
     demand_signals: null,
     request_queue: null,
     time_tracking: setting('timeTracking') ? { path: 'native' } : absent("Turn on time tracking in Jira's global settings"),
-    linked_code: { path: 'derived', detail: { source: 'git' }, ...((pmkit?.git_host?.system ?? 'none') === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
+    linked_code: { path: 'derived', detail: linkedCodeDetail(pmkit?.git_host?.system), ...((pmkit?.git_host?.system ?? 'none') === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
     agent_delegation: null,
     security_alerts: null,
     user_inbox: null,

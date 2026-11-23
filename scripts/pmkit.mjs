@@ -55,6 +55,7 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
+import { createBitbucketHost } from './lib/bitbucket/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
 import { listText as plansListText, getText as plansGetText } from './lib/jira/plans-text.mjs'
 import { listText as ideasListText, connectText as ideasConnectText } from './lib/jira/ideas-text.mjs'
@@ -1758,7 +1759,7 @@ export const COMMANDS = [
       if (ctx.list('login').length > 0 && !ctx.flag('reviews')) throw usageError('--login matches review requests, so it needs --reviews', 'Add --reviews, or drop --login')
       const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
       const { user, since, hidden, items, complete, problems } = result
-      const reviews = ctx.flag('reviews') ? reviewRequests(ctx, user, ctx.list('login')) : null
+      const reviews = ctx.flag('reviews') ? await reviewRequests(ctx, user, ctx.list('login')) : null
       const lines = []
       if (items.length === 0) lines.push(`no unseen mentions, assignments or status changes for ${user}${since === null ? '' : ` since ${since}`}`)
       else lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text', 'Seen', 'Key'], items.map((i) => [i.at, i.kind, i.issue, i.title ?? '(unreadable)', i.by ?? '', i.in, inboxText(i), i.seen ? 'yes' : 'no', i.key])))
@@ -2244,7 +2245,7 @@ export const COMMANDS = [
         const notes = [...syncNote, ...linked(dry, false)]
         return { data: { branch, from, ...(notes.length > 0 ? { notes } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
       }
-      host.createBranch(branch, { from })
+      await host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor, { base })
       const notes = [...createdNote, ...linked(result, true)]
       return { data: { branch, from, ...result, ...(notes.length > 0 ? { notes } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
@@ -2260,7 +2261,7 @@ export const COMMANDS = [
       const body = ctx.opt('body-file') !== undefined ? readInput(ctx.opt('body-file')) : defaultPrBody(issue)
       const request = { title: `${issue.title} (${issue.id})`, body, head: issue.branch, base: defaultBranch(ctx), draft: ctx.flag('draft') }
       // gh refuses a second pull request for a branch, so an open one is pushed to and returned as it is.
-      const found = host.getPullRequest({ head: issue.branch })
+      const found = await host.getPullRequest({ head: issue.branch })
       const open = found?.state === 'OPEN' ? found : null
       // In the JSON too, as `issues branch` does: the agent reads the JSON. The push is never refused for it.
       const behind = behindNotes(ctx, issue.branch, request.base, !ctx.dryRun)
@@ -2271,9 +2272,9 @@ export const COMMANDS = [
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
         return { data: { ...request, existing: open !== null, pr: open, ...behindData }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...behind, ...(await capabilityNotesOrNone(ctx))] }
       }
-      host.push(issue.branch)
+      await host.push(issue.branch)
       if (open) return { data: { ...open, existing: true, ...behindData }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
-      const pr = host.openPullRequest(request)
+      const pr = await host.openPullRequest(request)
       return { data: { ...pr, existing: false, ...behindData }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
@@ -2285,7 +2286,7 @@ export const COMMANDS = [
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
       // The detail read gives the base of the pull request in the same gh call (PMK-308); the default branch only when gh leaves it out.
-      const found = host.getPullRequest({ head: issue.branch }, { detail: true })
+      const found = await host.getPullRequest({ head: issue.branch }, { detail: true })
       const pr = withoutDetail(found)
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
       if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
@@ -2293,7 +2294,7 @@ export const COMMANDS = [
       const behind = behindNotes(ctx, issue.branch, found.detail?.baseRefName || defaultBranch(ctx), true)
       const behindData = behind.length > 0 ? { notes: behind } : {}
       if (ctx.dryRun) return { data: { ...pr, isDraft: false, ...behindData }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
-      const ready = host.markReady(pr.number)
+      const ready = await host.markReady(pr.number)
       return { data: { ...ready, ...behindData }, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
@@ -2303,6 +2304,7 @@ export const COMMANDS = [
       if (ctx.opt('issue') === undefined) throw usageError('pr review needs --issue', 'pmkit pr review --issue <id> --body-file <file>')
       if (ctx.opt('body-file') === undefined) throw usageError('pr review needs --body-file', 'pmkit pr review --issue <id> --body-file <file>')
       const host = ctx.host()
+      if (host.system === 'bitbucket') throw notOnBitbucket('pr review', 'Post the review on the pull request page, or post it on the issue with pmkit issues comment')
       let body = readInput(ctx.opt('body-file'))
       if (body.trim() === '') throw usageError('the review body is empty', 'Write the summary of the review to the body file')
       let comments = ctx.opt('comments-file') === undefined ? [] : reviewComments(readInput(ctx.opt('comments-file')))
@@ -2322,14 +2324,14 @@ export const COMMANDS = [
       }
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
-      const found = host.getPullRequest({ head: issue.branch })
+      const found = await host.getPullRequest({ head: issue.branch })
       if (found?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}, or post the review on the issue with pmkit issues comment`)
       // Every inline line is checked against the diff before any write, so a dry run shows what GitHub would refuse.
       let commitId = null
       if (comments.length > 0) {
         // The head is read before the diff, so the lines checked are never newer than the commit the review is pinned to.
-        commitId = host.prRefs(found.number).headRefOid
-        const diff = host.prDiff(found.number)
+        commitId = (await host.prRefs(found.number)).headRefOid
+        const diff = await host.prDiff(found.number)
         if (diff === null) throw usageError(`GitHub refused the diff of pull request #${found.number} as too large, so the lines of the inline comments cannot be checked`, 'Put the findings in the body and post the review without --comments-file')
         const lines = new Map()
         for (const section of splitDiff(diff)) lines.set(section.path, new Set([...(lines.get(section.path) ?? []), ...rightLines(section.text)]))
@@ -2341,7 +2343,7 @@ export const COMMANDS = [
       const notes = [...(redacted?.count > 0 ? [`redacted ${redacted.count} ${redacted.count === 1 ? 'value' : 'values'}: ${Object.entries(redacted.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`] : []), ...(await capabilityNotesOrNone(ctx))]
       const what = `a review with ${comments.length} inline ${comments.length === 1 ? 'comment' : 'comments'} on pull request #${pr.number} ${pr.url}`
       if (ctx.dryRun) return { data, text: `would post ${what}\ndry run: nothing was written`, notes }
-      const review = host.postReview(pr.number, { body, comments, commitId })
+      const review = await host.postReview(pr.number, { body, comments, commitId })
       return { data: { ...data, review }, text: `posted ${what}\n${review.url}`, notes }
     },
   },
@@ -2349,10 +2351,10 @@ export const COMMANDS = [
     name: 'pr status', summary: 'pull request, checks, reviews and the blockers verdict of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
     run: async (ctx) => {
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch }, { detail: true })
-      const checks = pr ? host.prChecks(pr.number) : []
+      const pr = await host.getPullRequest({ head: branch }, { detail: true })
+      const checks = pr ? await host.prChecks(pr.number) : []
       const reviews = pr?.detail.reviews ?? []
       // The checks are read once: collectBlockers gets the list this command already has. A merged or closed pull request reads nothing more.
       // A blocker read that fails for a reason that may pass (rate limit, 5xx, network) must not lose the pull request and its checks:
@@ -2361,7 +2363,7 @@ export const COMMANDS = [
       let failed = null
       if (pr) {
         try {
-          found = collectBlockers({ ...host, prChecks: () => checks }, pr)
+          found = hostBlockers({ ...host, prChecks: () => checks }, pr)
         } catch (error) {
           if (!isPmkitError(error) || (error.code !== 'UPSTREAM' && error.code !== 'RATE_LIMITED')) throw error
           failed = { area: 'blockers', code: error.code, message: error.message, nextStep: error.nextStep }
@@ -2383,8 +2385,9 @@ export const COMMANDS = [
       const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
       if (limit !== undefined && (limit < 1 || limit > 100)) throw usageError('--limit must be from 1 to 100')
       if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
-      const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
-      const lines = deploys.map((d) => `${d.environment} ${d.state ?? 'unknown'} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
+      const deploys = await ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
+      // A Bitbucket deploy has no ref, and may have no commit: what is missing is left out, never printed as null.
+      const lines = deploys.map((d) => [d.environment, d.state ?? 'unknown', d.ref, d.sha?.slice(0, 7), d.createdAt, d.url].filter((part) => part !== null && part !== undefined && part !== '').join(' '))
       const warnings = unknownDeployWarnings(deploys)
       return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), warnings, notes: await capabilityNotesOrNone(ctx) }
     },
@@ -2398,9 +2401,9 @@ export const COMMANDS = [
       const tail = ctx.opt('tail') === undefined ? 200 : whole('tail', ctx.opt('tail'))
       if (tail < 1) throw usageError('--tail must be at least 1')
       const host = ctx.host()
-      const branch = runId === undefined ? ctx.opt('branch') ?? host.currentBranch() : undefined
+      const branch = runId === undefined ? ctx.opt('branch') ?? await host.currentBranch() : undefined
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch> or --run <id>, or switch to a branch')
-      const found = host.ciLogs({ branch, runId })
+      const found = await host.ciLogs({ branch, runId })
       if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const { log, truncated } = tailLines(found.log, tail)
       const failed = FAILED_RUN.has(found.conclusion)
@@ -2410,7 +2413,7 @@ export const COMMANDS = [
         : !failed ? `${label} did not fail (${found.conclusion ?? found.status}), ${hasLog ? 'the log below holds its failed steps' : 'so it has no failed-step log'}`
           : hasLog ? null
             : found.conclusion === 'startup_failure' ? `${label} ended with startup_failure: it never started a job, so it has no log`
-              : `${label} failed (${found.conclusion}) but GitHub returned no log for it`
+              : `${label} failed (${found.conclusion}) but ${hostName(host)} returned no log for it`
       const newer = found.newerRun
       const supersededNote = newer ? `newer run ${newer.runId} of ${found.workflowName ?? 'the same workflow'} ended ${newer.conclusion} on ${newer.createdAt}, so this failure may already be fixed` : null
       const run = { ...found, log, failed, hasLog, logNote, supersededNote }
@@ -2428,20 +2431,22 @@ export const COMMANDS = [
       const requested = ctx.opt('base')
       if (requested !== undefined && (requested === '' || requested.startsWith('-'))) throw new PmkitError('INVALID_INPUT', `base "${requested}" is not a valid branch name`, 'Use a branch name that does not start with -')
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const found = host.getPullRequest({ head: branch })
+      const found = await host.getPullRequest({ head: branch })
       const notes = []
       // Only an open or merged pull request holds the work of the branch. A closed one is not what the review looks at.
       let pr = found && (found.state === 'OPEN' || found.state === 'MERGED') ? found : null
       if (found && !pr) notes.push(`pull request #${found.number} is closed without merge, so this is the local diff`)
-      // The refs of a pull request are read once, and only by the paths that need them.
+      // The refs of a pull request are read once, and only by the paths that need them. A Bitbucket read is a promise, kept as one.
       let refsOf
       const prRefs = () => (refsOf ??= host.prRefs(found.number))
       // gh returns the newest merged pull request of a name, so a reused branch name finds an old one. Its head is then not on the branch
       // (a tip of the local branch or of origin, or behind one: the local branch may be ahead of or behind what was merged).
       if (pr?.state === 'MERGED') {
-        const onBranch = host.branchHas(branch, () => prRefs().headRefOid)
+        // branchHas calls back synchronously, and only when the branch exists: Bitbucket's async head is read before it.
+        const head = host.system === 'bitbucket' ? (await prRefs()).headRefOid : undefined
+        const onBranch = await host.branchHas(branch, () => (host.system === 'bitbucket' ? head : prRefs().headRefOid))
         if (onBranch === false) {
           notes.push(`pull request #${pr.number} is merged and its head is not on ${branch}, so it is not used and this is the local diff`)
           pr = null
@@ -2451,32 +2456,32 @@ export const COMMANDS = [
       let local = null
       let incomplete = false
       if (pr) {
-        full = host.prDiff(pr.number)
+        full = await host.prDiff(pr.number)
         if (full === null) {
-          notes.push(`GitHub refused the diff of pull request #${pr.number} because it is too large, so this is the local diff`)
+          notes.push(`${hostName(host)} refused the diff of pull request #${pr.number} because it is too large, so this is the local diff`)
         } else {
-          const unpushed = host.unpushedCommits(branch)
+          const unpushed = await host.unpushedCommits(branch)
           if (unpushed > 0) notes.push(unpushed === 1 ? `${branch} has 1 local commit that is not on origin, so the pull request diff does not include it` : `${branch} has ${unpushed} local commits that are not on origin, so the pull request diff does not include them`)
         }
       }
       const source = full === null ? 'local' : 'pull_request'
       if (full === null) {
         // A stacked pull request is compared with its own base, not the default branch. --base still wins.
-        const prBase = requested === undefined && pr ? prRefs().baseRefName : undefined
+        const prBase = requested === undefined && pr ? (await prRefs()).baseRefName : undefined
         const diffAgainst = (name) => host.localDiff({ branch, base: name })
         if (prBase !== undefined) {
           try {
-            local = diffAgainst(prBase)
+            local = await diffAgainst(prBase)
           } catch (error) {
             if (error.code !== 'INVALID_INPUT' || !/base branch/.test(error.message)) throw error
             incomplete = true
             notes.push(...defaultBranchNotes(ctx))
-            local = diffAgainst(defaultBranch(ctx))
+            local = await diffAgainst(defaultBranch(ctx))
             notes.push(`the base ${prBase} of pull request #${pr.number} does not exist here or on origin, so this is the local diff against ${local.base}; run git fetch origin`)
           }
         } else {
           if (requested === undefined) notes.push(...defaultBranchNotes(ctx))
-          local = diffAgainst(requested ?? defaultBranch(ctx))
+          local = await diffAgainst(requested ?? defaultBranch(ctx))
         }
         full = local.diff
         if (local.uncommitted) notes.push('the local diff includes the uncommitted changes of tracked files')
@@ -2484,14 +2489,14 @@ export const COMMANDS = [
         // whatever the working tree adds to the diff.
         if (pr?.state === 'MERGED' && local.committedEmpty) {
           incomplete = true
-          notes.push(`pull request #${pr.number} is merged and GitHub refused its diff as too large, and the commits of ${branch} no longer differ from ${local.base}, so the diff is not available`)
+          notes.push(`pull request #${pr.number} is merged and ${hostName(host)} refused its diff as too large, and the commits of ${branch} no longer differ from ${local.base}, so the diff is not available`)
         }
       }
       // The notes about the working tree are warnings: a tree that cannot be read must not stop the command.
       let tree = local
       let treeError = local?.treeError ?? null
       if (local === null) {
-        try { tree = host.workingTree(branch) } catch (error) { treeError = error.message }
+        try { tree = await host.workingTree(branch) } catch (error) { treeError = error.message }
       }
       if (treeError !== null) {
         incomplete = true
@@ -2526,9 +2531,10 @@ export const COMMANDS = [
     name: 'pr blockers', summary: 'what blocks the pull request of a branch: checks, reviews, conflicts, open threads and policies; reads only', usage: '[--branch b]', args: [], flags: ['branch'],
     run: async (ctx) => {
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      if (host.system === 'bitbucket') throw notOnBitbucket('pr blockers', 'Read the merge checks on the pull request page')
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch }, { detail: true })
+      const pr = await host.getPullRequest({ head: branch }, { detail: true })
       if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const found = collectBlockers(host, pr)
       return { data: { branch, pr: withoutDetail(pr), ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
@@ -2547,7 +2553,7 @@ export const COMMANDS = [
       const problems = found.problems.map(({ id, code, message }) => ({ id, code, message }))
       for (const issue of candidates) {
         try {
-          const pr = host.getPullRequest({ head: issue.branch })
+          const pr = await host.getPullRequest({ head: issue.branch })
           if (pr?.mergedAt) {
             await moveOrRefuse(tracker, issue.id, 'done', actor, { dryRun: ctx.dryRun })
             moved.push({ id: issue.id, pr: pr.number })
@@ -2814,7 +2820,7 @@ async function runRisks(ctx) {
   try {
     const host = ctx.host()
     try {
-      prs = host.listPullRequests()
+      prs = await host.listPullRequests()
       if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
       openPrsByBranch = prsByBranch(prs)
     } catch (error) {
@@ -2825,7 +2831,7 @@ async function runRisks(ctx) {
     if (Array.isArray(prs)) {
       for (const issue of needsPrLookup(all, { eventsByIssue, openPrsByBranch, today, stuckBusinessDays })) {
         try {
-          const pr = host.getPullRequest({ head: issue.branch })
+          const pr = await host.getPullRequest({ head: issue.branch })
           if (pr !== null && pr.state !== 'OPEN') closedPrsByBranch[issue.branch] = pr
         } catch (error) {
           // A branch hand-edited to something gh rejects (INVALID_INPUT) fails only this lookup.
@@ -2836,7 +2842,7 @@ async function runRisks(ctx) {
     }
     let defaultBranchCi
     try {
-      defaultBranchCi = { branch, ...failingWorkflows(host.listRuns({ branch })) }
+      defaultBranchCi = { branch, ...failingWorkflows(await host.listRuns({ branch })) }
     } catch (error) {
       if (!affectsOneCall(error)) throw error
       defaultBranchCi = { branch, error: errorOf(error) }
@@ -3114,7 +3120,7 @@ async function runReleaseReadiness(ctx) {
   try {
     const host = ctx.host()
     try {
-      prs = host.listPullRequests()
+      prs = await host.listPullRequests()
       if (prs.length === 200) {
         prsIncomplete = true
         hostWarnings.push('only the 200 most recently created open pull requests were read')
@@ -3125,12 +3131,13 @@ async function runReleaseReadiness(ctx) {
       hostWarnings.push(`pull requests not checked: ${error.message}`)
     }
     try {
-      deploys = host.listDeploys({})
+      deploys = await host.listDeploys({})
       // The tag's own deploy may be older than the newest 20: ask for the deploys made for the tag, as `v1` and as `refs/tags/v1`.
-      if (choice.basis === 'release' && choice.source.tag) {
+      // A Bitbucket deploy has no ref, so there is no deploy of the tag to ask for (PMK-81).
+      if (choice.basis === 'release' && choice.source.tag && host.system !== 'bitbucket') {
         const known = new Set(deploys.map((d) => d.id))
         for (const ref of [choice.source.tag, `refs/tags/${choice.source.tag}`]) {
-          for (const deploy of host.listDeploys({ ref, limit: 100 })) if (!known.has(deploy.id)) { known.add(deploy.id); deploys.push(deploy) }
+          for (const deploy of await host.listDeploys({ ref, limit: 100 })) if (!known.has(deploy.id)) { known.add(deploy.id); deploys.push(deploy) }
         }
         deploys.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
       }
@@ -3325,11 +3332,11 @@ async function runTrackAgents(ctx) {
     if (read.problem) row.problems.push(read.problem)
     if (host !== null) {
       if (!row.branch) row.pr = { state: 'no_branch' }
-      else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+      else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: `not read: ${hostName(host)} rate limit reached earlier in this run` }
       else {
         try {
-          const pr = cachedHost.getPullRequest({ head: row.branch }, { detail: true })
-          row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'no_pr' }
+          const pr = await cachedHost.getPullRequest({ head: row.branch }, { detail: true })
+          row.pr = pr ? prSummary(pr, hostBlockers(cachedHost, pr)) : { state: 'no_pr' }
         } catch (error) {
           // A missing or logged out gh fails every lookup the same way, so it stops the command.
           if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
@@ -3348,8 +3355,8 @@ async function runTrackAgents(ctx) {
   if (found.problems.length > 0) causes.push('an issue file did not parse')
   if (found.hasMore === true) causes.push('the issue read was cut')
   if (rows.some((row) => row.delegation.state === 'unknown')) causes.push('the comments of an issue could not be read or were cut')
-  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
-  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push(`a pull request could not be read from ${hostName(host)}`)
+  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push(notVerifiedCause(host))
   const incompleteLine = `the list is incomplete: ${causes.join('; ') || 'some reads failed'}, so what is marked unknown or not verified is not confirmed`
   if (incomplete) warnings.push(incompleteLine)
   if (host !== null) notes.push(...(await capabilityNotesOrNone(ctx)))
@@ -3379,7 +3386,7 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
   let list = []
   let cut = false
   try {
-    list = host.listPullRequests()
+    list = await host.listPullRequests()
     if (list.length === 200) {
       cut = true
       causes.push('only the 200 most recently created open pull requests were read')
@@ -3421,11 +3428,11 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
     if (!issue) {
       // A pull request with no issue is not read in detail: that read costs several calls, and a bot with no work behind it is noise.
       row.pr = { state: item.isDraft === true ? 'draft' : 'open', number: item.number, url: item.url, blocked: null, blocking: [], unknown: ['not read: no issue has this branch'], unchecked: [] }
-    } else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+    } else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: `not read: ${hostName(host)} rate limit reached earlier in this run` }
     else {
       try {
-        const pr = cachedHost.getPullRequest({ number: item.number }, { detail: true })
-        row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'unknown', code: 'UPSTREAM', message: `pull request #${item.number} was listed but could not be read` }
+        const pr = await cachedHost.getPullRequest({ number: item.number }, { detail: true })
+        row.pr = pr ? prSummary(pr, hostBlockers(cachedHost, pr)) : { state: 'unknown', code: 'UPSTREAM', message: `pull request #${item.number} was listed but could not be read` }
       } catch (error) {
         if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
         row.pr = { state: 'unknown', code: error.code, message: error.message }
@@ -3437,8 +3444,8 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
     rows.push(row)
   }
   if (rows.some((row) => row.problems.some((problem) => problem.message.startsWith('the comments')) || (row.delegation?.state === 'unknown' && row.delegate !== null))) causes.push('the comments of an issue could not be read or were cut')
-  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
-  if (rows.some((row) => row.issueMatch === 'found' && (row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0))) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push(`a pull request could not be read from ${hostName(host)}`)
+  if (rows.some((row) => row.issueMatch === 'found' && (row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0))) causes.push(notVerifiedCause(host))
   const incomplete = causes.length > 0
   const incompleteLine = `the list is incomplete: ${causes.join('; ')}, so what is marked unknown or not verified is not confirmed`
   if (incomplete) warnings.push(incompleteLine)
@@ -4956,7 +4963,11 @@ function inboxText(item) {
  * The open pull requests that request a review of one of `logins` (ignoring case), from one gh call (PMK-225). A request made to a
  * team never matches and is listed apart. A failed read is `verified: false` with the reason, never an empty list.
  */
-function reviewRequests(ctx, user, logins) {
+async function reviewRequests(ctx, user, logins) {
+  // Bitbucket review requests are not read yet (PMK-81): the inbox still lists the tracker items, and says this part is not verified.
+  if (ctx.config().pmkit.git_host?.system === 'bitbucket') {
+    return { verified: false, requested: null, teamRequests: null, complete: false, reason: 'review requests are not read on Bitbucket yet', code: 'NOT_SUPPORTED' }
+  }
   // A Linear member id is a Linear user id, never a GitHub login, so without --login there is nothing to match: not verified, never 0.
   if (ctx.config().pmkit.tracker?.system === 'linear' && logins.length === 0) {
     return { verified: false, requested: null, teamRequests: null, complete: false, reason: 'the Linear member id is not a GitHub login; pass --login <github login> to match review requests', code: 'INVALID_INPUT' }
@@ -4964,7 +4975,7 @@ function reviewRequests(ctx, user, logins) {
   const wanted = new Set([user, ...logins].map((login) => String(login).toLowerCase()))
   let prs
   try {
-    prs = ctx.host().listReviewRequests()
+    prs = await ctx.host().listReviewRequests()
   } catch (error) {
     if (!isPmkitError(error)) throw error
     return { verified: false, requested: null, teamRequests: null, complete: false, reason: error.message, code: error.code }
@@ -4993,14 +5004,36 @@ function reviewLines(reviews, user) {
 }
 
 function makeHost(ctx) {
-  if (ctx.config().pmkit.git_host?.system !== 'github') {
+  const { system, repo } = ctx.config().pmkit.git_host ?? {}
+  if (system === 'bitbucket') return createBitbucketHost({ root: ctx.root, env: ctx.env, repo, fetch: ctx.fetch })
+  if (system !== 'github') {
     throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup')
   }
   return createGithubHost({ root: ctx.root, env: ctx.env })
 }
 
+/** The name of a host for messages that would otherwise say GitHub on any host. */
+const hostName = (host) => (host?.system === 'bitbucket' ? 'Bitbucket' : 'GitHub')
+
+/** A command Bitbucket does not support yet (PMK-81), refused before any read. */
+const notOnBitbucket = (command, nextStep) => new PmkitError('NOT_SUPPORTED', `${command} is not supported on Bitbucket yet`, nextStep)
+
+/**
+ * The blockers of a pull request. Bitbucket has no blocker reads yet (PMK-81): the verdict is unknown, never "nothing blocks it",
+ * with one unchecked entry the existing text shows as not verified.
+ */
+function hostBlockers(host, pr) {
+  if (host.system !== 'bitbucket') return collectBlockers(host, pr)
+  return { blocked: null, blocking: [], pending: [], unknown: [], unchecked: [{ area: 'blockers', code: 'NOT_SUPPORTED', message: 'blockers are not verified on Bitbucket' }] }
+}
+
+/** The cause of a blockers verdict that is not verified, for the incomplete line of track-agents. */
+const notVerifiedCause = (host) => (host?.system === 'bitbucket'
+  ? 'blockers are not verified on Bitbucket'
+  : 'a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+
 /** Runs one command line. Resolves to the text for each stream and the exit code. */
-export async function run(argv, { env = process.env, cwd = process.cwd(), adapters = ADAPTERS } = {}) {
+export async function run(argv, { env = process.env, cwd = process.cwd(), adapters = ADAPTERS, fetch } = {}) {
   const stdout = []
   const stderr = []
   let code = 0
@@ -5042,6 +5075,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     let host
     const ctx = {
       root, cwd, env, dryRun, now, args: parsed.positionals, json, adapters,
+      // The fetch of the Bitbucket host: a test's fake, else the global one, read when the host is made.
+      get fetch() { return fetch ?? globalThis.fetch },
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,

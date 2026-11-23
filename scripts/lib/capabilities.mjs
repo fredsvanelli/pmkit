@@ -35,6 +35,14 @@ export const SERVED_BY = {
 }
 
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
+
+/**
+ * The detail of linked_code for a git host. Bitbucket names itself and the commands it refuses (PMK-81), so an agent
+ * reads that before it calls them.
+ */
+export function linkedCodeDetail(gitHost) {
+  return gitHost === 'bitbucket' ? { source: 'git', host: 'bitbucket', unsupported: ['pr review', 'pr blockers'] } : { source: 'git' }
+}
 const absentHint = (id) => `No pmkit command serves ${id} in the Local tracker yet`
 
 /** The ids of manifest entries that claim a path other than absent while no command in servedBy serves them. */
@@ -48,7 +56,7 @@ export function buildCapabilities({ estimate, gitHost }) {
     native_metrics: { detail: { source: 'events' } },
     security_alerts: { detail: { source: 'scanners' } },
     agent_delegation: { detail: { source: 'assignee', run: 'local' } },
-    linked_code: { detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
+    linked_code: { detail: linkedCodeDetail(gitHost), ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
   }
   return CAPABILITIES.map((id) => {
     if (!SERVED_BY[id].length) return { id, path: 'absent', enableHint: absentHint(id) }

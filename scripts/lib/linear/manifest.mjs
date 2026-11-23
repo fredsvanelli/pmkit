@@ -1,7 +1,7 @@
 // The capability manifest of the Linear tracker: one entry per capability, from the raw discovery and the config.
 // See "The capability manifest" in docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md.
 
-import { CAPABILITIES, SERVED_BY } from '../capabilities.mjs'
+import { CAPABILITIES, SERVED_BY, linkedCodeDetail } from '../capabilities.mjs'
 import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { estimateScale } from './discovery.mjs'
 
@@ -119,7 +119,7 @@ export function buildLinearCapabilities(raw, pmkit = {}) {
   answers.capacity = answers.cycles.path === 'absent' ? { path: 'absent', enableHint: 'Capacity needs cycles' } : { path: 'derived', detail: { source: 'local', file: CAPACITY_FILE } }
   answers.linked_code = (raw.integrations ?? []).some((service) => GIT_INTEGRATIONS.includes(service))
     ? { path: 'native', detail: { source: 'integration' } }
-    : { path: 'derived', detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) }
+    : { path: 'derived', detail: linkedCodeDetail(gitHost), ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) }
 
   return CAPABILITIES.map((id) => {
     const answer = answers[id]

@@ -62,7 +62,11 @@ export function buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gi
   const pullRequests = Array.isArray(prs)
     ? prs.filter((pr) => byBranch.has(pr.headRefName)).map((pr) => ({ number: pr.number, title: pr.title, url: pr.url, isDraft: pr.isDraft === true, issue: byBranch.get(pr.headRefName), checks: { total: (pr.statusCheckRollup ?? []).length, failing: failingPullRequests([pr])[0]?.failing ?? [], pending: (pr.statusCheckRollup ?? []).filter(isPending).length } })).sort((a, b) => a.number - b.number)
     : prs
-  const matches = (deploy) => basis === 'release' && Boolean(source.tag) && (deploy.ref === source.tag || deploy.ref === `refs/tags/${source.tag}`)
+  // A deploy with no ref (Bitbucket's names a pipeline, not a tag) cannot be matched to the tag: null, never false (PMK-81).
+  const matches = (deploy) => {
+    if (basis !== 'release' || !source.tag) return false
+    return deploy.ref === null ? null : deploy.ref === source.tag || deploy.ref === `refs/tags/${source.tag}`
+  }
   const deployRows = Array.isArray(deploys) ? deploys.map((deploy) => ({ ...deploy, matchesRelease: matches(deploy) })) : deploys
   const complete = problems.length === 0 && !truncated
   const openWork = counts.open + (Array.isArray(pullRequests) ? pullRequests.length : 0)
