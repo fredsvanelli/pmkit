@@ -182,11 +182,19 @@ test('get warns when the default scenario is not in the plan list', async () => 
   const { plans } = setup({ [LIST]: page([{ ...LISTED, id: '99' }]), [PLAN]: { json: FULL_PLAN }, [TEAMS]: page([]) })
   const { plan, warnings } = await plans.get('12')
   assert.equal(plan.scenario, null)
-  assert.ok(warnings.includes('the default scenario of plan 12 was not found in the plan list (1 plans read)'), warnings.join('|'))
+  assert.ok(warnings.includes('the default scenario of plan 12 was not found in the plan list (1 plan read)'), warnings.join('|'))
 })
 
 test('a 403 with the CAPTCHA header stays AUTH, not "no Premium"', async () => {
   const captcha = { status: 403, headers: { 'X-Seraph-LoginReason': 'AUTHENTICATION_DENIED' }, json: {} }
   await assert.rejects(setup({ [LIST]: captcha }).plans.list(), { code: 'AUTH' })
   await assert.rejects(setup({ [LIST]: page([LISTED]), [PLAN]: captcha, [TEAMS]: page([]) }).plans.get('12'), { code: 'AUTH' })
+})
+
+test('a team of a type pmkit does not know is left out with a warning, without a request', async () => {
+  const { fetch, plans } = setup({ [LIST]: page([LISTED]), [PLAN]: { json: { id: 12, name: 'x', status: 'Active' } }, [TEAMS]: page([{ id: '9', type: 'Virtual' }]) })
+  const { plan, warnings } = await plans.get('12')
+  assert.deepEqual(plan.teams, [])
+  assert.ok(warnings.includes('team 9 has type Virtual, which pmkit does not read'), warnings.join('|'))
+  assert.equal(plansCalls(fetch).some((call) => call.url.includes('/team/')), false)
 })

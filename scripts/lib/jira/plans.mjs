@@ -73,7 +73,11 @@ export function planOperations({ client, site }) {
   }
 
   async function readTeam(planId, listed, scheduling, warnings) {
-    const kind = listed.type === 'Atlassian' ? 'atlassian' : 'planonly'
+    const kind = { Atlassian: 'atlassian', PlanOnly: 'planonly' }[listed.type]
+    if (!kind) {
+      warnings.push(`team ${listed.id} has type ${listed.type}, which pmkit does not read`)
+      return null
+    }
     try {
       const detail = await client.request('GET', `${PLANS}/${planId}/team/${kind}/${encodeURIComponent(listed.id)}`)
       return toTeam(listed, detail ?? {}, scheduling)
@@ -92,13 +96,15 @@ export function planOperations({ client, site }) {
     }
     try {
       const plan = (await client.request('GET', `${PLANS}/${id}`)) ?? {}
-      const teams = await client.paginate(`${PLANS}/${id}/team`, { key: 'values', pageSize: 50 })
       // getPlan has no scenarioId: the default scenario comes from the list, archived and trashed plans included.
-      const all = (await readList({ archived: true, trashed: true })).items
+      const [teams, { items: all }] = await Promise.all([
+        client.paginate(`${PLANS}/${id}/team`, { key: 'values', pageSize: 50 }),
+        readList({ archived: true, trashed: true }),
+      ])
       const listed = all.find((item) => String(item.id) === id)
       const scheduling = toScheduling(plan.scheduling)
       const warnings = teams.hasMore ? [`plan ${id} has more teams than pmkit read`] : []
-      if (!listed) warnings.push(`the default scenario of plan ${id} was not found in the plan list (${all.length} plans read)`)
+      if (!listed) warnings.push(`the default scenario of plan ${id} was not found in the plan list (${all.length} plan${all.length === 1 ? '' : 's'} read)`)
       const read = await Promise.all(teams.items.map((team) => readTeam(id, team, scheduling, warnings)))
       return {
         available: true,
