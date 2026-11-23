@@ -226,9 +226,11 @@ export function createBitbucketHost({ root, env, repo, fetch, exec }) {
         raw = await pipelineOf(runId)
       } else {
         const pipelines = await branchPipelines(branch)
-        raw = pipelines.find((p) => FAILED_RUN.has(toRun(p).conclusion))
-        if (!raw) return null
-        newerRun = newerSuccess(pipelines.map(toRun), toRun(raw))
+        const runs = pipelines.map(toRun)
+        const index = runs.findIndex((r) => FAILED_RUN.has(r.conclusion))
+        if (index === -1) return null
+        raw = pipelines[index]
+        newerRun = newerSuccess(runs, runs[index])
       }
       const run = toRun(raw)
       // A run that succeeded or has not finished has no failed step to read.
