@@ -64,13 +64,17 @@ function checkPageOptions({ pageSize, limit, maxPages }) {
 }
 
 /**
- * Reads where a page leaves the walk: { more, token, startAt, broken }. A page with nextPageToken is a token list;
- * a token list ends with the token; an offset list ends at isLast, an empty page or total.
+ * Reads where a page leaves the walk: { more, token, cursor, startAt, broken }. A page with nextPageToken is a token list
+ * and one with nextPageCursor is a cursor list (Plans); each ends with its token or cursor, a cursor list also at last.
+ * An offset list ends at isLast, an empty page or total.
  */
-function nextPosition(page, list, { token, startAt }) {
+function nextPosition(page, list, { token, cursor, startAt }) {
   const next = page.nextPageToken
   if (typeof next === 'string' && next !== '') return { more: page.isLast !== true, token: next, startAt, broken: next === token }
   if (token !== undefined) return { more: false, token, startAt, broken: false }
+  const nextCursor = page.nextPageCursor
+  if (typeof nextCursor === 'string' && nextCursor !== '') return { more: page.last !== true, cursor: nextCursor, startAt, broken: nextCursor === cursor }
+  if (cursor !== undefined) return { more: false, cursor, startAt, broken: false }
   const offset = startAt + list.length
   const atTotal = typeof page.total === 'number' && offset >= page.total
   return { more: page.isLast !== true && list.length > 0 && !atTotal, token, startAt: offset, broken: false }
@@ -222,18 +226,25 @@ export function createJiraClient({
     return send(method, path, options)
   }
 
-  /** Reads one Jira list, offset (startAt) or token (nextPageToken), into { items, hasMore }. */
+  /** Reads one Jira list, offset (startAt), token (nextPageToken) or cursor (nextPageCursor), into { items, hasMore }. */
   async function paginate(path, { query = {}, key = 'values', pageSize = 50, limit, maxPages } = {}) {
     checkCall('GET', path)
     checkPageOptions({ pageSize, limit, maxPages })
     // Without a limit, a careless call stops at 10 requests, as on Linear (PMK-30).
     const pageCap = maxPages ?? (limit === undefined ? 10 : Infinity)
     const items = []
-    let position = { token: undefined, startAt: 0 }
+    let position = { token: undefined, cursor: undefined, startAt: 0 }
     for (let pages = 1; ; pages += 1) {
       const maxResults = Math.min(pageSize, (limit ?? Infinity) - items.length)
       // startAt 0 is every offset list's default, so the first request also suits a token list.
-      const where = position.token !== undefined ? { nextPageToken: position.token } : position.startAt > 0 ? { startAt: position.startAt } : {}
+      const where =
+        position.token !== undefined
+          ? { nextPageToken: position.token }
+          : position.cursor !== undefined
+            ? { cursor: position.cursor }
+            : position.startAt > 0
+              ? { startAt: position.startAt }
+              : {}
       const page = await request('GET', path, { query: { ...query, maxResults, ...where } })
       const list = page?.[key]
       if (!Array.isArray(list)) throw brokenPage(path)

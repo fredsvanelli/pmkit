@@ -299,6 +299,22 @@ test('paginate follows nextPageToken on search/jql', async () => {
   assert.deepEqual(second, { jql: 'project = ENG', maxResults: '50', nextPageToken: 't1' })
 })
 
+test('paginate follows nextPageCursor as cursor until last', async () => {
+  const plans = 'GET /rest/api/3/plans/plan'
+  const { fetch, client } = setup({ [plans]: answers([{ values: [1], nextPageCursor: 'c1', last: false }, { values: [2], last: true }]) })
+  assert.deepEqual(await client.paginate('/rest/api/3/plans/plan', { query: { includeArchived: false } }), { items: [1, 2], hasMore: false })
+  assert.deepEqual(pageCalls(fetch, plans).map(queryOf), [
+    { includeArchived: 'false', maxResults: '50' },
+    { includeArchived: 'false', maxResults: '50', cursor: 'c1' },
+  ])
+})
+
+test('paginate fails on a repeated nextPageCursor', async () => {
+  const plans = 'GET /rest/api/3/plans/plan'
+  const { client } = setup({ [plans]: answers([{ values: [1], nextPageCursor: 'c1', last: false }, { values: [2], nextPageCursor: 'c1', last: false }]) })
+  await assert.rejects(client.paginate('/rest/api/3/plans/plan'), { code: 'UPSTREAM' })
+})
+
 test('paginate stops at the limit, asks for only what it needs and says Jira had more', async () => {
   const { fetch, client } = setup({ [BOARDS]: answers([{ values: [1, 2] }, { values: [3] }, { values: [4] }]) })
   assert.deepEqual(await client.paginate('/rest/agile/1.0/board', { pageSize: 2, limit: 3 }), { items: [1, 2, 3], hasMore: true })
