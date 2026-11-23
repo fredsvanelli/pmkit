@@ -161,3 +161,14 @@ test('connect refuses another actor', async () => {
   assert.equal(calls(), before)
   assert.equal(posts(fake).length, 0)
 })
+
+test('connect refuses a delivery link type where neither side says implements', async () => {
+  const VAGUE = { id: '10010', name: 'Polaris work item link', inward: 'relates to', outward: 'relates to' }
+  const { fake, ideas, epic } = await setup({ edit: (raw) => ({ ...raw, linkTypes: [...raw.linkTypes.filter((type) => type.id !== '10010'), VAGUE] }) })
+  await epic('Exports')
+  await assert.rejects(ideas.connect('IDEA-1', 'ENG-1', 'acc-1'), {
+    code: 'NOT_SUPPORTED',
+    message: "Jira Product Discovery's delivery link type Polaris work item link does not say which side implements the idea",
+  })
+  assert.equal(posts(fake).length, 0)
+})

@@ -57,6 +57,7 @@ import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migra
 import { createGithubHost } from './lib/github/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
 import { listText as plansListText, getText as plansGetText } from './lib/jira/plans-text.mjs'
+import { listText as ideasListText, connectText as ideasConnectText } from './lib/jira/ideas-text.mjs'
 import { convertText as draftConvertText, listText as draftListText } from './lib/github/draft-issues.mjs'
 import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
@@ -2719,6 +2720,25 @@ export const COMMANDS = [
     run: async (ctx) => {
       const result = await (await ctx.jira('plans')).get(ctx.args[0])
       return { data: result, text: plansGetText(result), warnings: result.warnings }
+    },
+  },
+  // Jira Product Discovery (PMK-83): read one JPD project's ideas and connect an idea to an epic of the space.
+  {
+    name: 'jira ideas list', summary: "one Jira Product Discovery project's ideas, newest first, with votes and connected epics; insights are unread; says so when the site has no JPD project",
+    usage: '[--project KEY] [--limit n]', jira: true, flags: ['project', 'limit'],
+    run: async (ctx) => {
+      const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      if (limit !== undefined && limit < 1) throw usageError('--limit must be at least 1')
+      const result = await (await ctx.jira('ideas')).list({ project: ctx.opt('project'), limit })
+      return { data: result, text: ideasListText(result), warnings: result.warnings }
+    },
+  },
+  {
+    name: 'jira ideas connect', summary: "connects an idea to an epic of the space with Jira Product Discovery's delivery link; --dry-run previews",
+    usage: '<idea> <epic>', write: true, jira: true, args: ['idea', 'epic'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.jira('ideas')).connect(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: ideasConnectText(result, ctx.dryRun) }
     },
   },
   {

@@ -15,6 +15,7 @@ import { epicOperations, NO_MILESTONES } from './epic-ops.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { makeContext } from './issues.mjs'
+import { ideaOperations } from './ideas.mjs'
 import { planOperations } from './plans.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { releaseOperations } from './releases.mjs'
@@ -213,5 +214,8 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
   const implemented = { discover, capabilities, ...refused, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Jira-only feature beside the contract, as GitHub's discussions (PMK-90). Plans read no mapping, so they skip guarded (PMK-82).
   const plans = planOperations({ client, site: scope.site })
-  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), plans }
+  // Ideas (PMK-83): connect reads the epic mapping, so it runs through guarded; list does not.
+  const ideaOps = ideaOperations({ client, site: scope.site, raw: async () => (await discovery()).raw, epics: { getDeliverable: implemented.getDeliverable }, requireActor: issues.requireActor })
+  const ideas = { list: ideaOps.list, connect: guarded(ideaOps.connect) }
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), plans, ideas }
 }

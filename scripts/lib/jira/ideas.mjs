@@ -84,6 +84,9 @@ export function ideaOperations({ client, site, raw, epics, requireActor }) {
     if (!isIssueKey(key) || !discoveryProjects(discovered).some((space) => space.key === keyPrefix(key))) throw notAnIdea(key, site)
     const type = deliveryType(discovered)
     if (!type) throw new PmkitError('NOT_SUPPORTED', `Jira Product Discovery's delivery link type is missing on ${site}`, 'Check that Jira Product Discovery is installed and its "Polaris work item link" type exists')
+    if (lower(type.outward) !== IMPLEMENTS && lower(type.inward) !== IMPLEMENTS) {
+      throw new PmkitError('NOT_SUPPORTED', `Jira Product Discovery's delivery link type ${type.name} does not say which side implements the idea`, `Check the "${type.name}" link type in Jira's settings`)
+    }
     const before = epicsOf(await readIdea(key))
     const target = (await epics.getDeliverable(epic)).id
     const result = (after) => ({ idea: key, epic: target, linkType: type.name, before: { epics: before }, after: { epics: after } })
