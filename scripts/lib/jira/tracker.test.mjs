@@ -61,9 +61,9 @@ test('one discovery per run, and discover refresh reads again', async () => {
 })
 
 test('an operation of a later task is a NOT_SUPPORTED stub', async () => {
-  await assert.rejects(setup().tracker.listDeliverables(), {
+  await assert.rejects(setup().tracker.listGoals(), {
     code: 'NOT_SUPPORTED',
-    message: 'the Jira adapter does not implement listDeliverables yet',
+    message: 'the Jira adapter does not implement listGoals yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
 })
