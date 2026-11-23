@@ -4,10 +4,12 @@
 import { adfToText } from './adf.mjs'
 import { compareTimes } from '../model.mjs'
 import { jiraTime } from './issues.mjs'
+import { worklogEvents } from './worklogs.mjs'
 
 const HOURS = 'timeoriginalestimate'
 const PLAIN = { summary: 'title', description: 'description', duedate: 'due' }
 const PARENT = ['IssueParentAssociation', 'Parent']
+const WORKLOG_ITEMS = ['timespent', 'WorklogId']
 const accountOf = (user) => user?.accountId ?? null
 
 /** The pmkit comment of a Jira comment node on the issue `key`, with the body from ADF. */
@@ -50,6 +52,8 @@ function changesOf(change, context) {
   const { field, fieldId } = change
   const id = fieldId ?? field
   const names = [change.fromString ?? null, change.toString ?? null]
+  // A worklog is its own log_time event (PMK-80), so the time it adds is not a change too.
+  if (WORKLOG_ITEMS.includes(id)) return []
   if (id === 'status') return [['move', 'status', ...names]]
   if (id === 'labels') return labelChanges(change)
   if (id === 'assignee') return [['assign', 'assignee', change.from ?? null, change.to ?? null]]
@@ -93,11 +97,12 @@ function createdAs(item, histories, context) {
 
 /**
  * The events of one work item: a `create` event (its `to` is the item as created), one event per changelog item (one per label added or removed), and a
- * `comment` event per raw comment node, sorted by `at` (equal times keep the changelog order, then the comments).
+ * `comment` event per raw comment node and a `log_time` event per worklog, sorted by `at` (equal times keep the changelog order, then
+ * the comments, then the worklogs).
  */
-export function toEvents(item, histories, context, comments = []) {
+export function toEvents(item, histories, context, comments = [], worklogs = []) {
   const create = { at: jiraTime(item.fields.created), by: accountOf(item.fields.creator), op: 'create', to: createdAs(item, histories, context) }
   const noted = comments.map((node) => ({ at: jiraTime(node.created), by: accountOf(node.author), op: 'comment' }))
-  const all = [create, ...histories.flatMap((history) => eventsOf(history, context)), ...noted]
+  const all = [create, ...histories.flatMap((history) => eventsOf(history, context)), ...noted, ...worklogEvents(worklogs)]
   return all.sort((a, b) => compareTimes(a.at, b.at))
 }

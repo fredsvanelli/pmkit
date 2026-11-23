@@ -144,3 +144,18 @@ test('sprint changes give one sprint event from the sprint ids removed and added
   assert.deepEqual(await sprint('43', null), [['update', 'sprint', '43', null]])
   assert.deepEqual(await sprint('42, 43', '42, 43'), [])
 })
+
+test('the time a worklog adds is no event of the changelog, so it is not counted twice (PMK-80)', async () => {
+  const events = toEvents(ITEM, [history([
+    { field: 'timespent', fieldId: 'timespent', from: null, fromString: null, to: '2700', toString: '2700' },
+    { field: 'WorklogId', from: null, fromString: null, to: '10000', toString: '10000' },
+  ])], await context())
+  assert.deepEqual(events, [CREATE])
+  assert.equal((await one({ field: 'timeestimate', fieldId: 'timeestimate', from: '3600', to: '900' })).field, 'jira:timeestimate')
+})
+
+test('the worklogs join the events as log_time events, sorted by time (PMK-80)', async () => {
+  const worklogs = [{ id: '1', author: { accountId: 'acc-2' }, started: '2026-11-21T09:00:00.000+0000', timeSpentSeconds: 600 }]
+  const events = toEvents(ITEM, [], await context(), [], worklogs)
+  assert.deepEqual(events, [CREATE, { at: '2026-11-21T09:00:00.000Z', by: 'acc-2', op: 'log_time', minutes: 10 }])
+})
