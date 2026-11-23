@@ -27,6 +27,18 @@ function labelChanges(change) {
   ]
 }
 
+const idsOf = (text) => String(text ?? '').split(',').map((id) => id.trim()).filter(Boolean)
+
+// One sprint event: the last sprint left (else the last one held when another is joined) to the last sprint joined; none when the list is unchanged.
+function sprintChange(change) {
+  const before = idsOf(change.from)
+  const after = idsOf(change.to)
+  const added = after.filter((id) => !before.includes(id))
+  const removed = before.filter((id) => !after.includes(id))
+  if (!added.length && !removed.length) return []
+  return [['update', 'sprint', removed.at(-1) ?? (added.length ? (before.at(-1) ?? null) : null), added.at(-1) ?? null]]
+}
+
 const numberOf = (value, id) => {
   const number = value === null || value === undefined || value === '' ? NaN : Number(value)
   if (Number.isNaN(number)) return null
@@ -47,6 +59,7 @@ function changesOf(change, context) {
   if (context.fields.estimate && id === context.fields.estimate) {
     return [['update', 'estimate', numberOf(change.from ?? change.fromString, id), numberOf(change.to ?? change.toString, id)]]
   }
+  if (context.fields.sprint && id === context.fields.sprint) return sprintChange(change)
   if (field === 'Link') return [change.to ? ['link', 'links', null, change.to] : ['unlink', 'links', change.from ?? null, null]]
   if (PARENT.includes(field) || PARENT.includes(fieldId)) return [['update', 'parent', ...names]]
   return [['update', `jira:${fieldId ?? field}`, ...names]]
