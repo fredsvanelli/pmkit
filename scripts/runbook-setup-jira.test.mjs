@@ -88,6 +88,7 @@ test('first run: the space, the questions, the preview, the write and the check 
   assert.deepEqual(first.questions.map((q) => q.path), ['tracker.scope.space'])
   assert.deepEqual(first.questions[0].candidates, ['ENG', 'OPS'])
   assert.deepEqual(first.questions[0].titles, { ENG: 'Engineering', OPS: 'Operations' })
+  assert.equal(first.questions[0].recommended, null)
   assert.equal(fs.existsSync(configFile(root)), false)
 
   // Step 2: the status, field and type questions.
@@ -148,6 +149,14 @@ test('existing config: nothing changed keeps the file, a renamed status is asked
   assert.equal(fs.readFileSync(configFile(root), 'utf8'), held)
   json(pmkit(root, ['init', '--update', '--status', 'in_review=Code Review', '--json'], { routes: renamed }))
   assert.match(fs.readFileSync(configFile(root), 'utf8'), /in_review: Code Review/)
+
+  // Step 7: a held space the site lacks is the space question again.
+  const missing = { status: 404, json: { errorMessages: ['No project could be found'] } }
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('space: ENG', 'space: NOPE'))
+  const gone = json(pmkit(root, ['init', '--update', '--dry-run', '--json'], { routes: { 'GET /rest/api/3/project/NOPE': missing, 'GET /rest/api/3/project/NOPE/statuses': missing } }))
+  assert.deepEqual(gone.questions.map((q) => q.path), ['tracker.scope.space'])
+  assert.equal(gone.questions[0].broken.was, 'NOPE')
+  assert.deepEqual(gone.questions[0].candidates, ['ENG', 'OPS'])
 })
 
 test('errors: no variables is AUTH, a Server site is NOT_SUPPORTED, and nothing is written (steps 8 and 9)', () => {
@@ -163,7 +172,7 @@ test('errors: no variables is AUTH, a Server site is NOT_SUPPORTED, and nothing 
 
 test('setup.md offers Jira', () => {
   const text = fs.readFileSync(SETUP, 'utf8')
-  for (const expected of ['### Jira first run', '### Existing Jira config', 'id.atlassian.com', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'Jira Cloud only', '"Jira"', 'init --tracker jira']) {
+  for (const expected of ['can browse no space', 'Browse access', 'in Jira first', '### Jira first run', '### Existing Jira config', 'id.atlassian.com', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'Jira Cloud only', '"Jira"', 'init --tracker jira']) {
     assert.ok(text.includes(expected), expected)
   }
 })
