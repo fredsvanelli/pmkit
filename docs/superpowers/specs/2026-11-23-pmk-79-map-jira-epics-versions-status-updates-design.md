@@ -1,6 +1,6 @@
 # PMK-79: Map Jira epics, versions and status updates
 
-Issue PMK-79, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criteria: "Epics are epics, versions are releases" and "A status update goes to Home, or to a comment when Home is not available". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0016, the PMK-76, PMK-77 and PMK-78 specs, the GitHub (PMK-88, ADR 0010, 0011) and Linear (PMK-38, PMK-246, PMK-261) epic and release code, and the code. Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Open product questions are in "Questions for the owner". No Jira credentials exist, so nothing here was checked against a live site.
+Issue PMK-79, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Acceptance criteria: "Epics are epics, versions are releases" and "A status update goes to Home, or to a comment when Home is not available". Written on 2026-11-23 by a dispatched worker with no live user dialogue, from the issue, ADR 0013 to 0016, the PMK-76, PMK-77 and PMK-78 specs, the GitHub (PMK-88, ADR 0010, 0011) and Linear (PMK-38, PMK-246, PMK-261) epic and release code, and the code. Calls marked **(builder's call)** change no acceptance criterion; the owner can override any of them. Status: approved by the owner (Orca coordinator) on 2026-11-23, with yes to Q1 to Q4 in "Interview answers". No Jira credentials exist, so nothing here was checked against a live site.
 
 ## Intent
 
@@ -17,7 +17,7 @@ After PMK-78 a Jira repository reads and writes work items and sprints, but ever
 
 ## Non-goals
 
-- Atlassian Home updates (see Question 1): no Home read or write in this issue; filed under EPC-14 if the owner agrees.
+- Atlassian Home updates (Q1): no Home read or write in this issue; filed under EPC-14.
 - Goals on epics (`goal`): `strategic_goals` stays absent ("Jira goals live in Atlassian Home").
 - Release git tags: a Jira version has no tag; `--tag` refuses, as on Linear. So the contract `releases` family (which creates a release with a tag and archives an issue) stays out; unit tests cover releases.
 - Epics of another space, team-managed epic quirks beyond the work type level, Advanced Roadmaps "Target start/end" fields.
@@ -86,19 +86,19 @@ The result is `{ epic, at, author, health, body }` with `at` and `author` from J
 
 `listStatusUpdates(id)`: the epic's comments with `expand=properties`, keeping those with the `pmkit.statusUpdate` property, newest first (same-time ties: the later comment id first). `body` is the comment text minus the first `Status update: ...` paragraph. Other comments are not updates, and status-update comments stay in `listComments` (they are comments in Jira) **(builder's call)**.
 
-The manifest's `status_update` becomes `{ path: 'derived', detail: { source: 'comment' } }` until Home lands (Question 1).
+The manifest's `status_update` becomes `{ path: 'derived', detail: { source: 'comment' } }` (Q1).
 
 ## Releases (`releases.mjs`)
 
 | pmkit | Jira version |
 |---|---|
-| `id`, `name` | `name` (Question 3) |
+| `id`, `name` | `name` (Q3) |
 | `target` | `releaseDate`, when set |
 | `released` | `<releaseDate>T12:00:00Z` when `released` is true and a date is set; else the time pmkit read it is not invented: `released` is left out and `state` is still `released` **(builder's call)** |
 | `state` | `released` when `released`, else `planned` |
 | `description` | `description ?? ''` |
 
-Archived versions are outside pmkit: not listed, not read, not an issue's release (Question 4).
+Archived versions are outside pmkit: not listed, not read, not an issue's release (Q4).
 
 - `listReleases({ state })`: every page of the space's versions, archived ones dropped, sorted with `compareReleaseIds`, filtered by `state` (`INVALID_INPUT` for another).
 - `getRelease(id)`: by name among them, else `NOT_FOUND`, `release <id> does not exist`, next step `pmkit release list`.
@@ -109,6 +109,7 @@ Archived versions are outside pmkit: not listed, not read, not an issue's releas
 Issue fields and search:
 
 - Read: `fixVersions` minus archived ones: one → `release`, two or more → `releases` (sorted), as Linear.
+- Search (Q2): every `searchIssues` adds `issuetype not in (<epic-level type ids>)` when the space has epic-level work types, so `issues list`, cycle plan, metrics and `issues dependencies` see no epic as an issue.
 - Write (`createIssue`, `updateIssue`): `release: <id>` resolves the name (unknown → `INVALID_INPUT`, next step `pmkit release list`) and sets `fixVersions: [{ id }]`, replacing the others; `null` clears.
 - `searchIssues({ release })`: JQL `fixVersion = <version id>`; an unknown id is `INVALID_INPUT` from `checkFilter`.
 - `milestone` with a value (issue writes, epic create, milestone operations) → `NOT_SUPPORTED`, "Jira has no milestones", next step "Use a release (version) or an epic".
@@ -130,12 +131,12 @@ Issue fields and search:
 - A version name with characters a shell splits needs quoting in `release` commands.
 - One comment read per epic in `epic list`.
 
-## Questions for the owner
+## Interview answers (owner, 2026-11-23)
 
-1. **Home or comment.** Atlassian Home updates belong to Home projects, which link to Jira epics rather than being them; Home's API is the Atlassian GraphQL gateway (Townsquare), and no credentials exist to check it. Proposal: this issue writes status updates as epic comments (the AC's fallback), reports `status_update` as `derived` from comments, and files "Publish epic status updates to Atlassian Home when the epic is linked to a Home project" under EPC-14. Alternative: build a Home writer over a fake now, unverified.
-2. **Epics in `issues list`.** On Jira an epic is a work item, so since PMK-77 `issues list` and every `searchIssues` caller (cycle plan, metrics, dependencies) count epics as issues; Local, Linear and GitHub never do. Proposal: `searchIssues` leaves epic-level items out (JQL `issuetype not in (<epic types>)`); `getIssue` still reads an epic key. Alternative: keep them in.
-3. **Release id.** Proposal: the version name (`release get 2.4.0`, unique per space, as GitHub milestones use their title). Alternative: Jira's numeric version id (stable across renames, unreadable).
-4. **Archived versions.** Proposal: outside pmkit, like Linear's canceled releases. Alternative: list them as released.
+- Q1 Home or comment: comments only. Status updates are epic comments with the `pmkit.statusUpdate` property; `status_update` is `derived` from comments. "Publish epic status updates to Atlassian Home when the epic is linked to a Home project" is filed under EPC-14.
+- Q2 Epics in issue searches: `searchIssues` leaves epic-level work items out (JQL `issuetype not in (<epic-level type ids>)`); `getIssue`, `updateIssue` and the relation operations still accept an epic key, so `issues parent <key> <epic>` works. Recorded as ADR 0017.
+- Q3 Release id: the version name, unique per space.
+- Q4 Archived versions: outside pmkit, not listed, not read, not an issue's release.
 
 ## Left to the builder
 
