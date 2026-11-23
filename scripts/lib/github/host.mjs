@@ -1,12 +1,10 @@
-import { spawnSync } from 'node:child_process'
 import { PmkitError } from '../errors.mjs'
 import { FAILED_RUN } from '../risks.mjs'
 import { hideAbsolutePaths } from '../paths.mjs'
+import { createGitLocal, defaultExec, DIFF_TIMEOUT_MS, refArg } from '../git-local.mjs'
 
-// A failed run log can pass the 1 MiB default of spawnSync. 256 MiB leaves room for the largest logs.
-const MAX_OUTPUT = 256 * 1024 * 1024
-// Only the diff reads have a time limit. A push can run a pre-push hook or git-lfs for longer, and a timeout would kill git but not the hook.
-const DIFF_TIMEOUT_MS = 120 * 1000
+export { defaultExec }
+
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 // What pr blockers needs beyond the view, read in the same gh pr view and nested in `detail`.
@@ -18,15 +16,6 @@ const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,head
 const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }'
 const STATUS_QUERY = 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } }'
 export const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
-
-/** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). signal names the signal that ended it, or null. */
-export const defaultExec =
-  ({ root, env }) =>
-  (cmd, args, { input, timeout } = {}) => {
-    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT, timeout })
-    if (result.error) throw result.error
-    return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '', signal: result.signal ?? null }
-  }
 
 const firstLine = (text) => text.split(/\r?\n/).find((line) => line.trim()) ?? ''
 
@@ -48,14 +37,6 @@ function failure(cmd, args, result) {
   // A SAML enforcement or a token without the scopes is a refusal too. The text must start the line, so a branch name cannot fake it.
   else if (/^(?:(?:gh|GraphQL|error): )+(?:Resource protected by organization SAML enforcement|Your token has not been granted the required scopes|your authentication token is missing required scopes)/i.test(detail)) error.httpStatus = 403
   return error
-}
-
-/** Refuses a ref that git or gh would read as an option. */
-function refArg(what, value) {
-  if (typeof value !== 'string' || value === '' || value.startsWith('-')) {
-    throw new PmkitError('INVALID_INPUT', `${what} "${value}" is not a valid branch name`, 'Use a branch name that does not start with -')
-  }
-  return value
 }
 
 export function createGithubHost({ root, env, exec = defaultExec({ root, env }) }) {
@@ -127,37 +108,13 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     return { ...view, detail: reviewRequestsError ? { ...details, reviewRequests: null, reviewRequestsError } : details }
   }
 
-  const workingTree = (branch) => {
-    refArg('branch', branch)
-    const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
-    const current = git(['branch', '--show-current'])
-    if (current.status !== 0) throw failure('git', ['branch', '--show-current'], current)
-    if (current.stdout.trim() !== branch) return null
-    // --no-optional-locks keeps a read from writing the index. --untracked-files=all lists files, not a folder per entry.
-    const args = ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all']
-    const result = git(args)
-    if (result.status !== 0) throw failure('git', args, result)
-    const lines = result.stdout.split('\n').filter((line) => line !== '')
-    const untracked = lines.filter((line) => line.startsWith('??')).length
-    return { uncommitted: lines.length > untracked, untracked }
-  }
-
   const listRuns = ({ branch }) => {
     const args = ['run', 'list', '--branch', refArg('branch', branch), '--limit', '50', '--json', RUN_FIELDS]
     return parse(check('gh', args).stdout, 'the workflow runs')
   }
 
   return {
-    currentBranch: () => check('git', ['branch', '--show-current']).stdout.trim(),
-
-    createBranch(name, { from }) {
-      // --no-track: a remote ref as the base would make git set it as upstream, and a bare git push would then target the default branch.
-      check('git', ['switch', '--no-track', '-c', refArg('branch', name), refArg('from', from)])
-    },
-
-    push(branch) {
-      check('git', ['push', '-u', 'origin', refArg('branch', branch)])
-    },
+    ...createGitLocal({ root, env, exec }),
 
     openPullRequest({ title, body, head, base, draft }) {
       refArg('head', head)
@@ -340,78 +297,10 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     },
 
     /**
-     * The changes of a branch since it left its base. The base is origin/<base> when that exists, so commits of other people
-     * on a stale local base stay out. The branch is the local one, or origin/<branch> when only origin has it. For the branch
-     * that is checked out the diff also holds the index and the working tree (tracked files), because it starts at the
-     * merge base and ends at the working tree. Returns { diff, base, ref, uncommitted, untracked, committedEmpty, treeError }: committedEmpty is true when the commits alone
-     * change nothing, and treeError holds why the working tree could not be read, or null.
-     */
-    localDiff({ branch, base }) {
-      refArg('branch', branch)
-      refArg('base', base)
-      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
-      const exists = (ref) => git(['rev-parse', '--verify', '--quiet', ref]).status === 0
-      const from = [[`refs/remotes/origin/${base}`, `origin/${base}`], [`refs/heads/${base}`, base], [base, base]].find(([ref]) => exists(ref))?.[1]
-      if (from === undefined) throw new PmkitError('INVALID_INPUT', `the base branch "${base}" does not exist here or on origin`, 'Pass --base <branch>, or run git fetch origin')
-      const local = exists(`refs/heads/${branch}`)
-      if (!local && !exists(`refs/remotes/origin/${branch}`)) throw new PmkitError('INVALID_INPUT', `the branch "${branch}" does not exist here or on origin`, 'Pass --branch <branch>, or run git fetch origin')
-      const ref = local ? branch : `origin/${branch}`
-      // A working tree that cannot be read must not stop the committed diff: the caller gets the reason in treeError.
-      let tree = null
-      let treeError = null
-      if (local) {
-        try { tree = workingTree(branch) } catch (error) { treeError = error.message }
-      }
-      const uncommitted = tree?.uncommitted === true
-      const untracked = tree?.untracked ?? 0
-      const diffOf = (args) => {
-        const result = git(args)
-        if (result.status !== 0) throw failure('git', args, result)
-        return result.stdout
-      }
-      if (!uncommitted) {
-        const diff = diffOf(['diff', '--no-color', `${from}...${ref}`])
-        return { diff, base: from, ref, uncommitted, untracked, committedEmpty: diff === '', treeError }
-      }
-      const mergeBase = diffOf(['merge-base', from, ref]).trim()
-      const quiet = git(['diff', '--quiet', `${from}...${ref}`])
-      if (quiet.status > 1) throw failure('git', ['diff', '--quiet', `${from}...${ref}`], quiet)
-      return { diff: diffOf(['diff', '--no-color', mergeBase]), base: from, ref, uncommitted, untracked, committedEmpty: quiet.status === 0, treeError }
-    },
-
-    /**
-     * The state of the working tree when `branch` is the checked out branch, else null. `uncommitted` is true when the index or
-     * a tracked file has changes (the changes localDiff includes); `untracked` counts the files git does not track, which no diff holds.
-     */
-    workingTree,
-
-    /**
-     * Whether the commit `oidOf()` returns is on the branch: a tip of the local branch or of origin/<branch>, or behind one of them. Null when the
-     * branch exists in neither place. The local branch may be ahead of or behind what a pull request merged, so one tip is not enough.
-     */
-    branchHas(branch, oidOf) {
-      refArg('branch', branch)
-      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
-      const tips = [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`].map((ref) => git(['rev-parse', '--verify', '--quiet', ref])).filter((r) => r.status === 0).map((r) => r.stdout.trim())
-      if (tips.length === 0) return null
-      const oid = oidOf()
-      return tips.some((tip) => tip === oid || git(['merge-base', '--is-ancestor', oid, tip]).status === 0)
-    },
-
     /** The base branch name and the head commit of a pull request. */
     prRefs(number) {
       if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
       return parse(check('gh', ['pr', 'view', String(number), '--json', 'baseRefName,headRefOid']).stdout, 'the pull request refs')
-    },
-
-    /** The commits of the local branch that origin/<branch> lacks, or null when either ref is missing. */
-    unpushedCommits(branch) {
-      refArg('branch', branch)
-      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
-      if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).status !== 0) return null
-      if (git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]).status !== 0) return null
-      const result = git(['rev-list', '--count', `origin/${branch}..${branch}`])
-      return result.status === 0 ? Number(result.stdout.trim()) : null
     },
 
     listRuns,
