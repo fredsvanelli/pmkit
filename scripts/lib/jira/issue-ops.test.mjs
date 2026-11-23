@@ -310,21 +310,19 @@ test('searchIssues compares updatedAfter to the instant', async () => {
   assert.deepEqual(found.issues.map((issue) => issue.id), ['ENG-3'])
 })
 
-test("an epic's children come from one batched parent in (...) search per page", async () => {
+test("an epic's children come from one parent in (...) search; searchIssues no longer returns epics (ADR 0017)", async () => {
   const { fake, fetch, tracker } = setup()
   seed(fake.state, 2, { issuetype: WORK_TYPE.epic })
   seed(fake.state, 1, { parent: { key: 'ENG-1' } })
   seed(fake.state, 1, { parent: { key: 'ENG-2' } })
-  const before = callsTo(fetch, 'GET', '/rest/api/3/search/jql').length
   const found = await tracker.searchIssues({})
-  const searches = callsTo(fetch, 'GET', '/rest/api/3/search/jql').slice(before)
-  assert.equal(searches.length, 2)
-  assert.equal(new URL(searches[1].url).searchParams.get('jql'), 'parent in ("ENG-1", "ENG-2")')
-  const byId = Object.fromEntries(found.issues.map((issue) => [issue.id, issue]))
-  assert.deepEqual(byId['ENG-1'].children, ['ENG-3'])
-  assert.deepEqual(byId['ENG-2'].children, ['ENG-4'])
-  assert.deepEqual(byId['ENG-3'].children, [])
+  assert.deepEqual(found.issues.map((issue) => issue.id), ['ENG-3', 'ENG-4'])
+  assert.deepEqual(found.issues.map((issue) => issue.children), [[], []])
+  const before = callsTo(fetch, 'GET', '/rest/api/3/search/jql').length
   assert.deepEqual((await tracker.getIssue('ENG-1')).children, ['ENG-3'])
+  const searches = callsTo(fetch, 'GET', '/rest/api/3/search/jql').slice(before)
+  assert.equal(searches.length, 1)
+  assert.equal(new URL(searches[0].url).searchParams.get('jql'), 'parent in ("ENG-1")')
 })
 
 test('a status the fresh discovery lacks reads with its Jira category, with no second discovery', async () => {
@@ -478,4 +476,14 @@ test('searchIssues by release sends the version id in JQL; an unknown name retur
   const before = versionCalls(fetch)
   await tracker.searchIssues({})
   assert.equal(versionCalls(fetch), before, 'a search without a release reads no versions')
+})
+
+test('searchIssues leaves an epic out, even one in a sprint, and getIssue still reads it (ADR 0017)', async () => {
+  const { fake, fetch, tracker } = setup({ sprints: [SPRINT] })
+  const [story] = seed(fake.state)
+  const [epic] = seed(fake.state, 1, { issuetype: WORK_TYPE.epic })
+  await post(fetch, '/sprint/1/issue', { issues: [story, epic] })
+  assert.deepEqual((await tracker.searchIssues({})).issues.map((issue) => issue.id), [story])
+  assert.deepEqual((await tracker.searchIssues({ sprint: '1' })).issues.map((issue) => issue.id), [story])
+  assert.equal((await tracker.getIssue(epic)).id, epic)
 })

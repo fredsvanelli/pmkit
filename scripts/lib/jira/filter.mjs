@@ -14,6 +14,9 @@ const list = (values) => `(${values.map(jqlString).join(', ')})`
 export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset * DAY).toISOString().slice(0, 10)
 
 
+/** The ids of the space's epic-level work types, which issue searches leave out (ADR 0017). */
+export const epicTypeIds = (context) => context.raw.workTypes.filter((type) => type.level === 'epic').map((type) => type.id)
+
 /** The NOT_SUPPORTED error of a sprint filter on a space with no Scrum board or no Sprint field, else null. */
 export function sprintUnsupported(context) {
   const space = context.space
@@ -90,7 +93,9 @@ const STEP_ORDER = ['text', 'blocked', 'sprint', 'updated']
  * { jql, clientSteps, serverLimit }. `activeId` is the id of the board's active sprint, which `current` means; `versionId` is the Jira id of the release filter's version, undefined when none has its name. `serverLimit` is set only when no client step runs and the order is created.
  */
 export function translateFilter(filter, context, { activeId, versionId } = {}) {
-  const out = { clauses: [`project = ${jqlString(context.space)}`], steps: new Set(), empty: false }
+  const epics = epicTypeIds(context)
+  const scope = [`project = ${jqlString(context.space)}`, ...(epics.length > 0 ? [`issuetype not in ${list(epics)}`] : [])]
+  const out = { clauses: scope, steps: new Set(), empty: false }
   for (const [key, handle] of Object.entries(HANDLERS)) {
     if (filter[key] !== undefined) handle(filter, out, context, { activeId, versionId })
   }
