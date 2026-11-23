@@ -39,6 +39,9 @@ import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { chooseRemote, inferHost, parseRemoteUrl, webHost } from './lib/git-remote.mjs'
 import { HOST_NAME } from './lib/github/client.mjs'
+import { HOST as JIRA_HOST } from './lib/jira/client.mjs'
+import { discoveryView as jiraDiscoveryView } from './lib/jira/discovery.mjs'
+import { SPACE_PATH, proposeJiraSetup, proposeSpace } from './lib/jira/setup.mjs'
 import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, mappedLabelNames, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
 import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
@@ -943,9 +946,9 @@ async function flowInputs(ctx, tracker, statuses) {
 // `github: true` does the same for GitHub-only features (discussions, draft issues): they use ctx.github(feature).
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear or github writes only .pmkit/config.yaml and returns what setup must ask',
-    usage: '[--tracker local|linear|github] [--git-host github|none] [--workspace key] [--team KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'workspace', 'team', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'priority-label', 'estimate-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear, github or jira writes only .pmkit/config.yaml and returns what setup must ask',
+    usage: '[--tracker local|linear|github|jira] [--git-host github|none] [--workspace key] [--team KEY] [--site h] [--space KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'workspace', 'team', 'site', 'space', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'priority-label', 'estimate-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
@@ -3937,7 +3940,8 @@ function initLabels(ctx) {
 const LINEAR_FLAGS = ['workspace', 'team', 'status', 'field', 'type-label']
 const LOCAL_ONLY_FLAGS = ['prefix', 'id-style', 'estimate-unit', 'label', 'member', 'name', 'email', 'members-file']
 const GITHUB_FLAGS = ['host', 'repo', 'project', 'priority-label', 'estimate-label']
-const HOSTED_INIT = ['linear', 'github']
+const JIRA_FLAGS = ['site', 'space']
+const HOSTED_INIT = ['linear', 'github', 'jira']
 
 /** Refuses each flag of `flags` that the call passed: it applies only with --tracker `system`. */
 function rejectFlags(ctx, flags, system) {
@@ -3964,12 +3968,17 @@ function runInit(ctx) {
       system = filed
     }
   }
+  if (system !== 'jira') rejectFlags(ctx, JIRA_FLAGS, 'jira')
   if (system === 'linear') {
     rejectFlags(ctx, GITHUB_FLAGS, 'github')
     return runInitLinear(ctx)
   }
   if (system === 'github') return runInitGithub(ctx)
   rejectFlags(ctx, GITHUB_FLAGS, 'github')
+  if (system === 'jira') {
+    rejectFlags(ctx, ['workspace', 'team'], 'linear')
+    return runInitJira(ctx)
+  }
   for (const flag of LINEAR_FLAGS) {
     if (opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker linear`, `Remove --${flag}`)
   }
@@ -4700,6 +4709,85 @@ async function runInitLinear(ctx) {
     ...hostedInitLines(ctx, { proposal, statuses, notes: proposal.notes, entry }),
   ]
   return { data, text: lines.join('\n') }
+}
+
+/**
+ * The space step of a Jira init: the answer, else the held space, else a question with the site's spaces. Discovers the chosen
+ * space; a space the site lacks is INVALID_INPUT for an answer and the question with broken for a held one.
+ */
+async function resolveJiraSpace(ctx, adapter, site, held) {
+  const answer = ctx.opt('space') === undefined ? undefined : String(ctx.opt('space'))
+  const wanted = answer ?? (typeof held === 'string' && held !== '' ? held : undefined)
+  const listSpaces = async () => {
+    const client = await adapter.connect({ env: ctx.env, site })
+    const { items } = await client.paginate('/rest/api/3/project/search')
+    return { client, spaces: items.map((space) => ({ key: space.key, name: space.name })) }
+  }
+  if (wanted !== undefined) {
+    const config = { root: ctx.root, system: 'jira', pmkit: { tracker: { system: 'jira', scope: { site, space: wanted } } } }
+    try {
+      const view = await (await adapter.create(config, { now: ctx.now, env: ctx.env })).discover({ refresh: true })
+      return { value: wanted, view }
+    } catch (error) {
+      if (!(isPmkitError(error) && error.code === 'NOT_CONFIGURED')) throw error
+      const { client, spaces } = await listSpaces()
+      const step = proposeSpace({ answer, held, heldMissing: true, spaces, site })
+      if (!step.question) throw error
+      return { ...step, session: await client.session() }
+    }
+  }
+  const { client, spaces } = await listSpaces()
+  return { ...proposeSpace({ held, spaces, site }), session: await client.session() }
+}
+
+// init --tracker jira. See docs/superpowers/specs/2026-11-22-pmk-365-setup-pmkit-on-jira-design.md, "The CLI".
+async function runInitJira(ctx) {
+  const adapter = adapterFor('jira', ctx.adapters)
+  const file = hostedInitFile(ctx, 'jira', 'Jira')
+  const { edit } = file
+  let text = withGithubRepo(file.text, ctx.root, file.gitHost)
+  const { current } = hostedDraft(text)
+
+  // The site cannot be discovered, so setup asks the user for it. Only a host reaches the client: a URL is refused here.
+  const site = ctx.opt('site') === undefined ? current.scope.site : String(ctx.opt('site'))
+  if (typeof site !== 'string' || !JIRA_HOST.test(site.toLowerCase())) {
+    throw usageError(site === undefined ? 'setup needs the Jira site' : `--site ${site} is not a host name`, 'Pass --site <host>, such as --site acme.atlassian.net')
+  }
+  const spaceStep = await resolveJiraSpace(ctx, adapter, site, current.scope.space)
+  const { view } = spaceStep
+  const defaults = withLocalDefaults({}).types
+  const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]
+  const proposal = spaceStep.question
+    ? { applied: [], questions: [spaceStep.question], broken: spaceStep.broken, notes: [], values: null }
+    : proposeJiraSetup(view.raw, current, parseMappingFlags(ctx), types)
+
+  for (const [key, value] of [['site', site], ['space', spaceStep.value]]) {
+    if (value !== undefined && value !== current.scope[key]) text = edit(`tracker.scope.${key}`, () => setScalar(text, ['tracker', 'scope', key], value))
+  }
+  if (proposal.values) text = putMappings(text, edit, proposal.values, current)
+  // While the space is a question the file has none yet, so only its absence is let through, and a real run still refuses.
+  const checks = spaceStep.question
+    ? { configProblems: (pmkit) => adapter.configProblems(pmkit).filter((problem) => !problem.startsWith(`${SPACE_PATH} is required`)) }
+    : adapter
+  const entry = writeHostedInit(ctx, checks, file, text, proposal.questions)
+
+  // The statuses as the answers leave them.
+  const statuses = proposal.values
+    ? jiraDiscoveryView(view.raw, { mappings: { status: { ...current.status, ...proposal.values.status } } }).statuses
+    : []
+  // The space question has no discovery, so its viewer comes from the session the space list opened.
+  const viewer = view?.viewer ?? { id: spaceStep.session.viewer.accountId, name: spaceStep.session.viewer.displayName }
+  const space = view ? { key: view.space.key, name: view.space.name, style: view.space.style } : null
+  const data = {
+    dryRun: ctx.dryRun, tracker: 'jira', site, space, viewer,
+    applied: proposal.applied, questions: proposal.questions, broken: proposal.broken, statuses, notes: proposal.notes, files: [entry],
+  }
+  const lines = [
+    `site: ${site}${viewer ? `, viewer ${viewer.name}` : ''}`,
+    `space: ${space ? `${space.key} ${space.name} (${space.style})` : '(not chosen yet)'}`,
+    ...hostedInitLines(ctx, { proposal, statuses, notes: proposal.notes, entry }),
+  ]
+  return { data, text: lines.join('\n'), warnings: view?.warnings ?? [] }
 }
 
 // tracker.path is relative for a folder next to the repository; an absolute one is never shown (PMK-271).

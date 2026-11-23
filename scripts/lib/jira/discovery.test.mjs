@@ -151,6 +151,14 @@ test('an unknown space is NOT_CONFIGURED', async () => {
   })
 })
 
+test('an unknown space is NOT_CONFIGURED when its statuses are 404 too, as on a real site', async () => {
+  const missing = { status: 404, json: { errorMessages: ['No project'] } }
+  await assert.rejects(discover({ routes: { 'GET /rest/api/3/project/ENG': missing, 'GET /rest/api/3/project/ENG/statuses': missing } }), {
+    code: 'NOT_CONFIGURED',
+    nextStep: '/pmkit:setup',
+  })
+})
+
 test('a business space reads no board', async () => {
   const business = { json: { id: '10001', key: 'ENG', name: 'Engineering', projectTypeKey: 'business', style: 'classic', issueTypes: [] } }
   const { raw, fetch } = await discover({ routes: { 'GET /rest/api/3/project/ENG': business } })
