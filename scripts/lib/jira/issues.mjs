@@ -12,7 +12,6 @@ import { categoryOfStatus, discoveryView } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
 import { sprintOf } from './sprints.mjs'
 import { closedSprint, unknownSprint } from '../issue-filter.mjs'
-import { sprintUnsupported } from './filter.mjs'
 
 const BRANCH_PROPERTY = 'pmkit.branch'
 const HOURS = 'timeoriginalestimate'
@@ -303,8 +302,6 @@ function planSprint(patch, state, context, sprints) {
     state.set('sprint', null)
     return
   }
-  const unsupported = sprintUnsupported(context)
-  if (unsupported) throw unsupported
   let found
   if (patch.sprint === 'current') {
     found = sprints.find((sprint) => sprint.state === 'active')

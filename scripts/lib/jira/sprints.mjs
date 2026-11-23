@@ -2,6 +2,7 @@
 // See docs/superpowers/specs/2026-11-22-pmk-78-jira-sprints-design.md, "The sprint model" and "An issue's sprint", and ADR 0016.
 
 import { baseField } from '../local/sprints.mjs'
+import { TERMINAL } from '../model.mjs'
 import { jiraTime } from './issues.mjs'
 
 const SPRINT_ID = /^[1-9][0-9]*$/
@@ -42,7 +43,7 @@ export function sprintOf(values, category, boardId) {
   const own = (values ?? []).filter((value) => value.boardId === undefined || value.boardId === boardId)
   const open = own.find((value) => value.state === 'active') ?? own.find((value) => value.state === 'future')
   if (open) return String(open.id)
-  if (category !== 'done' && category !== 'canceled') return undefined
+  if (!TERMINAL.includes(category)) return undefined
   const last = own.filter((value) => value.state === 'closed').sort(latestClosed)[0]
   return last ? String(last.id) : undefined
 }

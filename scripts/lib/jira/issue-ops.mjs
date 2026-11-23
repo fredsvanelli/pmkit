@@ -105,7 +105,8 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     for (const key of ['updatedAfter', 'updatedBefore']) {
       if (filter[key] !== undefined && Number.isNaN(Date.parse(filter[key]))) throw invalid(`${key} must be a date or a time such as 2026-11-22T10:00:00Z`, 'pmkit issues list --help')
     }
-    return list.find((sprint) => sprint.state === 'active')?.id
+    const active = list.find((sprint) => sprint.state === 'active')
+    return active && String(active.id)
   }
 
   /** Narrows with JQL, then runs the client steps, pmkit's order and the limit. */
@@ -113,14 +114,14 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     const held = await getContext()
     const activeId = await checkSearch(filter, held)
     if (filter.limit === 0) return NOTHING()
-    const translated = translateFilter(filter, held, { activeId: activeId === undefined ? undefined : String(activeId) })
+    const translated = translateFilter(filter, held, { activeId })
     if (translated.empty) return NOTHING()
     const query = { jql: translated.jql, fields: ISSUE_FIELDS(held).join(','), properties: BRANCH }
     const { items, hasMore } = await client.paginate(SEARCH, { query, key: 'issues', pageSize: PAGE_SIZE, limit: translated.serverLimit })
     const issues = await toIssues(items, await contextFor(items))
     const sort = filter.sort ?? 'created'
     // The sprint step compares ids, so current stands for the active sprint's id.
-    const stepFilter = filter.sprint === 'current' ? { ...filter, sprint: String(activeId) } : filter
+    const stepFilter = filter.sprint === 'current' ? { ...filter, sprint: activeId } : filter
     const kept = issues.filter((issue) => translated.clientSteps.every((step) => STEPS[step](issue, stepFilter))).sort(issueComparator(sort, PRIORITIES))
     // Jira's order is created, so a created read that kept limit issues needed no more: hasMore is then false.
     const enough = sort === 'created' && filter.limit !== undefined && kept.length >= filter.limit

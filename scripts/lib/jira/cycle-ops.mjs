@@ -4,6 +4,7 @@
 
 import { entryFor, readCapacity, writeEntry } from '../capacity-store.mjs'
 import { builtInDefaults } from '../config.mjs'
+import { oneLine } from '../issue-fields.mjs'
 import { checkMoveInput, moveTargetIn, stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
 import { addDays, baseField, overlaps, SPRINT_STATES, validDate } from '../local/sprints.mjs'
@@ -74,10 +75,10 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     if (start > end) throw invalid(`start ${start} is after end ${end}`)
     const name = input.name ?? `Sprint ${start}`
     if (typeof name !== 'string' || name.trim() === '') throw invalid('name must be a non-empty string')
-    if (/[\r\n]/.test(name)) throw invalid('name must not contain a line break')
+    oneLine('name', name)
     const goal = input.goal ?? ''
     if (typeof goal !== 'string') throw invalid('goal must be a string')
-    if (/[\r\n]/.test(goal)) throw invalid('goal must not contain a line break')
+    oneLine('goal', goal)
     return { start, end, name: name.trim(), goal }
   }
 
@@ -128,8 +129,12 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
     checkMoveInput(ids, to)
     const found = await scope()
     // The board's sprints are read once here and handed to every updateIssue, so N issues read them once.
-    const raw = to === null ? [] : await readBoardSprints(client, found.boardId)
-    const target = to === null ? null : moveTargetIn(raw.map((sprint) => toSprint(sprint)), to)
+    let raw = []
+    let target = null
+    if (to !== null) {
+      raw = await readBoardSprints(client, found.boardId)
+      target = moveTargetIn(raw.map((sprint) => toSprint(sprint)), to)
+    }
     for (const id of ids) await ops.readItem(id)
     const results = []
     const moved = []
