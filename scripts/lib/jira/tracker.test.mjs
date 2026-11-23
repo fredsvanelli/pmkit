@@ -61,9 +61,9 @@ test('one discovery per run, and discover refresh reads again', async () => {
 })
 
 test('an operation of a later task is a NOT_SUPPORTED stub', async () => {
-  await assert.rejects(setup().tracker.listDeliverables(), {
+  await assert.rejects(setup().tracker.listGoals(), {
     code: 'NOT_SUPPORTED',
-    message: 'the Jira adapter does not implement listDeliverables yet',
+    message: 'the Jira adapter does not implement listGoals yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
 })
@@ -154,4 +154,12 @@ test('the discovery cache file holds no credential', async () => {
   const text = fs.readFileSync(file, 'utf8')
   assert.ok(text.includes('"members"'))
   for (const secret of [FAKE_TOKEN, FAKE_EMAIL]) assert.ok(!text.includes(secret), 'a credential reached the cache')
+})
+
+test('Jira has no milestones: the list is empty, a get is NOT_FOUND and a create is NOT_SUPPORTED', async () => {
+  const { fake, tracker } = issuesSetup()
+  assert.deepEqual(await tracker.listMilestones(), [])
+  await assert.rejects(tracker.getMilestone('m1'), { code: 'NOT_FOUND', message: 'milestone m1 does not exist: Jira has no milestones' })
+  await assert.rejects(tracker.createMilestone({ id: 'm1' }, 'acc-1'), { code: 'NOT_SUPPORTED', message: 'Jira has no milestones', nextStep: 'Use a release (version) or an epic' })
+  assert.deepEqual(fake.writes(), [])
 })

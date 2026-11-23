@@ -21,8 +21,8 @@ const STATUS = {
 const WORK_TYPE = { story: { id: '10001', name: 'Story' }, epic: { id: '10000', name: 'Epic' } }
 
 /** A tracker over a fresh fake, its own user store and repository root. */
-function setup({ requireResolution, pmkit = {}, routes = {}, context, sprints } = {}) {
-  const fake = fakeJiraIssues({ requireResolution, sprints })
+function setup({ requireResolution, pmkit = {}, routes = {}, context, sprints, versions } = {}) {
+  const fake = fakeJiraIssues({ requireResolution, sprints, versions })
   const fetch = fakeJiraFetch({ ...fake.routes, ...routes })
   const at = context ?? { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
   const config = { root: at.root, pmkit: { version: 1, tracker: TRACKER, mappings: { types: TYPES }, ...pmkit } }
@@ -310,21 +310,19 @@ test('searchIssues compares updatedAfter to the instant', async () => {
   assert.deepEqual(found.issues.map((issue) => issue.id), ['ENG-3'])
 })
 
-test("an epic's children come from one batched parent in (...) search per page", async () => {
+test("an epic's children come from one parent in (...) search; searchIssues no longer returns epics (ADR 0017)", async () => {
   const { fake, fetch, tracker } = setup()
   seed(fake.state, 2, { issuetype: WORK_TYPE.epic })
   seed(fake.state, 1, { parent: { key: 'ENG-1' } })
   seed(fake.state, 1, { parent: { key: 'ENG-2' } })
-  const before = callsTo(fetch, 'GET', '/rest/api/3/search/jql').length
   const found = await tracker.searchIssues({})
-  const searches = callsTo(fetch, 'GET', '/rest/api/3/search/jql').slice(before)
-  assert.equal(searches.length, 2)
-  assert.equal(new URL(searches[1].url).searchParams.get('jql'), 'parent in ("ENG-1", "ENG-2")')
-  const byId = Object.fromEntries(found.issues.map((issue) => [issue.id, issue]))
-  assert.deepEqual(byId['ENG-1'].children, ['ENG-3'])
-  assert.deepEqual(byId['ENG-2'].children, ['ENG-4'])
-  assert.deepEqual(byId['ENG-3'].children, [])
+  assert.deepEqual(found.issues.map((issue) => issue.id), ['ENG-3', 'ENG-4'])
+  assert.deepEqual(found.issues.map((issue) => issue.children), [[], []])
+  const before = callsTo(fetch, 'GET', '/rest/api/3/search/jql').length
   assert.deepEqual((await tracker.getIssue('ENG-1')).children, ['ENG-3'])
+  const searches = callsTo(fetch, 'GET', '/rest/api/3/search/jql').slice(before)
+  assert.equal(searches.length, 1)
+  assert.equal(new URL(searches[0].url).searchParams.get('jql'), 'parent in ("ENG-1")')
 })
 
 test('a status the fresh discovery lacks reads with its Jira category, with no second discovery', async () => {
@@ -422,4 +420,83 @@ test('the string none is not a sprint value in a write', async () => {
   await assert.rejects(tracker.createIssue({ title: 'First', sprint: 'none' }, ME), { code: 'INVALID_INPUT' })
   await assert.rejects(tracker.updateIssue(key, { sprint: 'none' }, ME), { code: 'INVALID_INPUT' })
   assert.deepEqual(fake.writes(), [])
+})
+
+const VERSIONS = [{ id: '10200', name: '2.0' }, { id: '10201', name: 'Release "A"' }, { id: '10202', name: 'old', archived: true }]
+const versionCalls = (fetch) => callsTo(fetch, 'GET', '/rest/api/3/project/ENG/version').length
+
+test('updateIssue sets the release as fixVersions, refuses an unknown one and clears it with null', async () => {
+  const { fake, fetch, tracker } = setup({ versions: VERSIONS })
+  const [key] = seed(fake.state)
+  await tracker.updateIssue(key, { title: 'Renamed' }, ME)
+  assert.equal(versionCalls(fetch), 0, 'a patch without a release reads no versions')
+  const set = await tracker.updateIssue(key, { release: '2.0' }, ME)
+  assert.equal(set.after.release, '2.0')
+  const put = callsTo(fetch, 'PUT', `/rest/api/3/issue/${key}`).at(-1)
+  assert.deepEqual(JSON.parse(put.body), { fields: { fixVersions: [{ id: '10200' }] } })
+  await assert.rejects(tracker.updateIssue(key, { release: 'nope' }, ME), { code: 'INVALID_INPUT', message: 'release nope does not exist', nextStep: 'pmkit release list' })
+  await assert.rejects(tracker.updateIssue(key, { release: 'old' }, ME), { code: 'INVALID_INPUT' })
+  const writes = fake.writes().length
+  assert.deepEqual((await tracker.updateIssue(key, { release: '2.0' }, ME)).after.release, '2.0')
+  assert.equal(fake.writes().length, writes, 'the same release sends nothing')
+  const cleared = await tracker.updateIssue(key, { release: null }, ME)
+  assert.equal(cleared.after.release, undefined)
+  assert.deepEqual(JSON.parse(callsTo(fetch, 'PUT', `/rest/api/3/issue/${key}`).at(-1).body), { fields: { fixVersions: [] } })
+})
+
+test('setting or clearing a release keeps the archived fix versions the work item holds', async () => {
+  const { fake, fetch, tracker } = setup({ versions: VERSIONS })
+  const [key] = seed(fake.state)
+  fake.state.items[key].fields.fixVersions = [{ id: '10202', name: 'old', archived: true, released: true }]
+  const set = await tracker.updateIssue(key, { release: '2.0' }, ME)
+  assert.equal(set.after.release, '2.0')
+  assert.deepEqual(JSON.parse(callsTo(fetch, 'PUT', `/rest/api/3/issue/${key}`).at(-1).body), { fields: { fixVersions: [{ id: '10202' }, { id: '10200' }] } })
+  const cleared = await tracker.updateIssue(key, { release: null }, ME)
+  assert.equal(cleared.after.release, undefined)
+  assert.deepEqual(JSON.parse(callsTo(fetch, 'PUT', `/rest/api/3/issue/${key}`).at(-1).body), { fields: { fixVersions: [{ id: '10202' }] } })
+  assert.deepEqual(fake.state.items[key].fields.fixVersions.map((version) => version.id), ['10202'])
+})
+
+test('createIssue with a release sets fixVersions', async () => {
+  const { fake, tracker } = setup({ versions: VERSIONS })
+  const made = await tracker.createIssue({ title: 'First', release: 'Release "A"' }, ME)
+  assert.equal(made.after.release, 'Release "A"')
+  assert.deepEqual(fake.state.items[made.after.id].fields.fixVersions.map((version) => version.id), ['10201'])
+})
+
+test('a milestone value is NOT_SUPPORTED: Jira has no milestones', async () => {
+  const { fake, tracker } = setup()
+  const [key] = seed(fake.state)
+  await assert.rejects(tracker.updateIssue(key, { milestone: 'm1' }, ME), { code: 'NOT_SUPPORTED', message: 'Jira has no milestones', nextStep: 'Use a release (version) or an epic' })
+  await assert.rejects(tracker.createIssue({ title: 'x', milestone: 'm1' }, ME), { code: 'NOT_SUPPORTED', message: 'Jira has no milestones' })
+  assert.deepEqual((await tracker.updateIssue(key, { milestone: null }, ME)).after, (await tracker.getIssue(key)))
+  assert.deepEqual(fake.writes(), [])
+})
+
+test('searchIssues by release sends the version id in JQL; an unknown name returns no issues', async () => {
+  const { fake, fetch, tracker } = setup({ versions: VERSIONS })
+  const [inTwo, inA] = [seed(fake.state, 1, { fixVersions: [{ id: '10200' }] })[0], seed(fake.state, 1, { fixVersions: [{ id: '10201' }] })[0]]
+  seed(fake.state)
+  assert.deepEqual((await tracker.searchIssues({ release: '2.0' })).issues.map((issue) => issue.id), [inTwo])
+  assert.deepEqual((await tracker.searchIssues({ release: 'Release "A"' })).issues.map((issue) => issue.id), [inA])
+  const jql = new URL(callsTo(fetch, 'GET', '/rest/api/3/search/jql').at(-1).url).searchParams.get('jql')
+  assert.match(jql, /fixVersion = "10201"/)
+  assert.doesNotMatch(jql, /Release/)
+  const searches = callsTo(fetch, 'GET', '/rest/api/3/search/jql').length
+  assert.deepEqual(await tracker.searchIssues({ release: 'nope' }), { issues: [], problems: [], hasMore: false })
+  assert.deepEqual(await tracker.searchIssues({ release: 'old' }), { issues: [], problems: [], hasMore: false })
+  assert.equal(callsTo(fetch, 'GET', '/rest/api/3/search/jql').length, searches, 'an unknown release sends no search')
+  const before = versionCalls(fetch)
+  await tracker.searchIssues({})
+  assert.equal(versionCalls(fetch), before, 'a search without a release reads no versions')
+})
+
+test('searchIssues leaves an epic out, even one in a sprint, and getIssue still reads it (ADR 0017)', async () => {
+  const { fake, fetch, tracker } = setup({ sprints: [SPRINT] })
+  const [story] = seed(fake.state)
+  const [epic] = seed(fake.state, 1, { issuetype: WORK_TYPE.epic })
+  await post(fetch, '/sprint/1/issue', { issues: [story, epic] })
+  assert.deepEqual((await tracker.searchIssues({})).issues.map((issue) => issue.id), [story])
+  assert.deepEqual((await tracker.searchIssues({ sprint: '1' })).issues.map((issue) => issue.id), [story])
+  assert.equal((await tracker.getIssue(epic)).id, epic)
 })

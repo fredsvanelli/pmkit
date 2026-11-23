@@ -57,7 +57,7 @@ An issue whose `parent` names another issue or an epic. The parent's `children` 
 _Avoid_: subtask, child ticket
 
 **Epic**:
-A larger body of work with a title and a description that `epic update` edits, a status that `epic move` changes, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
+A larger body of work with a title and a description that `epic update` edits, a status that `epic move` changes, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it. On Jira an epic is a work item of an epic-level work type, and it is never an issue in a search (ADR 0017).
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
 
 **Goal**:
@@ -69,8 +69,12 @@ A named target with an optional due date that issues and epics point to by id.
 _Avoid_: release, phase, version
 
 **Release**:
-A version of the product, kept as `releases/<version>.md`, that issues point to through `release`. It may name a git tag, and it is `planned` until `release mark-released` records when it shipped.
-_Avoid_: milestone (a milestone is a target, not a version), version (outside the file name), deploy
+A version of the product, kept as `releases/<version>.md`, that issues point to through `release`. It may name a git tag, and it is `planned` until `release mark-released` records when it shipped. On Jira a release is a version of the space, named by the version name, and an issue's release is its fix version; Jira has no milestones and versions have no git tag.
+_Avoid_: milestone (a milestone is a target, not a version), version (outside the file name and Jira), deploy
+
+**Status update**:
+A dated note on an epic's progress with a health (`on_track`, `at_risk`, `off_track`), an author and a body, newest first. The latest one gives the epic its health. On Jira it is a comment on the epic that pmkit marks as an update; a plain comment is not one.
+_Avoid_: comment (alone), report, Home update (Atlassian Home, which pmkit does not write yet)
 
 **Release notes**:
 The done issues of a release, a sprint or a period, grouped by type and written for a user of the product. The command says which basis it used and whether the notes are a draft. `/pmkit:report:release-notes` writes them and saves them as a document after the user confirms.

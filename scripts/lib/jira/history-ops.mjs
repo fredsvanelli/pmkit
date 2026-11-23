@@ -5,7 +5,7 @@ import { PmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
 import { compareTimes } from '../model.mjs'
 import { textToAdf } from './adf.mjs'
-import { dayOf, jqlString } from './filter.mjs'
+import { dayOf, epicTypeIds, jqlString } from './filter.mjs'
 import { API, issuePath, PAGE_SIZE } from './ids.mjs'
 import { ISSUE_FIELDS } from './issues.mjs'
 import { toComment, toEvents } from './history.mjs'
@@ -70,7 +70,8 @@ export function historyOperations({ client, ops, getContext, now = () => new Dat
   async function metricEvents({ since, until } = {}) {
     const context = await getContext()
     const day = since === undefined || Number.isNaN(Date.parse(since)) ? null : dayOf(since, -1)
-    const jql = `project = ${jqlString(context.space)}${day ? ` AND updated >= ${jqlString(day)}` : ''} ORDER BY updated DESC`
+    const epics = epicTypeIds(context)
+    const jql = `project = ${jqlString(context.space)}${epics.length > 0 ? ` AND issuetype not in (${epics.map(jqlString).join(', ')})` : ''}${day ? ` AND updated >= ${jqlString(day)}` : ''} ORDER BY updated DESC`
     const fields = [METRIC_FIELDS, ...ISSUE_FIELDS(context).filter((field) => context.fields.estimate === field)].join(',')
     const { items, hasMore } = await client.paginate(`${API}/search/jql`, { query: { jql, fields, expand: 'changelog' }, key: 'issues', pageSize: PAGE_SIZE, limit: 1000 })
     const last = until !== undefined && !until.includes('T') ? `${until}T23:59:59.999Z` : until

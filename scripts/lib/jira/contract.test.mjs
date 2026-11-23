@@ -21,6 +21,6 @@ function jiraContract() {
 // Jira archives work items only on Premium, so archive is out; threads, time and the rest wait for later issues.
 runTrackerContract({
   name: 'Jira tracker contract over the fake',
-  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'cycle-lifecycle'],
+  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'cycle-lifecycle', 'deliverables', 'deliverable-writes'],
   setup: jiraContract,
 })

@@ -20,7 +20,7 @@ const raw = (overrides = {}) => ({
 const GIT = { git_host: { system: 'github' } }
 const entry = (entries, id) => entries.find((item) => item.id === id)
 
-const SERVED_NOW = ['cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'capacity', 'native_metrics', 'linked_code']
+const SERVED_NOW = ['cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'capacity', 'native_metrics', 'linked_code', 'deliverables', 'status_update', 'releases']
 
 test('the manifest has every capability in order, absent until served', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
@@ -49,8 +49,6 @@ test('PMK-78 serves cycles natively and capacity through the capacity file', () 
 
 test('an unserved capability keeps the site answer and names its issue', () => {
   const entries = buildJiraCapabilities(raw(), GIT)
-  assert.deepEqual(entry(entries, 'deliverables').detail, { site: 'native', entity: 'epic' })
-  assert.deepEqual(entry(entries, 'releases').detail, { site: 'native', entity: 'version' })
   assert.deepEqual(entry(entries, 'saved_views').detail, { site: 'native', source: 'filters' })
   assert.equal(entry(entries, 'saved_views').enableHint, 'The Jira adapter does not serve saved_views yet')
   assert.equal(entry(entries, 'time_tracking').detail.site, 'native')
@@ -87,6 +85,16 @@ test('unread settings assume linking and time tracking are on', () => {
 test('linked_code is served through git', () => {
   assert.deepEqual(entry(buildJiraCapabilities(raw(), GIT), 'linked_code'), { id: 'linked_code', path: 'derived', detail: { source: 'git' } })
   assert.deepEqual(entry(buildJiraCapabilities(raw(), {}), 'linked_code'), { id: 'linked_code', path: 'derived', detail: { source: 'git' }, enableHint: 'Set git_host in .pmkit/config.yaml' })
+})
+
+test('PMK-79 serves deliverables as epics, releases as versions and status updates as comments', () => {
+  const entries = buildJiraCapabilities(raw(), GIT)
+  assert.deepEqual(entry(entries, 'deliverables'), { id: 'deliverables', path: 'native', detail: { entity: 'epic' } })
+  assert.deepEqual(entry(entries, 'releases'), { id: 'releases', path: 'native', detail: { entity: 'version' } })
+  assert.deepEqual(entry(entries, 'status_update'), { id: 'status_update', path: 'derived', detail: { source: 'comment' } })
+  const flat = buildJiraCapabilities(raw({ workTypes: [{ name: 'Task', level: 'standard' }] }), GIT)
+  assert.deepEqual(entry(flat, 'deliverables'), { id: 'deliverables', path: 'absent', enableHint: 'Space ENG has no epic work type' })
+  assert.deepEqual(entry(flat, 'status_update'), { id: 'status_update', path: 'absent', enableHint: 'Space ENG has no epic work type' })
 })
 
 test('a served capability takes the site answer as its path', () => {

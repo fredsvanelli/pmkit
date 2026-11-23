@@ -176,3 +176,25 @@ export function validDate(text) {
   const date = new Date(`${text}T00:00:00Z`)
   return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(text)
 }
+
+/** The Local progress shape of a list of pmkit issues: archived ones left out, a canceled issue counted apart, an estimate added to the points. */
+export function countProgress(issues) {
+  const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])), open: [] }
+  for (const issue of issues) {
+    if (issue.archived) continue
+    const { category } = issue.status
+    if (category in progress.byCategory) progress.byCategory[category] += 1
+    if (category !== 'done' && category !== 'canceled') progress.open.push(issue.id)
+    if (category === 'canceled') {
+      progress.canceled += 1
+      continue
+    }
+    progress.total += 1
+    if (category === 'done') progress.done += 1
+    if (typeof issue.estimate === 'number') {
+      progress.points += issue.estimate
+      if (category === 'done') progress.pointsDone += issue.estimate
+    }
+  }
+  return progress
+}

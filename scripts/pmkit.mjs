@@ -1478,7 +1478,7 @@ export const COMMANDS = [
         ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
         ...(p.native ? [`native: ${percent(p.native.progress)} of ${p.native.scope} issues in Linear's own count`] : []),
       ].join('\n')
-      const warnings = p.hasMore === true ? ['Linear has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000'] : []
+      const warnings = p.hasMore === true ? [`${{ github: 'GitHub', jira: 'Jira' }[ctx.config().system] ?? 'Linear'} has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000`] : []
       return { data: p, text, warnings, notes: await capabilityNotes(await ctx.tracker(), 'deliverables') }
     },
   },

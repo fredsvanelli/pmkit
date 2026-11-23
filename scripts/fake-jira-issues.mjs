@@ -18,7 +18,7 @@ const PRIORITIES = SITE[`GET ${API}/priority`].json
 const USERS = SITE[`GET ${API}/user/assignable/search`].json
 const LINK_TYPES = SITE[`GET ${API}/issueLinkType`].json.issueLinkTypes
 const FIELD_NAMES = Object.fromEntries(SITE[`GET ${API}/field`].json.map((field) => [field.id, field.name]))
-const SETTABLE = new Set([...Object.keys(FIELD_NAMES), 'description', 'labels', 'issuetype', 'parent'])
+const SETTABLE = new Set([...Object.keys(FIELD_NAMES), 'description', 'labels', 'issuetype', 'parent', 'fixVersions'])
 const VIEWER = { accountId: 'acc-1' }
 const START = Date.parse('2026-11-22T10:00:00.000Z')
 const RESOLUTIONS = [{ id: '10000', name: 'Done' }, { id: '10001', name: "Won't Do" }]
@@ -46,7 +46,7 @@ const cannotSet = (id) => badField(id, `Field '${id}' cannot be set. It is not o
 
 /** A fresh, empty state. */
 function emptyState() {
-  return { next: { item: 1, link: 10100, comment: 10000, history: 1, sprint: 1 }, clock: 0, items: {}, links: [], comments: {}, properties: {}, changelog: {}, sprints: [] }
+  return { next: { item: 1, link: 10100, comment: 10000, history: 1, sprint: 1, version: 10100 }, clock: 0, items: {}, links: [], comments: {}, properties: {}, changelog: {}, sprints: [], versions: [] }
 }
 
 // Field values: the stored form of a written value, and the [id, string] sides of a changelog item.
@@ -73,6 +73,8 @@ function convert(id, value, state) {
       const user = USERS.find((entry) => entry.accountId === value?.accountId)
       return user ? { accountId: user.accountId, displayName: user.displayName } : badField(id, `User '${value?.accountId}' cannot be assigned issues.`)
     }
+    case 'fixVersions':
+      return Array.isArray(value) ? value.map((entry) => versionField(state.versions.find((version) => version.id === String(entry?.id)) ?? badField(id, `Version with id '${entry?.id}' does not exist.`))) : badField(id, 'Specify a valid list of versions.')
     case 'parent': {
       const parent = state.items[upper(value?.key)]
       return parent ? { key: parent.key } : badField(id, 'Could not find the parent work item.')
@@ -83,6 +85,9 @@ function convert(id, value, state) {
       return value
   }
 }
+
+/** The work-item form of a version. */
+const versionField = ({ id, name, released, archived, releaseDate }) => ({ id, name, released, archived, ...(releaseDate ? { releaseDate } : {}) })
 
 /** The [raw, string] sides of a field value in a changelog item. */
 function sides(id, value, state) {
@@ -101,6 +106,8 @@ function sides(id, value, state) {
     case 'issuetype':
     case 'status':
       return [value.id, value.name]
+    case 'fixVersions':
+      return [null, value.map((version) => version.name).join(', ') || null]
     case 'parent':
       return [state.items[value.key]?.id ?? null, value.key]
     default:
@@ -113,7 +120,7 @@ function changeItem(id, before, after, state) {
   const [from, fromString] = sides(id, before, state)
   const [to, toString] = sides(id, after, state)
   const custom = id.startsWith('customfield_')
-  const named = id === 'parent' ? { field: 'IssueParentAssociation' } : { field: custom ? (FIELD_NAMES[id] ?? id) : id, fieldId: id }
+  const named = id === 'parent' ? { field: 'IssueParentAssociation' } : id === 'fixVersions' ? { field: 'Fix Version', fieldId: id } : { field: custom ? (FIELD_NAMES[id] ?? id) : id, fieldId: id }
   return { ...named, fieldtype: custom ? 'custom' : 'jira', from, fromString, to, toString }
 }
 
@@ -128,7 +135,7 @@ function linkItem(otherKey, verb, added) {
 // JQL: exactly the subset translateFilter and metricEvents emit; anything else is a 400.
 
 const TOKEN = /\s*(?:("(?:[^"\\]|\\.)*")|(>=|[=~<(),])|([A-Za-z_][\w.-]*))/y
-const FORMS = { '=': ['project', 'assignee', 'labels', 'parent', 'sprint'], in: ['status', 'issuetype', 'parent', 'key'], is: ['assignee', 'sprint'], '>=': ['updated'], '<': ['updated'] }
+const FORMS = { '=': ['project', 'assignee', 'labels', 'parent', 'sprint', 'fixVersion'], in: ['status', 'issuetype', 'parent', 'key'], is: ['assignee', 'sprint', 'fixVersion'], '>=': ['updated'], '<': ['updated'] }
 const VALUE = {
   project: () => SPACE.key,
   status: (item) => item.fields.status.id,
@@ -137,6 +144,7 @@ const VALUE = {
   parent: (item) => item.fields.parent?.key ?? null,
   key: (item) => item.key,
   sprint: (item) => (item.sprintIds ?? []).map(String),
+  fixVersion: (item) => (item.fields.fixVersions ?? []).map((version) => version.id),
 }
 const KEYED = ['project', 'parent', 'key']
 const ORDERS = { 'created ASC , key ASC': 'created', 'updated DESC': 'updated' }
@@ -183,8 +191,16 @@ function parseJql(jql, sprintOf) {
       ;['in', 'openSprints', '(', ')'].forEach(expect)
       return (item) => !(item.sprintIds ?? []).some((id) => sprintOf(id).state !== 'closed')
     }
+    if (field === 'issuetype' && op === 'not') {
+      expect('in')
+      expect('(')
+      const values = [string()]
+      while (accept(',')) values.push(string())
+      expect(')')
+      return (item) => !values.includes(VALUE.issuetype(item))
+    }
     if (!FORMS[op]?.includes(field)) fail()
-    if (op === 'is') return expect('EMPTY') && ((item) => (field === 'sprint' ? VALUE.sprint(item).length === 0 : VALUE.assignee(item) === null))
+    if (op === 'is') return expect('EMPTY') && ((item) => (field === 'sprint' || field === 'fixVersion' ? VALUE[field](item).length === 0 : VALUE.assignee(item) === null))
     if (op === 'in') {
       expect('(')
       const values = [string()]
@@ -193,7 +209,7 @@ function parseJql(jql, sprintOf) {
       return (item) => values.some((value) => same(field, VALUE[field](item), value))
     }
     const value = string()
-    if (field === 'sprint') return (item) => VALUE.sprint(item).includes(value)
+    if (field === 'sprint' || field === 'fixVersion') return (item) => VALUE[field](item).includes(value)
     if (field === 'labels') return (item) => item.fields.labels.includes(value)
     if (field !== 'updated') return (item) => same(field, VALUE[field](item), value)
     const day = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : fail()
@@ -230,10 +246,14 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
  * The fake work-item routes, spread over jiraSiteRoutes(), the state they read and mutate in place, and writes() the
  * non-GET calls. `now` returns the time of each write; the default clock starts at 2026-11-22T10:00:00.000Z and
  * advances one second per write, and lives in the state so a restored state keeps counting. `extraStatuses` passes on to
- * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78).
+ * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78), `versions` the space's versions (PMK-79).
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [] } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [] } = {}) {
   state.sprints ??= []
+  state.versions ??= []
+  state.next.version ??= 10100
+  for (const version of versions) state.versions.push({ released: false, archived: false, projectId: SPACE.id, ...structuredClone(version) })
+  state.next.version = Math.max(state.next.version, ...state.versions.map((version) => Number(version.id) + 1))
   state.next.sprint ??= 1
   for (const sprint of sprints) state.sprints.push({ originBoardId: BOARD, goal: '', ...structuredClone(sprint) })
   state.next.sprint = Math.max(state.next.sprint, ...state.sprints.map((sprint) => sprint.id + 1))
@@ -246,6 +266,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   const sprintOf = (id) => state.sprints.find((sprint) => String(sprint.id) === String(id)) ?? notFound(`Sprint with id '${id}' does not exist.`)
   const sprintField = (sprint) => ({ id: sprint.id, name: sprint.name, state: sprint.state, boardId: sprint.originBoardId, goal: sprint.goal, ...pickDates(sprint) })
   const pickDates = ({ startDate, endDate, completeDate }) => Object.fromEntries(Object.entries({ startDate, endDate, completeDate }).filter(([, value]) => value))
+  const versionOf = (id) => state.versions.find((version) => version.id === String(id)) ?? notFound(`The version with id '${id}' does not exist.`)
+  const omitProperties = ({ properties, ...comment }) => comment
   const names = (ids) => (ids.length > 0 ? ids.map((id) => sprintOf(id).name).join(', ') : null)
 
   function record(item, items, at) {
@@ -283,7 +305,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
 
   /** The item as a read returns it; `propertyKeys` limits the properties (all when undefined). */
   function render(item, propertyKeys) {
-    const fields = { ...item.fields, subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
+    const fields = { ...item.fields, fixVersions: (item.fields.fixVersions ?? []).map((entry) => versionField(versionOf(entry.id))), subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
     if (item.sprintIds?.length) fields[SPRINT_FIELD] = item.sprintIds.map((id) => sprintField(sprintOf(id)))
     else fields[SPRINT_FIELD] = null
     const read = structuredClone({ id: item.id, key: item.key, fields })
@@ -356,6 +378,28 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     },
     [`POST ${AGILE}/sprint/{sprintId}/issue`]: ({ params, body, at }) => moveIssues(body, at, sprintOf(params.sprintId)),
     [`POST ${AGILE}/backlog/issue`]: ({ body, at }) => moveIssues(body, at, null),
+    [`GET ${API}/project/{key}/version`]({ params, query }) {
+      if (upper(params.key) !== SPACE.key) notFound('No project could be found with key \'' + params.key + '\'.')
+      return { json: offsetPage(structuredClone(state.versions), query, 50) }
+    },
+    [`GET ${API}/version/{id}`]: ({ params }) => ({ json: structuredClone(versionOf(params.id)) }),
+    [`POST ${API}/version`]({ body }) {
+      if (typeof body?.name !== 'string' || !body.name.trim()) refuse(400, { name: 'The version name is required.' })
+      if (String(body.projectId) !== SPACE.id) refuse(400, { projectId: 'Specify a valid project ID.' })
+      if (state.versions.some((version) => version.name === body.name)) refuse(400, { name: 'A version with this name already exists in this project.' })
+      const { description, releaseDate } = body
+      const version = { id: String(state.next.version++), name: body.name, ...(description ? { description } : {}), released: body.released === true, archived: body.archived === true, ...(releaseDate ? { releaseDate } : {}), projectId: SPACE.id }
+      state.versions.push(version)
+      return { status: 201, json: structuredClone(version) }
+    },
+    [`PUT ${API}/version/{id}`]({ params, body }) {
+      const version = versionOf(params.id)
+      const next = { ...version, ...Object.fromEntries(['released', 'releaseDate', 'description', 'name', 'archived'].filter((name) => name in (body ?? {})).map((name) => [name, body[name]])) }
+      if (typeof next.name !== 'string' || !next.name.trim()) refuse(400, { name: 'The version name is required.' })
+      if (state.versions.some((other) => other !== version && other.name === next.name)) refuse(400, { name: 'A version with this name already exists in this project.' })
+      Object.assign(version, next)
+      return { json: structuredClone(version) }
+    },
     [`GET ${API}/search/jql`]({ query }) {
       const { test, order } = parseJql(query.get('jql') ?? '', sprintOf)
       const startAt = Number(query.get('nextPageToken') ?? 0)
@@ -381,7 +425,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       const number = state.next.item
       const key = `${SPACE.key}-${number}`
       const todo = statusOf(typeStatuses[convert('issuetype', issuetype, state).id][0])
-      const item = { id: String(10000 + number), key, fields: { summary: null, description: null, status: todo, priority: null, assignee: null, labels: [], parent: null, duedate: null, resolution: null, creator: { ...VIEWER } } }
+      const item = { id: String(10000 + number), key, fields: { summary: null, description: null, status: todo, fixVersions: [], priority: null, assignee: null, labels: [], parent: null, duedate: null, resolution: null, creator: { ...VIEWER } } }
       applyFields(item, { issuetype, ...fields }, at, { log: false })
       if (isSubtaskType(item) && !item.fields.parent) badField('parent', 'A sub-task needs a parent.')
       item.fields.created = item.fields.updated = at()
@@ -426,16 +470,17 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     [`GET ${API}/issue/{key}/changelog`]: ({ params, query }) => ({ json: offsetPage(structuredClone(state.changelog[itemOf(params.key).key] ?? []), query) }),
     [`GET ${API}/issue/{key}/comment`]({ params, query }) {
       const { values, isLast, ...page } = offsetPage(structuredClone(state.comments[itemOf(params.key).key] ?? []), query, 5000)
-      return { json: { ...page, comments: values } }
+      const expanded = queryList(query, 'expand').includes('properties')
+      return { json: { ...page, comments: values.map((comment) => (expanded ? { ...comment, properties: comment.properties ?? [] } : omitProperties(comment))) } }
     },
     [`POST ${API}/issue/{key}/comment`]({ params, body, at }) {
       const item = itemOf(params.key)
       if (body?.body?.type !== 'doc') badField('comment', 'Comment body can not be empty!')
       const created = at()
-      const comment = { id: String(state.next.comment++), author: { ...VIEWER }, body: body.body, created, updated: created }
+      const comment = { id: String(state.next.comment++), author: { ...VIEWER }, body: body.body, created, updated: created, ...(Array.isArray(body.properties) ? { properties: structuredClone(body.properties) } : {}) }
       ;(state.comments[item.key] ??= []).push(comment)
       item.fields.updated = created
-      return { status: 201, json: structuredClone(comment) }
+      return { status: 201, json: omitProperties(structuredClone(comment)) }
     },
     [`POST ${API}/issueLink`]({ body, at }) {
       const type = LINK_TYPES.find((entry) => lower(entry.name) === lower(body?.type?.name) || entry.id === String(body?.type?.id))

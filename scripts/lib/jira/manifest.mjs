@@ -6,13 +6,16 @@ import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { fieldRoles } from './discovery.mjs'
 
 /** The capabilities the Jira adapter serves. PMK-77 to PMK-80 add theirs as they implement the operations behind them. */
-export const SERVED = Object.freeze({ cycles: true, capacity: true, linked_code: true, estimation: true, multilevel_hierarchy: true, dependencies: true, native_metrics: true })
+export const SERVED = Object.freeze({
+  cycles: true, capacity: true, linked_code: true, estimation: true, multilevel_hierarchy: true, dependencies: true, native_metrics: true,
+  deliverables: true, status_update: true, releases: true,
+})
+
+/** Why Jira has no goals in pmkit: the strategic_goals hint, and the refusal of a goal on an epic. */
+export const NO_GOALS = 'Jira goals live in Atlassian Home, which pmkit does not read'
 
 /** The issue that serves each capability, for the hint of an unserved one. */
-const SERVED_IN = {
-  deliverables: 'PMK-79', status_update: 'PMK-79', releases: 'PMK-79',
-  time_tracking: 'PMK-80',
-}
+const SERVED_IN = { time_tracking: 'PMK-80' }
 const unservedHint = (id) => `The Jira adapter does not serve ${id} yet${SERVED_IN[id] ? ` (${SERVED_IN[id]})` : ''}`
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const absent = (enableHint) => ({ path: 'absent', enableHint })
@@ -33,6 +36,7 @@ function siteAnswers(raw, pmkit) {
   // Unread settings: issue linking and time tracking are on by default in Jira, and discover warns.
   const setting = (name) => raw.settings === null || raw.settings?.[name] === true
   const sprints = cycles(raw, pmkit)
+  const deliverables = levels.includes('epic') ? { path: 'native', detail: { entity: 'epic' } } : absent(`Space ${key} has no epic work type`)
   return {
     cycles: sprints,
     estimation: estimate
@@ -41,9 +45,10 @@ function siteAnswers(raw, pmkit) {
     multilevel_hierarchy: levels.some((level) => level !== 'standard') ? { path: 'native', detail: { levels } } : absent(`Space ${key} has no epic or subtask work type`),
     dependencies: setting('issueLinking') ? { path: 'native' } : absent("Turn on issue linking in Jira's global settings"),
     native_triage: absent('Jira has no triage; map a status to triage in .pmkit/config.yaml'),
-    deliverables: levels.includes('epic') ? { path: 'native', detail: { entity: 'epic' } } : absent(`Space ${key} has no epic work type`),
-    strategic_goals: absent('Jira goals live in Atlassian Home, which pmkit does not read'),
-    status_update: null,
+    deliverables,
+    strategic_goals: absent(NO_GOALS),
+    // Status updates are epic comments with the pmkit.statusUpdate property, so they need epics.
+    status_update: deliverables.path === 'absent' ? deliverables : { path: 'derived', detail: { source: 'comment' } },
     releases: { path: 'native', detail: { entity: 'version' } },
     capacity: sprints.path === 'absent' ? absent('Capacity needs cycles') : { path: 'derived', detail: { source: 'local', file: CAPACITY_FILE } },
     native_metrics: { path: 'derived', detail: { source: 'history' } },

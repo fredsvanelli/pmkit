@@ -35,9 +35,9 @@ const STEPS = {
 
 /**
  * The issue operations over a Jira client. getContext({ refresh }) returns makeContext's context over the tracker's
- * discovery, with `fresh` true when that discovery was read from Jira in this run. sprints() reads the board's Jira sprints.
+ * discovery, with `fresh` true when that discovery was read from Jira in this run. sprints() reads the board's Jira sprints, versions() the space's live versions.
  */
-export function issueOperations({ client, getContext, now = () => new Date(), sprints = async () => [] }) {
+export function issueOperations({ client, getContext, now = () => new Date(), sprints = async () => [], versions = async () => [] }) {
   function keyOf(id) {
     if (!isIssueKey(id)) throw notFound(id)
     return normalizeKey(id)
@@ -93,7 +93,7 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     return (await readItem(id)).issue
   }
 
-  /** Checks the filter and returns the id of the active sprint, read only when a sprint filter needs it. */
+  /** Checks the filter and returns the id of the active sprint and of the release's version, each read only when the filter needs it. */
   async function checkSearch(filter, context) {
     let list = []
     if (typeof filter.sprint === 'string') {
@@ -106,15 +106,16 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
       if (filter[key] !== undefined && Number.isNaN(Date.parse(filter[key]))) throw invalid(`${key} must be a date or a time such as 2026-11-22T10:00:00Z`, 'pmkit issues list --help')
     }
     const active = list.find((sprint) => sprint.state === 'active')
-    return active && String(active.id)
+    const version = typeof filter.release === 'string' ? (await versions()).find((candidate) => candidate.name === filter.release) : undefined
+    return { activeId: active && String(active.id), versionId: version?.id }
   }
 
   /** Narrows with JQL, then runs the client steps, pmkit's order and the limit. */
   async function searchIssues(filter = {}) {
     const held = await getContext()
-    const activeId = await checkSearch(filter, held)
+    const { activeId, versionId } = await checkSearch(filter, held)
     if (filter.limit === 0) return NOTHING()
-    const translated = translateFilter(filter, held, { activeId })
+    const translated = translateFilter(filter, held, { activeId, versionId })
     if (translated.empty) return NOTHING()
     const query = { jql: translated.jql, fields: ISSUE_FIELDS(held).join(','), properties: BRANCH }
     const { items, hasMore } = await client.paginate(SEARCH, { query, key: 'issues', pageSize: PAGE_SIZE, limit: translated.serverLimit })
@@ -169,13 +170,16 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     ? client.request('POST', '/rest/agile/1.0/backlog/issue', { body: { issues: [key] } })
     : client.request('POST', `/rest/agile/1.0/sprint/${encodeURIComponent(to)}/issue`, { body: { issues: [key] } }))
 
+  /** The space's live versions, read only when the patch names a release. */
+  const versionsFor = (patch) => (typeof patch.release === 'string' ? versions() : [])
+
   const afterOf = async (key) => (await readItem(key)).issue
   const statusAt = (target, context) => ({ name: target.name, category: context.categoryOf(target.name) })
 
   async function createIssue(request, actor, { dryRun = false } = {}) {
     await requireActor(actor)
     const input = request ?? {}
-    const { value: plan, context } = await withRefresh(async (current) => toFields(input, null, current, { create: true, now: now().toISOString(), sprints: await sprintsFor(input, current) }))
+    const { value: plan, context } = await withRefresh(async (current) => toFields(input, null, current, { create: true, now: now().toISOString(), sprints: await sprintsFor(input, current), versions: await versionsFor(input) }))
     const category = input.status ?? undefined
     // The target is checked before the create, so a work type with no status in the category sends nothing.
     const target = category === undefined ? null : pickTarget({ item: { fields: { issuetype: plan.fields.issuetype } }, category, context })
@@ -211,7 +215,7 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
   async function updateIssue(id, patch, actor, { dryRun = false, sprints: known } = {}) {
     await requireActor(actor)
     const { issue: before, context } = await readItem(id)
-    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context, known) })
+    const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context, known), versions: await versionsFor(patch ?? {}) })
     const changed = Object.keys(plan.fields).length > 0
     if (!changed && !plan.property && !plan.sprint) return { before, after: before }
     if (dryRun) return { before, after: plan.after }
