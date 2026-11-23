@@ -8,10 +8,11 @@ estimate: 5
 assignee: fred
 parent: EPC-7
 blocked_by: [PMK-79]
+related: [PMK-384, PMK-385, PMK-386]
 milestone: jira
 branch: fredsvanelli/pmk-83-jira-product
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-23T16:27:06Z
+updated: 2026-11-23T18:14:46Z
 ---
 
 ## Description
