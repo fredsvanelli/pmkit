@@ -1,6 +1,6 @@
 # PMK-81 design: the Bitbucket Cloud git host
 
-Issue PMK-81, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: draft, waiting for the owner's approval. The owner chose the credential (1A), the scope (2A) and the build approach (3A) on 2026-11-23, through the coordinator. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-81, epic EPC-7 (Jira tracker adapter and Bitbucket git host), milestone `jira`. Status: approved by the coordinator on 2026-11-23, with the Interview answers below. The owner chose the credential (1A), the scope (2A) and the build approach (3A) on 2026-11-23, through the coordinator. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -126,3 +126,12 @@ The order of tasks, the shape of the fake, the per-step log header text, and whe
 - `pr review` on Bitbucket (inline comments through `pullrequests/{id}/comments`).
 - `pr blockers` on Bitbucket (merge checks, branch restrictions, tasks, unresolved comments).
 - Inbox review requests on Bitbucket (reviewers of open pull requests).
+
+## Interview answers (2026-11-23, approved through the coordinator)
+
+- Q1. `inbox list` keeps working on Bitbucket; only its review requests come back `verified: false` with `code: 'NOT_SUPPORTED'`.
+- Q2. `release-readiness`: Bitbucket deploys have `ref: null`, so `matchesRelease` is `null` ("not verified on Bitbucket"), never `false`.
+- Q3. `pr open` does not set `close_source_branch`; the repository default applies.
+- Q4. Setup and `link-repo` on `bitbucket` read `GET repositories/<workspace>/<slug>` once to confirm the token and repo before writing; they never ask for the token.
+- Q5. Accepted ceilings: one statuses read per open pull request in `listPullRequests` (up to 200), and `ci logs --run <build number>` searches the 500 newest pipelines.
+- ADR 0018 records the credential. `CONTEXT.md` updates **Git host** and lists the Bitbucket workspace under **Workspace**'s _Avoid_.
