@@ -8,10 +8,11 @@ estimate: 5
 assignee: fred
 parent: EPC-7
 blocked_by: [PMK-77, PMK-76]
+related: [PMK-368]
 milestone: jira
 branch: fredsvanelli/pmk-365-setup-pmkit
 created: 2026-11-22T19:14:24.247Z
-updated: 2026-11-23T00:03:16Z
+updated: 2026-11-23T01:16:18Z
 ---
 
 ## Description

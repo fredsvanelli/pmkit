@@ -5,3 +5,4 @@
 {"at":"2026-11-22T23:54:38Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-22T23:54:38Z","by":"fred","op":"update","field":"branch","to":"fredsvanelli/pmk-365-setup-pmkit","synthetic":true}
 {"at":"2026-11-23T00:03:16Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-23T01:16:18Z","by":"fred","op":"link","field":"related","to":"PMK-368"}
