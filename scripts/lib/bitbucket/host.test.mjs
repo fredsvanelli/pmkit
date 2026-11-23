@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { BB, FAKE_BB_ENV, fakeBitbucketFetch } from '../../fake-bitbucket-api.mjs'
 import { PmkitError } from '../errors.mjs'
+import { FAILED_RUN } from '../risks.mjs'
 import { createBitbucketHost } from './host.mjs'
 
 // A host created without a fake fetch fails loudly instead of reaching the network.
@@ -291,4 +292,225 @@ test('listPullRequests rethrows a statuses error that is not a refusal', async (
     [`GET ${BB}/pullrequests/7/statuses`]: { status: 429, text: '' },
   })
   await assert.rejects(host.listPullRequests(), (error) => error.code === 'RATE_LIMITED')
+})
+
+// Pipelines and deployments.
+
+const PIPELINES = `GET ${BB}/pipelines`
+const STEPS = `GET ${BB}/pipelines/{uuid}/steps`
+const LOG = `GET ${BB}/pipelines/{uuid}/steps/{step}/log`
+
+/** A Bitbucket pipeline as the API returns it: result is the result name of a COMPLETED run, or the state name otherwise. */
+function pipeline(n, { result = 'SUCCESSFUL', state = 'COMPLETED', selector = { type: 'branches', pattern: 'main' }, created = `2026-11-2${n % 10}T10:00:00.000Z` } = {}) {
+  return {
+    type: 'pipeline',
+    uuid: `{pipe-${n}}`,
+    build_number: n,
+    created_on: created,
+    state: state === 'COMPLETED' ? { name: 'COMPLETED', result: { name: result } } : { name: state },
+    target: { type: 'pipeline_ref_target', ref_name: 'main', selector, commit: { hash: `sha${n}` } },
+  }
+}
+
+const runView = (n, overrides = {}) => ({
+  databaseId: n,
+  workflowName: 'main',
+  status: 'completed',
+  conclusion: 'success',
+  url: `https://bitbucket.org/acme/widgets/pipelines/results/${n}`,
+  createdAt: `2026-11-2${n % 10}T10:00:00.000Z`,
+  headSha: `sha${n}`,
+  ...overrides,
+})
+
+test('listRuns reads the branch pipelines newest first and maps them to workflow runs', async () => {
+  const { host, fetch } = setup({
+    [PIPELINES]: {
+      json: {
+        values: [
+          pipeline(9, { state: 'PENDING' }),
+          pipeline(8, { state: 'IN_PROGRESS' }),
+          pipeline(7, { result: 'FAILED' }),
+          pipeline(6, { result: 'ERROR', selector: { type: 'default' } }),
+          pipeline(5, { result: 'STOPPED', selector: { type: 'custom', pattern: 'deploy' } }),
+          pipeline(4),
+        ],
+      },
+    },
+  })
+  assert.deepEqual(await host.listRuns({ branch: 'main' }), [
+    runView(9, { status: 'pending', conclusion: null }),
+    runView(8, { status: 'in_progress', conclusion: null }),
+    runView(7, { conclusion: 'failure' }),
+    runView(6, { conclusion: 'failure', workflowName: 'default' }),
+    runView(5, { conclusion: 'cancelled', workflowName: 'deploy' }),
+    runView(4),
+  ])
+  const params = query(fetch.calls[0])
+  assert.equal(params.get('target.branch'), 'main')
+  assert.equal(params.get('sort'), '-created_on')
+  assert.equal(params.get('pagelen'), '50')
+})
+
+test('listRuns gives FAILED and ERROR a conclusion that risks counts as failed', async () => {
+  const { host } = setup({ [PIPELINES]: { json: { values: [pipeline(7, { result: 'FAILED' }), pipeline(6, { result: 'ERROR' })] } } })
+  for (const run of await host.listRuns({ branch: 'main' })) assert.ok(FAILED_RUN.has(run.conclusion), run.conclusion)
+})
+
+test('listRuns refuses a branch that reads as an option', async () => {
+  const { host } = setup()
+  await assert.rejects(host.listRuns({ branch: '-x' }), (error) => error.code === 'INVALID_INPUT')
+})
+
+test('ciLogs by branch takes the newest failed run, logs its failed steps and names a newer success', async () => {
+  const { host, fetch } = setup({
+    [PIPELINES]: { json: { values: [pipeline(9), pipeline(8, { selector: { type: 'default' } }), pipeline(7, { result: 'FAILED' }), pipeline(6, { result: 'FAILED' })] } },
+    [STEPS]: {
+      json: {
+        values: [
+          { uuid: '{step-1}', name: 'Build', state: { name: 'COMPLETED', result: { name: 'SUCCESSFUL' } } },
+          { uuid: '{step-2}', name: 'Test', state: { name: 'COMPLETED', result: { name: 'FAILED' } } },
+          { uuid: '{step-3}', name: 'Lint', state: { name: 'COMPLETED', result: { name: 'ERROR' } } },
+        ],
+      },
+    },
+    [LOG]: (call) => ({ text: `log of ${call.params.step}\n` }),
+  })
+  const found = await host.ciLogs({ branch: 'main' })
+  assert.deepEqual(found, {
+    runId: 7,
+    workflowName: 'main',
+    url: 'https://bitbucket.org/acme/widgets/pipelines/results/7',
+    conclusion: 'failure',
+    status: 'completed',
+    createdAt: '2026-11-27T10:00:00.000Z',
+    headSha: 'sha7',
+    newerRun: { runId: 9, conclusion: 'success', createdAt: '2026-11-29T10:00:00.000Z', headSha: 'sha9' },
+    log: '== Test ==\nlog of {step-2}\n\n== Lint ==\nlog of {step-3}\n',
+  })
+  const paths = fetch.calls.map((c) => new URL(c.url).pathname)
+  assert.ok(paths.includes(`${BB}/pipelines/%7Bpipe-7%7D/steps`))
+  assert.equal(paths.filter((p) => p.endsWith('/log')).length, 2)
+})
+
+test('ciLogs by branch has newerRun null when no later run of the workflow succeeded, and is null with no failed run', async () => {
+  const one = setup({
+    [PIPELINES]: { json: { values: [pipeline(8, { result: 'STOPPED' }), pipeline(7, { result: 'FAILED' })] } },
+    [STEPS]: { json: { values: [] } },
+  })
+  const found = await one.host.ciLogs({ branch: 'main' })
+  assert.equal(found.newerRun, null)
+  assert.equal(found.log, '')
+  const two = setup({ [PIPELINES]: { json: { values: [pipeline(8)] } } })
+  assert.equal(await two.host.ciLogs({ branch: 'main' }), null)
+})
+
+test('ciLogs by run id walks the newest pipelines page by page and finds the run on page 2', async () => {
+  const page = (from) => Array.from({ length: 100 }, (_, i) => pipeline(from - i))
+  const { host, fetch } = setup({
+    [PIPELINES]: [
+      { json: { values: page(1000), next: `${API}${BB}/pipelines?page=2` } },
+      { json: { values: page(900), next: `${API}${BB}/pipelines?page=3` } },
+    ],
+  })
+  const found = await host.ciLogs({ runId: 850 })
+  assert.equal(found.runId, 850)
+  assert.equal(found.conclusion, 'success')
+  assert.equal(found.log, '')
+  assert.equal(found.newerRun, undefined)
+  assert.equal(fetch.calls.length, 2)
+  const params = query(fetch.calls[0])
+  assert.equal(params.get('sort'), '-created_on')
+  assert.equal(params.get('pagelen'), '100')
+  // A successful run reads no step and no log.
+  assert.ok(!fetch.calls.some((c) => /\/steps/.test(c.url)))
+})
+
+test('ciLogs by run id that is not in the 500 newest runs is INVALID_INPUT after 5 pages', async () => {
+  const page = (from) => Array.from({ length: 100 }, (_, i) => pipeline(from - i))
+  const { host, fetch } = setup({
+    [PIPELINES]: [0, 1, 2, 3, 4, 5].map((n) => ({ json: { values: page(1000 - n * 100), next: `${API}${BB}/pipelines?page=${n + 2}` } })),
+  })
+  await assert.rejects(host.ciLogs({ runId: 3 }), (error) => error.code === 'INVALID_INPUT' && error.message === 'pipeline run 3 was not found in 500 newest runs')
+  assert.equal(fetch.calls.length, 5)
+})
+
+test('ciLogs refuses a run id that is not a whole number', async () => {
+  const { host } = setup()
+  await assert.rejects(host.ciLogs({ runId: 0 }), (error) => error.code === 'INVALID_INPUT')
+})
+
+test('ciLogs writes a header with no log for a failed step Bitbucket has no log for', async () => {
+  const { host } = setup({
+    [PIPELINES]: { json: { values: [pipeline(7, { result: 'FAILED' })] } },
+    [STEPS]: { json: { values: [{ uuid: '{step-2}', name: 'Test', state: { name: 'COMPLETED', result: { name: 'FAILED' } } }] } },
+    [LOG]: { status: 404, json: { type: 'error', error: { message: 'Log not found' } } },
+  })
+  assert.equal((await host.ciLogs({ branch: 'main' })).log, '== Test ==\n(Bitbucket has no log for this step)\n')
+})
+
+const ENVIRONMENTS = `GET ${BB}/environments`
+const DEPLOYMENTS = `GET ${BB}/deployments`
+
+function deployment(n, env, state, created = `2026-11-${10 + n}T10:00:00.000Z`) {
+  return {
+    type: 'deployment',
+    uuid: `{dep-${n}}`,
+    environment: { uuid: env },
+    state,
+    release: { name: `#${n}`, url: `https://bitbucket.org/acme/widgets/pipelines/results/${n}`, created_on: created, commit: { hash: `sha${n}` } },
+  }
+}
+
+const done = (status) => ({ name: 'COMPLETED', status: { name: status } })
+
+function deployRoutes() {
+  return {
+    [ENVIRONMENTS]: { json: { values: [{ uuid: '{env-p}', name: 'Production' }, { uuid: '{env-s}', name: 'Staging' }] } },
+    [DEPLOYMENTS]: {
+      json: {
+        values: [
+          deployment(1, '{env-s}', done('SUCCESSFUL')),
+          deployment(5, '{env-p}', { name: 'IN_PROGRESS' }),
+          deployment(4, '{env-s}', done('FAILED')),
+          deployment(3, '{env-p}', done('STOPPED')),
+          deployment(2, '{env-p}', { name: 'UNDEPLOYED' }),
+          deployment(6, '{env-x}', { name: 'WEIRD' }),
+        ],
+      },
+    },
+  }
+}
+
+const deployView = (n, environment, state) => ({ id: `{dep-${n}}`, environment, ref: null, sha: `sha${n}`, createdAt: `2026-11-${10 + n}T10:00:00.000Z`, state, url: `https://bitbucket.org/acme/widgets/pipelines/results/${n}` })
+
+test('listDeploys names the environments, sorts newest first and maps the states', async () => {
+  const { host, fetch } = setup(deployRoutes())
+  assert.deepEqual(await host.listDeploys({}), [
+    { ...deployView(6, null, null), statusError: 'Bitbucket returned deployment state WEIRD' },
+    deployView(5, 'Production', 'in_progress'),
+    deployView(4, 'Staging', 'failure'),
+    deployView(3, 'Production', 'inactive'),
+    deployView(2, 'Production', 'pending'),
+    deployView(1, 'Staging', 'success'),
+  ])
+  assert.equal(fetch.calls.filter((c) => new URL(c.url).pathname === `${BB}/environments`).length, 1)
+})
+
+test('listDeploys filters by environment name and honors the limit', async () => {
+  const { host } = setup(deployRoutes())
+  assert.deepEqual((await host.listDeploys({ environment: 'Production' })).map((d) => d.id), ['{dep-5}', '{dep-3}', '{dep-2}'])
+  assert.deepEqual((await host.listDeploys({ environment: 'Production', limit: 2 })).map((d) => d.id), ['{dep-5}', '{dep-3}'])
+  assert.deepEqual((await host.listDeploys({ limit: 1 })).map((d) => d.id), ['{dep-6}'])
+})
+
+test('listDeploys with a ref is empty and reads nothing: Bitbucket deploys have no git ref', async () => {
+  const { host, fetch } = setup(deployRoutes())
+  assert.deepEqual(await host.listDeploys({ ref: 'v1.2.0', limit: 100 }), [])
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('listDeploys refuses a limit outside 1 to 100', async () => {
+  const { host } = setup(deployRoutes())
+  for (const limit of [0, 101, 1.5]) await assert.rejects(host.listDeploys({ limit }), (error) => error.code === 'INVALID_INPUT', String(limit))
 })

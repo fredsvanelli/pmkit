@@ -101,7 +101,8 @@ export function createBitbucketClient({
       return fail('AUTH', 'Bitbucket refused BITBUCKET_TOKEN (HTTP 401): it may have expired or lack a scope', 'Create an Atlassian API token with the Bitbucket scopes and export it as BITBUCKET_TOKEN (/pmkit:setup)')
     }
     if (status === 429) return fail('RATE_LIMITED', "Bitbucket's rate limit for this token is used up", 'Wait a few minutes and retry')
-    if (status === 404 && method === 'GET' && path === '') {
+    // Bitbucket answers 404 "Repository <ws>/<slug> not found" on any path of a repository it cannot find or the token cannot read.
+    if (status === 404 && ((method === 'GET' && path === '') || /repository .* not found/i.test(message))) {
       return fail('NOT_CONFIGURED', `git_host.repo ${workspace}/${slug} was not found or the token cannot read it`, '/pmkit:setup')
     }
     if (status === 403) return fail('UPSTREAM', `Bitbucket refused ${method} ${path || 'the repository'} (HTTP 403): ${message}`, `Check that BITBUCKET_TOKEN has the scopes /pmkit:setup lists and can reach ${workspace}/${slug}`)

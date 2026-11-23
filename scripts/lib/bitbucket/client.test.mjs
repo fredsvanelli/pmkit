@@ -302,3 +302,23 @@ test('a next link to a repository whose name only starts with the slug is refuse
   assert.equal((await failure(() => client.list('pullrequests', {}, { limit: 5 }))).code, 'UPSTREAM')
   assert.equal(fetch.calls.length, 1)
 })
+
+test('404 whose message says the repository was not found is NOT_CONFIGURED on any path', async () => {
+  const { client } = setup({ [`GET ${BB}/pipelines`]: { status: 404, json: bbError('Repository acme/widgets not found') } })
+  const error = await failure(() => client.get('pipelines'))
+  assertError(error, 'NOT_CONFIGURED', 'git_host.repo acme/widgets was not found or the token cannot read it', '/pmkit:setup')
+  assert.equal(error.httpStatus, 404)
+})
+
+test('404 with another message on a path stays UPSTREAM', async () => {
+  const { client } = setup({ [`GET ${BB}/pipelines/x`]: { status: 404, json: bbError('Pipeline not found') } })
+  const error = await failure(() => client.get('pipelines/x'))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.equal(error.httpStatus, 404)
+})
+
+test('a path segment with braces, such as a pipeline uuid, is sent percent-encoded', async () => {
+  const { client, fetch } = setup({ [`GET ${BB}/pipelines/{uuid}/steps`]: { json: { values: [] } } })
+  await client.list('pipelines/{abc-1}/steps', {}, { limit: 10 })
+  assert.equal(new URL(fetch.calls[0].url).pathname, `${BB}/pipelines/%7Babc-1%7D/steps`)
+})
