@@ -240,6 +240,18 @@ function offsetPage(list, query, max = 100) {
   return { startAt, maxResults, total: list.length, isLast: startAt + maxResults >= list.length, values: list.slice(startAt, startAt + maxResults) }
 }
 
+const PLAN_LISTED = { id: '12', name: 'Q1 roadmap', status: 'Active', scenarioId: '34', issueSources: [{ type: 'Board', value: 7 }] }
+const PLAN_FULL = {
+  id: 12,
+  name: 'Q1 roadmap',
+  status: 'Active',
+  leadAccountId: 'acc-1',
+  lastSaved: '2026-11-20T10:00:00Z',
+  issueSources: [{ type: 'Board', value: 7 }],
+  scheduling: { dependencies: 'Sequential', estimation: 'StoryPoints', inferredDates: 'SprintDates', startDate: { type: 'DueDate' }, endDate: { type: 'TargetEndDate' } },
+  crossProjectReleases: [{ name: 'Spring launch', releaseIds: [10001] }],
+}
+
 const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value) => value.trim()).filter(Boolean)
 
 /**
@@ -248,8 +260,9 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
  * advances one second per write, and lives in the state so a restored state keeps counting. `extraStatuses` passes on to
  * jiraSiteRoutes, for a status in every category. `sprints` seeds the board's Jira sprints (PMK-78), `versions` the space's versions (PMK-79),
  * `worklogs` the raw worklogs per work item key; `timeTracking: false` serves a site with time tracking off, which refuses every worklog call (PMK-80).
+ * `plans` serves a Premium site's Plans routes (plan 12 "Q1 roadmap", default scenario 34, team 5 "Payments" capacity 30 Scrum, story points); `plans: false` answers 403 on every Plans route (PMK-82).
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {}, timeTracking = true } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {}, timeTracking = true, plans = true } = {}) {
   state.worklogs ??= {}
   state.next.worklog ??= 10000
   for (const [key, list] of Object.entries(worklogs)) (state.worklogs[key] ??= []).push(...structuredClone(list))
@@ -264,6 +277,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   const site = jiraSiteRoutes({ extraStatuses })
   if (!timeTracking) site['GET /rest/api/3/configuration'] = { json: { issueLinkingEnabled: true, timeTrackingEnabled: false } }
   const timeTrackingOn = () => timeTracking || refuse(400, {}, ['Time Tracking is not enabled.'])
+  const plansOn = () => plans || refuse(403, {}, ['Plans are not available.'])
   const typeStatuses = statusesByType(site)
   const writes = []
   const stamp = () => jiraFormat(now ? now() : START + 1000 * state.clock++)
@@ -488,6 +502,22 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       ;(state.comments[item.key] ??= []).push(comment)
       item.fields.updated = created
       return { status: 201, json: omitProperties(structuredClone(comment)) }
+    },
+    [`GET ${API}/plans/plan`]() {
+      plansOn()
+      return { json: { values: [PLAN_LISTED], last: true, size: 1 } }
+    },
+    [`GET ${API}/plans/plan/{id}`]({ params }) {
+      plansOn()
+      return params.id === '12' ? { json: PLAN_FULL } : notFound()
+    },
+    [`GET ${API}/plans/plan/{id}/team`]() {
+      plansOn()
+      return { json: { values: [{ id: '5', type: 'PlanOnly', name: 'Payments' }], last: true, size: 1 } }
+    },
+    [`GET ${API}/plans/plan/{id}/team/planonly/{team}`]() {
+      plansOn()
+      return { json: { id: 5, name: 'Payments', capacity: 30, issueSourceId: 7, memberAccountIds: [], planningStyle: 'Scrum', sprintLength: 14 } }
     },
     [`GET ${API}/issue/{key}/worklog`]({ params, query }) {
       timeTrackingOn()

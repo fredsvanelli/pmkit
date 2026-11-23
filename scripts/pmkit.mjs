@@ -56,6 +56,7 @@ import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
+import { listText as plansListText, getText as plansGetText } from './lib/jira/plans-text.mjs'
 import { convertText as draftConvertText, listText as draftListText } from './lib/github/draft-issues.mjs'
 import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
@@ -945,6 +946,7 @@ async function flowInputs(ctx, tracker, statuses) {
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
 // `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear(feature).
 // `github: true` does the same for GitHub-only features (discussions, draft issues): they use ctx.github(feature).
+// `jira: true` does the same for Jira-only features (Plans): they use ctx.jira(feature).
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear, github or jira writes only .pmkit/config.yaml and returns what setup must ask',
@@ -2698,6 +2700,24 @@ export const COMMANDS = [
     run: async (ctx) => {
       const result = await (await ctx.github('draftIssues')).convert(ctx.args, { project: ctx.opt('project'), repo: ctx.opt('repo'), dryRun: ctx.dryRun })
       return { data: result, text: draftConvertText(result, ctx.dryRun), warnings: result.warnings }
+    },
+  },
+  // Jira Plans (PMK-82): read the site's plans, their scenario, scheduling, releases and teams' capacity, for /pmkit:jira:plans.
+  {
+    name: 'jira plans list', summary: "the site's Jira Plans, with their default scenario; says so when the site has no Premium or the token lacks Administer Jira",
+    usage: '[--archived] [--trashed] [--limit n]', jira: true, flags: ['archived', 'trashed', 'limit'],
+    run: async (ctx) => {
+      const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      const result = await (await ctx.jira('plans')).list({ archived: ctx.flag('archived'), trashed: ctx.flag('trashed'), limit })
+      return { data: result, text: plansListText(result), warnings: result.warnings }
+    },
+  },
+  {
+    name: 'jira plans get', summary: "one plan: its dependency mode, estimation, default scenario, releases and each team's capacity",
+    usage: '<id>', jira: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.jira('plans')).get(ctx.args[0])
+      return { data: result, text: plansGetText(result), warnings: result.warnings }
     },
   },
   {
@@ -5029,6 +5049,12 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         await ctx.tracker()
         return tracker[feature]
       },
+      // The Jira-only features of the raw Jira tracker, or null for any other system.
+      jira: async (feature) => {
+        if (ctx.config().system !== 'jira') return null
+        await ctx.tracker()
+        return tracker[feature]
+      },
       settings: () => adapterFor(ctx.config().system, adapters).settings(ctx.config()),
       host: () => (host ??= makeHost(ctx)),
       actor: async () => (typeof options.as === 'string' ? options.as : (await requireMember(ctx)).id),
@@ -5055,6 +5081,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (command.github) {
       const { system } = ctx.config()
       if (system !== 'github') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the GitHub Issues tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
+    }
+    if (command.jira) {
+      const { system } = ctx.config()
+      if (system !== 'jira') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Jira tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
     // auto_commit commits Local tracker files, so a hosted tracker never commits.
     const autoCommit = (commit, written) => {

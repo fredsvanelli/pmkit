@@ -133,7 +133,7 @@ test('risks lists an epic whose updates reject, as it does for a throw', async (
 // .pmkit/config.yaml says linear, over a tracker whose operations all return promises. A missing await, or a call past
 // the contract, makes the two outputs differ.
 // docs next-adr answers differently on Linear by design: no tracker folder and a repository file. Its Linear answer has a test in cli-degraded.test.mjs.
-const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.github && !command.exempt && !command.systems && !command.byTracker)
+const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.github && !command.jira && !command.exempt && !command.systems && !command.byTracker)
 
 test('every command that is not local or exempt has mirror cases', () => {
   for (const command of MIRRORED) {
@@ -156,6 +156,11 @@ test('the linear commands are the triage and customers commands and stay out of 
 test('the github commands are the discussions and draft-issues commands and stay out of the mirror', () => {
   assert.deepEqual(COMMANDS.filter((command) => command.github).map((command) => command.name), ['github discussions list', 'github discussions get', 'github discussions comment', 'github draft-issues list', 'github draft-issues convert'])
   assert.ok(MIRRORED.every((command) => !command.github))
+})
+
+test('the jira commands are the plans commands and stay out of the mirror', () => {
+  assert.deepEqual(COMMANDS.filter((command) => command.jira).map((command) => command.name), ['jira plans list', 'jira plans get'])
+  assert.ok(MIRRORED.every((command) => !command.jira))
 })
 
 // PMK-46 added customer and request operations that every tracker implements. The Linear-only `customers` extension of PMK-42 stays outside the contract.
