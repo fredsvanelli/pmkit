@@ -59,7 +59,7 @@ test('jiraTime turns a +0000 offset into Z', () => {
 
 test('ISSUE_FIELDS lists the read fields with the estimate and criteria fields', async () => {
   const ctx = await context()
-  assert.deepEqual(ISSUE_FIELDS(ctx), ['summary', 'status', 'issuetype', 'priority', 'assignee', 'labels', 'parent', 'subtasks', 'issuelinks', 'duedate', 'description', 'created', 'updated', 'creator', 'customfield_10016', 'customfield_10020'])
+  assert.deepEqual(ISSUE_FIELDS(ctx), ['summary', 'status', 'issuetype', 'priority', 'assignee', 'labels', 'parent', 'subtasks', 'issuelinks', 'duedate', 'description', 'created', 'updated', 'creator', 'fixVersions', 'customfield_10016', 'customfield_10020'])
   const withCriteria = await context({ edit: (raw) => raw.fields.push({ id: 'customfield_10200', name: 'Acceptance criteria', system: null, customType: 'x' }) })
   assert.deepEqual(ISSUE_FIELDS(withCriteria).slice(-3), ['customfield_10016', 'customfield_10200', 'customfield_10020'])
 })
@@ -245,13 +245,29 @@ test('labels holding a space are refused', async () => {
   assert.deepEqual(set.after.labels, ['new', 'z'])
 })
 
-test('milestone and release values name the issue that serves them; null passes', async () => {
+test('a milestone value is NOT_SUPPORTED; a release resolves among the versions; nulls with nothing set pass', async () => {
   const ctx = await context()
   const old = await before(ctx)
-  assert.throws(() => toFields({ milestone: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-79/ })
-  assert.throws(() => toFields({ release: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: /PMK-79/ })
+  const versions = [{ id: '10200', name: '2.0', released: false, archived: false }, { id: '10202', name: 'old', released: false, archived: true }]
+  assert.throws(() => toFields({ milestone: 'x' }, old, ctx, {}), { code: 'NOT_SUPPORTED', message: 'Jira has no milestones', nextStep: 'Use a release (version) or an epic' })
+  assert.throws(() => toFields({ release: 'x' }, old, ctx, { versions }), { code: 'INVALID_INPUT', message: 'release x does not exist', nextStep: 'pmkit release list' })
+  assert.throws(() => toFields({ release: 'old' }, old, ctx, { versions }), { code: 'INVALID_INPUT' })
+  const set = toFields({ release: '2.0' }, old, ctx, { versions })
+  assert.deepEqual(set.fields, { fixVersions: [{ id: '10200' }] })
+  assert.equal(set.after.release, '2.0')
   assert.deepEqual(toFields({ sprint: null, milestone: null, release: null }, old, ctx, {}).fields, {})
+  assert.deepEqual(toFields({ release: null }, { ...old, releases: ['1.0', '2.0'] }, ctx, {}).fields, { fixVersions: [] })
   assert.throws(() => toFields({ status: 'done' }, old, ctx, {}), { code: 'INVALID_INPUT' })
+})
+
+test('toIssue reads fixVersions without the archived ones', async () => {
+  const ctx = await context()
+  const version = (id, name, archived = false) => ({ id, name, released: false, archived })
+  assert.equal(toIssue(item({ fixVersions: [version('1', '2.0'), version('2', 'old', true)] }), ctx).release, '2.0')
+  assert.deepEqual(toIssue(item({ fixVersions: [version('1', '2.0'), version('3', '1.0')] }), ctx).releases, ['1.0', '2.0'])
+  const none = toIssue(item({ fixVersions: [version('2', 'old', true)] }), ctx)
+  assert.equal('release' in none || 'releases' in none, false)
+  assert.ok(ISSUE_FIELDS(ctx).includes('fixVersions'))
 })
 
 test('due writes duedate; null clears', async () => {

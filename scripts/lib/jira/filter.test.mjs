@@ -122,8 +122,9 @@ test('a sprint filter without a Scrum board or a sprint field is NOT_SUPPORTED',
   assert.throws(() => translateFilter({ sprint: 'none' }, noField), { code: 'NOT_SUPPORTED', message: /No sprint field in space ENG/ })
 })
 
-test('release is NOT_SUPPORTED naming its issue', async () => {
+test('release is the version id in JQL, and an unknown name matches nothing', async () => {
   const ctx = await context()
-  assert.throws(() => translateFilter({ release: 'v1' }, ctx), (e) => e.code === 'NOT_SUPPORTED' && e.message.includes('PMK-79'))
+  assert.deepEqual(translateFilter({ release: 'Release "A"' }, ctx, { versionId: '10201' }), { jql: `project = "ENG" AND fixVersion = "10201"${TAIL}`, clientSteps: [], serverLimit: undefined })
+  assert.deepEqual(translateFilter({ release: 'nope' }, ctx), { empty: true })
   assert.doesNotThrow(() => translateFilter({ sprint: undefined, release: undefined }, ctx))
 })

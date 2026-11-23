@@ -11,12 +11,13 @@ import { adfToText, textToAdf } from './adf.mjs'
 import { categoryOfStatus, discoveryView } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
 import { moveTargetIn } from '../cycle-moves.mjs'
+import { issueReleaseFields, liveVersions } from './releases.mjs'
 import { sprintOf, toSprint } from './sprints.mjs'
 
 const BRANCH_PROPERTY = 'pmkit.branch'
 const HOURS = 'timeoriginalestimate'
 const SETUP = '/pmkit:setup'
-const BASE_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee', 'labels', 'parent', 'subtasks', 'issuelinks', 'duedate', 'description', 'created', 'updated', 'creator']
+const BASE_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee', 'labels', 'parent', 'subtasks', 'issuelinks', 'duedate', 'description', 'created', 'updated', 'creator', 'fixVersions']
 const LINK_NAMES = { blocks: 'blocks', related: 'relates', duplicate: 'duplicate' }
 const PRIORITY_READ = {
   highest: 'urgent', urgent: 'urgent', critical: 'urgent', blocker: 'urgent',
@@ -24,8 +25,6 @@ const PRIORITY_READ = {
   medium: 'medium',
   low: 'low', lowest: 'low', minor: 'low', trivial: 'low',
 }
-// The issue that serves each field PMK-77 leaves unset.
-const LATER = { milestone: 'PMK-79', release: 'PMK-79' }
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', message, nextStep)
@@ -121,6 +120,7 @@ export function toIssue(item, context, { children = [] } = {}) {
   issue.children = sortedKeys([...(fields.subtasks ?? []).map((sub) => sub.key), ...children])
   issue.archived = false
   setDefined(issue, 'sprint', sprintOf(fields[context.fields.sprint], issue.status.category, context.boardId))
+  Object.assign(issue, issueReleaseFields(fields.fixVersions))
   setDefined(issue, 'due', fields.duedate)
   setDefined(issue, 'branch', item.properties?.[BRANCH_PROPERTY])
   issue.description = texts.description
@@ -172,9 +172,31 @@ function workTypeOf(type, context) {
 function checkPatch(patch, create) {
   checkKeys(patch, create ? CREATE_KEYS : UPDATE_KEYS)
   if (patch.docs !== undefined) throw notSupported('the Jira adapter does not link docs to work items yet')
-  for (const [key, issue] of Object.entries(LATER)) {
-    if (patch[key] !== undefined && patch[key] !== null) throw notSupported(`the Jira adapter does not set ${key} yet (${issue})`)
+}
+
+/** Jira has no milestones: a value is refused, and null is no change. */
+function planMilestone(patch) {
+  if (patch.milestone !== undefined && patch.milestone !== null) throw notSupported('Jira has no milestones', 'Use a release (version) or an epic')
+}
+
+/** A release is a live version's name, sent as the one fixVersion; null clears an issue's releases. `versions` is the space's live raw versions. */
+function planRelease(patch, state, create, versions) {
+  const value = patch.release
+  if (value === undefined) return
+  const { after } = state
+  if (value === null) {
+    if (create || (after.release === undefined && after.releases === undefined)) return
+    state.result.fields.fixVersions = []
+    delete after.release
+    delete after.releases
+    return
   }
+  const version = typeof value === 'string' ? liveVersions(versions).find((candidate) => candidate.name === value) : undefined
+  if (!version) throw invalid(`release ${value} does not exist`, 'pmkit release list')
+  if (!create && after.release === value) return
+  state.result.fields.fixVersions = [{ id: version.id }]
+  delete after.releases
+  after.release = value
 }
 
 /** A write's state: the fields to send, the after issue, and the property to set. */
@@ -311,8 +333,10 @@ function planSprint(patch, state, context, sprints) {
 }
 
 // The Jira fields a patch sends (only the changed ones on update) and the issue it leaves; a changed branch is `property`, a changed sprint is `sprint`.
-export function toFields(patch, before, context, { create = false, now = new Date().toISOString(), sprints = [] } = {}) {
+// `versions` is the space's live raw versions, read when the patch names a release.
+export function toFields(patch, before, context, { create = false, now = new Date().toISOString(), sprints = [], versions = [] } = {}) {
   checkPatch(patch, create)
+  planMilestone(patch)
   const start = create ? skeleton(context, (typeof patch.type === 'string' ? context.workTypeOf(patch.type) : undefined) ?? defaultWorkType(context), now) : before
   const state = plan(start)
   if (create) state.result.fields.project = { key: context.space }
@@ -326,5 +350,6 @@ export function toFields(patch, before, context, { create = false, now = new Dat
   if (create) planCreateOnly(patch, state, context)
   planBranch(patch, state, create)
   planSprint(patch, state, context, sprints)
+  planRelease(patch, state, create, versions)
   return state.result
 }

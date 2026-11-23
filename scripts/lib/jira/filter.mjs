@@ -13,7 +13,6 @@ export function jqlString(value) {
 const list = (values) => `(${values.map(jqlString).join(', ')})`
 export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset * DAY).toISOString().slice(0, 10)
 
-const notSupported = (key, issue) => new PmkitError('NOT_SUPPORTED', `the Jira adapter does not filter by ${key} yet (${issue})`, `Run the search without --${key}`)
 
 /** The NOT_SUPPORTED error of a sprint filter on a space with no Scrum board or no Sprint field, else null. */
 export function sprintUnsupported(context) {
@@ -60,8 +59,10 @@ const HANDLERS = {
     else out.empty = true
     out.steps.add('sprint')
   },
-  release() {
-    throw notSupported('release', 'PMK-79')
+  // The version id the caller resolved from the name; an unknown name matches nothing, as on Local.
+  release(filter, out, context, { versionId }) {
+    if (versionId === undefined) out.empty = true
+    else out.clauses.push(`fixVersion = ${jqlString(versionId)}`)
   },
   parent(filter, out) {
     out.clauses.push(`parent = ${jqlString(filter.parent)}`)
@@ -86,12 +87,12 @@ const STEP_ORDER = ['text', 'blocked', 'sprint', 'updated']
 
 /**
  * Translates a filter that checkFilter accepted (the caller checks) into { empty: true } when nothing can match, else
- * { jql, clientSteps, serverLimit }. `activeId` is the id of the board's active sprint, which `current` means. `serverLimit` is set only when no client step runs and the order is created.
+ * { jql, clientSteps, serverLimit }. `activeId` is the id of the board's active sprint, which `current` means; `versionId` is the Jira id of the release filter's version, undefined when none has its name. `serverLimit` is set only when no client step runs and the order is created.
  */
-export function translateFilter(filter, context, { activeId } = {}) {
+export function translateFilter(filter, context, { activeId, versionId } = {}) {
   const out = { clauses: [`project = ${jqlString(context.space)}`], steps: new Set(), empty: false }
   for (const [key, handle] of Object.entries(HANDLERS)) {
-    if (filter[key] !== undefined) handle(filter, out, context, { activeId })
+    if (filter[key] !== undefined) handle(filter, out, context, { activeId, versionId })
   }
   if (out.empty) return { empty: true }
   const clientSteps = STEP_ORDER.filter((step) => out.steps.has(step))

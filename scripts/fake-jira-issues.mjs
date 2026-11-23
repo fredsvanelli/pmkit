@@ -253,6 +253,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   state.versions ??= []
   state.next.version ??= 10100
   for (const version of versions) state.versions.push({ released: false, archived: false, projectId: SPACE.id, ...structuredClone(version) })
+  state.next.version = Math.max(state.next.version, ...state.versions.map((version) => Number(version.id) + 1))
   state.next.sprint ??= 1
   for (const sprint of sprints) state.sprints.push({ originBoardId: BOARD, goal: '', ...structuredClone(sprint) })
   state.next.sprint = Math.max(state.next.sprint, ...state.sprints.map((sprint) => sprint.id + 1))

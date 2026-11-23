@@ -155,3 +155,11 @@ test('the discovery cache file holds no credential', async () => {
   assert.ok(text.includes('"members"'))
   for (const secret of [FAKE_TOKEN, FAKE_EMAIL]) assert.ok(!text.includes(secret), 'a credential reached the cache')
 })
+
+test('Jira has no milestones: the list is empty, a get is NOT_FOUND and a create is NOT_SUPPORTED', async () => {
+  const { fake, tracker } = issuesSetup()
+  assert.deepEqual(await tracker.listMilestones(), [])
+  await assert.rejects(tracker.getMilestone('m1'), { code: 'NOT_FOUND', message: 'milestone m1 does not exist: Jira has no milestones' })
+  await assert.rejects(tracker.createMilestone({ id: 'm1' }, 'acc-1'), { code: 'NOT_SUPPORTED', message: 'Jira has no milestones', nextStep: 'Use a release (version) or an epic' })
+  assert.deepEqual(fake.writes(), [])
+})
