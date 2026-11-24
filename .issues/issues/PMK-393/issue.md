@@ -3,13 +3,13 @@ id: PMK-393
 title: Read team-managed board features in the Jira manifest
 type: bug
 status: backlog
-priority: low
+priority: high
 estimate: 3
 parent: EPC-14
 related: [PMK-366]
 milestone: jira
 created: 2026-11-24T18:53:31.447Z
-updated: 2026-11-24T18:53:36Z
+updated: 2026-11-24T19:04:30Z
 ---
 
 ## Description
@@ -21,6 +21,8 @@ Found live in PMK-366 on a team-managed software space. A team-managed space tur
 - `CONTEXT.md` "Scrum board" says a space without one has no sprints, which does not hold for team-managed spaces if the board stays `simple`.
 
 Evidence: `docs/superpowers/specs/2026-11-24-pmk-366-check-jira-discovery-live-design.md`, "Team-managed features".
+
+Checked live on 2026-11-24 (PMK-366, owner's Q3): with the Backlog, Sprints and Estimation board features on (Sprints needs Backlog), the team-managed board **stays `type: simple`**, Jira creates a future sprint, and the site gains the global `Sprint` (`gh-sprint`) and `Story point estimate` (`jsw-story-points`) fields. So `cycles` is `absent` on every team-managed space, and `issues.mjs` (`boardId` only for a `scrum` board) and `discovery.mjs` (`readBoard` prefers `scrum`) treat its board as having no sprints. Sprints on a team-managed space should follow the board's `jsw.agility.sprints` feature, not its type. This blocks live sprint checks on a team-managed space (PMK-370).
 
 ## Acceptance criteria
 

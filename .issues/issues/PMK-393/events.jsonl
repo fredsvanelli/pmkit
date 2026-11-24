@@ -1,2 +1,4 @@
 {"at":"2026-11-24T18:53:31Z","by":"fred","op":"create","to":{"id":"PMK-393","title":"Read team-managed board features in the Jira manifest","type":"bug","status":"backlog","priority":"low","estimate":3,"labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-24T18:53:31.447Z","updated":"2026-11-24T18:53:31Z"}}
 {"at":"2026-11-24T18:53:36Z","by":"fred","op":"link","field":"related","to":"PMK-366"}
+{"at":"2026-11-24T19:04:30Z","by":"fred","op":"update","field":"priority","from":"low","to":"high"}
+{"at":"2026-11-24T19:04:30Z","by":"fred","op":"update","field":"description"}
