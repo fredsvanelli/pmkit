@@ -42,7 +42,7 @@ Three places decide "this space has sprints" from `board.type === 'scrum'` alone
 - `issues.mjs` `makeContext`: `boardId: sprintsOn(raw) ? raw.board.id : null`.
 - `filter.mjs` `sprintUnsupported`: same hint as the manifest for a team-managed space (it reads `context.raw.space.style`).
 - The discovery cache: `raw.board.features` is part of the raw discovery, so it is cached with it, and `capability(..., { refreshIfAbsent })` re-reads once, as for other settings.
-- `CONTEXT.md` "Scrum board": a team-managed space's board stays `simple`; its Sprints feature decides whether it runs sprints. Add "Board features" as a term.
+- `CONTEXT.md`: "Scrum board" becomes "Sprint board" (a company-managed space's first Scrum board, or a team-managed space's one board with its Sprints feature on; the board stays `simple`), and "Board feature" is a new term. Interview proposal, pending the owner's answer.
 - Comments naming "the space's Scrum board" in `cycle-ops.mjs` and `tracker.mjs` say "the space's sprint board" instead.
 - Fakes: `scripts/fake-jira-api.mjs` `jiraSiteRoutes` gains a `features` option that serves `/board/{id}/features` for the team-managed variant.
 
@@ -66,6 +66,16 @@ Three places decide "this space has sprints" from `board.type === 'scrum'` alone
 - Company-managed spaces and a token without admin rights: not checked live (owner decision), open in the PR.
 - Gating Jira release writes (`release create`, `mark-released`) on the manifest. The CLI's release-notes and readiness flows already read the `releases` entry; the writes are not gated on any tracker but Linear. Left out; a follow-up in EPC-14 if the owner wants it.
 - Sprint writes on a team-managed board (PMK-370).
+
+## Interview
+
+Questions put to the owner through the coordinator on 2026-11-24, with the worker's recommendation:
+
+- Q1. Approach A (features read on team-managed spaces only, one `sprintsOn` predicate). Recommended: yes.
+- Q2. The one-off toggle probe on Kudos (Releases on then off, Estimation off then on, restored). Recommended: yes.
+- Q3. Gating Jira release writes on the manifest: out of scope, follow-up in EPC-14. Recommended: file the follow-up.
+- Q4. Features read refused on a team-managed space: fall back to the board type (so `cycles` absent, `releases` native, estimate by field) and warn. Recommended: yes.
+- Q5. Rename the CONTEXT term "Scrum board" to "Sprint board" and add "Board feature". Recommended: yes; no ADR (easy to reverse).
 
 ## Left to the builder
 
