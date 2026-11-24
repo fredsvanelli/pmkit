@@ -100,3 +100,23 @@ Answered on 2026-11-24 by the coordinator on the owner's behalf; the design is a
 ## Left to the builder
 
 Assertion wording, the shared init helper's shape, the random word and the retry interval of the text search.
+
+## Result
+
+Run on 2026-11-24 against the owner's Jira Cloud site (host kept out of the repository, the PR and the issue), space Kudos: `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0, 12 pass, 3 skip (scoped token, company-managed space, limited token: as before). No output held the token, the email or the host. Kudos after the run: no work item, no sprint.
+
+| Check | AC | Result |
+|---|---|---|
+| `issues link A B --kind blocks`: A's link has `outwardIssue: B`, B's has `inwardIssue: A`; `issues get B` `blockedBy: [A]`; `list --blocked` lists B, not A | 1 | pass |
+| `related` reads back on both sides; `link C A --kind duplicate`: C `outwardIssue: A` (Duplicate), `duplicateOf: [A]` on C only | 1 | pass |
+| `issues parent B <epic>`, then `issues parent B none`: the site's parent set, then gone | 2 | pass |
+| criteria as an ADF `taskList` (`TODO`, `TODO`), `issues update --check 1` gives `DONE`, `TODO`, read back done | 2 | pass |
+| `issues list --text <word>` lists only the item with the word in its title | 3 | pass (within the 10 s retry) |
+| assignable users: `accountId`, `displayName`, `accountType` strings; `issues assign A me` | 3 | pass |
+| changelog in `search/jql` (`expand=changelog`): carried, and `metrics cycle-time` lists the item | 3 | **fail, then pass after the fix**: the changelog names statuses in English (`In Progress`, `Done`) while discovery holds the shown names (`Em andamento`, `Concluído`), so no move had a category. `history.mjs` now names a status by its id; the fake's changelog names statuses in English and records the resolution a move sets, as the site does |
+| `pmkit.branch` property in search: `issues branch A` writes it, `issues list` reads it | 3 | pass |
+| move to done: the dry run's `requiredFields` equals the transition's required fields, and the move succeeds | 4 | pass (none on a team-managed space) |
+| a required Resolution screen | 4 | skip: team-managed spaces have no transition screens; company-managed skipped (owner's decision), open in the PR |
+| the development panel links a lower-case key | 5 | skip: no git integration on the site. `issues branch` on Jira keeps the key upper case (Q1), checked live: `<KEY>-...` |
+| PMK-364, PMK-366 and PMK-368 checks, rerun | — | pass |
+
