@@ -8,7 +8,7 @@ import { compareIds } from '../ids.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys, criteriaOf, oneLine } from '../issue-fields.mjs'
 import { isCategory, validDate, PRIORITY_LABEL_LEVELS as PRIORITIES } from '../model.mjs'
 import { adfToText, textToAdf } from './adf.mjs'
-import { categoryOfStatus, discoveryView } from './discovery.mjs'
+import { categoryOfStatus, discoveryView, sprintsOn } from './discovery.mjs'
 import { isIssueKey, lower, normalizeKey } from './ids.mjs'
 import { moveTargetIn } from '../cycle-moves.mjs'
 import { issueReleaseFields, liveVersions } from './releases.mjs'
@@ -47,7 +47,7 @@ export function makeContext(raw, pmkit, session) {
     priorityIdOf: (level) => (raw.priorities ?? []).find((item) => readPriority(item.name) === level)?.id,
     linkType: (kind) => (raw.linkTypes ?? []).find((type) => lower(type.name) === LINK_NAMES[kind]) ?? null,
     fields: { estimate: view.fields.estimate?.id ?? null, criteria: view.fields.acceptance_criteria?.id ?? null, sprint: view.fields.sprint?.id ?? null },
-    boardId: raw.board?.type === 'scrum' ? raw.board.id : null,
+    boardId: sprintsOn(raw) ? raw.board.id : null,
   }
 }
 

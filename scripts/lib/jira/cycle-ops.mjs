@@ -1,4 +1,4 @@
-// The Cycles and Capacity families of the Jira adapter. A sprint is a Jira sprint of the space's Scrum board, and its id is the
+// The Cycles and Capacity families of the Jira adapter. A sprint is a Jira sprint of the space's sprint board, and its id is the
 // Jira sprint id. Capacity lives in .pmkit/capacity.yaml, as on Linear and GitHub, under the key jira:<site>/<board id>.
 // See docs/superpowers/specs/2026-11-22-pmk-78-jira-sprints-design.md, "Operations (`cycle-ops.mjs`)".
 

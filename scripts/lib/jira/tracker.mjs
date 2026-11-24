@@ -1,5 +1,5 @@
 // The Jira tracker. discover and capabilities read one site and one space (PMK-76); the Issues family reads and writes work
-// items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's Scrum board (PMK-78); the Releases family reads and writes
+// items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's sprint board (PMK-78); the Releases family reads and writes
 // the space's versions, the Deliverables family reads and writes its epics and their status updates, and Jira has no milestones (PMK-79); the
 // Time tracking family reads and writes worklogs (PMK-80). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
 // later issues stay stubs. See docs/superpowers/specs/2026-11-22-pmk-77-jira-work-items-transitions-links-jql-design.md,
