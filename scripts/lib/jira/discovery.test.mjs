@@ -232,3 +232,10 @@ test('a team-managed simple board has no estimation field', async () => {
   const { raw } = await discover({ style: 'team-managed', board: 'simple' })
   assert.deepEqual(raw.board, { id: 1, type: 'simple', estimationField: null })
 })
+
+test('an English untranslated name wins over another field shown with that name', async () => {
+  const shown = { id: 'customfield_10040', name: 'Start date', untranslatedName: 'Kickoff', custom: true, schema: { type: 'date' } }
+  const english = { id: 'customfield_10015', name: 'Data de início', untranslatedName: 'Start date', custom: true, schema: { type: 'date' } }
+  const { view } = await discover({ routes: { 'GET /rest/api/3/field': { json: [shown, english] } } })
+  assert.equal(view.fields.start_date.id, 'customfield_10015')
+})

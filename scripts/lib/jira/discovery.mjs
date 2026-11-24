@@ -142,8 +142,11 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
   }
 }
 
-/** The field whose English name (untranslatedName) or shown name is one of `names`, so a site in any language matches. */
-const named = (fields, ...names) => fields.find((field) => [field.untranslated, field.name].some((name) => typeof name === 'string' && names.includes(name.toLowerCase())))
+/** The field whose English name (untranslatedName) is one of `names`, else the one shown with it, so a site in any language matches. */
+const named = (fields, ...names) => {
+  const is = (name) => typeof name === 'string' && names.includes(name.toLowerCase())
+  return fields.find((field) => is(field.untranslated)) ?? fields.find((field) => is(field.name))
+}
 const bySystem = (fields, id) => fields.find((field) => field.system === id || field.id === id)
 
 // The inference rule of each field role, in FIELD_ROLES order. Unverified on a live site (see the spec's Risks).
