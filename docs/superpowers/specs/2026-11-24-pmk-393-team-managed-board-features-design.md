@@ -42,7 +42,7 @@ Three places decide "this space has sprints" from `board.type === 'scrum'` alone
 - `issues.mjs` `makeContext`: `boardId: sprintsOn(raw) ? raw.board.id : null`.
 - `filter.mjs` `sprintUnsupported`: same hint as the manifest for a team-managed space (it reads `context.raw.space.style`).
 - The discovery cache: `raw.board.features` is part of the raw discovery, so it is cached with it, and `capability(..., { refreshIfAbsent })` re-reads once, as for other settings.
-- `CONTEXT.md`: "Scrum board" becomes "Sprint board" (a company-managed space's first Scrum board, or a team-managed space's one board with its Sprints feature on; the board stays `simple`), and "Board feature" is a new term. Interview proposal, pending the owner's answer.
+- `CONTEXT.md`: "Scrum board" becomes "Sprint board" (a company-managed space's first Scrum board, or a team-managed space's one board with its Sprints feature on; the board stays `simple`), and "Board feature" is a new term. Approved in the interview (Q5).
 - Comments naming "the space's Scrum board" in `cycle-ops.mjs` and `tracker.mjs` say "the space's sprint board" instead.
 - Fakes: `scripts/fake-jira-api.mjs` `jiraSiteRoutes` gains a `features` option that serves `/board/{id}/features` for the team-managed variant.
 
@@ -69,7 +69,7 @@ Three places decide "this space has sprints" from `board.type === 'scrum'` alone
 
 ## Interview
 
-Questions put to the owner through the coordinator on 2026-11-24, with the worker's recommendation:
+Questions put to the owner through the coordinator on 2026-11-24. The owner approved the design and answered yes to all five; on Q2, Kudos is restored exactly and any leftover site fields are reported; the Q3 follow-up goes in EPC-14.
 
 - Q1. Approach A (features read on team-managed spaces only, one `sprintsOn` predicate). Recommended: yes.
 - Q2. The one-off toggle probe on Kudos (Releases on then off, Estimation off then on, restored). Recommended: yes.
