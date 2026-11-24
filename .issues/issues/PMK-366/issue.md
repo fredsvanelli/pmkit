@@ -7,11 +7,11 @@ priority: low
 estimate: 2
 assignee: fred
 parent: EPC-14
-related: [PMK-76]
+related: [PMK-76, PMK-393]
 milestone: jira
 branch: fredsvanelli/pmk-366-check-jira
 created: 2026-11-22T19:42:30.042Z
-updated: 2026-11-24T18:41:24Z
+updated: 2026-11-24T18:53:36Z
 ---
 
 ## Description
