@@ -61,7 +61,7 @@
   - `'capabilities on the throwaway space'` (same): 20 entries, `plan.software` set.
   - `'discover a company-managed space'` (`PMKIT_LIVE_JIRA_COMPANY_SPACE`): `space.style === 'company-managed'`, plus the first two checks on it.
   - `'a token without admin rights discovers with warnings'` (`PMKIT_LIVE_JIRA_LIMITED_EMAIL`, `PMKIT_LIVE_JIRA_LIMITED_TOKEN`): `mypermissions` lacks `ADMINISTER`; `discover` resolves.
-  Diagnostics: style, counts, role ids, plan; never names or the host.
+  - Diagnostics: style, counts, role ids, plan; never names or the host.
 - [ ] **Step 2:** `node --test scripts/lib/jira/client-live.mjs` without `PMKIT_LIVE` → every test skipped; `npm test` and `npm run lint` PASS.
 - [ ] **Step 3:** run live on Kudos (see the file header) → the throwaway-space tests PASS, company/limited skip.
 - [ ] **Step 4:** commit `test: opt-in live check of Jira discovery (PMK-366)`.
