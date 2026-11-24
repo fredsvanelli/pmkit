@@ -112,3 +112,17 @@ Answered on 2026-11-24 by the coordinator on the owner's behalf; the design is a
 - Q4: yes, the limited-token check is skipped and open in the PR. The harness keeps the optional test, which skips with its reason.
 - Q1 and Q3: with the owner. Everything else goes ahead; the company-managed check and the sprints/estimation experiment wait for the owner's answer. Until then the harness test for a company-managed space skips when `PMKIT_LIVE_JIRA_COMPANY_SPACE` is unset.
 - No new `CONTEXT.md` term and no ADR: the fix follows ADR 0014 (roles map by id; names are only the inference fallback). The "Scrum board" entry's mismatch with team-managed boards goes to the Q2 follow-up.
+
+## Result
+
+Run on 2026-11-24 against the owner's Jira Cloud site (host and space key kept out of the repository, the PR and the issue), space Kudos (team-managed, site language Portuguese): `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0, 10 pass, 3 skip. No output held the token or the email. Kudos holds no work item after the run (approximate count 0).
+
+| Check | AC | Result |
+|---|---|---|
+| discover the throwaway space: style, work type levels, status categories | 1 | pass: `team-managed`; levels epic, subtask, standard match `hierarchyLevel`; 5 statuses, categories match `statusCategory.key` |
+| discover a company-managed space | 1, 2 | skip: the site has no company-managed space (Q1, with the owner) |
+| the field-role rules find the site's fields | 2 | pass after the fix: `priority`, `duedate`, `assignee`, `timespent`, and `start_date` `customfield_10015` (shown as `Data de início`; `null` before the fix). `estimate`, `sprint`, `acceptance_criteria` are `null`, and the site has no field their rules name (sprints and estimation are off in Kudos; Q3, with the owner) |
+| license, configuration and board shapes | 3 | pass: `jira-software` plan `FREE`; configuration booleans; one board of type `simple`, no `estimation` in its configuration |
+| capabilities on the throwaway space | 3 | pass: 20 entries; `releases` reports `native` while the space's Releases feature is off (Q2 follow-up) |
+| a token without admin rights discovers with warnings | 3 | skip: no non-admin token (Q4); unit tests cover refused optional reads |
+| PMK-364's client checks, rerun | — | pass (scoped token skipped, as in PMK-364) |
