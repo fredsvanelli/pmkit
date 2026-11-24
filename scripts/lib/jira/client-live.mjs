@@ -70,7 +70,7 @@ test('anonymous serverInfo says Cloud', { skip }, async (t) => {
 async function checkSession(t, sessionEnv) {
   const session = await createJiraClient({ env: sessionEnv, tracker: tracker() }).session()
   assert.equal(session.source, 'JIRA_API_TOKEN')
-  assert.equal(session.site, SITE.toLowerCase())
+  assert.ok(session.site === SITE.toLowerCase(), 'the session names another site')
   assert.ok(typeof session.viewer.accountId === 'string' && session.viewer.accountId !== '', 'no viewer account id')
   t.diagnostic('session: source JIRA_API_TOKEN, viewer set')
 }
