@@ -81,12 +81,16 @@ test('step 2 on a team-managed space reads its own estimate field', () => {
   assert.deepEqual(found.fields.estimate, { id: 'customfield_10016', name: 'Story point estimate' })
 })
 
-test('failures: no token, a Data Center site, an unknown space, no space in the config', () => {
+test('failures: no token, a Data Center site, no site at the host, an unknown space, no space in the config', () => {
   const root = jiraRepo()
   const env = { ...FAKE_ENV, JIRA_API_TOKEN: '' }
   assert.equal(failure(pmkit(root, ['discover', '--json'], { env })).code, 'AUTH')
   const dataCenter = { 'GET /rest/api/3/serverInfo': { json: { deploymentType: 'DataCenter' } } }
   assert.equal(failure(pmkit(root, ['discover', '--json'], { routes: dataCenter })).code, 'NOT_SUPPORTED')
+  const noSite = failure(pmkit(root, ['discover', '--json'], { routes: { 'GET /rest/api/3/serverInfo': { status: 404, text: 'Not Found' } } }))
+  assert.equal(noSite.code, 'NOT_CONFIGURED')
+  assert.equal(noSite.message, 'No Jira site answers at acme.atlassian.net')
+  assert.ok(fs.readFileSync(RUNBOOK, 'utf8').includes('`tracker.scope.site` names a host with no Jira site'), 'the failures table lists no site')
   const unknown = { 'GET /rest/api/3/project/ENG': { status: 404, json: { errorMessages: ['No project'] } } }
   assert.equal(failure(pmkit(root, ['discover', '--json'], { routes: unknown })).code, 'NOT_CONFIGURED')
   const noSpace = pmkit(jiraRepo('    site: acme.atlassian.net'), ['validate', '--json'])

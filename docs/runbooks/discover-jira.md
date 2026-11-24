@@ -58,4 +58,5 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 |---|---|---|
 | `JIRA_EMAIL` or `JIRA_API_TOKEN` not set | `AUTH` | `/pmkit:setup` |
 | The site runs Server or Data Center | `NOT_SUPPORTED` | Use a Jira Cloud site (ADR 0013) |
+| `tracker.scope.site` names a host with no Jira site, such as a typo | `NOT_CONFIGURED` | Check the site host in tracker.scope.site, or --site in /pmkit:setup |
 | `tracker.scope.space` names a space the site lacks or the token's owner cannot browse | `NOT_CONFIGURED` | `/pmkit:setup` |

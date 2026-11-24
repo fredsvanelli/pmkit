@@ -2,12 +2,14 @@
 id: PMK-364
 title: Check the Jira client against a live site
 type: chore
-status: backlog
+status: in_review
 priority: low
+assignee: fred
 parent: EPC-14
-related: [PMK-75]
+related: [PMK-75, PMK-392]
+branch: fredsvanelli/pmk-364-check-jira
 created: 2026-11-22T18:49:38.845Z
-updated: 2026-11-22T18:49:42Z
+updated: 2026-11-24T18:32:28Z
 ---
 
 ## Description
@@ -23,6 +25,6 @@ Check `scripts/lib/jira/client.mjs` against a real Jira Cloud site:
 
 ## Acceptance criteria
 
-- [ ] A classic token passes the session check on a live site
+- [x] A classic token passes the session check on a live site
 - [ ] A scoped token is checked on the site host, and an ADR is written if it fails
-- [ ] Anonymous serverInfo returns Cloud on a live site
+- [x] Anonymous serverInfo returns Cloud on a live site
