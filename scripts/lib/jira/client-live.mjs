@@ -304,7 +304,7 @@ test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
   const cli = (...args) => {
     const result = spawnSync(process.execPath, [CLI, ...args, '--json'], { cwd: repo, env: { ...env, PMKIT_HOME: path.join(root, 'home') }, encoding: 'utf8' })
     assertNoSecret(`${result.stdout}${result.stderr}`)
-    assert.equal(result.status, 0, hostless(`pmkit ${args[0]} exited ${result.status}: ${result.stdout.slice(0, 400)}`))
+    assert.equal(result.status, 0, hostless(`the CLI's ${args[0]} exited ${result.status}: ${result.stdout.slice(0, 400)}`))
     return JSON.parse(result.stdout)
   }
   const init = ['init', '--tracker', 'jira', '--git-host', 'none', '--site', SITE]
