@@ -61,6 +61,20 @@ Three places decide "this space has sprints" from `board.type === 'scrum'` alone
 - The real CLI's `cycle list` in a `liveRepo` set up on the space answers without NOT_SUPPORTED when Sprints is on. No sprint is written (PMK-370 owns the sprint flows).
 - One-off probe, recorded in this doc, not in the test: turn Releases on and off again, and Estimation off and on again, on Kudos's board (`PUT /rest/agile/1.0/board/1/features`), and read the manifest in each state, so both directions of each feature are seen. Kudos ends as found: Backlog, Sprints and Estimation on, Releases off.
 
+## Live results (2026-11-24)
+
+On Kudos (team-managed, Portuguese site; host, email and token kept out of the repository).
+
+| Check | Result |
+|---|---|
+| `client-live.mjs` discovery tests (style, field roles, license/board shapes, capabilities) | pass |
+| "a team-managed space's capabilities follow its board features": `raw.board.features` equals Jira's `/features`; board `simple`, Sprints on, Estimation on, Releases off → `cycles native`, `estimation native`, `releases absent`; the real CLI's `cycle list` answers `[]` | pass |
+| Probe: Releases on → `releases native`; off again → `releases absent` (`Turn on Releases in space KAN's features`) | pass |
+| Probe: Estimation off → the board configuration drops its estimation field, the global `Story point estimate` field (`jsw-story-points`) stays on the site, and `estimation` is `absent`; without the Estimation-feature rule the estimate role would have taken that global field. On again → `native` | pass |
+| The board stays `type: simple` in every state | seen |
+| Kudos after the probe: Backlog, Sprints, Estimation on, Releases off, every other feature as found; no site field added or removed; no versions, sprints or work items | restored |
+| Company-managed space, token without admin rights | skipped (owner decision), open in the PR |
+
 ## Non-goals
 
 - Company-managed spaces and a token without admin rights: not checked live (owner decision), open in the PR.
