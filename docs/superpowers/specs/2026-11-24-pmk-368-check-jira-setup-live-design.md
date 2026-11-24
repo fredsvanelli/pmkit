@@ -88,6 +88,8 @@ Output prints counts and ids, never the host, the email or the token (the harnes
 - **Q1. Work type English name source.** Statuses list name (A, no new call, seen live) or `GET /issuetype/project` (A', documented, one more call). Recommend A, with `untranslatedName` winning when Jira sends it.
 - **Q2. Acceptance-criteria candidates include Jira Software's issue colour field (`jsw-issue-color`).** It is a custom string field, so the rule offers it; it is never recommended. (a) Leave it; (b) leave out `com.pyxis.greenhopper.jira:*` types. Recommend (a): one odd candidate, not worth a rule.
 
+- **Q3. Mappings hold names in the viewer's language.** `mappings.status` and `mappings.types` hold the shown name (`Em análise`, `Tarefa`), and Jira shows names in the token owner's language (`Accept-Language` does not change it). A teammate whose Jira is in English sees `In Review` and `Task`, so a config one of them writes breaks for the other. (a) A follow-up in EPC-14: resolve a status or type mapping against the shown and the English name (or hold ids, an ADR); this PR keeps writing the shown name; (b) fix it here. Recommend (a): it changes how every Jira command reads mappings, outside setup.
+
 ## Left to the builder
 
 Assertion wording, the fake's Portuguese strings, the live test's temp-dir handling.
