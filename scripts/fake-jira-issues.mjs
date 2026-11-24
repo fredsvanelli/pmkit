@@ -274,7 +274,7 @@ const queryList = (query, name) => (query.get(name) ?? '').split(',').map((value
  * `plans` serves a Premium site's Plans routes (plan 12 "Q1 roadmap", default scenario 34, team 5 "Payments" capacity 30 Scrum, story points); `plans: false` answers 403 on every Plans route (PMK-82).
  * `discovery` adds a Jira Product Discovery project IDEA with a Votes field and the delivery link type, and, when the state has no idea, IDEA-1 "Bulk export" (7 votes) and the newer IDEA-2 "Dark mode" (votes not returned) (PMK-83).
  */
-export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {}, timeTracking = true, plans = true, discovery = false } = {}) {
+export function fakeJiraIssues({ state = emptyState(), requireResolution = true, now, extraStatuses = false, sprints = [], versions = [], worklogs = {}, timeTracking = true, plans = true, discovery = false, locale = 'en' } = {}) {
   state.worklogs ??= {}
   state.next.worklog ??= 10000
   for (const [key, list] of Object.entries(worklogs)) (state.worklogs[key] ??= []).push(...structuredClone(list))
@@ -286,7 +286,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   state.next.sprint ??= 1
   for (const sprint of sprints) state.sprints.push({ originBoardId: BOARD, goal: '', ...structuredClone(sprint) })
   state.next.sprint = Math.max(state.next.sprint, ...state.sprints.map((sprint) => sprint.id + 1))
-  const site = jiraSiteRoutes({ extraStatuses })
+  const site = jiraSiteRoutes({ extraStatuses, locale })
   if (!timeTracking) site['GET /rest/api/3/configuration'] = { json: { issueLinkingEnabled: true, timeTrackingEnabled: false } }
   if (discovery) {
     const projects = site[`GET ${API}/project/search`].json
@@ -301,6 +301,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   const timeTrackingOn = () => timeTracking || refuse(400, {}, ['Time Tracking is not enabled.'])
   const plansOn = () => plans || refuse(403, {}, ['Plans are not available.'])
   const typeStatuses = statusesByType(site)
+  // The changelog names a status in English, whatever language the site shows it in, as the live site does (PMK-367).
+  const english = new Map(Object.values(typeStatuses).flat().map((status) => [status.id, status.untranslatedName ?? status.name]))
   const writes = []
   const stamp = () => jiraFormat(now ? now() : START + 1000 * state.clock++)
 
@@ -507,7 +509,10 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       const before = item.fields.status
       item.fields.status = transition.to
       item.fields.resolution = resolution && { ...resolution }
-      record(item, [changeItem('status', before, transition.to, state)], at())
+      const moved = { ...changeItem('status', before, transition.to, state), fromString: english.get(before.id), toString: english.get(transition.to.id) }
+      // Jira records the resolution a transition sets in the same changelog entry, as the live site does (PMK-367).
+      const resolved = resolution ? [{ field: 'resolution', fieldId: 'resolution', fieldtype: 'jira', from: null, fromString: null, to: resolution.id, toString: resolution.name }] : []
+      record(item, [moved, ...resolved], at())
       return { status: 204 }
     },
     [`GET ${API}/issue/{key}/changelog`]: ({ params, query }) => ({ json: offsetPage(structuredClone(state.changelog[itemOf(params.key).key] ?? []), query) }),

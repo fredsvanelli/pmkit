@@ -2,7 +2,7 @@
 
 The issue commands on a repository whose tracker is Jira Cloud: create, list, move (through a transition that needs a Resolution), link, parent, comment, history, branch and delete (PMK-77). `scripts/runbook-issues-jira.test.mjs` runs every step below with the real CLI and a stateful fake Jira in place of `fetch`, with the fake's state saved to a file between runs, so `npm test` checks this runbook.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; PMK-367 in EPC-14 lists what a follow-up settles (link direction on create, `parent: null`, the ADF task list, `text ~`, the assignable-users read, the changelog in search, the property read in `search/jql`, one move through a Resolution screen, a lower-case key in the development panel).
+Live check: run on 2026-11-24 against a team-managed space on a Jira Cloud site in Portuguese (PMK-367), with `scripts/lib/jira/client-live.mjs` (`PMKIT_LIVE=1`; host, email and token stay out of the repository). Passed: link direction (A blocks B, B is blocked by A), related and duplicate, a parent set and cleared, the ADF task list and a checked criterion, `text ~`, the assignable-users read, the changelog in `search/jql` (through `metrics cycle-time`), the `pmkit.branch` property read in search, and a move to done whose dry run lists the transition's required fields. The run found that the changelog names statuses in English on a site in another language; history and the metrics now name them by id (step 13). Not run: a move through a required Resolution screen (a team-managed space has no transition screens, and the company-managed checks are skipped by the owner's decision) and the development panel (the site has no git integration); branch names keep the key upper case on the documented form (ADR 0015).
 
 ## Before you start
 
@@ -110,7 +110,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs issues branch ENG-1 --json
    ```
 
-   Expect `branch: eng-1-ship-it`, created locally from `main` (`git branch --list eng-1-ship-it` shows it), and `after.branch` with the same name: pmkit writes it to the work-item property `pmkit.branch` (ADR 0015), so `issues get ENG-1 --json` reads it back. `issues branch` needs `git_host.system: github` in `.pmkit/config.yaml`; with `git_host: none` it answers `NOT_SUPPORTED`. `issues update <key> --branch <name>` records a branch made by hand.
+   Expect `branch: ENG-1-ship-it`, created locally from `main` (`git branch --list ENG-1-ship-it` shows it), and `after.branch` with the same name. On Jira the key stays upper case, the form Jira's development panel links (ADR 0015); the other trackers name it `eng-1-ship-it`. pmkit writes it to the work-item property `pmkit.branch` (ADR 0015), so `issues get ENG-1 --json` reads it back. `issues branch` needs `git_host.system: github` in `.pmkit/config.yaml`; with `git_host: none` it answers `NOT_SUPPORTED`. `issues update <key> --branch <name>` records a branch made by hand.
 
 ## Finish the move
 
@@ -130,7 +130,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
     node scripts/pmkit.mjs issues get ENG-1 --history --json
     ```
 
-    Expect `history` in time order with the ops `create`, `move` (to In Progress), `link`, `comment` and `move` (to Done), each with its time and author.
+    Expect `history` in time order with the ops `create`, `move` (to In Progress), `link`, `comment`, `move` (to Done) and `update` (field `jira:resolution`, to `Done`: Jira records the resolution the move set), each with its time and author.
 
 ## Delete
 
@@ -143,6 +143,20 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
     ```
 
     Expect the first to fail, then `ENG-3` created and deleted (`after: null`); `issues get ENG-3` is `NOT_FOUND`.
+
+## A site in another language
+
+13. Jira shows status names in its viewer's language, but its changelog names them in English. On a site in Portuguese, with `feature: História` in `mappings.types` (the shown name, as setup writes it), create a bug, move it to in progress, then to done, and read its history and the cycle time:
+
+    ```
+    node scripts/pmkit.mjs issues create --title-file tmp/title-1.txt --type bug --json
+    node scripts/pmkit.mjs issues move ENG-1 in_progress --json
+    node scripts/pmkit.mjs issues move ENG-1 done --field resolution=Done --json
+    node scripts/pmkit.mjs issues get ENG-1 --history --json
+    node scripts/pmkit.mjs metrics cycle-time --json
+    ```
+
+    Expect the `create` event's status `Tarefas pendentes` and the moves `Tarefas pendentes` to `Em andamento`, then `Em andamento` to `Concluído`: pmkit names each status by its id, as the site shows it. `metrics cycle-time` lists `ENG-1`.
 
 ## Failures
 

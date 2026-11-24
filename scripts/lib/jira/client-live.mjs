@@ -4,6 +4,8 @@
 // each role, the license, configuration and board shapes, on the throwaway space and, when set, on a company-managed space
 // (PMKIT_LIVE_JIRA_COMPANY_SPACE) and with a token without admin rights (PMKIT_LIVE_JIRA_LIMITED_EMAIL and _TOKEN).
 // Then setup (PMK-368): the real CLI runs init --tracker jira in a temporary repository; Jira is only read.
+// Then the issue flows (PMK-367): the real CLI creates, links, parents, branches, assigns and moves work items in the throwaway
+// space, each answer checked against Jira's raw item, and deletes them.
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -28,6 +30,7 @@ import { createJiraClient } from './client.mjs'
 import { jiraCredential } from './credential.mjs'
 import { categoryOfStatus, discoveryView, fetchDiscovery } from './discovery.mjs'
 import { buildJiraCapabilities } from './manifest.mjs'
+import { requiredFields } from './transitions.mjs'
 
 const env = process.env
 const SITE = env.PMKIT_LIVE_JIRA_SITE
@@ -300,18 +303,33 @@ function englishMatch(wanted, items, taken = new Set()) {
   return 'none'
 }
 
-test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-setup-'))
+/** A temporary git repository on main with its own user store, and the CLI run in it; each answer is checked for the credential. */
+function liveRepo() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-'))
   const repo = path.join(root, 'repo')
   fs.mkdirSync(repo)
-  spawnSync('git', ['init', '-q'], { cwd: repo })
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo })
   const cli = (...args) => {
     const result = spawnSync(process.execPath, [CLI, ...args, '--json'], { cwd: repo, env: { ...env, PMKIT_HOME: path.join(root, 'home') }, encoding: 'utf8' })
     assertNoSecret(`${result.stdout}${result.stderr}`)
-    assert.equal(result.status, 0, hostless(`the CLI's ${args[0]} exited ${result.status}: ${result.stdout.slice(0, 400)}`))
-    return JSON.parse(result.stdout)
+    assert.equal(result.status, 0, hostless(`the CLI's ${args.slice(0, 2).join(' ')} exited ${result.status}: ${result.stdout.slice(0, 400)}`))
+    const parsed = JSON.parse(result.stdout)
+    return parsed.data ?? parsed
   }
-  const init = ['init', '--tracker', 'jira', '--git-host', 'none', '--site', SITE]
+  return { root, repo, cli, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) }
+}
+
+const INIT = () => ['init', '--tracker', 'jira', '--git-host', 'none', '--site', SITE]
+const FLAG = { status: '--status', fields: '--field', types: '--type-label' }
+/** The init flags that accept every recommendation of a proposal. */
+const acceptAll = (proposal) => proposal.questions.flatMap((question) => {
+  const [, group, key] = question.path.split('.')
+  return [FLAG[group], `${key}=${question.recommended}`]
+})
+
+test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
+  const { repo, cli, cleanup } = liveRepo()
+  const init = INIT()
   try {
     // AC 1: the spaces the token's owner can browse.
     const first = cli(...init, '--dry-run')
@@ -355,12 +373,7 @@ test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
     }
 
     // AC 3: every recommendation accepted writes a config that validate and discover accept.
-    const flag = { status: '--status', fields: '--field', types: '--type-label' }
-    const answers = proposal.questions.flatMap((question) => {
-      const [, group, key] = question.path.split('.')
-      return [flag[group], `${key}=${question.recommended}`]
-    })
-    const written = cli(...init, '--space', SPACE, ...answers)
+    const written = cli(...init, '--space', SPACE, ...acceptAll(proposal))
     assert.deepEqual(written.questions, [])
     assert.deepEqual(cli('validate').problems, [])
     const discovered = cli('discover')
@@ -377,6 +390,156 @@ test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
     const recommended = proposal.questions.map((question) => `${question.path.replace('mappings.', '')}=${question.recommended}`)
     t.diagnostic(`${spaceQuestion.candidates.length} spaces; ${recommended.join(', ')}; applied ${proposal.applied.map((item) => item.path.replace('mappings.', '')).join(' ') || 'none'}; discover warnings ${discovered.warnings.length}`)
   } finally {
-    fs.rmSync(root, { recursive: true, force: true })
+    cleanup()
   }
 })
+
+// Issue flows (PMK-367). The CLI writes to the throwaway space only; every work item it makes is deleted in the finally.
+/** The value fn returns once it stops throwing, tried 10 times 1 s apart: Jira's search index trails a write. */
+async function eventually(fn) {
+  for (let tries = 1; ; tries += 1) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (tries >= 10) throw error
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
+}
+
+const linksOf = (item) => item.fields.issuelinks.map((link) => ({ type: link.type.name, inward: link.inwardIssue?.key, outward: link.outwardIssue?.key }))
+const taskStates = (item) => (item.fields.description?.content ?? []).filter((node) => node.type === 'taskList').flatMap((list) => list.content.map((task) => task.attrs.state))
+
+test('issue flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
+  const jira = client()
+  const raw = (key, fields) => jira.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { fields } })
+  const run = `pmkit${randomHex(4)}`
+  const word = `word${randomHex(4)}`
+  const created = []
+  const made = (key) => {
+    created.push(key)
+    // Printed with the test's result, so a delete that fails leaves the key of the work item to remove by hand.
+    t.diagnostic(`created ${key}`)
+    return key
+  }
+  const { root, repo, cli, cleanup } = liveRepo()
+  let left = []
+  try {
+    const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
+    cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
+    const config = path.join(repo, '.pmkit', 'config.yaml')
+    const text = fs.readFileSync(config, 'utf8')
+    const hosted = text.replace(/^git_host:\n {2}system: none$/m, 'git_host:\n  system: github\n  repo: acme/widgets\n  default_branch: main')
+    assert.notEqual(hosted, text, 'the config has no git_host none block to replace')
+    fs.writeFileSync(config, hosted)
+    const git = (...args) => assert.equal(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', ...args], { cwd: repo }).status, 0, `git ${args[0]}`)
+    git('add', '-A')
+    git('commit', '-qm', 'init')
+    const criteria = path.join(root, 'criteria.txt')
+    fs.writeFileSync(criteria, '- It ships\n- A test covers it\n')
+
+    // AC 2: a description with acceptance criteria is an ADF task list, and a checked criterion round-trips.
+    const a = made(cli('issues', 'create', '--title', `pmkit-live ${run} ${word}`, '--type', 'feature', '--criteria-file', criteria).after.id)
+    const b = made(cli('issues', 'create', '--title', `pmkit-live ${run} blocked`, '--type', 'bug').after.id)
+    const c = made(cli('issues', 'create', '--title', `pmkit-live ${run} copy`, '--type', 'task').after.id)
+    assert.deepEqual(taskStates(await raw(a, 'description')), ['TODO', 'TODO'])
+    assert.deepEqual(cli('issues', 'get', a).acceptanceCriteria.map((item) => item.done), [false, false])
+    cli('issues', 'update', a, '--check', '1')
+    assert.deepEqual(taskStates(await raw(a, 'description')), ['DONE', 'TODO'])
+    assert.deepEqual(cli('issues', 'get', a).acceptanceCriteria.map((item) => [item.text, item.done]), [['It ships', true], ['A test covers it', false]])
+
+    // AC 1: A blocks B on the site, and related and duplicate read back as pmkit shows them.
+    assert.deepEqual(cli('issues', 'link', a, b, '--kind', 'blocks').after.blocks, [b])
+    assert.deepEqual(linksOf(await raw(a, 'issuelinks')), [{ type: 'Blocks', inward: undefined, outward: b }])
+    assert.deepEqual(linksOf(await raw(b, 'issuelinks')), [{ type: 'Blocks', inward: a, outward: undefined }])
+    assert.deepEqual(cli('issues', 'get', b).blockedBy, [a])
+    await eventually(() => {
+      const ids = cli('issues', 'list', '--blocked').issues.map((issue) => issue.id)
+      assert.ok(ids.includes(b) && !ids.includes(a), 'list --blocked does not list B alone of the two')
+    })
+    cli('issues', 'link', a, c, '--kind', 'related')
+    assert.deepEqual([cli('issues', 'get', a).related, cli('issues', 'get', c).related], [[c], [a]])
+    assert.deepEqual(cli('issues', 'link', c, a, '--kind', 'duplicate').after.duplicateOf, [a])
+    assert.ok(linksOf(await raw(c, 'issuelinks')).some((link) => link.type === 'Duplicate' && link.outward === a), 'C does not duplicate A on the site')
+    assert.deepEqual([cli('issues', 'get', c).duplicateOf, cli('issues', 'get', a).duplicateOf], [[a], []])
+
+    // AC 2: a parent set, then cleared. A team-managed space takes only an epic as a standard work item's parent.
+    const epic = made(cli('epic', 'create', '--title', `pmkit-live ${run} epic`).after.id)
+    assert.equal(cli('issues', 'parent', b, epic).after.parent, epic)
+    assert.equal((await raw(b, 'parent')).fields.parent?.key, epic)
+    assert.equal(cli('issues', 'parent', b, 'none').after.parent, undefined)
+    assert.equal((await raw(b, 'summary,parent')).fields.parent, undefined)
+
+    // AC 3 and 5: the branch keeps the key upper case, is the pmkit.branch property, and search reads it back.
+    const { branch } = cli('issues', 'branch', a)
+    assert.ok(branch.startsWith(`${a}-`), `the branch does not start with ${a}-`)
+    assert.equal((await jira.request('GET', `/rest/api/3/issue/${encodeURIComponent(a)}/properties/pmkit.branch`)).value, branch)
+    await eventually(() => assert.equal(cli('issues', 'list').issues.find((issue) => issue.id === a)?.branch, branch))
+
+    // AC 3: text ~ finds the word in the title, and only there.
+    await eventually(() => assert.deepEqual(cli('issues', 'list', '--text', word).issues.map((issue) => issue.id), [a]))
+
+    // AC 3: the assignable-users read has the shape the members come from, and assign takes the viewer from it.
+    const viewer = (await jira.session()).viewer.accountId
+    assert.equal(cli('issues', 'assign', a, 'me').after.assignee, viewer)
+    const users = await jira.request('GET', '/rest/api/3/user/assignable/search', { query: { project: SPACE, maxResults: 50 } })
+    assert.ok(users.length > 0, 'no assignable user')
+    for (const user of users) for (const key of ['accountId', 'displayName', 'accountType']) assert.equal(typeof user[key], 'string', key)
+
+    // AC 4: the dry run lists the transition's required fields (none on a team-managed space), and the move goes through.
+    cli('issues', 'move', a, 'in_progress')
+    const dry = cli('issues', 'move', a, 'done', '--dry-run')
+    const { transitions } = await jira.request('GET', `/rest/api/3/issue/${encodeURIComponent(a)}/transitions`, { query: { expand: 'transitions.fields' } })
+    const toDone = transitions.find((transition) => transition.to?.name === dry.after.status.name)
+    assert.ok(toDone, 'no transition reaches the status the dry run names')
+    assert.deepEqual(dry.requiredFields, requiredFields(toDone))
+    cli('issues', 'move', a, 'done')
+    assert.equal((await raw(a, 'status')).fields.status.statusCategory.key, 'done')
+
+    // AC 3: the changelog in search/jql feeds the metrics.
+    const today = new Date().toISOString().slice(0, 10)
+    await eventually(() => assert.ok(cli('metrics', 'cycle-time', '--since', today).issues.some((entry) => entry.issue === a), 'cycle-time does not list A'))
+    const [searched] = (await jira.request('GET', '/rest/api/3/search/jql', { query: { jql: `key = ${a}`, fields: 'summary', expand: 'changelog' } })).issues
+    assert.ok(searched.changelog.histories.length > 0, 'the search carries no changelog')
+
+    t.diagnostic(`${created.length} work items; blocks, related, duplicate, parent set and cleared, branch ${branch.replace(a, '<key>')}, required fields on the move to done ${dry.requiredFields.length}`)
+  } finally {
+    cleanup()
+    left = await removeAll(jira, created, run, t)
+  }
+  // After the finally, so a failed step keeps its own error.
+  assert.deepEqual(left, [], 'work items left in the throwaway space')
+})
+
+/**
+ * Deletes the recorded work items in creation order (a child before its epic), then any other the run's word finds, and returns
+ * what is still there or could not be searched. It never throws, so one failure does not stop the rest.
+ */
+async function removeAll(jira, created, run, t) {
+  const left = []
+  const remove = async (key) => {
+    try {
+      await jira.request('DELETE', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { deleteSubtasks: 'true' } })
+    } catch (error) {
+      if (error?.code !== 'NOT_FOUND') {
+        left.push(key)
+        return
+      }
+    }
+    try {
+      await jira.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { fields: 'summary' } })
+      left.push(key)
+    } catch (error) {
+      if (error?.code !== 'NOT_FOUND') left.push(key)
+    }
+  }
+  for (const key of created) await remove(key)
+  try {
+    const { items } = await jira.paginate('/rest/api/3/search/jql', { query: { jql: `project = ${SPACE} AND summary ~ "${run}"`, fields: 'summary' }, key: 'issues' })
+    for (const key of items.map((item) => item.key).filter((key) => !created.includes(key))) await remove(key)
+  } catch {
+    left.push('the search for strays failed')
+  }
+  t.diagnostic(left.length === 0 ? `deleted ${created.length} work items` : `left to delete by hand: ${left.join(', ')}`)
+  return left
+}

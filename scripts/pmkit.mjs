@@ -2225,7 +2225,7 @@ export const COMMANDS = [
       const { from, note: fromNote, sync } = branchBase(ctx)
       // Like the other notes of this command, it reaches the text as a stderr note, and the JSON as `notes`, which the agent reads.
       // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
-      const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
+      const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title, { keepKeyCase: ctx.settings().keepKeyCase === true })
       // The dry run is before the branch exists (pull or --from help); the real run is after (only moving the new branch does).
       const syncNote = syncNotes(from, sync)
       const createdNote = syncNotes(from, sync, branch)

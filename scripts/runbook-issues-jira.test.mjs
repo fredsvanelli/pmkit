@@ -16,7 +16,7 @@ const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'issues-jira.md')
 const url = (name) => pathToFileURL(path.join(SCRIPTS, name)).href
 
 /** Writes a launcher that loads the fake's state from state.json beside it (absent: fresh), runs the CLI and saves the state. */
-function launcher() {
+function launcher(locale = 'en') {
   const dir = tempDir('pmkit-jira-issues-launcher-')
   const file = path.join(dir, 'launch.mjs')
   fs.writeFileSync(file, `import fs from 'node:fs'
@@ -24,7 +24,7 @@ import { fakeJiraFetch } from ${JSON.stringify(url('fake-jira-api.mjs'))}
 import { fakeJiraIssues } from ${JSON.stringify(url('fake-jira-issues.mjs'))}
 const stateFile = ${JSON.stringify(path.join(dir, 'state.json'))}
 const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : undefined
-const fake = fakeJiraIssues(state ? { state } : {})
+const fake = fakeJiraIssues({ ...(state ? { state } : {}), locale: ${JSON.stringify(locale)} })
 globalThis.fetch = fakeJiraFetch(fake.routes)
 const { run } = await import(${JSON.stringify(url('pmkit.mjs'))})
 const result = await run(process.argv.slice(2))
@@ -55,9 +55,9 @@ function jiraRepo() {
   return root
 }
 
-function session() {
+function session({ locale } = {}) {
   const root = jiraRepo()
-  const launch = launcher()
+  const launch = launcher(locale)
   const pmkit = (args) => {
     const result = spawnSync(process.execPath, [launch, ...args], { cwd: root, env: { ...childEnv(), ...FAKE_ENV, PMKIT_NOW: '2026-11-22T12:00:00Z' }, encoding: 'utf8' })
     const out = `${result.stdout}${result.stderr}`
@@ -93,6 +93,8 @@ test('the runbook names every command the test runs', () => {
     'issues create --title-file tmp/title-3.txt --json',
     'issues delete ENG-2 --json',
     'issues delete ENG-3 --json',
+    'issues create --title-file tmp/title-1.txt --type bug --json',
+    'metrics cycle-time --json',
   ]
   for (const command of commands) assert.ok(text.includes(`node scripts/pmkit.mjs ${command}`), command)
 })
@@ -138,14 +140,15 @@ test('the issue flows, step by step', () => {
 
   // Branch, then the history
   const branched = body(pmkit(['issues', 'branch', 'ENG-1', '--json']))
-  assert.equal(branched.branch, 'eng-1-ship-it')
-  assert.equal(branched.after.branch, 'eng-1-ship-it')
-  assert.equal(git(root, 'branch', '--list', 'eng-1-ship-it').replace(/^[*+]?\s+/, ''), 'eng-1-ship-it')
-  assert.equal(body(pmkit(['issues', 'get', 'ENG-1', '--json'])).branch, 'eng-1-ship-it')
+  assert.equal(branched.branch, 'ENG-1-ship-it')
+  assert.equal(branched.after.branch, 'ENG-1-ship-it')
+  assert.equal(git(root, 'branch', '--list', 'ENG-1-ship-it').replace(/^[*+]?\s+/, ''), 'ENG-1-ship-it')
+  assert.equal(body(pmkit(['issues', 'get', 'ENG-1', '--json'])).branch, 'ENG-1-ship-it')
   const done = body(pmkit(['issues', 'move', 'ENG-1', 'done', '--field', 'resolution=Done', '--json']))
   assert.deepEqual(done.after.status, { name: 'Done', category: 'done' })
   const got = body(pmkit(['issues', 'get', 'ENG-1', '--history', '--json']))
-  assert.deepEqual(got.history.map((event) => event.op), ['create', 'move', 'link', 'comment', 'move'])
+  assert.deepEqual(got.history.map((event) => event.op), ['create', 'move', 'link', 'comment', 'move', 'update'])
+  assert.deepEqual(got.history.at(-1), { ...got.history.at(-1), field: 'jira:resolution', from: null, to: 'Done' })
 
   // Delete an item nothing references
   const refusedDelete = pmkit(['issues', 'delete', 'ENG-2', '--json'])
@@ -157,4 +160,19 @@ test('the issue flows, step by step', () => {
   const gone = body(pmkit(['issues', 'delete', 'ENG-3', '--json']))
   assert.equal(gone.after, null)
   assert.equal(pmkit(['issues', 'get', 'ENG-3', '--json']).code, 2)
+})
+
+test('on a site in another language, the history and the metrics read the statuses as the site shows them', () => {
+  const { pmkit, write, root } = session({ locale: 'pt' })
+  // The site shows Story as História, so the mapping holds the shown name, as setup writes it (PMK-368).
+  const config = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('feature: Story', 'feature: História'))
+  write('title-1.txt', 'Ship it')
+  assert.equal(body(pmkit(['issues', 'create', '--title-file', 'tmp/title-1.txt', '--type', 'bug', '--json'])).after.id, 'ENG-1')
+  body(pmkit(['issues', 'move', 'ENG-1', 'in_progress', '--json']))
+  assert.deepEqual(body(pmkit(['issues', 'move', 'ENG-1', 'done', '--field', 'resolution=Done', '--json'])).after.status, { name: 'Concluído', category: 'done' })
+  const { history } = body(pmkit(['issues', 'get', 'ENG-1', '--history', '--json']))
+  assert.equal(history[0].to.status, 'Tarefas pendentes')
+  assert.deepEqual(history.filter((event) => event.op === 'move').map((event) => [event.from, event.to]), [['Tarefas pendentes', 'Em andamento'], ['Em andamento', 'Concluído']])
+  assert.deepEqual(body(pmkit(['metrics', 'cycle-time', '--json'])).issues.map((entry) => entry.issue), ['ENG-1'])
 })

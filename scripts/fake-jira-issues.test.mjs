@@ -164,7 +164,10 @@ test('transitions list every other status; Done asks for a resolution', async ()
   assert.equal(ok.status, 204)
   assert.equal((await read('ENG-1')).fields.status.name, 'Done')
   const log = (await api('GET', '/rest/api/3/issue/ENG-1/changelog')).json.values
-  assert.deepEqual(log.at(-1).items, [{ field: 'status', fieldId: 'status', fieldtype: 'jira', from: '1', fromString: 'To Do', to: '5', toString: 'Done' }])
+  assert.deepEqual(log.at(-1).items, [
+    { field: 'status', fieldId: 'status', fieldtype: 'jira', from: '1', fromString: 'To Do', to: '5', toString: 'Done' },
+    { field: 'resolution', fieldId: 'resolution', fieldtype: 'jira', from: null, fromString: null, to: '10000', toString: 'Done' },
+  ])
 })
 
 test('without requireResolution the Done transition has no fields', async () => {

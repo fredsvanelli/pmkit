@@ -50,7 +50,7 @@ export function isId(value, prefix) {
   return new RegExp(`^${prefix}-([${ALPHABET}]{4,6}|[1-9][0-9]*)$`).test(value)
 }
 
-export function branchName(id, title) {
+export function branchName(id, title, { keepKeyCase = false } = {}) {
   let slug = title
     .toLowerCase()
     .normalize('NFD')
@@ -62,7 +62,7 @@ export function branchName(id, title) {
     const boundary = slug[SLUG_LIMIT] === '-' ? SLUG_LIMIT : cut.lastIndexOf('-')
     slug = (boundary > 0 ? cut.slice(0, boundary) : cut).replace(/-+$/, '')
   }
-  const base = id.toLowerCase()
+  const base = keepKeyCase ? id : id.toLowerCase()
   return slug ? `${base}-${slug}` : base
 }
 

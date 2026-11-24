@@ -17,5 +17,5 @@ Accepted
 ## Consequences
 
 - The key `pmkit.branch` and its value shape are a stored format: renaming either needs a migration of every work item that has one.
-- The branch is invisible in the Jira UI. Jira's development panel still shows it when the site connects the git host, because pmkit names branches after the work-item key.
+- The branch is invisible in the Jira UI. Jira's development panel still shows it when the site connects the git host, because pmkit names branches after the work-item key, upper case as Jira writes it (`KAN-12-ship-it`): Atlassian documents only upper-case keys in branch names, and lower-case ones are reported not to link. Local, Linear and GitHub keep the lower-case `iss-7k3q-slug`. PMK-367 settled the case on 2026-11-24; no site with a git integration was at hand to check the panel live.
 - Another tool that writes `pmkit.branch` would overwrite pmkit's record.

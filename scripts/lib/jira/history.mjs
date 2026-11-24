@@ -11,6 +11,8 @@ const PLAIN = { summary: 'title', description: 'description', duedate: 'due' }
 const PARENT = ['IssueParentAssociation', 'Parent']
 const WORKLOG_ITEMS = ['timespent', 'WorklogId']
 const accountOf = (user) => user?.accountId ?? null
+// The changelog names a status in English, while the site shows it in its viewer's language (PMK-367); its id gives the shown name.
+const statusName = (context, id, text) => context.raw.statuses.find((status) => status.id === String(id))?.name ?? text ?? null
 
 /** The pmkit comment of a Jira comment node on the issue `key`, with the body from ADF. */
 export function toComment(node, key) {
@@ -54,7 +56,7 @@ function changesOf(change, context) {
   const names = [change.fromString ?? null, change.toString ?? null]
   // A worklog is its own log_time event (PMK-80), so the time it adds is not a change too.
   if (WORKLOG_ITEMS.includes(id)) return []
-  if (id === 'status') return [['move', 'status', ...names]]
+  if (id === 'status') return [['move', 'status', statusName(context, change.from, change.fromString), statusName(context, change.to, change.toString)]]
   if (id === 'labels') return labelChanges(change)
   if (id === 'assignee') return [['assign', 'assignee', change.from ?? null, change.to ?? null]]
   if (id === 'priority') return [['update', 'priority', ...names.map((name) => (name === null ? null : (context.priorityOf(name) ?? name)))]]
@@ -74,24 +76,31 @@ const eventsOf = (history, context) => {
   return (history.items ?? []).flatMap((change) => changesOf(change, context)).map(([op, field, from, to]) => ({ ...meta, op, field, from, to }))
 }
 
-/** The `fromString` of the earliest change of the field `id`, or `current` when the changelog never changes it. */
-function startOf(histories, id, current) {
+/** The earliest change of the field `id`, or null when the changelog never changes it. */
+function firstChange(histories, id) {
   const ordered = [...histories].sort((a, b) => compareTimes(jiraTime(a.created), jiraTime(b.created)))
   for (const history of ordered) {
     const change = (history.items ?? []).find((item) => (item.fieldId ?? item.field) === id)
-    if (change) return change.fromString ?? null
+    if (change) return change
   }
-  return current ?? null
+  return null
+}
+
+/** The `fromString` of the earliest change of the field `id`, or `current` when the changelog never changes it. */
+function startOf(histories, id, current) {
+  const change = firstChange(histories, id)
+  return change ? (change.fromString ?? null) : (current ?? null)
 }
 
 /** The item as it was created: its key, and its title, pmkit type (else the Jira name) and status before any change. */
 function createdAs(item, histories, context) {
   const type = startOf(histories, 'issuetype', item.fields.issuetype?.name)
+  const status = firstChange(histories, 'status')
   return {
     id: item.key,
     title: startOf(histories, 'summary', item.fields.summary),
     type: type === null ? null : (context.typeOfName(type) ?? type),
-    status: startOf(histories, 'status', item.fields.status?.name),
+    status: status ? statusName(context, status.from, status.fromString) : (item.fields.status?.name ?? null),
   }
 }
 

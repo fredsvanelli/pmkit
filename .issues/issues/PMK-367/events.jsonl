@@ -1,2 +1,12 @@
 {"at":"2026-11-22T19:57:51Z","by":"fred","op":"create","to":{"id":"PMK-367","title":"Check the Jira issue flows against a live site","type":"chore","status":"backlog","priority":"low","estimate":3,"labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-22T19:57:51.700Z","updated":"2026-11-22T19:57:51Z"}}
 {"at":"2026-11-22T19:57:54Z","by":"fred","op":"link","field":"related","to":"PMK-77"}
+{"at":"2026-11-24T20:21:09Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-24T20:21:09Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-24T20:21:09Z","by":"fred","op":"update","field":"branch","from":null,"to":"fredsvanelli/pmk-367-check-jira"}
+{"at":"2026-11-24T21:49:36Z","by":"fred","op":"link","field":"related","to":"PMK-395"}
+{"at":"2026-11-24T22:07:44Z","by":"fred","op":"comment","to":"2026-11-24T22-07-44Z-fred.md"}
+{"at":"2026-11-24T22:07:45Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-24T22:07:45Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-24T22:07:45Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-24T22:07:45Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-24T22:07:45Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
