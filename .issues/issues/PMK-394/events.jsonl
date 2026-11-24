@@ -1,0 +1,2 @@
+{"at":"2026-11-24T19:29:15Z","by":"fred","op":"create","to":{"id":"PMK-394","title":"Resolve Jira status and type mappings in any viewer language","type":"bug","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-24T19:29:15.480Z","updated":"2026-11-24T19:29:15Z"}}
+{"at":"2026-11-24T19:29:18Z","by":"fred","op":"link","field":"related","to":"PMK-368"}

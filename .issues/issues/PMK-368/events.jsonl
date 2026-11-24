@@ -3,3 +3,4 @@
 {"at":"2026-11-24T19:23:46Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-24T19:23:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-24T19:24:09Z","by":"fred","op":"update","field":"branch","from":null,"to":"fredsvanelli/pmk-368-check-jira"}
+{"at":"2026-11-24T19:29:18Z","by":"fred","op":"link","field":"related","to":"PMK-394"}

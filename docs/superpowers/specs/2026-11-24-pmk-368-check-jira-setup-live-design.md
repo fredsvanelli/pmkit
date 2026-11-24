@@ -93,3 +93,12 @@ Output prints counts and ids, never the host, the email or the token (the harnes
 ## Left to the builder
 
 Assertion wording, the fake's Portuguese strings, the live test's temp-dir handling.
+
+## Interview
+
+Answered on 2026-11-24 by the coordinator on the owner's behalf; the design is approved.
+
+- Q1: yes, a work type's English name comes from the statuses list already read (`untranslatedName` wins when Jira sends it); no new call.
+- Q2: yes, the issue colour field stays an acceptance-criteria candidate.
+- Q3: yes, a follow-up in EPC-14: PMK-394 "Resolve Jira status and type mappings in any viewer language". Setup keeps writing the shown name.
+- No new `CONTEXT.md` term and no ADR: matching English names first is the inference fallback ADR 0014 already allows; the mapping-holds-ids question is PMK-394's.
