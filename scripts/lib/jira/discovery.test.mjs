@@ -239,3 +239,11 @@ test('an English untranslated name wins over another field shown with that name'
   const { view } = await discover({ routes: { 'GET /rest/api/3/field': { json: [shown, english] } } })
   assert.equal(view.fields.start_date.id, 'customfield_10015')
 })
+
+test('on a site in another language, a custom field with no untranslated name matches by its shown name', async () => {
+  const fields = jiraSiteRoutes({ locale: 'pt' })['GET /rest/api/3/field'].json.map((field) =>
+    field.id === 'customfield_10015' ? { id: field.id, name: 'Start date', custom: true, schema: field.schema } : field)
+  const { view } = await discover({ locale: 'pt', routes: { 'GET /rest/api/3/field': { json: fields } } })
+  assert.deepEqual(view.fields.start_date, { id: 'customfield_10015', name: 'Start date' })
+  assert.equal(view.fields.priority.name, 'Prioridade')
+})
