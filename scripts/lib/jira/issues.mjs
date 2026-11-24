@@ -157,10 +157,10 @@ function skeleton(context, workType, now) {
   return issue
 }
 
-/** Without a type: the first standard work type named Task, else the first standard one. */
+/** Without a type: the first standard work type named Task in English (PMK-368), else the first standard one. */
 function defaultWorkType(context) {
   const standard = context.raw.workTypes.filter((type) => type.level === 'standard')
-  return standard.find((type) => type.name === 'Task') ?? standard[0]
+  return standard.find((type) => (type.untranslated ?? type.name) === 'Task') ?? standard[0]
 }
 
 function workTypeOf(type, context) {

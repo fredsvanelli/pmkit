@@ -35,8 +35,18 @@ const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, 
 const isSet = (value) => typeof value === 'string' && value !== ''
 const pass = (candidates) => `Pass one of: ${[...candidates, NONE].join(', ')}`
 
-/** The first of `names` that matches one of `wanted`, without case, or undefined. */
-const matchOf = (wanted = [], names) => wanted.map((name) => names.find((value) => value.toLowerCase() === name)).find((found) => found !== undefined)
+/**
+ * The shown name of the first of `wanted` that one of `items` ({ name, untranslated }) matches, without case, or undefined. The
+ * English name (untranslated) is matched first, so a site in any language matches (PMK-368).
+ */
+function matchOf(wanted = [], items) {
+  const is = (name) => (value) => typeof value === 'string' && value.toLowerCase() === name
+  for (const name of wanted) {
+    const found = items.find((item) => is(name)(item.untranslated)) ?? items.find((item) => is(name)(item.name))
+    if (found) return found.name
+  }
+  return undefined
+}
 
 const recommendedFirst = (names, recommended) => (recommended !== undefined ? [recommended, ...names.filter((name) => name !== recommended)] : [...names])
 
@@ -142,7 +152,7 @@ function statusValue(state, key, taken) {
     taken.add(answer)
     return answer
   }
-  const match = matchOf(STATUS_MATCHES[key], names.filter((name) => !taken.has(name)))
+  const match = matchOf(STATUS_MATCHES[key], state.raw.statuses.filter((status) => !taken.has(status.name)))
   taken.add(match ?? state.held.status[key])
   const question = {
     path: `mappings.status.${key}`,
@@ -189,7 +199,8 @@ function fieldValue(state, key) {
 }
 
 /** The work type of one pmkit type: the answer, the held value, none, or undefined when asked. taken gathers the values so far. */
-function typeValue(state, type, names, taken) {
+function typeValue(state, type, standard, taken) {
+  const names = standard.map((item) => item.name)
   const path = `mappings.types.${type}`
   const answer = state.given.types[type]
   if (answer !== undefined) {
@@ -200,7 +211,7 @@ function typeValue(state, type, names, taken) {
   const held = state.held.types?.[type]
   // A types object without this type means it was answered none.
   if (state.held.types !== undefined && !isSet(held) && !state.brokenAt.has(path)) return NONE
-  const match = matchOf(TYPE_MATCHES[type] ?? [type.toLowerCase()], names.filter((name) => !taken.has(name)))
+  const match = matchOf(TYPE_MATCHES[type] ?? [type.toLowerCase()], standard.filter((item) => !taken.has(item.name)))
   taken.add(match ?? held)
   const question = {
     path,
@@ -217,16 +228,16 @@ function typeValue(state, type, names, taken) {
  * no pmkit type and a sub-task needs a parent. One work type answers at most one pmkit type.
  */
 function typesOf(state, typeKeys) {
-  const names = state.raw.workTypes.filter((type) => type.level === 'standard').map((type) => type.name)
+  const standard = state.raw.workTypes.filter((type) => type.level === 'standard')
   const values = {}
   const taken = new Set()
   let pending = false
   for (const type of typeKeys) {
-    const value = typeValue(state, type, names, taken)
+    const value = typeValue(state, type, standard, taken)
     if (value === undefined) pending = true
     else values[type] = value
   }
-  refuseShared(values, 'work type', names)
+  refuseShared(values, 'work type', standard.map((item) => item.name))
   if (pending) return undefined
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== NONE))
 }

@@ -12,8 +12,8 @@ globalThis.fetch = () => {
 const TYPES = ['feature', 'bug', 'task', 'chore']
 const CRITERIA = { id: 'customfield_10050', name: 'Acceptance criteria', custom: true, schema: { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea' } }
 
-async function rawOf({ extraStatuses = false, extraFields = [], taskType = false } = {}) {
-  const routes = jiraSiteRoutes({ extraStatuses, taskType })
+async function rawOf({ extraStatuses = false, extraFields = [], taskType = false, locale } = {}) {
+  const routes = jiraSiteRoutes({ extraStatuses, taskType, locale })
   routes['GET /rest/api/3/field'] = { json: [...routes['GET /rest/api/3/field'].json, ...extraFields] }
   const fetch = fakeJiraFetch(routes)
   const client = createJiraClient({ env: FAKE_ENV, tracker: { scope: { site: 'acme.atlassian.net', space: 'ENG' } }, fetch, sleep: async () => {} })
@@ -142,6 +142,35 @@ test('accepting every recommendation on a space with Task is valid', async () =>
   const result = proposeJiraSetup(raw, {}, answers, TYPES)
   assert.deepEqual(result.questions, [])
   assert.deepEqual(result.values.types, { feature: 'Story', bug: 'Bug', task: 'Task' })
+})
+
+/** Every question answered with its recommendation. */
+function recommendations(result) {
+  const answers = { status: {}, fields: {}, types: {} }
+  for (const question of result.questions) {
+    const [, group, key] = question.path.split('.')
+    answers[group][key] = question.recommended
+  }
+  return answers
+}
+
+test('a site in another language recommends statuses and work types by their English name', async () => {
+  const raw = await rawOf({ locale: 'pt', taskType: true })
+  const first = proposeJiraSetup(raw, {}, {}, TYPES)
+  assert.deepEqual(statusQuestions(first).map((question) => question.recommended), ['none', 'Em análise', 'none'])
+  assert.deepEqual(['feature', 'bug', 'task', 'chore'].map((type) => questionAt(first, `mappings.types.${type}`).recommended), ['História', 'Bug', 'Tarefa', 'none'])
+  const result = proposeJiraSetup(raw, {}, recommendations(first), TYPES)
+  assert.deepEqual(result.questions, [])
+  assert.deepEqual(result.values.types, { feature: 'História', bug: 'Bug', task: 'Tarefa' })
+  assert.equal(result.values.status.in_review, 'Em análise')
+})
+
+test('a discovery cached without English names still matches the shown names', async () => {
+  const raw = await rawOf({ taskType: true })
+  for (const item of [...raw.statuses, ...raw.workTypes]) delete item.untranslated
+  const first = proposeJiraSetup(raw, {}, {}, TYPES)
+  assert.equal(questionAt(first, 'mappings.status.in_review').recommended, 'Review')
+  assert.deepEqual(['feature', 'bug', 'task'].map((type) => questionAt(first, `mappings.types.${type}`).recommended), ['Story', 'Bug', 'Task'])
 })
 
 test('all answered', async () => {
