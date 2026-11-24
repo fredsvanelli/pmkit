@@ -438,9 +438,9 @@ test('issue flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
     fs.writeFileSync(criteria, '- It ships\n- A test covers it\n')
 
     // AC 2: a description with acceptance criteria is an ADF task list, and a checked criterion round-trips.
-    const a = made(cli('issues', 'create', '--title', `pmkit live ${run} ${word}`, '--type', 'feature', '--criteria-file', criteria).after.id)
-    const b = made(cli('issues', 'create', '--title', `pmkit live ${run} blocked`, '--type', 'bug').after.id)
-    const c = made(cli('issues', 'create', '--title', `pmkit live ${run} copy`, '--type', 'task').after.id)
+    const a = made(cli('issues', 'create', '--title', `pmkit-live ${run} ${word}`, '--type', 'feature', '--criteria-file', criteria).after.id)
+    const b = made(cli('issues', 'create', '--title', `pmkit-live ${run} blocked`, '--type', 'bug').after.id)
+    const c = made(cli('issues', 'create', '--title', `pmkit-live ${run} copy`, '--type', 'task').after.id)
     assert.deepEqual(taskStates(await raw(a, 'description')), ['TODO', 'TODO'])
     assert.deepEqual(cli('issues', 'get', a).acceptanceCriteria.map((item) => item.done), [false, false])
     cli('issues', 'update', a, '--check', '1')
@@ -463,7 +463,7 @@ test('issue flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
     assert.deepEqual([cli('issues', 'get', c).duplicateOf, cli('issues', 'get', a).duplicateOf], [[a], []])
 
     // AC 2: a parent set, then cleared. A team-managed space takes only an epic as a standard work item's parent.
-    const epic = made(cli('epic', 'create', '--title', `pmkit live ${run} epic`).after.id)
+    const epic = made(cli('epic', 'create', '--title', `pmkit-live ${run} epic`).after.id)
     assert.equal(cli('issues', 'parent', b, epic).after.parent, epic)
     assert.equal((await raw(b, 'parent')).fields.parent?.key, epic)
     assert.equal(cli('issues', 'parent', b, 'none').after.parent, undefined)
