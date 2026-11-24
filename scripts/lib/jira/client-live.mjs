@@ -16,7 +16,7 @@
 
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
-import test from 'node:test'
+import nodeTest from 'node:test'
 import { isPmkitError } from '../errors.mjs'
 import { createJiraClient } from './client.mjs'
 import { jiraCredential } from './credential.mjs'
@@ -48,6 +48,22 @@ const AUTHORIZATION = skip ? undefined : jiraCredential(env).authorization
 // The email and the token come back out of the header, so credential.mjs stays their only reader (ADR 0013).
 const PAIR = skip ? '' : Buffer.from(AUTHORIZATION.slice(6), 'base64').toString('utf8')
 const SECRETS = skip ? [] : [PAIR.slice(0, PAIR.indexOf(':')), PAIR.slice(PAIR.indexOf(':') + 1), AUTHORIZATION, AUTHORIZATION.slice(6), SCOPED, LIMITED?.JIRA_EMAIL, LIMITED?.JIRA_API_TOKEN].filter(Boolean)
+
+// A failing test prints its error, and a client error can name the site (a 403's next step, a redirect); the host stays out.
+const hostless = (text) => (typeof text === 'string' && SITE ? text.replaceAll(SITE, '<site>').replaceAll(SITE.toLowerCase(), '<site>') : text)
+function scrub(error) {
+  if (!(error instanceof Error)) return error
+  for (const key of ['message', 'stack', 'nextStep']) if (typeof error[key] === 'string') error[key] = hostless(error[key])
+  if (error.details !== undefined) error.details = JSON.parse(hostless(JSON.stringify(error.details)))
+  return error
+}
+const test = (name, options, fn) => nodeTest(name, options, async (t) => {
+  try {
+    return await fn(t)
+  } catch (error) {
+    throw scrub(error)
+  }
+})
 
 const tracker = (site = SITE, space = SPACE ?? 'NONE') => ({ system: 'jira', scope: { site, space } })
 const client = (options = {}) => createJiraClient({ env, tracker: tracker(), ...options })
@@ -172,8 +188,9 @@ async function checkSpace(t, space, style) {
   const own = (project.issueTypes ?? []).filter((type) => !type.scope?.project?.id || String(type.scope.project.id) === String(project.id))
   assert.deepEqual(raw.workTypes.map((type) => [type.id, type.level]), own.map((type) => [String(type.id), LEVEL_OF[type.hierarchyLevel] ?? String(type.hierarchyLevel)]))
   const lists = await jira.request('GET', `/rest/api/3/project/${encodeURIComponent(space)}/statuses`)
-  const categoryOf = new Map(lists.flatMap((list) => list.statuses).map((status) => [status.name, categoryOfStatus(status.statusCategory?.key)]))
-  for (const status of view.statuses) assert.equal(status.category, categoryOf.get(status.name), `status ${status.name}`)
+  const keyOf = new Map(lists.flatMap((list) => list.statuses).map((status) => [String(status.id), status.statusCategory?.key]))
+  for (const status of raw.statuses) assert.equal(categoryOfStatus(status.categoryKey), categoryOfStatus(keyOf.get(status.id)), `status ${status.id}`)
+  assert.deepEqual(view.statuses.map((status) => status.category), raw.statuses.map((status) => categoryOfStatus(status.categoryKey)))
   t.diagnostic(`${view.space.style}, levels ${[...new Set(raw.workTypes.map((type) => type.level))].join(' ')}, ${view.statuses.length} statuses, categories ${[...new Set(view.statuses.map((status) => status.category))].join(' ')}`)
   return { jira, raw, view }
 }
@@ -216,13 +233,14 @@ test('the license, configuration and board reads have the documented shapes', { 
   if (software) assert.match(software.plan, /^(FREE|PAID|UNLICENSED)$/)
   const config = await jira.request('GET', '/rest/api/3/configuration')
   for (const key of ['issueLinkingEnabled', 'subTasksEnabled', 'timeTrackingEnabled']) assert.equal(typeof config[key], 'boolean', key)
-  const { items } = await jira.paginate('/rest/agile/1.0/board', { query: { projectKeyOrId: SPACE } })
+  const { raw } = await discoverSpace(SPACE)
+  // Discovery reads boards only for a software space; a business space has none to check.
+  const { items } = raw.space.type === 'software' ? await jira.paginate('/rest/agile/1.0/board', { query: { projectKeyOrId: SPACE } }) : { items: [] }
   for (const board of items) {
     assert.match(board.type, /^(scrum|kanban|simple)$/)
     const configuration = await jira.request('GET', `/rest/agile/1.0/board/${encodeURIComponent(board.id)}/configuration`)
     if (configuration.estimation) assert.equal(typeof configuration.estimation.field?.fieldId, 'string')
   }
-  const { raw } = await discoverSpace(SPACE)
   assert.deepEqual(raw.license, { software: software ? software.plan.toLowerCase() : 'unlicensed' })
   t.diagnostic(`license ${software?.plan ?? 'no jira-software'}, boards ${items.map((board) => board.type).join(' ') || 'none'}, board estimation ${raw.board?.estimationField ? 'set' : 'none'}`)
 })
