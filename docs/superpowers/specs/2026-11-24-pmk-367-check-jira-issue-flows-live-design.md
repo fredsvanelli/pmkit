@@ -89,6 +89,14 @@ Test-first, in this PR, for any difference the live run finds in the adapter or 
 - **Q1. Branch name case on Jira.** The development panel cannot be checked on this site (no GitHub for Jira app). (a) Name Jira branches with the upper-case key (`KAN-12-ship-it`) now, on the documentation and reports above; Local, Linear and GitHub keep lower case. (b) Keep lower case and leave AC 5 open with a follow-up in EPC-14 for a site with the app. Recommend (a): upper case is the form every source shows linking, and lower case is reported broken; the cost is one setting and a runbook line.
 - **Q2. AC 4 on a team-managed space.** Team-managed workflows have no transition screens, so no Resolution field can be required. The live test checks that the dry run's `requiredFields` matches Jira's transition fields (empty) and the move succeeds; the Resolution half stays open with the company-managed checks (owner's decision). Recommend: yes, leave it open in the PR, no follow-up beyond the existing company-managed one.
 
+## Interview
+
+Answered on 2026-11-24 by the coordinator on the owner's behalf; the design is approved.
+
+- Q1: (a). `issues branch` on Jira keeps the work-item key upper case (`KAN-12-ship-it`), test-first; Local, Linear and GitHub keep lower case. AC 5's live half stays open in the PR (no git integration on the site).
+- Q2: yes. The Resolution half of AC 4 stays open in the PR with the company-managed checks; no new follow-up.
+- Q3: yes. No new `CONTEXT.md` term; ADR 0015's consequence line now says Jira branches keep the key upper case, and why. No new ADR.
+
 ## Left to the builder
 
 Assertion wording, the shared init helper's shape, the random word and the retry interval of the text search.
