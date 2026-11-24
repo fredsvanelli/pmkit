@@ -188,8 +188,12 @@ test('a site in another language: recommendations follow the English names, the 
   const config = fs.readFileSync(configFile(root), 'utf8')
   for (const line of ['in_review: Em análise', 'feature: História', 'task: Tarefa']) assert.ok(config.includes(line), `${line} in\n${config}`)
   assert.equal(pmkit(root, ['validate', '--json'], { routes }).code, 0)
+  // A create without --type takes the work type named Task in English, shown as Tarefa.
+  fs.writeFileSync(path.join(root, 'title.txt'), 'New')
+  const created = json(pmkit(root, ['issues', 'create', '--title-file', 'title.txt', '--dry-run', '--json'], { routes }))
+  assert.equal(created.after.type, 'task')
   const text = fs.readFileSync(RUNBOOK, 'utf8')
-  for (const expected of ['## A site in another language', 'untranslatedName', '`Em análise`', '`Tarefa`', 'PMK-394']) assert.ok(text.includes(expected), expected)
+  for (const expected of ['## A site in another language', 'untranslatedName', '`Em análise`', '`Tarefa`', 'PMK-394', 'without `--type`']) assert.ok(text.includes(expected), expected)
 })
 
 test('setup.md offers Jira', () => {
