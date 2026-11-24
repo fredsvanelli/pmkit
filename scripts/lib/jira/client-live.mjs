@@ -96,7 +96,12 @@ test('an unknown site is NOT_CONFIGURED', { skip }, async (t) => {
 })
 
 test('a normal answer carries the rate-limit headers', { skip }, async (t) => {
-  const response = await globalThis.fetch(`https://${SITE}/rest/api/3/myself`, { headers: { Accept: 'application/json', Authorization: AUTHORIZATION } })
+  // The session check first, so the token reaches only a host that said it is Jira Cloud, as in the client.
+  await client().session()
+  const response = await globalThis.fetch(`https://${SITE}/rest/api/3/myself`, {
+    headers: { Accept: 'application/json', Authorization: AUTHORIZATION },
+    redirect: 'manual',
+  })
   await response.arrayBuffer()
   assert.equal(response.status, 200)
   const limit = response.headers.get('x-ratelimit-limit')
@@ -119,12 +124,14 @@ test(
       body: { fields: { project: { key: SPACE }, issuetype: { id: type.id }, summary: 'pmkit-live client check' } },
     })
     const path = `/rest/api/3/issue/${encodeURIComponent(created.key)}`
+    // Printed first, so a delete that fails leaves the key of the work item to remove by hand.
+    t.diagnostic(`created ${created.key}`)
     try {
       const read = await jira.request('GET', path, { query: { fields: 'summary' } })
       assert.equal(read.fields.summary, 'pmkit-live client check')
     } finally {
       assert.equal(await jira.request('DELETE', path), null)
-      t.diagnostic(`created, read and deleted a work item of type ${type.name}`)
+      t.diagnostic(`deleted the work item of type ${type.name}`)
     }
     assert.equal((await failure(jira.request('GET', path))).code, 'NOT_FOUND')
   },
