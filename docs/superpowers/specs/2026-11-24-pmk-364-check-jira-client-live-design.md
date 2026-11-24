@@ -15,7 +15,7 @@ PMK-75 built `scripts/lib/jira/client.mjs` from Atlassian's docs only: no Jira c
 
 ## What a first read-only probe found (2026-11-24)
 
-Site: the owner's Jira Cloud site (host recorded in the PR and the issue comment, not in the repository). Token: the owner's API token from the git-ignored `settings.local.json`, loaded into `JIRA_API_TOKEN` at run time, never printed.
+Site: the owner's Jira Cloud site (host kept in the coordinator's run notes, not the repository, the PR or the issue, which are public). Token: the owner's API token from the git-ignored `settings.local.json`, loaded into `JIRA_API_TOKEN` at run time, never printed.
 
 | Check | Result |
 |---|---|
@@ -55,7 +55,7 @@ A, because it reruns for the next live checks at the cost of one file.
 | the rate-limit headers are there | site, token | a normal answer carries `x-ratelimit-limit` and `x-ratelimit-remaining`; no 429 is provoked (the 429 mapping stays covered by the fake in `client.test.mjs`) |
 | a write round trip in the throwaway space | `PMKIT_LIVE_JIRA_SPACE` | creates a work item `pmkit-live client check` (POST, 201), reads it, deletes it (DELETE, 204 read as `null`), then reads it back as `NOT_FOUND`; the delete runs in a `finally` |
 
-Every write goes only to `PMKIT_LIVE_JIRA_SPACE`, and the test checks first that the space exists. No output holds the token, the email or the `Authorization` header; the account id is printed as "set". The site host and the space key stay out of the repository: the PR and the issue comment record them.
+Every write goes only to `PMKIT_LIVE_JIRA_SPACE`, and the test checks first that the space exists. No output holds the token, the email or the `Authorization` header; the account id is printed as "set". The site host and the space key stay in the coordinator's run notes, not the repository, the PR or the issue, which are public.
 
 ## Scoped token
 
@@ -87,7 +87,7 @@ The exact message wording; how the fake site answers an unknown host (404 HTML) 
 
 ## Result
 
-Run on 2026-11-24 with Node 22.22.0 against the owner's Jira Cloud site (host and space key recorded on PMK-364 and in the PR, not here), space Kudos (team-managed): `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0. No output held the token or the email.
+Run on 2026-11-24 with Node 22.22.0 against the owner's Jira Cloud site (host and space key kept in the coordinator's run notes, not the repository, the PR or the issue, which are public), space Kudos (team-managed): `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0. No output held the token or the email.
 
 | Check | AC | Result |
 |---|---|---|
