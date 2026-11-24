@@ -130,7 +130,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
     node scripts/pmkit.mjs issues get ENG-1 --history --json
     ```
 
-    Expect `history` in time order with the ops `create`, `move` (to In Progress), `link`, `comment` and `move` (to Done), each with its time and author.
+    Expect `history` in time order with the ops `create`, `move` (to In Progress), `link`, `comment`, `move` (to Done) and `update` (field `jira:resolution`, to `Done`: Jira records the resolution the move set), each with its time and author.
 
 ## Delete
 
@@ -143,6 +143,20 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
     ```
 
     Expect the first to fail, then `ENG-3` created and deleted (`after: null`); `issues get ENG-3` is `NOT_FOUND`.
+
+## A site in another language
+
+13. Jira shows status names in its viewer's language, but its changelog names them in English. On a site in Portuguese, with `feature: História` in `mappings.types` (the shown name, as setup writes it), create a bug, move it to in progress, then to done, and read its history and the cycle time:
+
+    ```
+    node scripts/pmkit.mjs issues create --title-file tmp/title-1.txt --type bug --json
+    node scripts/pmkit.mjs issues move ENG-1 in_progress --json
+    node scripts/pmkit.mjs issues move ENG-1 done --field resolution=Done --json
+    node scripts/pmkit.mjs issues get ENG-1 --history --json
+    node scripts/pmkit.mjs metrics cycle-time --json
+    ```
+
+    Expect the `create` event's status `Tarefas pendentes` and the moves `Tarefas pendentes` to `Em andamento`, then `Em andamento` to `Concluído`: pmkit names each status by its id, as the site shows it. `metrics cycle-time` lists `ENG-1`.
 
 ## Failures
 

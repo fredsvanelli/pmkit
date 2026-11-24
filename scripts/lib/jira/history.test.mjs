@@ -11,8 +11,8 @@ globalThis.fetch = () => {
   throw new Error('the real fetch was called')
 }
 
-async function context({ edit } = {}) {
-  const client = createJiraClient({ env: FAKE_ENV, tracker: TRACKER, fetch: fakeJiraFetch({ ...jiraSiteRoutes() }), sleep: async () => {} })
+async function context({ edit, locale } = {}) {
+  const client = createJiraClient({ env: FAKE_ENV, tracker: TRACKER, fetch: fakeJiraFetch({ ...jiraSiteRoutes({ locale }) }), sleep: async () => {} })
   const raw = await fetchDiscovery(client, { space: 'ENG', now: () => new Date('2026-11-22T12:00:00Z') })
   edit?.(raw)
   return makeContext(raw, { tracker: TRACKER, mappings: { types: { story: 'Story', bug: 'Bug' } } }, await client.session())
@@ -45,7 +45,18 @@ test('the create event starts from the first change of title, type and status', 
 })
 
 test('status is a move with the status names', async () => {
-  assert.deepEqual(await one({ field: 'status', fieldId: 'status', from: '1', fromString: 'To Do', to: '3', toString: 'Done' }), { at: '2026-11-21T10:00:00.000Z', by: 'acc-2', op: 'move', field: 'status', from: 'To Do', to: 'Done' })
+  assert.deepEqual(await one({ field: 'status', fieldId: 'status', from: '1', fromString: 'To Do', to: '5', toString: 'Done' }), { at: '2026-11-21T10:00:00.000Z', by: 'acc-2', op: 'move', field: 'status', from: 'To Do', to: 'Done' })
+})
+
+// The changelog names statuses in English while the site shows them in its viewer's language (PMK-367, seen live), so the
+// status ids name them, as discovery does; a status discovery lacks keeps the changelog's name.
+test('on a site in another language, a status change and the created status take the shown names by id', async () => {
+  const pt = await context({ locale: 'pt' })
+  const events = toEvents(ITEM, [history([{ field: 'status', fieldId: 'status', from: '1', fromString: 'To Do', to: '3', toString: 'In Progress' }])], pt)
+  assert.equal(events[0].to.status, 'Tarefas pendentes')
+  assert.deepEqual([events[1].from, events[1].to], ['Tarefas pendentes', 'Em andamento'])
+  const gone = await one({ field: 'status', fieldId: 'status', from: '3', fromString: 'In Progress', to: '99', toString: 'Archived' }, pt)
+  assert.deepEqual([gone.from, gone.to], ['Em andamento', 'Archived'])
 })
 
 test('labels give one update per added and removed label', async () => {
