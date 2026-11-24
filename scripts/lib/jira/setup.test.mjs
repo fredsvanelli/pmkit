@@ -173,6 +173,12 @@ test('a discovery cached without English names still matches the shown names', a
   assert.deepEqual(['feature', 'bug', 'task'].map((type) => questionAt(first, `mappings.types.${type}`).recommended), ['Story', 'Bug', 'Task'])
 })
 
+test('when two statuses match a key, the earlier wanted name wins', async () => {
+  const raw = await rawOf()
+  raw.statuses.push({ id: '9', name: 'In Review', untranslated: 'In Review', categoryKey: 'indeterminate' })
+  assert.equal(questionAt(proposeJiraSetup(raw, {}, {}, TYPES), 'mappings.status.in_review').recommended, 'In Review')
+})
+
 test('all answered', async () => {
   const answers = {
     status: { backlog: 'none', in_review: 'Review', canceled: 'none' },

@@ -60,7 +60,11 @@ const hostless = (text) => (typeof text === 'string' && SITE ? text.replaceAll(S
 function scrub(error) {
   if (!(error instanceof Error)) return error
   for (const key of ['message', 'stack', 'nextStep']) if (typeof error[key] === 'string') error[key] = hostless(error[key])
-  if (error.details !== undefined) error.details = JSON.parse(hostless(JSON.stringify(error.details)))
+  // An assertion prints its actual and expected values too, and a CLI answer in them can name the site.
+  for (const key of ['details', 'actual', 'expected']) {
+    if (typeof error[key] === 'string') error[key] = hostless(error[key])
+    else if (error[key] !== null && typeof error[key] === 'object') error[key] = JSON.parse(hostless(JSON.stringify(error[key])))
+  }
   return error
 }
 const test = (name, options, fn) => nodeTest(name, options, async (t) => {
@@ -284,7 +288,7 @@ test(
 // Setup (PMK-368). The CLI runs in a temporary repository with its own user store; the only writes are local.
 const CLI = fileURLToPath(new URL('../../pmkit.mjs', import.meta.url))
 const STATUS_ENGLISH = { backlog: ['backlog'], in_review: ['in review', 'review', 'code review'], canceled: ['canceled', 'cancelled', "won't do", 'declined'] }
-const TYPE_ENGLISH = { feature: ['story', 'feature'], bug: ['bug'], task: ['task'] }
+const TYPE_ENGLISH = { feature: ['story', 'feature'], bug: ['bug'], task: ['task'], chore: ['chore', 'task'] }
 
 /** The shown name of the first wanted English name an item carries (untranslated first), skipping `taken`. */
 function englishMatch(wanted, items, taken = new Set()) {
