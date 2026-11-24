@@ -2,14 +2,16 @@
 id: PMK-367
 title: Check the Jira issue flows against a live site
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 3
+assignee: fred
 parent: EPC-14
 related: [PMK-77]
 milestone: jira
+branch: fredsvanelli/pmk-367-check-jira
 created: 2026-11-22T19:57:51.700Z
-updated: 2026-11-22T19:57:54Z
+updated: 2026-11-24T20:21:09Z
 ---
 
 ## Description
