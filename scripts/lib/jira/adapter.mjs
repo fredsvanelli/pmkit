@@ -23,7 +23,7 @@ export function jiraDescriptor({ fetch } = {}) {
     system: 'jira',
     hosted: true,
     configProblems: jiraConfigProblems,
-    settings: () => ({ defaults: builtInDefaults(), epicPrefix: null }),
+    settings: () => ({ defaults: builtInDefaults(), epicPrefix: null, keepKeyCase: true }),
     // The client of one site, for setup to list the spaces before a space is chosen.
     connect: async ({ env, site }) => createJiraClient({ env, tracker: { scope: { site } }, fetch: fetch ?? globalThis.fetch }),
     create: async (config, { now, env }) => {

@@ -24,6 +24,7 @@ test('the Jira descriptor is hosted and registered', () => {
   assert.equal(descriptor.system, 'jira')
   assert.equal(descriptor.hosted, true)
   assert.equal(descriptor.settings({}).epicPrefix, null)
+  assert.equal(descriptor.settings({}).keepKeyCase, true)
   assert.equal(adapterFor('jira').system, 'jira')
 })
 

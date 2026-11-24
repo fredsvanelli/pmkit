@@ -138,10 +138,10 @@ test('the issue flows, step by step', () => {
 
   // Branch, then the history
   const branched = body(pmkit(['issues', 'branch', 'ENG-1', '--json']))
-  assert.equal(branched.branch, 'eng-1-ship-it')
-  assert.equal(branched.after.branch, 'eng-1-ship-it')
-  assert.equal(git(root, 'branch', '--list', 'eng-1-ship-it').replace(/^[*+]?\s+/, ''), 'eng-1-ship-it')
-  assert.equal(body(pmkit(['issues', 'get', 'ENG-1', '--json'])).branch, 'eng-1-ship-it')
+  assert.equal(branched.branch, 'ENG-1-ship-it')
+  assert.equal(branched.after.branch, 'ENG-1-ship-it')
+  assert.equal(git(root, 'branch', '--list', 'ENG-1-ship-it').replace(/^[*+]?\s+/, ''), 'ENG-1-ship-it')
+  assert.equal(body(pmkit(['issues', 'get', 'ENG-1', '--json'])).branch, 'ENG-1-ship-it')
   const done = body(pmkit(['issues', 'move', 'ENG-1', 'done', '--field', 'resolution=Done', '--json']))
   assert.deepEqual(done.after.status, { name: 'Done', category: 'done' })
   const got = body(pmkit(['issues', 'get', 'ENG-1', '--history', '--json']))

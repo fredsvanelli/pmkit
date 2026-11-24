@@ -110,7 +110,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs issues branch ENG-1 --json
    ```
 
-   Expect `branch: eng-1-ship-it`, created locally from `main` (`git branch --list eng-1-ship-it` shows it), and `after.branch` with the same name: pmkit writes it to the work-item property `pmkit.branch` (ADR 0015), so `issues get ENG-1 --json` reads it back. `issues branch` needs `git_host.system: github` in `.pmkit/config.yaml`; with `git_host: none` it answers `NOT_SUPPORTED`. `issues update <key> --branch <name>` records a branch made by hand.
+   Expect `branch: ENG-1-ship-it`, created locally from `main` (`git branch --list ENG-1-ship-it` shows it), and `after.branch` with the same name. On Jira the key stays upper case, the form Jira's development panel links (ADR 0015); the other trackers name it `eng-1-ship-it`. pmkit writes it to the work-item property `pmkit.branch` (ADR 0015), so `issues get ENG-1 --json` reads it back. `issues branch` needs `git_host.system: github` in `.pmkit/config.yaml`; with `git_host: none` it answers `NOT_SUPPORTED`. `issues update <key> --branch <name>` records a branch made by hand.
 
 ## Finish the move
 

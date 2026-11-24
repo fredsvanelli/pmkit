@@ -81,6 +81,13 @@ test('branchName slugs the title', () => {
   assert.equal(branchName('ISS-7K3Q', 'Corrigir ação de usuário não encontrado'), 'iss-7k3q-corrigir-acao-de-usuario-nao-encontrado')
 })
 
+test('branchName keeps the key\'s case when asked, as Jira branches do (ADR 0015)', () => {
+  assert.equal(branchName('KAN-12', 'Ship it', { keepKeyCase: true }), 'KAN-12-ship-it')
+  assert.equal(branchName('AB2-7', 'Fix!', { keepKeyCase: true }), 'AB2-7-fix')
+  assert.equal(branchName('KAN-3', '!!!', { keepKeyCase: true }), 'KAN-3')
+  assert.equal(branchName('KAN-12', 'Ship it'), 'kan-12-ship-it')
+})
+
 test('branchName cuts the slug at 40 characters on a dash', () => {
   const branch = branchName('ISS-7K3Q', 'Retry failed webhook deliveries with exponential backoff')
   assert.equal(branch, 'iss-7k3q-retry-failed-webhook-deliveries-with')
