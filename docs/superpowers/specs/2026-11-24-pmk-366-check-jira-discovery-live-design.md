@@ -126,3 +126,18 @@ Run on 2026-11-24 against the owner's Jira Cloud site (host and space key kept o
 | capabilities on the throwaway space | 3 | pass: 20 entries; `releases` reports `native` while the space's Releases feature is off (Q2 follow-up) |
 | a token without admin rights discovers with warnings | 3 | skip: no non-admin token (Q4); unit tests cover refused optional reads |
 | PMK-364's client checks, rerun | — | pass (scoped token skipped, as in PMK-364) |
+
+### With sprints and estimation on (Q3)
+
+The owner approved turning on Sprints and Estimation in Kudos (2026-11-24). Through the Agile API's board features call: Estimation on; Sprints needs the Backlog feature first, so Backlog and then Sprints on. Jira then created the site's `Sprint` field (`gh-sprint`) and `Story point estimate` (`jsw-story-points`), both unscoped, the board configuration's `estimation.field` names the latter, and Jira created one future sprint, which was deleted. The four live discovery checks rerun: pass.
+
+| Role | Rule that matched | Field |
+|---|---|---|
+| `estimate` | the board's estimation field (also `jsw-story-points`) | `customfield_10016` |
+| `sprint` | custom type `gh-sprint` | `customfield_10020` |
+
+The board **stays `type: simple`** with Sprints on, so `cycles` stays `absent` ("Sprints need a Scrum board"): sprints on a team-managed space are unusable in pmkit until PMK-393 (raised to high priority, with this evidence) reads the Sprints feature. `estimation` turned `native`.
+
+Final state of Kudos: no work item, no sprint; board features Backlog, Sprints and Estimation on (left on for PMK-370's sprint checks), Releases off; the two new fields stay on the site.
+
+Q1 (company-managed space): skipped by the owner's decision, open in the PR.
