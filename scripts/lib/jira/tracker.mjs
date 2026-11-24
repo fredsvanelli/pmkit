@@ -136,12 +136,15 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     })
   const stub = (operation) => refusal(`the Jira adapter does not implement ${operation} yet`, 'Set tracker.system to local in .pmkit/config.yaml to use this command now')
 
-  // The context of the operations: makeContext over the discovery, built once per raw discovery, with `fresh`.
+  // The context of the operations: makeContext over the discovery, built once per raw discovery, with `fresh`. With `sprints`, a
+  // cached discovery that has no sprint board is read again once: Sprints may have been turned on since, or the cache predates the
+  // board features (PMK-393).
   const contexts = new WeakMap()
-  async function getContext({ refresh = false } = {}) {
+  async function getContext({ refresh = false, sprints = false } = {}) {
     const { raw, fresh } = await discovery({ refresh })
     if (!contexts.has(raw)) contexts.set(raw, { ...makeContext(raw, config.pmkit, await client.session()), fresh })
-    return contexts.get(raw)
+    const context = contexts.get(raw)
+    return sprints && context.boardId === null && !context.fresh ? getContext({ refresh: true }) : context
   }
 
   const sprints = async () => {

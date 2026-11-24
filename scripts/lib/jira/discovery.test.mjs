@@ -271,7 +271,7 @@ test('a company-managed space does not read board features', async () => {
 test('a refused board features read warns and leaves the features out', async () => {
   const { raw, view } = await discover({ style: 'team-managed', board: 'simple', routes: { 'GET /rest/agile/1.0/board/1/features': denied } })
   assert.equal(raw.board.features, undefined)
-  assert.ok(view.warnings.includes('Jira refused to read the board features (AUTH); sprints, estimation and releases follow the board type'), view.warnings.join('\n'))
+  assert.ok(view.warnings.includes('Jira refused to read the board features (AUTH); sprints, estimation and releases are judged without them'), view.warnings.join('\n'))
   assert.equal(sprintsOn(raw), false)
 })
 

@@ -128,5 +128,8 @@ test('Releases off on a team-managed board makes releases absent', () => {
 })
 
 test('Estimation off on a team-managed board makes estimation absent', () => {
-  assert.deepEqual(entry(buildJiraCapabilities(teamRaw({ sprints: true, estimation: false, releases: true }), GIT), 'estimation'), { id: 'estimation', path: 'absent', enableHint: 'No estimate field in space ENG' })
+  assert.deepEqual(entry(buildJiraCapabilities(teamRaw({ sprints: true, estimation: false, releases: true }), GIT), 'estimation'), { id: 'estimation', path: 'absent', enableHint: "Turn on Estimation in space ENG's features" })
+  // A mapped estimate field still wins over the feature (ADR 0014).
+  const mapped = buildJiraCapabilities(teamRaw({ sprints: true, estimation: false, releases: true }), { ...GIT, mappings: { fields: { estimate: 'customfield_10016' } } })
+  assert.equal(entry(mapped, 'estimation').path, 'native')
 })

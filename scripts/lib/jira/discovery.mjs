@@ -16,7 +16,7 @@ const UNREAD = {
   license: 'sprints are judged from the boards alone',
   'global settings': 'issue linking and time tracking are assumed on',
   boards: 'sprints and the board estimate field are unknown',
-  'board features': 'sprints, estimation and releases follow the board type',
+  'board features': 'sprints, estimation and releases are judged without them',
   'assignable users': 'discover lists the viewer as the only member',
   priorities: 'the Jira priorities are unknown',
   'link types': 'the Jira link types are unknown',

@@ -43,7 +43,7 @@ function siteAnswers(raw, pmkit) {
     cycles: sprints,
     estimation: estimate
       ? { path: 'native', detail: { unit: estimate.id === 'timeoriginalestimate' ? 'hours' : 'points', field: estimate.id } }
-      : absent(`No estimate field in space ${key}`),
+      : absent(raw.board?.features?.estimation === false ? `Turn on Estimation in space ${key}'s features` : `No estimate field in space ${key}`),
     multilevel_hierarchy: levels.some((level) => level !== 'standard') ? { path: 'native', detail: { levels } } : absent(`Space ${key} has no epic or subtask work type`),
     dependencies: setting('issueLinking') ? { path: 'native' } : absent("Turn on issue linking in Jira's global settings"),
     native_triage: absent('Jira has no triage; map a status to triage in .pmkit/config.yaml'),

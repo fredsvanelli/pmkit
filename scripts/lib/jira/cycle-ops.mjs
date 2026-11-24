@@ -30,7 +30,7 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
 
   /** The context, the board and the capacity key: every cycle operation starts here. A space the manifest gives no sprints is NOT_SUPPORTED with its hint. */
   async function scope() {
-    const context = await getContext()
+    const context = await getContext({ sprints: true })
     const entry = buildJiraCapabilities(context.raw, config.pmkit).find((candidate) => candidate.id === 'cycles')
     if (entry.path === 'absent') throw new PmkitError('NOT_SUPPORTED', entry.enableHint, entry.enableHint)
     return { context, boardId: context.boardId, key: `jira:${context.raw.site}/${context.boardId}` }

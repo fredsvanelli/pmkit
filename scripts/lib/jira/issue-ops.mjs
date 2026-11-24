@@ -112,7 +112,7 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
 
   /** Narrows with JQL, then runs the client steps, pmkit's order and the limit. */
   async function searchIssues(filter = {}) {
-    const held = await getContext()
+    const held = await getContext({ sprints: typeof filter.sprint === 'string' })
     const { activeId, versionId } = await checkSearch(filter, held)
     if (filter.limit === 0) return NOTHING()
     const translated = translateFilter(filter, held, { activeId, versionId })
@@ -179,6 +179,7 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
   async function createIssue(request, actor, { dryRun = false } = {}) {
     await requireActor(actor)
     const input = request ?? {}
+    if (typeof input.sprint === 'string') await getContext({ sprints: true })
     const { value: plan, context } = await withRefresh(async (current) => toFields(input, null, current, { create: true, now: now().toISOString(), sprints: await sprintsFor(input, current), versions: await versionsFor(input) }))
     const category = input.status ?? undefined
     // The target is checked before the create, so a work type with no status in the category sends nothing.
@@ -214,6 +215,8 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
   /** `sprints`, internal, is the board's raw Jira sprints when the caller (moveToCycle) has read them. */
   async function updateIssue(id, patch, actor, { dryRun = false, sprints: known } = {}) {
     await requireActor(actor)
+    // A patch naming a sprint reads a cached discovery with no sprint board again first (PMK-393).
+    if (typeof patch?.sprint === 'string') await getContext({ sprints: true })
     const { issue: before, context } = await readItem(id)
     const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context, known), versions: await versionsFor(patch ?? {}) })
     const changed = Object.keys(plan.fields).length > 0

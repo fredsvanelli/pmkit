@@ -46,6 +46,8 @@ Three places decide "this space has sprints" from `board.type === 'scrum'` alone
 - Comments naming "the space's Scrum board" in `cycle-ops.mjs` and `tracker.mjs` say "the space's sprint board" instead.
 - Fakes: `scripts/fake-jira-api.mjs` `jiraSiteRoutes` gains a `features` option that serves `/board/{id}/features` for the team-managed variant.
 
+- Added after the final review: the `estimation` hint names the feature (`Turn on Estimation in space KEY's features`) when Estimation is off; the refused-read warning says the three "are judged without them"; and the sprint operations (`cycle *`, `issues list --sprint`, a create or update naming a sprint) re-read a cached discovery once when it has no sprint board, through `getContext({ sprints: true })` in `tracker.mjs`, so a cache from before this change or from before Sprints was turned on does not refuse with a hint the user cannot act on.
+
 ## Tests (test-first)
 
 - `discovery.test.mjs`: a team-managed space reads the features (three booleans); a company-managed space does not call `/features`; a refused features read (403) warns and leaves `features` out; estimation off leaves `estimate` null even with a `jsw-story-points` field; a mapped estimate still wins.

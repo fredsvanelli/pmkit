@@ -14,7 +14,7 @@
 
 - Company-managed spaces keep today's behaviour exactly; `/features` is not called for them.
 - Hints: cycles on team-managed `Turn on Sprints in space ${key}'s features`; releases `Turn on Releases in space ${key}'s features`; company-managed cycles hint stays `Sprints need a Scrum board in space ${key}`.
-- UNREAD entry key `'board features'`, text `sprints, estimation and releases follow the board type`.
+- UNREAD entry key `'board features'`, text `sprints, estimation and releases are judged without them`.
 - A feature missing from Jira's answer reads as off. A mapped field (ADR 0014) still wins over the estimation feature.
 - The live site host, email and token never enter the repository, test output or PR.
 - Every commit message carries `(PMK-393)`.
