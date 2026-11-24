@@ -2,7 +2,7 @@
 
 The flow of `/pmkit:setup` when the user picks Jira: "Jira first run" and "Existing Jira config" in `commands/setup.md` (PMK-365). `scripts/runbook-setup-jira.test.mjs` runs every step below with the real CLI and a fake Jira site in place of `fetch`, so `npm test` checks this runbook. It also checks that no output holds the token, the email or the `Authorization` header.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; the live setup check goes to EPC-14.
+Live check: run on 2026-11-24 (PMK-368) on a team-managed space of a Jira Cloud site in Portuguese, through `scripts/lib/jira/client-live.mjs` (its header has the command): steps 1, 2, 4 and 5 (step 3's preview is not run live) and the held-space case of step 7. A company-managed space was not available, so its candidates are unchecked live.
 
 ## Before you start
 
@@ -33,9 +33,9 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    ```
 
    Expect `space: { key: "ENG", name, style }` and these questions, in order:
-   - `mappings.status.backlog`, `mappings.status.in_review` and `mappings.status.canceled`, each offering every status of the space and recommending the one whose name matches (`Review` for `in_review`), or `none`. `todo`, `in_progress` and `done` come from Jira's status categories and are never asked; neither is `blocked`, which on Jira comes from Blocks links.
+   - `mappings.status.backlog`, `mappings.status.in_review` and `mappings.status.canceled`, each offering every status of the space and recommending the one whose English name matches (step 12) (`Review` for `in_review`), or `none`. `todo`, `in_progress` and `done` come from Jira's status categories and are never asked; neither is `blocked`, which on Jira comes from Blocks links.
    - `mappings.fields.estimate`, `mappings.fields.acceptance_criteria` and `mappings.fields.sprint`, each offering field ids with their names in `titles`, such as `customfield_10016` (Story Points). A role with one field is applied without a question (on the fake site, `sprint` is `customfield_10020`); a role with none gets a note, such as `the site has no field for the acceptance criteria`.
-   - `mappings.types.feature`, `bug`, `task` and `chore`, each offering the space's standard work types and recommending the one whose name matches (`Story` for `feature`, `Bug` for `bug`), or `none`. A work type already recommended for an earlier type is not recommended again: on a space with `Task`, `task` gets `Task` and `chore` gets `none`.
+   - `mappings.types.feature`, `bug`, `task` and `chore`, each offering the space's standard work types and recommending the one whose English name matches (`Story` for `feature`, `Bug` for `bug`), or `none`. A work type already recommended for an earlier type is not recommended again: on a space with `Task`, `task` gets `Task` and `chore` gets `none`.
 
    `statuses` lists each status with its category. Nothing is written.
 
@@ -76,3 +76,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 10. On a `--site` where no Jira site answers, such as a typo in the host, step 1 fails with `NOT_CONFIGURED`, `No Jira site answers at <site>`, and the next step says to check the site host. Nothing is written.
 
 11. A `--space` the token's owner cannot browse, on a site where it can browse no space, fails with `NOT_CONFIGURED`. Nothing is written.
+
+## A site in another language
+
+12. Jira shows status and work type names in the language of the token's owner, and keeps the English one (`untranslatedName` on a status; the space's statuses list names each work type in English). Setup recommends by the English name and writes the name the site shows. On a site in Portuguese, step 2 recommends `Em análise` (In Review) for `in_review`, `História` (Story) for `feature` and `Tarefa` (Task) for `task`, and accepting them writes `in_review: Em análise`, `feature: História` and `task: Tarefa`; `validate` exits 0. With that file, `node scripts/pmkit.mjs issues create --title-file <file> --dry-run --json` without `--type` creates a `task`: the default work type is the one named Task in English. A teammate whose Jira is in another language sees other names, so the file breaks for them until PMK-394.

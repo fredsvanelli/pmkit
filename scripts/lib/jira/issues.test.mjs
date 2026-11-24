@@ -186,6 +186,10 @@ test('a create needs a title and defaults the type to Task, then the first stand
 
   const task = await context({ edit: (raw) => raw.workTypes.push({ id: '10010', name: 'Task', level: 'standard', statuses: ['1', '5'] }) })
   assert.deepEqual(toFields({ title: 'New' }, null, task, { create: true }).fields.issuetype, { id: '10010' })
+
+  // On a site in another language the Task work type is shown as Tarefa (PMK-368).
+  const tarefa = await context({ edit: (raw) => raw.workTypes.push({ id: '10011', name: 'Tarefa', untranslated: 'Task', level: 'standard', statuses: ['1', '5'] }) })
+  assert.deepEqual(toFields({ title: 'New' }, null, tarefa, { create: true }).fields.issuetype, { id: '10011' })
 })
 
 test('type maps through mappings.types; null and unknown types are refused', async () => {

@@ -2,14 +2,16 @@
 id: PMK-368
 title: Check the Jira setup against a live site
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-14
-related: [PMK-365]
+related: [PMK-365, PMK-394]
 milestone: jira
+branch: fredsvanelli/pmk-368-check-jira
 created: 2026-11-23T01:16:13.890Z
-updated: 2026-11-23T01:16:18Z
+updated: 2026-11-24T20:09:01Z
 ---
 
 ## Description

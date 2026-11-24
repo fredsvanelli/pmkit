@@ -3,6 +3,7 @@
 // Then discovery and the manifest (PMK-366), read-only: the space's style, work type levels, status categories, the field of
 // each role, the license, configuration and board shapes, on the throwaway space and, when set, on a company-managed space
 // (PMKIT_LIVE_JIRA_COMPANY_SPACE) and with a token without admin rights (PMKIT_LIVE_JIRA_LIMITED_EMAIL and _TOKEN).
+// Then setup (PMK-368): the real CLI runs init --tracker jira in a temporary repository; Jira is only read.
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -15,7 +16,12 @@
 // burst on a real site is not worth it, and client.test.mjs covers the mapping on the fake (PMK-364 interview, Q3).
 
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import nodeTest from 'node:test'
 import { isPmkitError } from '../errors.mjs'
 import { createJiraClient } from './client.mjs'
@@ -54,7 +60,11 @@ const hostless = (text) => (typeof text === 'string' && SITE ? text.replaceAll(S
 function scrub(error) {
   if (!(error instanceof Error)) return error
   for (const key of ['message', 'stack', 'nextStep']) if (typeof error[key] === 'string') error[key] = hostless(error[key])
-  if (error.details !== undefined) error.details = JSON.parse(hostless(JSON.stringify(error.details)))
+  // An assertion prints its actual and expected values too, and a CLI answer in them can name the site.
+  for (const key of ['details', 'actual', 'expected']) {
+    if (typeof error[key] === 'string') error[key] = hostless(error[key])
+    else if (error[key] !== null && typeof error[key] === 'object') error[key] = JSON.parse(hostless(JSON.stringify(error[key])))
+  }
   return error
 }
 const test = (name, options, fn) => nodeTest(name, options, async (t) => {
@@ -274,3 +284,99 @@ test(
     t.diagnostic(`${view.warnings.length} warnings`)
   },
 )
+
+// Setup (PMK-368). The CLI runs in a temporary repository with its own user store; the only writes are local.
+const CLI = fileURLToPath(new URL('../../pmkit.mjs', import.meta.url))
+const STATUS_ENGLISH = { backlog: ['backlog'], in_review: ['in review', 'review', 'code review'], canceled: ['canceled', 'cancelled', "won't do", 'declined'] }
+const TYPE_ENGLISH = { feature: ['story', 'feature'], bug: ['bug'], task: ['task'], chore: ['chore', 'task'] }
+
+/** The shown name of the first wanted English name an item carries (untranslated first), skipping `taken`. */
+function englishMatch(wanted, items, taken = new Set()) {
+  const free = items.filter((item) => !taken.has(item.name))
+  for (const name of wanted) {
+    const found = free.find((item) => item.untranslated?.toLowerCase() === name) ?? free.find((item) => item.name.toLowerCase() === name)
+    if (found) return found.name
+  }
+  return 'none'
+}
+
+test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-setup-'))
+  const repo = path.join(root, 'repo')
+  fs.mkdirSync(repo)
+  spawnSync('git', ['init', '-q'], { cwd: repo })
+  const cli = (...args) => {
+    const result = spawnSync(process.execPath, [CLI, ...args, '--json'], { cwd: repo, env: { ...env, PMKIT_HOME: path.join(root, 'home') }, encoding: 'utf8' })
+    assertNoSecret(`${result.stdout}${result.stderr}`)
+    assert.equal(result.status, 0, hostless(`the CLI's ${args[0]} exited ${result.status}: ${result.stdout.slice(0, 400)}`))
+    return JSON.parse(result.stdout)
+  }
+  const init = ['init', '--tracker', 'jira', '--git-host', 'none', '--site', SITE]
+  try {
+    // AC 1: the spaces the token's owner can browse.
+    const first = cli(...init, '--dry-run')
+    const spaceQuestion = first.questions.find((question) => question.path === 'tracker.scope.space')
+    assert.ok(spaceQuestion?.candidates.includes(SPACE), 'the space question does not list the throwaway space')
+
+    // AC 2 and 3: the candidates and the recommendations, against the space's own discovery.
+    const { raw } = await discoverSpace(SPACE)
+    const proposal = cli(...init, '--space', SPACE, '--dry-run')
+    const at = (key) => proposal.questions.find((question) => question.path === key)
+    const applied = (key) => proposal.applied.find((item) => item.path === key)
+    const ids = (fit) => raw.fields.filter(fit).map((field) => field.id).sort()
+    const offered = (key) => (at(key)?.candidates ?? (applied(key) ? [applied(key).value] : [])).slice().sort()
+    assert.deepEqual(offered('mappings.fields.estimate'), ids((field) => (field.type === 'number' && field.customType !== null) || field.id === 'timeoriginalestimate'))
+    assert.deepEqual(offered('mappings.fields.acceptance_criteria'), ids((field) => field.type === 'string' && field.customType !== null))
+    if (raw.board?.estimationField) assert.equal(at('mappings.fields.estimate')?.recommended ?? applied('mappings.fields.estimate').value, raw.board.estimationField)
+    // The English names come from Jira's own answers, not from pmkit's discovery: statuses carry untranslatedName in the space's
+    // statuses list, and work types in GET /issuetype/project.
+    const jira = client()
+    const lists = await jira.request('GET', `/rest/api/3/project/${encodeURIComponent(SPACE)}/statuses`)
+    const statuses = [...new Map(lists.flatMap((list) => list.statuses).map((status) => [status.id, { name: status.name, untranslated: status.untranslatedName }])).values()]
+    const takenStatus = new Set()
+    for (const [key, wanted] of Object.entries(STATUS_ENGLISH)) {
+      const expected = englishMatch(wanted, statuses, takenStatus)
+      takenStatus.add(expected)
+      assert.equal(at(`mappings.status.${key}`).recommended, expected, `mappings.status.${key}`)
+    }
+    const project = await jira.request('GET', `/rest/api/3/project/${encodeURIComponent(SPACE)}`)
+    const types = await jira.request('GET', '/rest/api/3/issuetype/project', { query: { projectId: project.id } })
+    const standard = types.filter((type) => type.hierarchyLevel === 0).map((type) => ({ name: type.name, untranslated: type.untranslatedName }))
+    // Discovery takes a work type's English name from the statuses list (PMK-368, Q1); it must agree with Jira's untranslatedName.
+    for (const type of types) {
+      const found = raw.workTypes.find((item) => item.id === String(type.id))
+      if (found && type.untranslatedName) assert.equal(found.untranslated, type.untranslatedName, `work type ${type.id}`)
+    }
+    const takenType = new Set()
+    for (const [key, wanted] of Object.entries(TYPE_ENGLISH)) {
+      const expected = englishMatch(wanted, standard, takenType)
+      takenType.add(expected)
+      assert.equal(at(`mappings.types.${key}`).recommended, expected, `mappings.types.${key}`)
+    }
+
+    // AC 3: every recommendation accepted writes a config that validate and discover accept.
+    const flag = { status: '--status', fields: '--field', types: '--type-label' }
+    const answers = proposal.questions.flatMap((question) => {
+      const [, group, key] = question.path.split('.')
+      return [flag[group], `${key}=${question.recommended}`]
+    })
+    const written = cli(...init, '--space', SPACE, ...answers)
+    assert.deepEqual(written.questions, [])
+    assert.deepEqual(cli('validate').problems, [])
+    const discovered = cli('discover')
+    assert.equal(discovered.space.key, SPACE)
+
+    // AC 1: a held space the site lacks is asked again.
+    const file = path.join(repo, '.pmkit', 'config.yaml')
+    const missing = `PMKITX${randomHex(3).toUpperCase()}`
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(`space: ${SPACE}`, `space: ${missing}`))
+    const again = cli('init', '--tracker', 'jira', '--update', '--dry-run')
+    assert.equal(again.questions[0]?.path, 'tracker.scope.space')
+    assert.equal(again.questions[0].broken?.was, missing)
+
+    const recommended = proposal.questions.map((question) => `${question.path.replace('mappings.', '')}=${question.recommended}`)
+    t.diagnostic(`${spaceQuestion.candidates.length} spaces; ${recommended.join(', ')}; applied ${proposal.applied.map((item) => item.path.replace('mappings.', '')).join(' ') || 'none'}; discover warnings ${discovered.warnings.length}`)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
