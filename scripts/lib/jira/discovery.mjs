@@ -99,14 +99,20 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
   const own = ownedBy(String(found.id))
   const board = found.projectTypeKey === 'software' ? await optional(() => readBoard(client, space), 'boards', unread) : null
 
-  const statusesOf = new Map((Array.isArray(statusLists) ? statusLists : []).map((item) => [String(item.id), item.statuses ?? []]))
+  const lists = new Map((Array.isArray(statusLists) ? statusLists : []).map((item) => [String(item.id), item]))
   const statuses = new Map()
   const workTypes = (found.issueTypes ?? []).filter(own).map((type) => {
-    const list = statusesOf.get(String(type.id)) ?? []
+    const item = lists.get(String(type.id))
+    const list = item?.statuses ?? []
     for (const status of list) {
-      if (!statuses.has(String(status.id))) statuses.set(String(status.id), { id: String(status.id), name: status.name, categoryKey: status.statusCategory?.key ?? null })
+      if (!statuses.has(String(status.id))) {
+        statuses.set(String(status.id), { id: String(status.id), name: status.name, untranslated: status.untranslatedName ?? null, categoryKey: status.statusCategory?.key ?? null })
+      }
     }
-    return { id: String(type.id), name: type.name, level: levelOf(type), statuses: list.map((status) => String(status.id)) }
+    // The space read shows a work type in the viewer's language and sends no untranslatedName; its statuses list names it in
+    // English (PMK-368).
+    const untranslated = type.untranslatedName ?? item?.name ?? null
+    return { id: String(type.id), name: type.name, untranslated, level: levelOf(type), statuses: list.map((status) => String(status.id)) }
   })
 
   return {

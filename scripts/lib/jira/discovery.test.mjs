@@ -10,8 +10,8 @@ globalThis.fetch = () => {
 
 const NOW = () => new Date('2026-11-22T12:00:00Z')
 
-async function discover({ style, locale, board, routes = {}, pmkit = {} } = {}) {
-  const fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style, locale, board }), ...routes })
+async function discover({ style, locale, board, taskType, routes = {}, pmkit = {} } = {}) {
+  const fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style, locale, board, taskType }), ...routes })
   const client = createJiraClient({ env: FAKE_ENV, tracker: TRACKER, fetch, sleep: async () => {} })
   const raw = await fetchDiscovery(client, { space: 'ENG', now: NOW })
   const view = discoveryView(raw, { tracker: TRACKER, ...pmkit }, { session: await client.session() })
@@ -214,6 +214,22 @@ test('name rules match the untranslated name on a site in another language', asy
   assert.deepEqual(view.statuses.map((status) => [status.name, status.category]), [
     ['Tarefas pendentes', 'todo'], ['Em andamento', 'in_progress'], ['Concluído', 'done'], ['Em análise', 'in_progress'],
   ])
+})
+
+test('statuses and work types keep their English name on a site in another language', async () => {
+  const { raw } = await discover({ locale: 'pt', taskType: true })
+  const review = raw.statuses.find((status) => status.id === '4')
+  assert.deepEqual([review.name, review.untranslated], ['Em análise', 'Review'])
+  assert.deepEqual(raw.workTypes.map((type) => [type.name, type.untranslated]), [
+    ['Epic', 'Epic'], ['História', 'Story'], ['Bug', 'Bug'], ['Sub-task', 'Sub-task'], ['Tarefa', 'Task'],
+  ])
+})
+
+test("a work type's untranslatedName wins over the name the statuses list gives it", async () => {
+  const project = jiraSiteRoutes({ locale: 'pt' })['GET /rest/api/3/project/ENG'].json
+  const issueTypes = project.issueTypes.map((type) => (type.id === '10001' ? { ...type, untranslatedName: 'User story' } : type))
+  const { raw } = await discover({ locale: 'pt', routes: { 'GET /rest/api/3/project/ENG': { json: { ...project, issueTypes } } } })
+  assert.equal(raw.workTypes.find((type) => type.id === '10001').untranslated, 'User story')
 })
 
 test('the named estimate fallback matches the untranslated name', async () => {

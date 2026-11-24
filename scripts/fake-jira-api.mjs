@@ -104,6 +104,9 @@ const PT = {
   'Story point estimate': 'Estimativa de pontos da história', 'Acceptance criteria': 'Critérios de aceite',
 }
 const translated = (item) => ({ ...item, name: PT[item.name] ?? item.name, untranslatedName: item.name })
+// The space read shows work types in the viewer's language with no untranslatedName, while its statuses list names them in
+// English, as the live site does (PMK-368).
+const PT_TYPES = { Story: 'História', Task: 'Tarefa' }
 const ACCEPTANCE = { id: 'customfield_10050', name: 'Acceptance criteria', custom: true, schema: { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea', customId: 10050 } }
 
 // taskType adds a standard Task work type, as a Jira Software space has (Story, Bug, Task, Epic).
@@ -138,7 +141,7 @@ export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = fals
       },
     },
     'GET /rest/api/3/project/ENG': {
-      json: { id: '10001', key: 'ENG', name: 'Engineering', projectTypeKey: 'software', style: team ? 'next-gen' : 'classic', simplified: team, issueTypes: workTypes },
+      json: { id: '10001', key: 'ENG', name: 'Engineering', projectTypeKey: 'software', style: team ? 'next-gen' : 'classic', simplified: team, issueTypes: pt ? workTypes.map((type) => ({ ...type, name: PT_TYPES[type.name] ?? type.name, untranslatedName: null })) : workTypes },
     },
     'GET /rest/api/3/project/ENG/statuses': {
       json: [
