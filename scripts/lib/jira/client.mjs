@@ -207,6 +207,10 @@ export function createJiraClient({
     } catch (error) {
       // A Cloud site answers serverInfo anonymously, so a refusal means another deployment.
       if (error instanceof PmkitError && error.code === 'AUTH') throw notCloud(undefined)
+      // Every Jira site has serverInfo, so a 404 means no site at this host, such as a typo (PMK-364).
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') {
+        throw new PmkitError('NOT_CONFIGURED', `No Jira site answers at ${site}`, 'Check the site host in tracker.scope.site, or --site in /pmkit:setup')
+      }
       throw error
     }
     if (info?.deploymentType !== 'Cloud') throw notCloud(info?.deploymentType)

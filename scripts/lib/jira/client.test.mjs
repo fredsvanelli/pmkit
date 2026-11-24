@@ -152,6 +152,18 @@ test('a site that is not Cloud is NOT_SUPPORTED and myself is never called', asy
   }
 })
 
+// Atlassian answers a *.atlassian.net host with no site behind it with a 404 page (checked live, PMK-364).
+test('a site where serverInfo is 404 is NOT_CONFIGURED and myself is never called', async () => {
+  const { fetch, client } = setup({ 'GET /rest/api/3/serverInfo': { status: 404, text: '<!DOCTYPE html>' } })
+  assertError(
+    await failure(() => client.session()),
+    'NOT_CONFIGURED',
+    'No Jira site answers at acme.atlassian.net',
+    'Check the site host in tracker.scope.site, or --site in /pmkit:setup',
+  )
+  assert.deepEqual(paths(fetch), ['GET /rest/api/3/serverInfo'])
+})
+
 test('a failed session check fails every later call the same way', async () => {
   const { fetch, client } = setup({ 'GET /rest/api/3/serverInfo': { json: { deploymentType: 'DataCenter' } } })
   const first = await failure(() => client.request('GET', '/rest/api/3/issue/ENG-1'))

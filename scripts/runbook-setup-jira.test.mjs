@@ -160,13 +160,17 @@ test('existing config: nothing changed keeps the file, a renamed status is asked
   assert.deepEqual(gone.questions[0].candidates, ['ENG', 'OPS'])
 })
 
-test('errors: no variables is AUTH, a Server site is NOT_SUPPORTED, and nothing is written (steps 8 and 9)', () => {
+test('errors: no variables is AUTH, a Server site is NOT_SUPPORTED, no site is NOT_CONFIGURED, and nothing is written (steps 8 to 10)', () => {
   const root = repository()
   const auth = failure(pmkit(root, [...INIT, '--dry-run', '--json'], { env: { JIRA_EMAIL: '', JIRA_API_TOKEN: '' } }))
   assert.equal(auth.code, 'AUTH')
   assert.equal(auth.nextStep, '/pmkit:setup')
   const server = { 'GET /rest/api/3/serverInfo': { json: { deploymentType: 'Server', version: '9.12.0' } } }
   assert.equal(failure(pmkit(root, [...INIT, '--dry-run', '--json'], { routes: server })).code, 'NOT_SUPPORTED')
+  const noSite = failure(pmkit(root, [...INIT, '--dry-run', '--json'], { routes: { 'GET /rest/api/3/serverInfo': { status: 404, text: 'Not Found' } } }))
+  assert.equal(noSite.code, 'NOT_CONFIGURED')
+  assert.equal(noSite.message, 'No Jira site answers at acme.atlassian.net')
+  assert.ok(fs.readFileSync(RUNBOOK, 'utf8').includes('No Jira site answers at <site>'), 'step 10 names the message')
   assert.equal(failure(pmkit(root, ['init', '--tracker', 'jira', '--site', 'https://acme.atlassian.net/', '--dry-run', '--json'])).code, 'INVALID_INPUT')
   assert.equal(fs.existsSync(configFile(root)), false)
 })

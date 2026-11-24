@@ -73,4 +73,6 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 
 9. On a Server or Data Center site, step 1 fails with `NOT_SUPPORTED`: pmkit supports Jira Cloud only (ADR 0013). Nothing is written.
 
-10. A `--space` the token's owner cannot browse, on a site where it can browse no space, fails with `NOT_CONFIGURED`. Nothing is written.
+10. On a `--site` where no Jira site answers, such as a typo in the host, step 1 fails with `NOT_CONFIGURED`, `No Jira site answers at <site>`, and the next step says to check the site host. Nothing is written.
+
+11. A `--space` the token's owner cannot browse, on a site where it can browse no space, fails with `NOT_CONFIGURED`. Nothing is written.
