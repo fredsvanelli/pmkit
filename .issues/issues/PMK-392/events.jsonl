@@ -1,0 +1,2 @@
+{"at":"2026-11-24T18:26:04Z","by":"fred","op":"create","to":{"id":"PMK-392","title":"Check a scoped Jira token on the site host","type":"chore","status":"backlog","priority":"low","labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-24T18:26:04.106Z","updated":"2026-11-24T18:26:04Z"}}
+{"at":"2026-11-24T18:26:09Z","by":"fred","op":"link","field":"related","to":"PMK-364"}

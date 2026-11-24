@@ -6,10 +6,10 @@ status: in_progress
 priority: low
 assignee: fred
 parent: EPC-14
-related: [PMK-75]
+related: [PMK-75, PMK-392]
 branch: fredsvanelli/pmk-364-check-jira
 created: 2026-11-22T18:49:38.845Z
-updated: 2026-11-24T17:41:12Z
+updated: 2026-11-24T18:26:09Z
 ---
 
 ## Description
