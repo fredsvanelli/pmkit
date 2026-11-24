@@ -102,3 +102,18 @@ Answered on 2026-11-24 by the coordinator on the owner's behalf; the design is a
 - Q2: yes, the issue colour field stays an acceptance-criteria candidate.
 - Q3: yes, a follow-up in EPC-14: PMK-394 "Resolve Jira status and type mappings in any viewer language". Setup keeps writing the shown name.
 - No new `CONTEXT.md` term and no ADR: matching English names first is the inference fallback ADR 0014 already allows; the mapping-holds-ids question is PMK-394's.
+
+## Result
+
+Run on 2026-11-24 against the owner's Jira Cloud site (host kept out of the repository, the PR and the issue), space Kudos: `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0, 11 pass, 3 skip. No output held the token, the email or the host. The new setup test failed on the code before the fix (`mappings.status.in_review`: expected `Em análise`, got `none`) and passes after it. Kudos after the run: no work item (approximate count 0), no sprint, board features unchanged (Backlog, Sprints, Estimation on; Releases off).
+
+| Check | AC | Result |
+|---|---|---|
+| `init --dry-run` lists the spaces the token's owner can browse | 1 | pass: 1 space, the throwaway one |
+| a held space the site lacks is asked again | 1 | pass: the space question with `broken.was` the missing key |
+| estimate and acceptance-criteria candidates, team-managed space | 2 | pass: estimate `customfield_10016` and `timeoriginalestimate`, recommended `customfield_10016` (the board's estimation field); acceptance criteria the custom string fields (issue colour, Q2), recommended `none` |
+| the same on a company-managed space | 2 | skip: owner's decision, the site has none |
+| recommended statuses and work types | 3 | pass after the fix: `in_review` `Em análise` (In Review), `feature` `História` (Story), `bug` `Bug`, `task` `Tarefa` (Task), `backlog`, `canceled` and `chore` `none` (no such status; Task taken by `task`); `sprint` applied `customfield_10020` |
+| a work type's English name from the statuses list matches Jira's `untranslatedName` | Q1 | pass for every work type of the space |
+| every recommendation accepted, then `validate` and `discover` | 3 | pass: no question left, no problem, `discover` without warnings |
+| PMK-364 and PMK-366 checks, rerun | — | pass (scoped token, company-managed space and limited token skipped, as before) |

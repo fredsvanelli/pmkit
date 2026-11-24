@@ -2,7 +2,7 @@
 
 The flow of `/pmkit:setup` when the user picks Jira: "Jira first run" and "Existing Jira config" in `commands/setup.md` (PMK-365). `scripts/runbook-setup-jira.test.mjs` runs every step below with the real CLI and a fake Jira site in place of `fetch`, so `npm test` checks this runbook. It also checks that no output holds the token, the email or the `Authorization` header.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; the live setup check goes to EPC-14.
+Live check: run on 2026-11-24 (PMK-368) on a team-managed space of a Jira Cloud site in Portuguese, through `scripts/lib/jira/client-live.mjs` (its header has the command): steps 1 to 5 and the held-space case of step 7. A company-managed space was not available, so its candidates are unchecked live.
 
 ## Before you start
 
