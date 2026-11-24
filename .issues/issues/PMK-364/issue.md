@@ -2,12 +2,14 @@
 id: PMK-364
 title: Check the Jira client against a live site
 type: chore
-status: backlog
+status: in_progress
 priority: low
+assignee: fred
 parent: EPC-14
 related: [PMK-75]
+branch: fredsvanelli/pmk-364-check-jira
 created: 2026-11-22T18:49:38.845Z
-updated: 2026-11-22T18:49:42Z
+updated: 2026-11-24T17:41:12Z
 ---
 
 ## Description
