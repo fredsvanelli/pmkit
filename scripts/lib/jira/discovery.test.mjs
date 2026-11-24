@@ -10,8 +10,8 @@ globalThis.fetch = () => {
 
 const NOW = () => new Date('2026-11-22T12:00:00Z')
 
-async function discover({ style, routes = {}, pmkit = {} } = {}) {
-  const fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style }), ...routes })
+async function discover({ style, locale, board, routes = {}, pmkit = {} } = {}) {
+  const fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style, locale, board }), ...routes })
   const client = createJiraClient({ env: FAKE_ENV, tracker: TRACKER, fetch, sleep: async () => {} })
   const raw = await fetchDiscovery(client, { space: 'ENG', now: NOW })
   const view = discoveryView(raw, { tracker: TRACKER, ...pmkit }, { session: await client.session() })
@@ -121,7 +121,7 @@ test('scoped fields of another space are dropped', async () => {
 
 test('raw fields keep their schema type', async () => {
   const { raw } = await discover()
-  assert.deepEqual(raw.fields.find((f) => f.id === 'customfield_10016'), { id: 'customfield_10016', name: 'Story Points', system: null, customType: 'com.atlassian.jira.plugin.system.customfieldtypes:float', type: 'number' })
+  assert.deepEqual(raw.fields.find((f) => f.id === 'customfield_10016'), { id: 'customfield_10016', name: 'Story Points', untranslated: null, system: null, customType: 'com.atlassian.jira.plugin.system.customfieldtypes:float', type: 'number' })
   assert.equal(raw.fields.find((f) => f.id === 'summary').type, 'string')
 })
 
@@ -205,4 +205,45 @@ test('1000 assignable users give the truncation warning', async () => {
 test('the viewer is added to the members when Jira leaves it out', async () => {
   const { view } = await discover({ routes: { 'GET /rest/api/3/user/assignable/search': { json: [{ accountId: 'acc-9', displayName: 'Nine', accountType: 'atlassian' }] } } })
   assert.deepEqual(view.members, [{ id: 'acc-1', name: 'Test User' }, { id: 'acc-9', name: 'Nine' }])
+})
+
+test('name rules match the untranslated name on a site in another language', async () => {
+  const { view } = await discover({ locale: 'pt' })
+  assert.deepEqual(view.fields.start_date, { id: 'customfield_10015', name: 'Data de início' })
+  assert.deepEqual(view.fields.acceptance_criteria, { id: 'customfield_10050', name: 'Critérios de aceite' })
+  assert.deepEqual(view.statuses.map((status) => [status.name, status.category]), [
+    ['Tarefas pendentes', 'todo'], ['Em andamento', 'in_progress'], ['Concluído', 'done'], ['Em análise', 'in_progress'],
+  ])
+})
+
+test('the named estimate fallback matches the untranslated name', async () => {
+  const estimate = { id: 'customfield_10030', name: 'Estimativa de pontos', untranslatedName: 'Story point estimate', custom: true, schema: { type: 'number', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:float' } }
+  const { view } = await discover({ routes: { 'GET /rest/api/3/field': { json: [estimate] }, 'GET /rest/agile/1.0/board': { json: { isLast: true, values: [] } } } })
+  assert.deepEqual(view.fields.estimate, { id: 'customfield_10030', name: 'Estimativa de pontos' })
+})
+
+test('name rules still match the shown name when Jira sends no untranslated name', async () => {
+  const { raw, view } = await discover()
+  assert.equal(view.fields.start_date.id, 'customfield_10015')
+  assert.equal(raw.fields.find((field) => field.id === 'customfield_10015').untranslated, null)
+})
+
+test('a team-managed simple board has no estimation field', async () => {
+  const { raw } = await discover({ style: 'team-managed', board: 'simple' })
+  assert.deepEqual(raw.board, { id: 1, type: 'simple', estimationField: null })
+})
+
+test('an English untranslated name wins over another field shown with that name', async () => {
+  const shown = { id: 'customfield_10040', name: 'Start date', untranslatedName: 'Kickoff', custom: true, schema: { type: 'date' } }
+  const english = { id: 'customfield_10015', name: 'Data de início', untranslatedName: 'Start date', custom: true, schema: { type: 'date' } }
+  const { view } = await discover({ routes: { 'GET /rest/api/3/field': { json: [shown, english] } } })
+  assert.equal(view.fields.start_date.id, 'customfield_10015')
+})
+
+test('on a site in another language, a custom field with no untranslated name matches by its shown name', async () => {
+  const fields = jiraSiteRoutes({ locale: 'pt' })['GET /rest/api/3/field'].json.map((field) =>
+    field.id === 'customfield_10015' ? { id: field.id, name: 'Start date', custom: true, schema: field.schema } : field)
+  const { view } = await discover({ locale: 'pt', routes: { 'GET /rest/api/3/field': { json: fields } } })
+  assert.deepEqual(view.fields.start_date, { id: 'customfield_10015', name: 'Start date' })
+  assert.equal(view.fields.priority.name, 'Prioridade')
 })

@@ -120,6 +120,8 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
     fields: (Array.isArray(fields) ? fields : []).filter(own).map((field) => ({
       id: field.id,
       name: field.name,
+      // Jira shows name in the site's language and keeps the English name here (PMK-366).
+      untranslated: field.untranslatedName ?? null,
       system: field.schema?.system ?? null,
       customType: field.schema?.custom ?? null,
       type: field.schema?.type ?? null,
@@ -140,7 +142,11 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
   }
 }
 
-const named = (fields, ...names) => fields.find((field) => names.includes(field.name.toLowerCase()))
+/** The field whose English name (untranslatedName) is one of `names`, else the one shown with it, so a site in any language matches. */
+const named = (fields, ...names) => {
+  const is = (name) => typeof name === 'string' && names.includes(name.toLowerCase())
+  return fields.find((field) => is(field.untranslated)) ?? fields.find((field) => is(field.name))
+}
 const bySystem = (fields, id) => fields.find((field) => field.system === id || field.id === id)
 
 // The inference rule of each field role, in FIELD_ROLES order. Unverified on a live site (see the spec's Risks).

@@ -14,11 +14,11 @@ const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
 const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'discover-jira.md')
 const url = (name) => pathToFileURL(path.join(SCRIPTS, name)).href
 
-/** Writes a launcher that installs the fake fetch for a site of `style`, with `routes` over it, and runs the CLI. */
-function launcher(style, routes = {}) {
+/** Writes a launcher that installs the fake fetch for a site of `style` and `locale`, with `routes` over it, and runs the CLI. */
+function launcher(style, routes = {}, locale = 'en') {
   const file = path.join(tempDir('pmkit-jira-launcher-'), 'launch.mjs')
   fs.writeFileSync(file, `import { fakeJiraFetch, jiraSiteRoutes } from ${JSON.stringify(url('fake-jira-api.mjs'))}
-globalThis.fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style: ${JSON.stringify(style)} }), ...${JSON.stringify(routes)} })
+globalThis.fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style: ${JSON.stringify(style)}, locale: ${JSON.stringify(locale)} }), ...${JSON.stringify(routes)} })
 const { run } = await import(${JSON.stringify(url('pmkit.mjs'))})
 const result = await run(process.argv.slice(2))
 process.stdout.write(result.stdout)
@@ -36,8 +36,8 @@ function jiraRepo(scope = '    site: acme.atlassian.net\n    space: ENG') {
   return root
 }
 
-function pmkit(root, args, { style = 'company-managed', routes, env = FAKE_ENV } = {}) {
-  const result = spawnSync(process.execPath, [launcher(style, routes), ...args], { cwd: root, env: { ...childEnv(), ...env }, encoding: 'utf8' })
+function pmkit(root, args, { style = 'company-managed', locale, routes, env = FAKE_ENV } = {}) {
+  const result = spawnSync(process.execPath, [launcher(style, routes, locale), ...args], { cwd: root, env: { ...childEnv(), ...env }, encoding: 'utf8' })
   const out = `${result.stdout}${result.stderr}`
   for (const secret of [FAKE_TOKEN, FAKE_EMAIL, FAKE_HEADER, FAKE_HEADER.slice(6)]) assert.ok(!out.includes(secret), 'a credential reached the output')
   return { code: result.status, stdout: result.stdout, stderr: result.stderr }
@@ -79,6 +79,14 @@ test('step 2 on a team-managed space reads its own estimate field', () => {
   const found = json(pmkit(jiraRepo(), ['discover', '--json'], { style: 'team-managed' }))
   assert.equal(found.space.style, 'team-managed')
   assert.deepEqual(found.fields.estimate, { id: 'customfield_10016', name: 'Story point estimate' })
+})
+
+test('step 2 on a site in another language finds the fields by their English name', () => {
+  const found = json(pmkit(jiraRepo(), ['discover', '--json'], { locale: 'pt' }))
+  assert.deepEqual(found.fields.start_date, { id: 'customfield_10015', name: 'Data de início' })
+  assert.deepEqual(found.fields.acceptance_criteria, { id: 'customfield_10050', name: 'Critérios de aceite' })
+  assert.ok(found.statuses.some((status) => status.name === 'Tarefas pendentes' && status.category === 'todo'))
+  assert.ok(fs.readFileSync(RUNBOOK, 'utf8').includes("site's language"), 'the runbook says names follow the site language')
 })
 
 test('failures: no token, a Data Center site, no site at the host, an unknown space, no space in the config', () => {

@@ -94,10 +94,25 @@ const EXTRA_STATUSES = [
   { id: '8', name: 'Canceled', statusCategory: { key: 'done', name: 'Done' } },
 ]
 
+// locale 'pt' shows field and status names in Portuguese with the English one in untranslatedName, as a live site in another
+// language does (PMK-366), and adds an Acceptance criteria field. board 'simple' gives the one board a team-managed space has:
+// type simple, and a configuration with no estimation.
+const PT = {
+  'To Do': 'Tarefas pendentes', 'In Progress': 'Em andamento', Review: 'Em análise', Done: 'Concluído', Triage: 'Triagem', Canceled: 'Cancelado',
+  Summary: 'Resumo', Priority: 'Prioridade', 'Due date': 'Data de entrega', Assignee: 'Responsável', 'Time Spent': 'Tempo gasto',
+  'Original estimate': 'Estimativa original', 'Start date': 'Data de início', 'Story Points': 'Pontos da história',
+  'Story point estimate': 'Estimativa de pontos da história', 'Acceptance criteria': 'Critérios de aceite',
+}
+const translated = (item) => ({ ...item, name: PT[item.name] ?? item.name, untranslatedName: item.name })
+const ACCEPTANCE = { id: 'customfield_10050', name: 'Acceptance criteria', custom: true, schema: { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea', customId: 10050 } }
+
 // taskType adds a standard Task work type, as a Jira Software space has (Story, Bug, Task, Epic).
-export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false, taskType = false } = {}) {
+export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false, taskType = false, locale = 'en', board = 'scrum' } = {}) {
   const team = style === 'team-managed'
-  const extra = extraStatuses ? EXTRA_STATUSES : []
+  const pt = locale === 'pt'
+  const local = (items) => (pt ? items.map(translated) : items)
+  const S = pt ? Object.fromEntries(Object.entries(STATUS).map(([key, status]) => [key, translated(status)])) : STATUS
+  const extra = local(extraStatuses ? EXTRA_STATUSES : [])
   const scope = (id) => (team ? { scope: { type: 'PROJECT', project: { id } } } : {})
   const workTypes = [
     { id: '10000', name: 'Epic', subtask: false, hierarchyLevel: 1, ...scope('10001') },
@@ -127,15 +142,15 @@ export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = fals
     },
     'GET /rest/api/3/project/ENG/statuses': {
       json: [
-        { id: '10000', name: 'Epic', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] },
-        { id: '10001', name: 'Story', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.review, STATUS.done, ...extra] },
-        { id: '10002', name: 'Bug', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] },
-        { id: '10003', name: 'Sub-task', subtask: true, statuses: [STATUS.todo, STATUS.done, ...extra] },
-        ...(taskType ? [{ id: '10004', name: 'Task', subtask: false, statuses: [STATUS.todo, STATUS.doing, STATUS.done, ...extra] }] : []),
+        { id: '10000', name: 'Epic', subtask: false, statuses: [S.todo, S.doing, S.done, ...extra] },
+        { id: '10001', name: 'Story', subtask: false, statuses: [S.todo, S.doing, S.review, S.done, ...extra] },
+        { id: '10002', name: 'Bug', subtask: false, statuses: [S.todo, S.doing, S.done, ...extra] },
+        { id: '10003', name: 'Sub-task', subtask: true, statuses: [S.todo, S.done, ...extra] },
+        ...(taskType ? [{ id: '10004', name: 'Task', subtask: false, statuses: [S.todo, S.doing, S.done, ...extra] }] : []),
       ],
     },
     'GET /rest/api/3/field': {
-      json: [
+      json: local([
         { id: 'summary', name: 'Summary', custom: false, schema: { type: 'string', system: 'summary' } },
         { id: 'priority', name: 'Priority', custom: false, schema: { type: 'priority', system: 'priority' } },
         { id: 'duedate', name: 'Due date', custom: false, schema: { type: 'date', system: 'duedate' } },
@@ -145,7 +160,8 @@ export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = fals
         { id: 'customfield_10015', name: 'Start date', custom: true, schema: { type: 'date', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:datepicker', customId: 10015 } },
         { id: 'customfield_10020', name: 'Sprint', custom: true, schema: { type: 'array', items: 'json', custom: 'com.pyxis.greenhopper.jira:gh-sprint', customId: 10020 } },
         ...estimate,
-      ],
+        ...(pt ? [ACCEPTANCE] : []),
+      ]),
     },
     'GET /rest/api/3/label': { json: { startAt: 0, maxResults: 100, total: 2, isLast: true, values: ['backend', 'frontend'] } },
     'GET /rest/api/3/instance/license': { json: { applications: [{ id: 'jira-software', plan: 'PAID' }] } },
@@ -175,7 +191,14 @@ export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = fals
         ],
       },
     },
-    'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }, { id: 1, name: 'ENG board', type: 'scrum' }] } },
-    'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', estimation: { type: 'field', field: { fieldId: 'customfield_10016', displayName: 'Story Points' } } } },
+    ...(board === 'simple'
+      ? {
+          'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 1, isLast: true, values: [{ id: 1, name: 'ENG board', type: 'simple' }] } },
+          'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', type: 'simple', ranking: { rankCustomFieldId: 10019 } } },
+        }
+      : {
+          'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }, { id: 1, name: 'ENG board', type: 'scrum' }] } },
+          'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', estimation: { type: 'field', field: { fieldId: 'customfield_10016', displayName: 'Story Points' } } } },
+        }),
   }
 }

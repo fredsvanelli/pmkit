@@ -2,7 +2,7 @@
 
 The flow of `pmkit discover` and `pmkit capabilities` on a repository whose tracker is Jira Cloud (PMK-76). `scripts/runbook-discover-jira.test.mjs` runs every step below with the real CLI and a fake Jira site in place of `fetch`, so `npm test` checks this runbook. Setup for Jira (`init --tracker jira` and `/pmkit:setup`) comes with PMK-365; until then the config is written by hand.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; PMK-366 in EPC-14 holds it.
+Live check: run on 2026-11-24 (PMK-366) on a team-managed space of a Jira Cloud site in Portuguese, through `scripts/lib/jira/client-live.mjs` (its header has the command). A company-managed space and a token without admin rights were not available, so those two checks skip with their reason until someone sets `PMKIT_LIVE_JIRA_COMPANY_SPACE` or `PMKIT_LIVE_JIRA_LIMITED_EMAIL` and `PMKIT_LIVE_JIRA_LIMITED_TOKEN`.
 
 ## Before you start
 
@@ -41,6 +41,8 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    ```
 
    Expect `auth` first, with `source: JIRA_API_TOKEN`, the token owner's `accountId` and `displayName` and the `site`. Then `space` with its `style` (`company-managed` or `team-managed`) and `type`, every `spaces` entry, `workTypes` with their level (`epic`, `standard`, `subtask`) and statuses, `statuses` with their category, and `fields` with the Jira field (`id` and `name`) each field role reads, or `null`. A team-managed space shows only its own fields, never another space's field of the same name. `mappings.fields.<role>` in `.pmkit/config.yaml` holds a field id (ADR 0014) and wins over the inferred field. A read the token's owner may not make (labels, license, global settings, boards) gives a warning instead of a failure.
+
+   Jira shows field and status names in the site's language. The field rules match a field by its English name (Jira's `untranslatedName`) or the name shown, so `Data de início` is found as the start date; `statuses` and `workTypes` keep the names the site shows, and `mappings.status` names a status as the site shows it.
 
    `node scripts/pmkit.mjs discover` prints the same as text: the site and viewer, the space, the spaces, the work types and the field of each role.
 

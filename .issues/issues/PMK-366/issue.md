@@ -2,14 +2,16 @@
 id: PMK-366
 title: Check Jira discovery and the manifest against a live site
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-14
-related: [PMK-76]
+related: [PMK-76, PMK-393]
 milestone: jira
+branch: fredsvanelli/pmk-366-check-jira
 created: 2026-11-22T19:42:30.042Z
-updated: 2026-11-22T19:42:33Z
+updated: 2026-11-24T19:14:45Z
 ---
 
 ## Description
