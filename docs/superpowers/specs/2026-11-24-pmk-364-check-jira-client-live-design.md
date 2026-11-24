@@ -84,3 +84,17 @@ Approved on 2026-11-24 by the coordinator on the owner's behalf:
 ## Left to the builder
 
 The exact message wording; how the fake site answers an unknown host (404 HTML) in the unit test; nothing else.
+
+## Result
+
+Run on 2026-11-24 with Node 22.22.0 against the owner's Jira Cloud site (host and space key recorded on PMK-364 and in the PR, not here), space Kudos (team-managed): `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0. No output held the token or the email.
+
+| Check | AC | Result |
+|---|---|---|
+| anonymous serverInfo says Cloud | 3 | pass: `deploymentType Cloud` |
+| the token passes the session check on the site host | 1 | pass: `source JIRA_API_TOKEN`, viewer set. The token's type cannot be read from it; it behaves as a classic token. It also passes through `api.atlassian.com/ex/jira/<cloudId>` (probe). |
+| a scoped token passes the session check on the site host | 2 | skip: no token known to be scoped; open in the PR (interview Q2) |
+| a wrong token is AUTH | 401 mapping | pass: `AUTH`, "the token may have expired"; Jira sends `X-Seraph-LoginReason: AUTHENTICATED_FAILED`, not read as a CAPTCHA |
+| an unknown site is NOT_CONFIGURED | bug found | pass after the fix: `No Jira site answers at pmkit-live-<random>.atlassian.net` |
+| a normal answer carries the rate-limit headers | 429 mapping | pass: `x-ratelimit-limit 350`, `x-ratelimit-remaining 349`. A live 429 was not provoked (interview Q3); `client.test.mjs` covers the mapping on the fake. |
+| a work item round trip in the throwaway space | writes | pass: created, read and deleted a work item of the space's standard type; read back as `NOT_FOUND`. Kudos holds no work item after the run; its key counter moved on. |
