@@ -2,14 +2,16 @@
 id: PMK-393
 title: Read team-managed board features in the Jira manifest
 type: bug
-status: backlog
+status: in_progress
 priority: high
 estimate: 3
+assignee: fred
 parent: EPC-14
 related: [PMK-366]
 milestone: jira
+branch: fredsvanelli/pmk-393-team-managed
 created: 2026-11-24T18:53:31.447Z
-updated: 2026-11-24T19:04:30Z
+updated: 2026-11-24T22:45:01Z
 ---
 
 ## Description
