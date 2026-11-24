@@ -2,7 +2,7 @@
 id: PMK-82
 title: Add the jira-plans-scenarios command
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -12,7 +12,7 @@ related: [PMK-381, PMK-382, PMK-383]
 milestone: jira
 branch: fredsvanelli/pmk-82-jira-plans
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-23T16:19:12Z
+updated: 2026-11-24T03:13:43Z
 ---
 
 ## Description

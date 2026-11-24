@@ -2,7 +2,7 @@
 id: PMK-75
 title: Add the Jira API client
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -12,7 +12,7 @@ related: [PMK-364]
 milestone: jira
 branch: pmk-75-add-the-jira-api-client
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-22T19:00:34Z
+updated: 2026-11-24T03:13:36Z
 ---
 
 ## Description

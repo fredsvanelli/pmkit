@@ -2,7 +2,7 @@
 id: PMK-79
 title: "Map Jira epics, versions and status updates"
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -12,7 +12,7 @@ related: [PMK-374, PMK-375, PMK-376, PMK-377]
 milestone: jira
 branch: fredsvanelli/pmk-79-map
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-23T05:13:22Z
+updated: 2026-11-24T03:13:40Z
 ---
 
 ## Description
