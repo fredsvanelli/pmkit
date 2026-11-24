@@ -104,3 +104,29 @@ test('a served capability takes the site answer as its path', () => {
 test('PMK-80 serves time tracking as worklogs when the site has it on', () => {
   assert.deepEqual(entry(buildJiraCapabilities(raw(), GIT), 'time_tracking'), { id: 'time_tracking', path: 'native' })
 })
+
+// PMK-393: a team-managed board stays simple; its features say what the space has.
+const teamRaw = (features) => raw({ space: { key: 'ENG', type: 'software', style: 'team-managed' }, board: { id: 1, type: 'simple', estimationField: 'customfield_10016', ...(features ? { features } : {}) } })
+const SPRINTS_HINT = "Turn on Sprints in space ENG's features"
+
+test('a team-managed simple board with Sprints on serves cycles', () => {
+  const entries = buildJiraCapabilities(teamRaw({ sprints: true, estimation: true, releases: true }), GIT)
+  assert.deepEqual(entry(entries, 'cycles'), { id: 'cycles', path: 'native' })
+  assert.equal(entry(entries, 'capacity').path, 'derived')
+})
+
+test('a team-managed board with Sprints off names the Sprints feature', () => {
+  assert.deepEqual(entry(buildJiraCapabilities(teamRaw({ sprints: false, estimation: true, releases: true }), GIT), 'cycles'), { id: 'cycles', path: 'absent', enableHint: SPRINTS_HINT })
+  // Unread features: the board type decides, and the hint still names the feature a team-managed space has.
+  assert.deepEqual(entry(buildJiraCapabilities(teamRaw(), GIT), 'cycles'), { id: 'cycles', path: 'absent', enableHint: SPRINTS_HINT })
+})
+
+test('Releases off on a team-managed board makes releases absent', () => {
+  assert.deepEqual(entry(buildJiraCapabilities(teamRaw({ sprints: true, estimation: true, releases: false }), GIT), 'releases'), { id: 'releases', path: 'absent', enableHint: "Turn on Releases in space ENG's features" })
+  assert.deepEqual(entry(buildJiraCapabilities(teamRaw({ sprints: true, estimation: true, releases: true }), GIT), 'releases'), { id: 'releases', path: 'native', detail: { entity: 'version' } })
+  assert.equal(entry(buildJiraCapabilities(teamRaw(), GIT), 'releases').path, 'native')
+})
+
+test('Estimation off on a team-managed board makes estimation absent', () => {
+  assert.deepEqual(entry(buildJiraCapabilities(teamRaw({ sprints: true, estimation: false, releases: true }), GIT), 'estimation'), { id: 'estimation', path: 'absent', enableHint: 'No estimate field in space ENG' })
+})
