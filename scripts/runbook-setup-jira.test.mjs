@@ -175,6 +175,23 @@ test('errors: no variables is AUTH, a Server site is NOT_SUPPORTED, no site is N
   assert.equal(fs.existsSync(configFile(root)), false)
 })
 
+test('a site in another language: recommendations follow the English names, the file holds the shown ones (step 12)', () => {
+  const root = repository()
+  const routes = jiraSiteRoutes({ locale: 'pt', taskType: true })
+  const proposal = json(pmkit(root, [...INIT, '--space', 'ENG', '--dry-run', '--json'], { routes }))
+  const byPath = Object.fromEntries(proposal.questions.map((q) => [q.path, q]))
+  assert.equal(byPath['mappings.status.in_review'].recommended, 'Em análise')
+  assert.deepEqual(['feature', 'bug', 'task', 'chore'].map((type) => byPath[`mappings.types.${type}`].recommended), ['História', 'Bug', 'Tarefa', 'none'])
+  const flag = { status: '--status', fields: '--field', types: '--type-label' }
+  const answers = proposal.questions.flatMap((q) => [flag[q.path.split('.')[1]], `${q.path.split('.')[2]}=${q.recommended}`])
+  assert.deepEqual(json(pmkit(root, [...INIT, '--space', 'ENG', ...answers, '--json'], { routes })).questions, [])
+  const config = fs.readFileSync(configFile(root), 'utf8')
+  for (const line of ['in_review: Em análise', 'feature: História', 'task: Tarefa']) assert.ok(config.includes(line), `${line} in\n${config}`)
+  assert.equal(pmkit(root, ['validate', '--json'], { routes }).code, 0)
+  const text = fs.readFileSync(RUNBOOK, 'utf8')
+  for (const expected of ['## A site in another language', 'untranslatedName', '`Em análise`', '`Tarefa`', 'PMK-394']) assert.ok(text.includes(expected), expected)
+})
+
 test('setup.md offers Jira', () => {
   const text = fs.readFileSync(SETUP, 'utf8')
   for (const expected of ['can browse no space', 'Browse access', 'in Jira first', '### Jira first run', '### Existing Jira config', 'id.atlassian.com', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'Jira Cloud only', '"Jira"', 'init --tracker jira']) {
