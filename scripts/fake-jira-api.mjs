@@ -98,9 +98,9 @@ const EXTRA_STATUSES = [
 // language does (PMK-366), and adds an Acceptance criteria field. board 'simple' gives the one board a team-managed space has:
 // type simple, and a configuration with no estimation.
 const PT = {
-  'To Do': 'Tarefas pendentes', 'In Progress': 'Em andamento', Review: 'Em análise', Done: 'Concluído', Triage: 'Triagem', Backlog: 'Backlog', Canceled: 'Cancelado',
+  'To Do': 'Tarefas pendentes', 'In Progress': 'Em andamento', Review: 'Em análise', Done: 'Concluído', Triage: 'Triagem', Canceled: 'Cancelado',
   Summary: 'Resumo', Priority: 'Prioridade', 'Due date': 'Data de entrega', Assignee: 'Responsável', 'Time Spent': 'Tempo gasto',
-  'Original estimate': 'Estimativa original', 'Start date': 'Data de início', Sprint: 'Sprint', 'Story Points': 'Pontos da história',
+  'Original estimate': 'Estimativa original', 'Start date': 'Data de início', 'Story Points': 'Pontos da história',
   'Story point estimate': 'Estimativa de pontos da história', 'Acceptance criteria': 'Critérios de aceite',
 }
 const translated = (item) => ({ ...item, name: PT[item.name] ?? item.name, untranslatedName: item.name })
