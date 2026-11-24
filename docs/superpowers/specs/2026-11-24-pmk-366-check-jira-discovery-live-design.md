@@ -103,3 +103,12 @@ The fix changes what `discover` returns for `start_date` on a non-English site: 
 ## Left to the builder
 
 The exact wording of assertions and diagnostics; the fake's Portuguese strings.
+
+## Interview
+
+Answered on 2026-11-24 by the coordinator on the owner's behalf; the design is approved.
+
+- Q2: yes, a follow-up in EPC-14 holds the team-managed features (releases, cycles hint, the `simple` board), with this doc's evidence.
+- Q4: yes, the limited-token check is skipped and open in the PR. The harness keeps the optional test, which skips with its reason.
+- Q1 and Q3: with the owner. Everything else goes ahead; the company-managed check and the sprints/estimation experiment wait for the owner's answer. Until then the harness test for a company-managed space skips when `PMKIT_LIVE_JIRA_COMPANY_SPACE` is unset.
+- No new `CONTEXT.md` term and no ADR: the fix follows ADR 0014 (roles map by id; names are only the inference fallback). The "Scrum board" entry's mismatch with team-managed boards goes to the Q2 follow-up.
