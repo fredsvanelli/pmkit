@@ -35,7 +35,9 @@ function skipReason() {
 
 const skip = skipReason()
 const AUTHORIZATION = skip ? undefined : jiraCredential(env).authorization
-const SECRETS = skip ? [] : [env.JIRA_API_TOKEN, env.JIRA_EMAIL, AUTHORIZATION, AUTHORIZATION.slice(6), SCOPED].filter(Boolean)
+// The email and the token come back out of the header, so credential.mjs stays their only reader (ADR 0013).
+const PAIR = skip ? '' : Buffer.from(AUTHORIZATION.slice(6), 'base64').toString('utf8')
+const SECRETS = skip ? [] : [PAIR.slice(0, PAIR.indexOf(':')), PAIR.slice(PAIR.indexOf(':') + 1), AUTHORIZATION, AUTHORIZATION.slice(6), SCOPED].filter(Boolean)
 
 const tracker = (site = SITE) => ({ system: 'jira', scope: { site, space: SPACE ?? 'NONE' } })
 const client = (options = {}) => createJiraClient({ env, tracker: tracker(), ...options })
