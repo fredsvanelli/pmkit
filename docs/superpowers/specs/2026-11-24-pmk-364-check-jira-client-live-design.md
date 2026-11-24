@@ -52,7 +52,7 @@ A, because it reruns for the next live checks at the cost of one file.
 | a scoped token passes the session check on the site host | `PMKIT_LIVE_JIRA_SCOPED_TOKEN` | same, with that token as `JIRA_API_TOKEN`; skipped with its reason when unset |
 | a wrong token is AUTH | site, email | `session()` with a made-up token throws `AUTH`, the message says the token may have expired, no secret in the error |
 | an unknown site is NOT_CONFIGURED | none but `PMKIT_LIVE` | `session()` on `pmkit-live-<random>.atlassian.net` throws `NOT_CONFIGURED` (the bug above) |
-| a burst over the rate limit is RATE_LIMITED | `PMKIT_LIVE_JIRA_BURST=1` | sends `GET /rest/api/3/myself` in parallel waves of 50, at most 1000 requests, stops at the first answer `RATE_LIMITED`; asserts the code and a next step naming a reset time or "a few minutes"; skipped (with the headers it saw) when no 429 comes |
+| the rate-limit headers are there | site, token | a normal answer carries `x-ratelimit-limit` and `x-ratelimit-remaining`; no 429 is provoked (the 429 mapping stays covered by the fake in `client.test.mjs`) |
 | a write round trip in the throwaway space | `PMKIT_LIVE_JIRA_SPACE` | creates a work item `pmkit-live client check` (POST, 201), reads it, deletes it (DELETE, 204 read as `null`), then reads it back as `NOT_FOUND`; the delete runs in a `finally` |
 
 Every write goes only to `PMKIT_LIVE_JIRA_SPACE`, and the test checks first that the space exists. No output holds the token, the email or the `Authorization` header; the account id is printed as "set". The site host and the space key stay out of the repository: the PR and the issue comment record them.
@@ -71,6 +71,16 @@ The owner's token behaves as classic and its type cannot be read from it. AC 2 n
 
 The bug fix changes what `init --tracker jira` (setup step 1) and `discover` answer for a wrong site: a new step in `docs/runbooks/setup-jira.md` ("a site that does not exist fails with `NOT_CONFIGURED`"), checked by `scripts/runbook-setup-jira.test.mjs` with the fake site answering 404 HTML. Then run the Jira runbook tests and `client-live.mjs` against the live site.
 
+## Interview
+
+Approved on 2026-11-24 by the coordinator on the owner's behalf:
+
+- Q1: approach A, one opt-in `client-live.mjs`.
+- Q2: the token's type cannot be read; AC 2 is recorded as skipped and open in the PR unless the owner provides a scoped token.
+- Q3: no deliberate burst on the owner's site. A live 429 is recorded as not provoked; the 429 mapping rests on the fake and on the observed `x-ratelimit-*` headers.
+- Q4: one write round trip in Kudos (`KAN`), deleted in a `finally`.
+- Q5: no new `CONTEXT.md` term and no ADR (an ADR only if a scoped token fails on the site host).
+
 ## Left to the builder
 
-The exact message wording; how the fake site answers an unknown host (404 HTML) in the unit test; the burst's wave size if 50 is not enough to reach a 429.
+The exact message wording; how the fake site answers an unknown host (404 HTML) in the unit test; nothing else.
