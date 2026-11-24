@@ -395,7 +395,7 @@ test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
 })
 
 // Issue flows (PMK-367). The CLI writes to the throwaway space only; every work item it makes is deleted in the finally.
-/** The value fn returns once it stops throwing, retried for up to 10 s: Jira's search index trails a write. */
+/** The value fn returns once it stops throwing, tried 10 times 1 s apart: Jira's search index trails a write. */
 async function eventually(fn) {
   for (let tries = 1; ; tries += 1) {
     try {
@@ -418,11 +418,12 @@ test('issue flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
   const created = []
   const made = (key) => {
     created.push(key)
-    // Printed at once, so a delete that fails leaves the key of the work item to remove by hand.
+    // Printed with the test's result, so a delete that fails leaves the key of the work item to remove by hand.
     t.diagnostic(`created ${key}`)
     return key
   }
   const { root, repo, cli, cleanup } = liveRepo()
+  let left = []
   try {
     const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
     cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
@@ -482,6 +483,7 @@ test('issue flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
     const viewer = (await jira.session()).viewer.accountId
     assert.equal(cli('issues', 'assign', a, 'me').after.assignee, viewer)
     const users = await jira.request('GET', '/rest/api/3/user/assignable/search', { query: { project: SPACE, maxResults: 50 } })
+    assert.ok(users.length > 0, 'no assignable user')
     for (const user of users) for (const key of ['accountId', 'displayName', 'accountType']) assert.equal(typeof user[key], 'string', key)
 
     // AC 4: the dry run lists the transition's required fields (none on a team-managed space), and the move goes through.
@@ -503,11 +505,41 @@ test('issue flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
     t.diagnostic(`${created.length} work items; blocks, related, duplicate, parent set and cleared, branch ${branch.replace(a, '<key>')}, required fields on the move to done ${dry.requiredFields.length}`)
   } finally {
     cleanup()
-    // Anything a failed step left behind, found by the run's word, as well as what the test recorded.
-    const { items: strays } = await jira.paginate('/rest/api/3/search/jql', { query: { jql: `project = ${SPACE} AND summary ~ "${run}"`, fields: 'summary' }, key: 'issues' })
-    const keys = [...new Set([...created, ...strays.map((item) => item.key)])].reverse()
-    for (const key of keys) await jira.request('DELETE', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { deleteSubtasks: 'true' } })
-    for (const key of keys) assert.equal((await failure(raw(key, 'summary'))).code, 'NOT_FOUND')
-    t.diagnostic(`deleted ${keys.length} work items`)
+    left = await removeAll(jira, created, run, t)
   }
+  // After the finally, so a failed step keeps its own error.
+  assert.deepEqual(left, [], 'work items left in the throwaway space')
 })
+
+/**
+ * Deletes the recorded work items in creation order (a child before its epic), then any other the run's word finds, and returns
+ * what is still there or could not be searched. It never throws, so one failure does not stop the rest.
+ */
+async function removeAll(jira, created, run, t) {
+  const left = []
+  const remove = async (key) => {
+    try {
+      await jira.request('DELETE', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { deleteSubtasks: 'true' } })
+    } catch (error) {
+      if (error?.code !== 'NOT_FOUND') {
+        left.push(key)
+        return
+      }
+    }
+    try {
+      await jira.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { fields: 'summary' } })
+      left.push(key)
+    } catch (error) {
+      if (error?.code !== 'NOT_FOUND') left.push(key)
+    }
+  }
+  for (const key of created) await remove(key)
+  try {
+    const { items } = await jira.paginate('/rest/api/3/search/jql', { query: { jql: `project = ${SPACE} AND summary ~ "${run}"`, fields: 'summary' }, key: 'issues' })
+    for (const key of items.map((item) => item.key).filter((key) => !created.includes(key))) await remove(key)
+  } catch {
+    left.push('the search for strays failed')
+  }
+  t.diagnostic(left.length === 0 ? `deleted ${created.length} work items` : `left to delete by hand: ${left.join(', ')}`)
+  return left
+}
