@@ -2,7 +2,7 @@
 id: PMK-365
 title: Set up pmkit on a Jira site
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -12,7 +12,7 @@ related: [PMK-368]
 milestone: jira
 branch: fredsvanelli/pmk-365-setup-pmkit
 created: 2026-11-22T19:14:24.247Z
-updated: 2026-11-23T01:17:13Z
+updated: 2026-11-24T03:13:44Z
 ---
 
 ## Description

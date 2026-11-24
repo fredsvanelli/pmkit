@@ -2,7 +2,7 @@
 id: PMK-83
 title: Add the jira-product-discovery command
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -12,7 +12,7 @@ related: [PMK-384, PMK-385, PMK-386]
 milestone: jira
 branch: fredsvanelli/pmk-83-jira-product
 created: 2026-10-25T19:13:23Z
-updated: 2026-11-23T18:21:17Z
+updated: 2026-11-24T03:13:44Z
 ---
 
 ## Description
