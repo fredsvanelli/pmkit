@@ -147,12 +147,22 @@ function descriptionOf(value) {
 const checklist = (criteria) => criteria.map((item) => `- [${item.done ? 'x' : ' '}] ${item.text}`).join('\n')
 const adfOrNull = (text) => (text === '' ? null : textToAdf(text))
 
-/** The skeleton issue a create starts from: the default work type's first status, nothing else set. */
+/**
+ * The status a new work item of the type starts in, as { name, category }, or null when the type has none. Jira's statuses list is
+ * not in workflow order (PMK-373: an in-progress status came first, seen live), so this is its first status in Jira's To Do
+ * category, else its first. ponytail: a guess from the category; read the workflow's initial status if a site starts elsewhere.
+ */
+export function initialStatus(workType, context) {
+  const statuses = (workType?.statuses ?? []).map((id) => context.raw.statuses.find((status) => status.id === id)).filter(Boolean)
+  const first = statuses.find((status) => status.categoryKey === 'new') ?? statuses[0]
+  return first ? { name: first.name, category: context.categoryOf(first.name, first.categoryKey) } : null
+}
+
+/** The skeleton issue a create starts from: the default work type's initial status, nothing else set. */
 function skeleton(context, workType, now) {
-  const first = context.raw.statuses.find((status) => status.id === workType?.statuses?.[0])
   const issue = { id: null, title: '' }
   setDefined(issue, 'type', context.typeOfName(workType?.name))
-  issue.status = first ? { name: first.name, category: context.categoryOf(first.name, first.categoryKey) } : { name: null, category: 'todo' }
+  issue.status = initialStatus(workType, context) ?? { name: null, category: 'todo' }
   Object.assign(issue, { labels: [], blockedBy: [], blocks: [], related: [], duplicateOf: [], children: [], archived: false, description: '', acceptanceCriteria: [], created: now, updated: now })
   return issue
 }

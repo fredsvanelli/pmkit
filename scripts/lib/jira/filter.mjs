@@ -68,10 +68,12 @@ const HANDLERS = {
     else out.empty = true
     out.steps.add('sprint')
   },
-  // The version id the caller resolved from the name; an unknown name matches nothing, as on Local.
+  // The version id the caller resolved from the name; an unknown name matches nothing, as on Local. Jira's fixVersion = <id>
+  // also matches a version named like the id (PMK-373, seen live), so the clause narrows and the release step decides.
   release(filter, out, context, { versionId }) {
     if (versionId === undefined) out.empty = true
     else out.clauses.push(`fixVersion = ${jqlString(versionId)}`)
+    out.steps.add('release')
   },
   parent(filter, out) {
     out.clauses.push(`parent = ${jqlString(filter.parent)}`)
@@ -92,7 +94,7 @@ const HANDLERS = {
 }
 
 // The step names in the order the adapter runs them.
-const STEP_ORDER = ['text', 'blocked', 'sprint', 'updated']
+const STEP_ORDER = ['text', 'blocked', 'sprint', 'release', 'updated']
 
 /**
  * Translates a filter that checkFilter accepted (the caller checks) into { empty: true } when nothing can match, else

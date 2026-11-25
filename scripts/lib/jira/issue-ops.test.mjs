@@ -2,7 +2,7 @@
 // the stateful fake Jira, through the tracker that gives them their context.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FAKE_ENV, TRACKER, fakeJiraFetch } from '../../fake-jira-api.mjs'
+import { FAKE_ENV, TRACKER, fakeJiraFetch, jiraSiteRoutes } from '../../fake-jira-api.mjs'
 import { fakeJiraIssues } from '../../fake-jira-issues.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { createJiraTracker } from './tracker.mjs'
@@ -414,6 +414,19 @@ test('updateIssue whose sprint move fails after the field write is UPSTREAM with
   await assert.rejects(tracker.updateIssue(key, { sprint: '1', title: 'Renamed' }, ME), (error) => error.code === 'UPSTREAM' && error.message.startsWith('Jira updated ENG-1, but moving it to sprint 1 failed') && error.nextStep === 'pmkit cycle add ENG-1 --to 1')
 })
 
+// Jira's statuses list is not in workflow order: Kudos lists an in-progress status first (PMK-373, seen live).
+const doingFirst = () => {
+  const route = jiraSiteRoutes()['GET /rest/api/3/project/ENG/statuses']
+  const json = route.json.map((type) => ({ ...type, statuses: [...type.statuses.filter((status) => status.statusCategory.key !== 'new'), ...type.statuses.filter((status) => status.statusCategory.key === 'new')] }))
+  return { 'GET /rest/api/3/project/ENG/statuses': { json } }
+}
+
+test('an issue create dry run starts in the first To Do status, whatever the order of Jira\'s statuses list', async () => {
+  const { tracker } = setup({ routes: doingFirst() })
+  const dry = await tracker.createIssue({ title: 'First' }, ME, { dryRun: true })
+  assert.deepEqual(dry.after.status, { name: 'To Do', category: 'todo' })
+})
+
 test('the string none is not a sprint value in a write', async () => {
   const { fake, tracker } = setup({ sprints: [SPRINT] })
   const [key] = seed(fake.state)
@@ -471,6 +484,20 @@ test('a milestone value is NOT_SUPPORTED: Jira has no milestones', async () => {
   await assert.rejects(tracker.createIssue({ title: 'x', milestone: 'm1' }, ME), { code: 'NOT_SUPPORTED', message: 'Jira has no milestones' })
   assert.deepEqual((await tracker.updateIssue(key, { milestone: null }, ME)).after, (await tracker.getIssue(key)))
   assert.deepEqual(fake.writes(), [])
+})
+
+// Jira's fixVersion = <id> also matches a version whose name is that id (PMK-373, seen live), so the search keeps only the release's own items.
+test('a release search leaves out the items of a version named like the release\'s id', async () => {
+  const { fake, tracker } = setup({ versions: [...VERSIONS, { id: '10203', name: '10200' }, { id: '10204', name: '3.0' }] })
+  const [own, alike, both] = [
+    seed(fake.state, 1, { fixVersions: [{ id: '10200' }] })[0],
+    seed(fake.state, 1, { fixVersions: [{ id: '10203' }] })[0],
+    seed(fake.state, 1, { fixVersions: [{ id: '10200' }, { id: '10204' }] })[0],
+  ]
+  assert.deepEqual((await tracker.searchIssues({ release: '2.0' })).issues.map((issue) => issue.id), [own, both])
+  assert.deepEqual((await tracker.searchIssues({ release: '3.0' })).issues.map((issue) => issue.id), [both])
+  assert.deepEqual((await tracker.searchIssues({ release: '10200' })).issues.map((issue) => issue.id), [alike])
+  assert.deepEqual((await tracker.searchIssues({ release: '2.0', limit: 1 })).issues.map((issue) => issue.id), [own])
 })
 
 test('searchIssues by release sends the version id in JQL; an unknown name returns no issues', async () => {

@@ -2,7 +2,7 @@
 // pmkit.statusUpdate property, over the stateful fake Jira, through the tracker that wires them.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FAKE_ENV, TRACKER, fakeJiraFetch } from '../../fake-jira-api.mjs'
+import { FAKE_ENV, TRACKER, fakeJiraFetch, jiraSiteRoutes } from '../../fake-jira-api.mjs'
 import { fakeJiraIssues } from '../../fake-jira-issues.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { createJiraTracker } from './tracker.mjs'
@@ -25,6 +25,19 @@ function setup({ requireResolution, routes = {}, fakeNow } = {}) {
 
 const writes = (fetch) => fetch.calls.filter((call) => call.method !== 'GET').length
 const code = (expected, message) => (error) => error.code === expected && (message === undefined || error.message === message)
+
+// Jira's statuses list is not in workflow order: Kudos lists an in-progress status first (PMK-373, seen live).
+const doingFirst = () => {
+  const route = jiraSiteRoutes()['GET /rest/api/3/project/ENG/statuses']
+  const json = route.json.map((type) => ({ ...type, statuses: [...type.statuses.filter((status) => status.statusCategory.key !== 'new'), ...type.statuses.filter((status) => status.statusCategory.key === 'new')] }))
+  return { 'GET /rest/api/3/project/ENG/statuses': { json } }
+}
+
+test('an epic create dry run starts in the first To Do status, whatever the order of Jira\'s statuses list', async () => {
+  const { tracker } = setup({ routes: doingFirst() })
+  const dry = await tracker.createDeliverable({ title: 'Launch' }, ME, { dryRun: true })
+  assert.deepEqual(dry.after.status, { name: 'To Do', category: 'todo' })
+})
 
 test('createDeliverable: a dry run sends no write, a real run creates an Epic work item with its dates', async () => {
   const { fetch, tracker } = setup()

@@ -2,13 +2,14 @@
 id: PMK-398
 title: "Check the Jira release filter's quoted version id on a live site"
 type: chore
-status: backlog
+status: canceled
 priority: low
 parent: EPC-14
 related: [PMK-370]
+duplicate_of: [PMK-373]
 milestone: jira
 created: 2026-11-25T01:10:27.255Z
-updated: 2026-11-25T01:10:27Z
+updated: 2026-11-25T01:53:53Z
 ---
 
 ## Description

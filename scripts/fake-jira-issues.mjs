@@ -161,7 +161,7 @@ function tokenize(jql, fail) {
 }
 
 /** The test and order of a JQL query, or a 400 naming the query when the fake does not understand it. */
-function parseJql(jql, sprintOf) {
+function parseJql(jql, sprintOf, versionName = () => undefined) {
   const fail = () => refuse(400, {}, [`fake Jira does not understand: ${jql}`])
   const tokens = tokenize(jql, fail)
   let at = 0
@@ -217,7 +217,8 @@ function parseJql(jql, sprintOf) {
       return (item) => (item.sprintIds ?? []).some((id) => sprintOf(id).name === name)
     }
     const value = string()
-    if (field === 'fixVersion') return (item) => VALUE[field](item).includes(value)
+    // As on the site, a value matches a fix version by its id or by its name, quoted or not.
+    if (field === 'fixVersion') return (item) => VALUE[field](item).some((id) => id === value || versionName(id) === value)
     if (field === 'labels') return (item) => item.fields.labels.includes(value)
     if (field !== 'updated') return (item) => same(field, VALUE[field](item), value)
     const day = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : fail()
@@ -442,7 +443,10 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     [`POST ${API}/version`]({ body }) {
       if (typeof body?.name !== 'string' || !body.name.trim()) refuse(400, { name: 'The version name is required.' })
       if (String(body.projectId) !== SPACE.id) refuse(400, { projectId: 'Specify a valid project ID.' })
-      if (state.versions.some((version) => version.name === body.name)) refuse(400, { name: 'A version with this name already exists in this project.' })
+      // As on the site, a name is taken in any case, and an archived version's name cannot be reused.
+      const taken = state.versions.find((version) => version.name.toLowerCase() === body.name.toLowerCase())
+      if (taken?.archived) refuse(400, { name: 'You cannot add a version that has been archived. If you need to use this version, you must unarchive it first.' })
+      if (taken) refuse(400, { name: 'A version with this name already exists in this project.' })
       const { description, releaseDate } = body
       const version = { id: String(state.next.version++), name: body.name, ...(description ? { description } : {}), released: body.released === true, archived: body.archived === true, ...(releaseDate ? { releaseDate } : {}), projectId: SPACE.id }
       state.versions.push(version)
@@ -457,7 +461,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       return { json: structuredClone(version) }
     },
     [`GET ${API}/search/jql`]({ query }) {
-      const { test, order } = parseJql(query.get('jql') ?? '', sprintOf)
+      const { test, order } = parseJql(query.get('jql') ?? '', sprintOf, (id) => state.versions.find((version) => version.id === id)?.name)
       const startAt = Number(query.get('nextPageToken') ?? 0)
       const maxResults = Math.min(Number(query.get('maxResults') ?? 50), 100)
       const matched = Object.values(state.items).filter(test).sort(SORTS[order])

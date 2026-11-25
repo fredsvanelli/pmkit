@@ -1,2 +1,4 @@
 {"at":"2026-11-25T01:10:27Z","by":"fred","op":"create","to":{"id":"PMK-398","title":"Check the Jira release filter's quoted version id on a live site","type":"chore","status":"backlog","priority":"low","labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-25T01:10:27.255Z","updated":"2026-11-25T01:10:27Z"}}
 {"at":"2026-11-25T01:10:27Z","by":"fred","op":"link","field":"related","to":"PMK-370"}
+{"at":"2026-11-25T01:53:53Z","by":"fred","op":"link","field":"duplicate_of","to":"PMK-373"}
+{"at":"2026-11-25T01:53:53Z","by":"fred","op":"move","field":"status","from":"backlog","to":"canceled"}

@@ -73,7 +73,7 @@ A named target with an optional due date that issues and epics point to by id.
 _Avoid_: release, phase, version
 
 **Release**:
-A version of the product, kept as `releases/<version>.md`, that issues point to through `release`. It may name a git tag, and it is `planned` until `release mark-released` records when it shipped. On Jira a release is a version of the space, named by the version name, and an issue's release is its fix version; Jira has no milestones and versions have no git tag.
+A version of the product, kept as `releases/<version>.md`, that issues point to through `release`. It may name a git tag, and it is `planned` until `release mark-released` records when it shipped. On Jira a release is a version of the space, named by the version name, which is unique in the space whatever its case, archived versions included, and an issue's release is its fix version; Jira has no milestones and versions have no git tag.
 _Avoid_: milestone (a milestone is a target, not a version), version (outside the file name and Jira), deploy
 
 **Status update**:

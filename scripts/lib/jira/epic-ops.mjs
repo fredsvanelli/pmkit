@@ -10,7 +10,7 @@ import { textToAdf } from './adf.mjs'
 import { EPIC_FIELDS, STATUS_UPDATE, statusUpdateBody, toEpic, toStatusUpdate } from './epics.mjs'
 import { jqlString } from './filter.mjs'
 import { API, isIssueKey, issuePath, normalizeKey, PAGE_SIZE } from './ids.mjs'
-import { jiraTime } from './issues.mjs'
+import { initialStatus, jiraTime } from './issues.mjs'
 import { NO_GOALS } from './manifest.mjs'
 
 export const NO_MILESTONES = 'Jira has no milestones'
@@ -130,7 +130,7 @@ export function epicOperations({ client, ops, getContext, now = () => new Date()
     await ops.requireActor(actor)
     const type = epicTypes(context)[0]
     if (dryRun) {
-      const after = { id: null, title: fields.title, status: statusesOf(type, context)[0] ?? null }
+      const after = { id: null, title: fields.title, status: initialStatus(type, context) }
       if (fields.start) after.start = fields.start
       if (fields.target) after.target = fields.target
       after.description = fields.description ?? ''

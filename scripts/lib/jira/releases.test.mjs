@@ -89,6 +89,17 @@ test('createRelease refuses a tag, a second name and a taken name before any wri
   assert.deepEqual(fake.writes(), [])
 })
 
+// Jira refuses a version name the space holds in any case, archived versions included, with a 400 in the site's language (PMK-373, seen live).
+test('createRelease refuses a name taken in another case or by an archived version, before any write', async () => {
+  const { fake, tracker } = setup({ versions: [{ id: '10100', name: 'Beta' }, { id: '10101', name: 'old', archived: true }] })
+  await assert.rejects(tracker.createRelease({ id: 'Beta' }, ME), { code: 'CONFLICT', message: 'release Beta already exists', nextStep: 'pmkit release get Beta' })
+  await assert.rejects(tracker.createRelease({ id: 'beta' }, ME), { code: 'CONFLICT', message: 'release beta is taken by version Beta, which differs only in case', nextStep: 'pmkit release get Beta' })
+  for (const id of ['old', 'OLD']) {
+    await assert.rejects(tracker.createRelease({ id }, ME), { code: 'CONFLICT', message: `release ${id} is taken by archived version old`, nextStep: 'Unarchive or rename version old in Jira' })
+  }
+  assert.deepEqual(fake.writes(), [])
+})
+
 test('createRelease posts the version in the space; a dry run sends no write', async () => {
   const { fake, fetch, tracker } = setup()
   const dry = await tracker.createRelease({ id: '3.0', name: '3.0', target: '2027-03-01', description: 'Third' }, ME, { dryRun: true })
