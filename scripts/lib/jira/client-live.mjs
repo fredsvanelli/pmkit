@@ -20,7 +20,7 @@
 // checks are the EPC-14 follow-up PMK-399).
 // Then the Jira Product Discovery flows (PMK-384), read-only: on a site without a Jira Product Discovery project, the real CLI's
 // jira ideas list answers available false with the hint and jira ideas connect refuses a key that is not an idea; on a site with
-// one the test skips (the votes field and delivery link checks wait on a site with Jira Product Discovery, see PMK-384).
+// one the test skips (the votes field and delivery link checks are the EPC-14 follow-up PMK-402).
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -996,7 +996,7 @@ test('jira plans answer available false on a site without Premium', { skip: NEED
 test('jira ideas answer available false on a site without Jira Product Discovery', { skip: NEEDS_SPACE }, async (t) => {
   const { items: projects } = await client().paginate('/rest/api/3/project/search', { key: 'values' })
   if (projects.some((project) => project.projectTypeKey === 'product_discovery')) {
-    return t.skip('the site has a Jira Product Discovery project: the votes field and delivery link checks are not written yet (PMK-384)')
+    return t.skip('the site has a Jira Product Discovery project: the votes field and delivery link checks are the EPC-14 follow-up PMK-402')
   }
   const { cli, refused, cleanup } = liveRepo()
   try {

@@ -72,3 +72,15 @@ Answered on 2026-11-25 by the coordinator; the design is approved. ACs 1 and 2 w
 ## Left to the builder
 
 Assertion wording and the test name.
+
+## Result
+
+Owner's answer (2026-11-25, through the coordinator): approach A. Run on 2026-11-25 against the owner's Jira Cloud site (host kept out of the repository, the PR and the issue), space Kudos: `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test --test-name-pattern "Product Discovery" scripts/lib/jira/client-live.mjs`. Read-only: nothing was written to the site. No output held the token, the email or the host. A mutation (`reason` changed in `ideas.mjs`) made the test fail, then it passed again on the real code.
+
+| Check | AC | Result |
+|---|---|---|
+| Votes field is `jira.polaris:votes` and search returns its number | 1 | **skipped**: no Jira Product Discovery on the site; PMK-402 |
+| Delivery link type name and texts; the epic in the Delivery tab after `connect` | 2 | **skipped**: no Polaris link type on the site; PMK-402 |
+| A site without JPD answers `available: false` with the hint (`list`, `--limit 1`); `--project <space>` and `connect` answer `NOT_FOUND` | 3 | **pass** |
+
+Product change: the hint now also covers a site without Jira Product Discovery installed (Q3). Follow-up in EPC-14: PMK-402 (ACs 1 and 2).
