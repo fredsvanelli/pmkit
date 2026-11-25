@@ -171,6 +171,8 @@ test('moveToCycle stops at a subtask Jira does not move and names the items move
   await assert.rejects(tracker.moveToCycle([a, b], '1', ME), (error) => {
     assert.equal(error.code, 'CONFLICT')
     assert.deepEqual(error.details.moved, [a])
+    // The halfway next step replaces the parent hint, so the message names the parent.
+    assert.match(error.message, new RegExp(`parent's sprint \\(${a}\\)$`))
     return true
   })
 })

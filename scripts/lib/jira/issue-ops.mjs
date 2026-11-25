@@ -219,7 +219,7 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
   function ignoredMove(before, item, to, wrote) {
     const head = wrote ? `Jira updated ${before.id}, but did not move it to sprint ${to}` : `Jira did not move ${before.id} to sprint ${to}`
     if (item.fields.issuetype?.subtask === true && before.parent) {
-      return new PmkitError('CONFLICT', `${head}: Jira keeps a subtask in its parent's sprint`, `pmkit cycle add ${before.parent} --to ${to}`)
+      return new PmkitError('CONFLICT', `${head}: Jira keeps a subtask in its parent's sprint (${before.parent})`, `pmkit cycle add ${before.parent} --to ${to}`)
     }
     return new PmkitError('CONFLICT', head, `Check ${before.id} on the sprint board in Jira`)
   }

@@ -19,7 +19,8 @@ export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset 
 /** The ids of the space's epic-level work types, which issue searches leave out (ADR 0017). */
 export const epicTypeIds = (context) => context.raw.workTypes.filter((type) => type.level === 'epic').map((type) => type.id)
 
-// Jira reads a quoted sprint value as a sprint name, so an id goes unquoted (PMK-370, seen live); anything else stays a quoted name.
+// Jira reads a quoted sprint value as a sprint name, so an id goes unquoted (PMK-370, seen live). Callers pass checked board
+// sprint ids; the quoted fallback is defensive, so an unchecked value can only be read as a name, never as JQL.
 const sprintId = (id) => sprintKey(String(id)) ?? jqlString(id)
 
 /** The NOT_SUPPORTED error of a sprint filter on a space with no sprint board or no Sprint field, else null. */

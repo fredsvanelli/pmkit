@@ -219,6 +219,6 @@ test('a subtask made in Jira is refused, naming its parent', () => {
   assert.equal(result.code, 2, result.stdout)
   const { error } = JSON.parse(result.stdout)
   assert.equal(error.code, 'CONFLICT')
-  assert.equal(error.message, "Jira did not move ENG-2 to sprint 1: Jira keeps a subtask in its parent's sprint")
+  assert.equal(error.message, "Jira did not move ENG-2 to sprint 1: Jira keeps a subtask in its parent's sprint (ENG-1)")
   assert.equal(error.nextStep, 'pmkit cycle add ENG-1 --to 1')
 })

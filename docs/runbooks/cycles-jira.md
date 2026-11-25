@@ -150,7 +150,7 @@ Live check: passed on 2026-11-24 (PMK-370) on a real team-managed space with Spr
     node scripts/pmkit.mjs cycle add ENG-2 --to 1 --json
     ```
 
-    Expect exit 2, `error.code` `CONFLICT`, `error.message` `Jira did not move ENG-2 to sprint 1: Jira keeps a subtask in its parent's sprint` and `error.nextStep` `pmkit cycle add ENG-1 --to 1`. Jira answers the move and does nothing: a subtask is in its parent's sprint, so adding the parent brings it along.
+    Expect exit 2, `error.code` `CONFLICT`, `error.message` `Jira did not move ENG-2 to sprint 1: Jira keeps a subtask in its parent's sprint (ENG-1)` and `error.nextStep` `pmkit cycle add ENG-1 --to 1`. Jira answers the move and does nothing: a subtask is in its parent's sprint, so adding the parent brings it along.
 
 Checked live on 2026-11-24 (PMK-393) on a team-managed space with Sprints and Estimation on: the board stays `simple`, `capabilities` gives `cycles` `native`, and `cycle list` answers.
 
