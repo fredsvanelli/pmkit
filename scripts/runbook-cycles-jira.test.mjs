@@ -15,7 +15,7 @@ const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
 const RUNBOOK = path.join(SCRIPTS, '..', 'docs', 'runbooks', 'cycles-jira.md')
 const url = (name) => pathToFileURL(path.join(SCRIPTS, name)).href
 
-/** Writes a launcher (a PMKIT_FAKE_KANBAN_ONLY run sees a space whose only board is Kanban) that loads the fake's state from state.json beside it (absent: fresh), runs the CLI and saves the state. */
+/** Writes a launcher (a PMKIT_FAKE_KANBAN_ONLY run sees a space whose only board is Kanban; a PMKIT_FAKE_TEAM_FEATURES run sees a team-managed space whose one board is simple, with the comma-separated features on) that loads the fake's state from state.json beside it (absent: fresh), runs the CLI and saves the state. */
 function launcher() {
   const dir = tempDir('pmkit-jira-cycles-launcher-')
   const file = path.join(dir, 'launch.mjs')
@@ -27,6 +27,13 @@ const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, '
 const fake = fakeJiraIssues(state ? { state } : {})
 const routes = { ...fake.routes }
 if (process.env.PMKIT_FAKE_KANBAN_ONLY) routes['GET /rest/agile/1.0/board'] = { json: { startAt: 0, maxResults: 50, total: 1, isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }] } }
+const team = process.env.PMKIT_FAKE_TEAM_FEATURES
+if (team !== undefined) {
+  const on = new Set(team.split(',').filter(Boolean))
+  routes['GET /rest/api/3/project/ENG'] = { json: { ...routes['GET /rest/api/3/project/ENG'].json, style: 'next-gen', simplified: true } }
+  routes['GET /rest/agile/1.0/board'] = { json: { startAt: 0, maxResults: 50, total: 1, isLast: true, values: [{ id: 1, name: 'ENG board', type: 'simple' }] } }
+  routes['GET /rest/agile/1.0/board/1/features'] = { json: { features: ['sprints', 'estimation', 'releases'].map((key) => ({ boardId: 1, feature: 'jsw.agility.' + key, state: on.has(key) ? 'ENABLED' : 'DISABLED' })) } }
+}
 globalThis.fetch = fakeJiraFetch(routes)
 const { run } = await import(${JSON.stringify(url('pmkit.mjs'))})
 const result = await run(process.argv.slice(2))
@@ -96,6 +103,7 @@ test('the runbook names every command the test runs', () => {
     'issues get ENG-2 --json',
     'issues move ENG-2 done --json',
     'cycle list --json',
+    'cycle open --start 2026-11-22 --json',
   ]
   for (const command of commands) assert.ok(text.includes(`node scripts/pmkit.mjs ${command}`), command)
   assert.ok(text.includes('PMK-370'))
@@ -169,4 +177,27 @@ test('a space with only a Kanban board has no sprints', () => {
   const { error } = JSON.parse(result.stdout)
   assert.equal(error.code, 'NOT_SUPPORTED')
   assert.equal(error.nextStep, 'Sprints need a Scrum board in space ENG')
+})
+
+// PMK-393: a team-managed space's one board stays simple; its Sprints feature makes it the sprint board.
+test('a team-managed space with Sprints on runs sprints on its simple board', () => {
+  const { pmkit } = session()
+  const env = { PMKIT_FAKE_TEAM_FEATURES: 'sprints,estimation' }
+  const capabilities = body(pmkit(['capabilities', '--json'], env)).capabilities
+  const entry = (id) => capabilities.find((item) => item.id === id)
+  assert.equal(entry('cycles').path, 'native')
+  assert.deepEqual(entry('releases'), { id: 'releases', path: 'absent', enableHint: "Turn on Releases in space ENG's features" })
+  assert.deepEqual(body(pmkit(['cycle', 'list', '--json'], env)), [])
+  const opened = body(pmkit(['cycle', 'open', '--start', '2026-11-22', '--json'], env))
+  assert.equal(opened.after.state, 'active')
+  assert.equal(body(pmkit(['cycle', 'list', '--json'], env)).length, 1)
+})
+
+test('a team-managed space with Sprints off names the Sprints feature', () => {
+  const { pmkit } = session()
+  const result = pmkit(['cycle', 'list', '--json'], { PMKIT_FAKE_TEAM_FEATURES: 'estimation' })
+  assert.equal(result.code, 2, result.stdout)
+  const { error } = JSON.parse(result.stdout)
+  assert.equal(error.code, 'NOT_SUPPORTED')
+  assert.equal(error.nextStep, "Turn on Sprints in space ENG's features")
 })

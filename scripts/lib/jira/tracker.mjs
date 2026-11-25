@@ -1,5 +1,5 @@
 // The Jira tracker. discover and capabilities read one site and one space (PMK-76); the Issues family reads and writes work
-// items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's Scrum board (PMK-78); the Releases family reads and writes
+// items (PMK-77); the Cycles and Capacity families read and write the sprints of the space's sprint board (PMK-78); the Releases family reads and writes
 // the space's versions, the Deliverables family reads and writes its epics and their status updates, and Jira has no milestones (PMK-79); the
 // Time tracking family reads and writes worklogs (PMK-80). Every operation but discover and capabilities runs through guarded, the mapping check; the operations of
 // later issues stay stubs. See docs/superpowers/specs/2026-11-22-pmk-77-jira-work-items-transitions-links-jql-design.md,
@@ -136,12 +136,15 @@ export function createJiraTracker(config, { env, now = () => new Date(), fetch }
     })
   const stub = (operation) => refusal(`the Jira adapter does not implement ${operation} yet`, 'Set tracker.system to local in .pmkit/config.yaml to use this command now')
 
-  // The context of the operations: makeContext over the discovery, built once per raw discovery, with `fresh`.
+  // The context of the operations: makeContext over the discovery, built once per raw discovery, with `fresh`. With `sprints`, a
+  // cached discovery that has no sprint board is read again once: Sprints may have been turned on since, or the cache predates the
+  // board features (PMK-393).
   const contexts = new WeakMap()
-  async function getContext({ refresh = false } = {}) {
+  async function getContext({ refresh = false, sprints = false } = {}) {
     const { raw, fresh } = await discovery({ refresh })
     if (!contexts.has(raw)) contexts.set(raw, { ...makeContext(raw, config.pmkit, await client.session()), fresh })
-    return contexts.get(raw)
+    const context = contexts.get(raw)
+    return sprints && context.boardId === null && !context.fresh ? getContext({ refresh: true }) : context
   }
 
   const sprints = async () => {

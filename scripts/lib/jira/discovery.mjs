@@ -16,6 +16,7 @@ const UNREAD = {
   license: 'sprints are judged from the boards alone',
   'global settings': 'issue linking and time tracking are assumed on',
   boards: 'sprints and the board estimate field are unknown',
+  'board features': 'sprints, estimation and releases are judged without them',
   'assignable users': 'discover lists the viewer as the only member',
   priorities: 'the Jira priorities are unknown',
   'link types': 'the Jira link types are unknown',
@@ -58,6 +59,21 @@ async function readBoard(client, space) {
   return { id: board.id, type: board.type ?? null, estimationField: config?.estimation?.field?.fieldId ?? null }
 }
 
+const FEATURES = { sprints: 'jsw.agility.sprints', estimation: 'jsw.agility.estimation', releases: 'jsw.agility.releases' }
+
+/** Which of Sprints, Estimation and Releases a team-managed board has on (PMK-393). A feature Jira leaves out reads as off. */
+async function readFeatures(client, boardId) {
+  const answer = await client.request('GET', `/rest/agile/1.0/board/${encodeURIComponent(boardId)}/features`)
+  const enabled = new Set((answer?.features ?? []).filter((item) => item.state === 'ENABLED').map((item) => item.feature))
+  return Object.fromEntries(Object.entries(FEATURES).map(([key, feature]) => [key, enabled.has(feature)]))
+}
+
+/**
+ * Whether the space's board runs sprints: its Sprints feature when it was read (a team-managed board stays simple whatever is
+ * on), else a Scrum board.
+ */
+export const sprintsOn = (raw) => (raw.board?.features ? raw.board.features.sprints : raw.board?.type === 'scrum')
+
 function licenseOf(license) {
   if (license === null) return { software: null }
   const app = (license?.applications ?? []).find((item) => item.id === 'jira-software')
@@ -98,6 +114,10 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
   ])
   const own = ownedBy(String(found.id))
   const board = found.projectTypeKey === 'software' ? await optional(() => readBoard(client, space), 'boards', unread) : null
+  if (board && styleOf(found) === 'team-managed') {
+    const features = await optional(() => readFeatures(client, board.id), 'board features', unread)
+    if (features) board.features = features
+  }
 
   const lists = new Map((Array.isArray(statusLists) ? statusLists : []).map((item) => [String(item.id), item]))
   const statuses = new Map()
@@ -157,7 +177,9 @@ const bySystem = (fields, id) => fields.find((field) => field.system === id || f
 
 // The inference rule of each field role, in FIELD_ROLES order. Unverified on a live site (see the spec's Risks).
 const ROLE_RULES = {
+  // A team-managed board with Estimation off has no estimate field, even when the site keeps one (PMK-393).
   estimate: (fields, raw) =>
+    raw.board?.features?.estimation === false ? undefined :
     (raw.board?.estimationField && fields.find((field) => field.id === raw.board.estimationField)) ??
     fields.find((field) => field.customType === STORY_POINTS_TYPE) ??
     named(fields, 'story point estimate', 'story points'),

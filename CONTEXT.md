@@ -36,9 +36,13 @@ _Avoid_: status change (on Jira, alone), workflow step
 A field a Jira transition asks for on its screen before it moves the work item, such as Resolution on a move to Done. pmkit asks the user for each required one that has no default, and never fills one itself.
 _Avoid_: transition field, required field (alone)
 
-**Scrum board**:
-The Jira board of a space that runs sprints. pmkit reads the space's first Scrum board, and its sprints are the space's sprints; a space without one has no sprints. Opening a sprint there creates it and, when it starts today or earlier and no sprint is active, starts it; closing completes it.
-_Avoid_: board (alone; reads a GitHub Project), Kanban board (it has no sprints)
+**Sprint board**:
+The Jira board of a space that runs sprints, and its sprints are the space's sprints. On a company-managed space it is the space's first Scrum board. On a team-managed space it is the space's one board, which stays a simple board whatever is on, when the space's Sprints board feature is on. A space without one has no sprints. Opening a sprint there creates it and, when it starts today or earlier and no sprint is active, starts it; closing completes it.
+_Avoid_: board (alone; reads a GitHub Project), Scrum board (a team-managed space runs sprints on a simple board), Kanban board (it has no sprints)
+
+**Board feature**:
+A switch on a team-managed space's board that turns on one part of Jira, such as Sprints, Estimation or Releases. On a team-managed space the board features, not the board's kind, decide whether the space has sprints, estimates and releases.
+_Avoid_: space feature, setting (alone; reads Jira's global settings)
 
 **Adapter**:
 The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`. The CLI picks the tracker adapter by `tracker.system` from the registry in `scripts/lib/adapters.mjs`, and commands reach it only through the contract operations.

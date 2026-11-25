@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { FAKE_ENV, TRACKER, fakeJiraFetch, jiraSiteRoutes } from '../../fake-jira-api.mjs'
 import { createJiraClient } from './client.mjs'
-import { categoryOfStatus, discoveryView, fetchDiscovery } from './discovery.mjs'
+import { categoryOfStatus, discoveryView, fetchDiscovery, sprintsOn } from './discovery.mjs'
 
 globalThis.fetch = () => {
   throw new Error('the real fetch was called')
@@ -10,8 +10,8 @@ globalThis.fetch = () => {
 
 const NOW = () => new Date('2026-11-22T12:00:00Z')
 
-async function discover({ style, locale, board, taskType, routes = {}, pmkit = {} } = {}) {
-  const fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style, locale, board, taskType }), ...routes })
+async function discover({ style, locale, board, taskType, features, routes = {}, pmkit = {} } = {}) {
+  const fetch = fakeJiraFetch({ ...jiraSiteRoutes({ style, locale, board, taskType, features }), ...routes })
   const client = createJiraClient({ env: FAKE_ENV, tracker: TRACKER, fetch, sleep: async () => {} })
   const raw = await fetchDiscovery(client, { space: 'ENG', now: NOW })
   const view = discoveryView(raw, { tracker: TRACKER, ...pmkit }, { session: await client.session() })
@@ -244,9 +244,58 @@ test('name rules still match the shown name when Jira sends no untranslated name
   assert.equal(raw.fields.find((field) => field.id === 'customfield_10015').untranslated, null)
 })
 
-test('a team-managed simple board has no estimation field', async () => {
-  const { raw } = await discover({ style: 'team-managed', board: 'simple' })
-  assert.deepEqual(raw.board, { id: 1, type: 'simple', estimationField: null })
+test('a team-managed simple board with Estimation off has no estimation field', async () => {
+  const { raw } = await discover({ style: 'team-managed', board: 'simple', features: { sprints: false, estimation: false, releases: false } })
+  assert.deepEqual(raw.board, { id: 1, type: 'simple', estimationField: null, features: { sprints: false, estimation: false, releases: false } })
+})
+
+// PMK-393: a team-managed board stays simple; its Sprints, Estimation and Releases features say what the space has.
+const featuresCalls = (fetch) => fetch.calls.filter((call) => call.url.endsWith('/features'))
+
+test('a team-managed board reads its Sprints, Estimation and Releases features', async () => {
+  const { raw, fetch } = await discover({ style: 'team-managed', board: 'simple', features: { sprints: true, estimation: true, releases: false } })
+  assert.deepEqual(raw.board, { id: 1, type: 'simple', estimationField: 'customfield_10016', features: { sprints: true, estimation: true, releases: false } })
+  assert.equal(featuresCalls(fetch).length, 1)
+  assert.equal(sprintsOn(raw), true)
+})
+
+test('a company-managed space does not read board features', async () => {
+  const { raw, fetch } = await discover()
+  assert.equal(raw.board.features, undefined)
+  assert.equal(featuresCalls(fetch).length, 0)
+  assert.equal(sprintsOn(raw), true)
+  const kanban = await discover({ routes: { 'GET /rest/agile/1.0/board': { json: { isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }] } }, 'GET /rest/agile/1.0/board/2/configuration': { json: {} } } })
+  assert.equal(sprintsOn(kanban.raw), false)
+})
+
+test('a refused board features read warns and leaves the features out', async () => {
+  const { raw, view } = await discover({ style: 'team-managed', board: 'simple', routes: { 'GET /rest/agile/1.0/board/1/features': denied } })
+  assert.equal(raw.board.features, undefined)
+  assert.ok(view.warnings.includes('Jira refused to read the board features (AUTH); sprints, estimation and releases are judged without them'), view.warnings.join('\n'))
+  assert.equal(sprintsOn(raw), false)
+})
+
+test('a feature missing from the answer reads as off', async () => {
+  const { raw } = await discover({ style: 'team-managed', board: 'simple', routes: { 'GET /rest/agile/1.0/board/1/features': { json: { features: [{ boardId: 1, feature: 'jsw.agility.sprints', state: 'ENABLED' }] } } } })
+  assert.deepEqual(raw.board.features, { sprints: true, estimation: false, releases: false })
+})
+
+test('Estimation off leaves the estimate role empty, but a mapping still wins', async () => {
+  const off = { sprints: true, estimation: false, releases: false }
+  // The board still names its estimation field, as a live board may: the feature decides.
+  const routes = { 'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, type: 'simple', estimation: { type: 'field', field: { fieldId: 'customfield_10016' } } } } }
+  const { view } = await discover({ style: 'team-managed', board: 'simple', features: off, routes })
+  assert.equal(view.fields.estimate, null)
+  const mapped = await discover({ style: 'team-managed', board: 'simple', features: off, routes, pmkit: { mappings: { fields: { estimate: 'customfield_10016' } } } })
+  assert.equal(mapped.view.fields.estimate.id, 'customfield_10016')
+})
+
+test('a team-managed space with no board reads no features', async () => {
+  const { raw, view, fetch } = await discover({ style: 'team-managed', routes: { 'GET /rest/agile/1.0/board': { json: { isLast: true, values: [] } } } })
+  assert.equal(raw.board, null)
+  assert.equal(featuresCalls(fetch).length, 0)
+  assert.ok(!view.warnings.some((warning) => warning.includes('board features')))
+  assert.equal(sprintsOn(raw), false)
 })
 
 test('an English untranslated name wins over another field shown with that name', async () => {

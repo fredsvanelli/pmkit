@@ -6,6 +6,8 @@
 // Then setup (PMK-368): the real CLI runs init --tracker jira in a temporary repository; Jira is only read.
 // Then the issue flows (PMK-367): the real CLI creates, links, parents, branches, assigns and moves work items in the throwaway
 // space, each answer checked against Jira's raw item, and deletes them.
+// Then the board features of a team-managed throwaway space (PMK-393), read-only: cycles, estimation and releases follow the
+// board's Sprints, Estimation and Releases features, and the real CLI's cycle list answers while Sprints is on.
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -29,7 +31,7 @@ import { isPmkitError } from '../errors.mjs'
 import { createJiraClient } from './client.mjs'
 import { jiraCredential } from './credential.mjs'
 import { categoryOfStatus, discoveryView, fetchDiscovery } from './discovery.mjs'
-import { buildJiraCapabilities } from './manifest.mjs'
+import { buildJiraCapabilities, sprintBoardHint } from './manifest.mjs'
 import { requiredFields } from './transitions.mjs'
 
 const env = process.env
@@ -392,6 +394,39 @@ test('setup on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
   } finally {
     cleanup()
   }
+})
+
+// Board features (PMK-393). Read-only: the CLI writes only its temporary repository.
+const FEATURE = { sprints: 'jsw.agility.sprints', estimation: 'jsw.agility.estimation', releases: 'jsw.agility.releases' }
+
+test('a team-managed space\'s capabilities follow its board features', { skip: NEEDS_SPACE }, async (t) => {
+  const { jira, raw } = await discoverSpace(SPACE)
+  if (raw.space.style !== 'team-managed' || !raw.board) return t.skip('the throwaway space is not a team-managed software space with a board')
+  // Jira's own answer, read apart from discovery.
+  const { features } = await jira.request('GET', `/rest/agile/1.0/board/${encodeURIComponent(raw.board.id)}/features`)
+  const on = Object.fromEntries(Object.entries(FEATURE).map(([key, id]) => [key, features.some((item) => item.feature === id && item.state === 'ENABLED')]))
+  assert.deepEqual(raw.board.features, on)
+  const entries = buildJiraCapabilities(raw, {})
+  const at = (id) => entries.find((item) => item.id === id)
+  const sprintField = raw.fields.some((field) => field.customType === SPRINT)
+  if (on.sprints && sprintField) assert.equal(at('cycles').path, 'native')
+  if (!on.sprints) assert.deepEqual(at('cycles'), { id: 'cycles', path: 'absent', enableHint: sprintBoardHint(raw) })
+  assert.equal(at('releases').path, on.releases ? 'native' : 'absent')
+  if (!on.estimation) assert.equal(at('estimation').path, 'absent')
+  if (on.sprints && sprintField) {
+    // The real CLI on a repository set up on the space reads the board's sprints instead of refusing.
+    const { cli, cleanup } = liveRepo()
+    try {
+      const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
+      cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
+      const sprints = cli('cycle', 'list')
+      assert.ok(Array.isArray(sprints))
+      t.diagnostic(`cycle list: ${sprints.length} sprints`)
+    } finally {
+      cleanup()
+    }
+  }
+  t.diagnostic(`board ${raw.board.type}; features ${Object.entries(on).map(([key, value]) => `${key} ${value ? 'on' : 'off'}`).join(', ')}; cycles ${at('cycles').path}, estimation ${at('estimation').path}, releases ${at('releases').path}`)
 })
 
 // Issue flows (PMK-367). The CLI writes to the throwaway space only; every work item it makes is deleted in the finally.

@@ -3,7 +3,7 @@
 
 import { CAPABILITIES, linkedCodeDetail } from '../capabilities.mjs'
 import { CAPACITY_FILE } from '../capacity-store.mjs'
-import { fieldRoles } from './discovery.mjs'
+import { fieldRoles, sprintsOn } from './discovery.mjs'
 
 /** The capabilities the Jira adapter serves. PMK-77 to PMK-80 added theirs with the operations behind them. */
 export const SERVED = Object.freeze({
@@ -18,10 +18,14 @@ const unservedHint = (id) => `The Jira adapter does not serve ${id} yet`
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const absent = (enableHint) => ({ path: 'absent', enableHint })
 
-/** Sprints need Jira Software (any plan), a Scrum board and the Sprint field; an unread license defers to the board. */
+/** What a space without a sprint board needs: a Scrum board, or on a team-managed space its Sprints feature (PMK-393). */
+export const sprintBoardHint = (raw) =>
+  raw.space.style === 'team-managed' ? `Turn on Sprints in space ${raw.space.key}'s features` : `Sprints need a Scrum board in space ${raw.space.key}`
+
+/** Sprints need Jira Software (any plan), a sprint board and the Sprint field; an unread license defers to the board. */
 function cycles(raw, pmkit) {
   if (raw.license?.software === 'unlicensed') return absent('Sprints need Jira Software')
-  if (raw.board?.type !== 'scrum') return absent(`Sprints need a Scrum board in space ${raw.space.key}`)
+  if (!sprintsOn(raw)) return absent(sprintBoardHint(raw))
   if (!fieldRoles(raw, pmkit).fields.sprint) return absent(`No sprint field in space ${raw.space.key}`)
   return { path: 'native' }
 }
@@ -39,7 +43,7 @@ function siteAnswers(raw, pmkit) {
     cycles: sprints,
     estimation: estimate
       ? { path: 'native', detail: { unit: estimate.id === 'timeoriginalestimate' ? 'hours' : 'points', field: estimate.id } }
-      : absent(`No estimate field in space ${key}`),
+      : absent(raw.board?.features?.estimation === false ? `Turn on Estimation in space ${key}'s features` : `No estimate field in space ${key}`),
     multilevel_hierarchy: levels.some((level) => level !== 'standard') ? { path: 'native', detail: { levels } } : absent(`Space ${key} has no epic or subtask work type`),
     dependencies: setting('issueLinking') ? { path: 'native' } : absent("Turn on issue linking in Jira's global settings"),
     native_triage: absent('Jira has no triage; map a status to triage in .pmkit/config.yaml'),
@@ -47,7 +51,7 @@ function siteAnswers(raw, pmkit) {
     strategic_goals: absent(NO_GOALS),
     // Status updates are epic comments with the pmkit.statusUpdate property, so they need epics.
     status_update: deliverables.path === 'absent' ? deliverables : { path: 'derived', detail: { source: 'comment' } },
-    releases: { path: 'native', detail: { entity: 'version' } },
+    releases: raw.board?.features?.releases === false ? absent(`Turn on Releases in space ${key}'s features`) : { path: 'native', detail: { entity: 'version' } },
     capacity: sprints.path === 'absent' ? absent('Capacity needs cycles') : { path: 'derived', detail: { source: 'local', file: CAPACITY_FILE } },
     native_metrics: { path: 'derived', detail: { source: 'history' } },
     saved_views: { path: 'native', detail: { source: 'filters' } },

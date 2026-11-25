@@ -129,6 +129,43 @@ test('a cached raw discovery from PMK-76, without members, is read again', async
   assert.equal(projectReads(next.fetch), 1)
 })
 
+// PMK-393: a cache written before the board features were read (or before Sprints was turned on) says the space has no sprint
+// board; the sprint operations read Jira once more before refusing.
+async function noSprintBoardCache() {
+  const at = { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
+  const raw = (await issuesSetup({ at }).tracker.discover({ refresh: true })).raw
+  cachePut(repoHash(at.root), 'jira-acme.atlassian.net-eng', { ...raw, board: { ...raw.board, type: 'simple' } }, { ttlSeconds: 3600 }, { env: at.env, now: NOW })
+  return issuesSetup({ at, pmkit: { mappings: { types: { story: 'Story' }, fields: { sprint: 'customfield_10020' } } } })
+}
+
+test('a cached discovery with no sprint board is read again before the sprint operations refuse', async () => {
+  const cycles = await noSprintBoardCache()
+  assert.deepEqual(await cycles.tracker.listCycles(), [])
+  assert.equal(projectReads(cycles.fetch), 1)
+  const search = await noSprintBoardCache()
+  assert.deepEqual((await search.tracker.searchIssues({ sprint: 'none' })).issues, [])
+  assert.equal(projectReads(search.fetch), 1)
+  // A write naming a sprint gets past the sprint board check to the sprint lookup: sprint 41 does not exist on the board.
+  const create = await noSprintBoardCache()
+  const refused = await create.tracker.createIssue({ title: 'In a sprint', type: 'story', sprint: '41' }, 'acc-1').catch((error) => error)
+  assert.notEqual(refused.code, 'NOT_SUPPORTED', refused.message)
+  const update = await noSprintBoardCache()
+  const { after } = await update.tracker.createIssue({ title: 'Later in a sprint', type: 'story' }, 'acc-1')
+  assert.equal(projectReads(update.fetch), 0, 'a write without a sprint reads the cache')
+  const moved = await update.tracker.updateIssue(after.id, { sprint: '41' }, 'acc-1').catch((error) => error)
+  assert.notEqual(moved.code, 'NOT_SUPPORTED', moved.message)
+  assert.equal(projectReads(update.fetch), 1)
+})
+
+test('a fresh discovery with no sprint board refuses without reading Jira again', async () => {
+  const at = { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
+  const fake = fakeJiraIssues()
+  const fetch = fakeJiraFetch({ ...fake.routes, 'GET /rest/agile/1.0/board': { json: { isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }] } }, 'GET /rest/agile/1.0/board/2/configuration': { json: {} } })
+  const tracker = createJiraTracker({ root: at.root, pmkit: { version: 1, tracker: TRACKER, mappings: { types: { story: 'Story' } } } }, { env: at.env, now: NOW, fetch })
+  await assert.rejects(tracker.listCycles(), { code: 'NOT_SUPPORTED', message: 'Sprints need a Scrum board in space ENG' })
+  assert.equal(projectReads(fetch), 1)
+})
+
 test('a mapping Jira no longer has is NOT_CONFIGURED with the broken list, after one refresh of a cached discovery', async () => {
   const first = issuesSetup()
   await first.tracker.discover({ refresh: true })

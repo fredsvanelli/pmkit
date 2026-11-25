@@ -2,6 +2,7 @@
 // Pure: it makes no request. See the spec's "Search: Native search (criterion 3)" and its table.
 
 import { PmkitError } from '../errors.mjs'
+import { sprintBoardHint } from './manifest.mjs'
 
 const DAY = 86400000
 
@@ -17,10 +18,10 @@ export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset 
 /** The ids of the space's epic-level work types, which issue searches leave out (ADR 0017). */
 export const epicTypeIds = (context) => context.raw.workTypes.filter((type) => type.level === 'epic').map((type) => type.id)
 
-/** The NOT_SUPPORTED error of a sprint filter on a space with no Scrum board or no Sprint field, else null. */
+/** The NOT_SUPPORTED error of a sprint filter on a space with no sprint board or no Sprint field, else null. */
 export function sprintUnsupported(context) {
   const space = context.space
-  if (context.boardId === null) return new PmkitError('NOT_SUPPORTED', `Sprints need a Scrum board in space ${space}`, '/pmkit:setup')
+  if (context.boardId === null) return new PmkitError('NOT_SUPPORTED', sprintBoardHint(context.raw), '/pmkit:setup')
   if (!context.fields.sprint) return new PmkitError('NOT_SUPPORTED', `No sprint field in space ${space}`, '/pmkit:setup')
   return null
 }

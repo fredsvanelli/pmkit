@@ -1,8 +1,8 @@
 # Runbook: sprint flows on Jira
 
-The sprint commands on a repository whose tracker is Jira Cloud: open (with a dry run), list, add work items, capacity, close, and the `sprint` of a work item and the `--sprint` filter (PMK-78). The commands serve the space's first Scrum board. `scripts/runbook-cycles-jira.test.mjs` runs every step below with the real CLI and a stateful fake Jira in place of `fetch`, with the fake's state saved to a file between runs and the clock fixed at 2026-11-22 12:00 UTC (`PMKIT_NOW`), so `npm test` checks this runbook.
+The sprint commands on a repository whose tracker is Jira Cloud: open (with a dry run), list, add work items, capacity, close, and the `sprint` of a work item and the `--sprint` filter (PMK-78). The commands serve the space's sprint board: on a company-managed space its first Scrum board, on a team-managed space its one board while the space's Sprints feature is on (PMK-393). `scripts/runbook-cycles-jira.test.mjs` runs every step below with the real CLI and a stateful fake Jira in place of `fetch`, with the fake's state saved to a file between runs and the clock fixed at 2026-11-22 12:00 UTC (`PMKIT_NOW`), so `npm test` checks this runbook.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; PMK-370 in EPC-14 lists what a follow-up settles: start and close on a real board, what Jira does with unfinished items after a REST close, the 12:00 UTC dates in the Jira UI, sprints of other boards, and the Agile move endpoints on an item the board filter hides.
+Live check: partial. Step 11's `capabilities` and `cycle list` ran on a real team-managed space on 2026-11-24 (PMK-393); no sprint has been written on a real site, and PMK-370 in EPC-14 lists what a follow-up settles: start and close on a real board, what Jira does with unfinished items after a REST close, the 12:00 UTC dates in the Jira UI, sprints of other boards, and the Agile move endpoints on an item the board filter hides.
 
 ## Before you start
 
@@ -25,7 +25,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 - Titles go through files in `tmp/`, written with the file tool:
   - `tmp/title-1.txt`: `Plan the sprint`
   - `tmp/title-2.txt`: `Ship the sprint`
-- A sprint is read from the Scrum board with the lowest id; a space with only a Kanban board has no sprints.
+- On a company-managed space, a sprint is read from the Scrum board with the lowest id; a space with only a Kanban board has no sprints. A team-managed space's one board stays a simple board whatever is on, and its Sprints feature decides.
 
 ## Capabilities
 
@@ -126,10 +126,27 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 
     Expect exit 2, `error.code` `NOT_SUPPORTED` and `error.nextStep` `Sprints need a Scrum board in space ENG`.
 
+## A team-managed space
+
+11. In a team-managed space whose one board is simple, with the Sprints and Estimation features on and Releases off (the test serves that board and its features):
+
+    ```
+    node scripts/pmkit.mjs capabilities --json
+    node scripts/pmkit.mjs cycle list --json
+    node scripts/pmkit.mjs cycle open --start 2026-11-22 --json
+    ```
+
+    Expect `cycles` `native` and `releases` `absent` with `enableHint` `Turn on Releases in space ENG's features`; `cycle list` gives `[]`; `cycle open` creates and starts `Sprint 2026-11-22` on the simple board (`state: active`), and `cycle list` then lists it.
+
+12. With the Sprints feature off, `node scripts/pmkit.mjs cycle list --json` exits 2 with `error.code` `NOT_SUPPORTED` and `error.nextStep` `Turn on Sprints in space ENG's features`.
+
+Checked live on 2026-11-24 (PMK-393) on a team-managed space with Sprints and Estimation on: the board stays `simple`, `capabilities` gives `cycles` `native`, and `cycle list` answers.
+
 ## Failures
 
 | Case | Code | Next step |
 |---|---|---|
 | `cycle` in a space without a Scrum board (step 10) | `NOT_SUPPORTED` | `Sprints need a Scrum board in space ENG`: create a Scrum board for the space in Jira |
+| `cycle` in a team-managed space with Sprints off (step 12) | `NOT_SUPPORTED` | `Turn on Sprints in space ENG's features`: turn on Sprints in the space's features in Jira |
 | A move to done without `--field` for a required screen field (step 8) | `INVALID_INPUT` | Run with `--dry-run`, then pass `--field <id>=<value>` |
 | `issues list --sprint none` or `current` with no sprint field in `mappings.fields` | `NOT_SUPPORTED` | Run `/pmkit:setup` (covered by `scripts/lib/jira/filter.test.mjs`, not by this runbook's steps) |

@@ -132,6 +132,24 @@ test('a sprint filter without a Scrum board or a sprint field is NOT_SUPPORTED',
   assert.throws(() => translateFilter({ sprint: 'none' }, noField), { code: 'NOT_SUPPORTED', message: /No sprint field in space ENG/ })
 })
 
+// PMK-393: a team-managed board stays simple; its Sprints feature makes it the sprint board.
+const teamManaged = (sprints) => (raw) => {
+  raw.space.style = 'team-managed'
+  raw.board = { id: 1, type: 'simple', estimationField: null, features: { sprints, estimation: true, releases: false } }
+}
+
+test('a team-managed simple board with Sprints on is the sprint board', async () => {
+  const ctx = await context({ edit: teamManaged(true) })
+  assert.equal(ctx.boardId, 1)
+  assert.doesNotThrow(() => translateFilter({ sprint: 'none' }, ctx))
+})
+
+test('a sprint filter on a team-managed space with Sprints off names the Sprints feature', async () => {
+  const ctx = await context({ edit: teamManaged(false) })
+  assert.equal(ctx.boardId, null)
+  assert.throws(() => translateFilter({ sprint: '41' }, ctx), { code: 'NOT_SUPPORTED', message: "Turn on Sprints in space ENG's features" })
+})
+
 test('release is the version id in JQL, and an unknown name matches nothing', async () => {
   const ctx = await context()
   assert.deepEqual(translateFilter({ release: 'Release "A"' }, ctx, { versionId: '10201' }), { jql: `${SCOPE} AND fixVersion = "10201"${TAIL}`, clientSteps: [], serverLimit: undefined })

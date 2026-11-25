@@ -96,7 +96,8 @@ const EXTRA_STATUSES = [
 
 // locale 'pt' shows field and status names in Portuguese with the English one in untranslatedName, as a live site in another
 // language does (PMK-366), and adds an Acceptance criteria field. board 'simple' gives the one board a team-managed space has:
-// type simple, and a configuration with no estimation.
+// type simple, whose configuration names the estimate field only while Estimation is on. A team-managed space's board answers
+// its features (PMK-393): `features` says which of Sprints, Estimation and Releases are on, all of them by default.
 const PT = {
   'To Do': 'Tarefas pendentes', 'In Progress': 'Em andamento', Review: 'Em análise', Done: 'Concluído', Triage: 'Triagem', Canceled: 'Cancelado',
   Summary: 'Resumo', Priority: 'Prioridade', 'Due date': 'Data de entrega', Assignee: 'Responsável', 'Time Spent': 'Tempo gasto',
@@ -110,9 +111,11 @@ const PT_TYPES = { Story: 'História', Task: 'Tarefa' }
 const ACCEPTANCE = { id: 'customfield_10050', name: 'Acceptance criteria', custom: true, schema: { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea', customId: 10050 } }
 
 // taskType adds a standard Task work type, as a Jira Software space has (Story, Bug, Task, Epic).
-export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false, taskType = false, locale = 'en', board = 'scrum' } = {}) {
+export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = false, taskType = false, locale = 'en', board = 'scrum', features = {} } = {}) {
   const team = style === 'team-managed'
   const pt = locale === 'pt'
+  const on = { sprints: true, estimation: true, releases: true, ...features }
+  const state = (key) => (on[key] ? 'ENABLED' : 'DISABLED')
   const local = (items) => (pt ? items.map(translated) : items)
   const S = pt ? Object.fromEntries(Object.entries(STATUS).map(([key, status]) => [key, translated(status)])) : STATUS
   const extra = local(extraStatuses ? EXTRA_STATUSES : [])
@@ -197,11 +200,27 @@ export function jiraSiteRoutes({ style = 'company-managed', extraStatuses = fals
     ...(board === 'simple'
       ? {
           'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 1, isLast: true, values: [{ id: 1, name: 'ENG board', type: 'simple' }] } },
-          'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', type: 'simple', ranking: { rankCustomFieldId: 10019 } } },
+          'GET /rest/agile/1.0/board/1/configuration': {
+            json: { id: 1, name: 'ENG board', type: 'simple', ...(on.estimation ? { estimation: { type: 'field', field: { fieldId: 'customfield_10016' } } } : {}), ranking: { rankCustomFieldId: 10019 } },
+          },
         }
       : {
           'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }, { id: 1, name: 'ENG board', type: 'scrum' }] } },
           'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', estimation: { type: 'field', field: { fieldId: 'customfield_10016', displayName: 'Story Points' } } } },
         }),
+    ...(team
+      ? {
+          'GET /rest/agile/1.0/board/1/features': {
+            json: {
+              features: [
+                { boardId: 1, feature: 'jsw.agility.backlog', state: 'ENABLED' },
+                { boardId: 1, feature: 'jsw.agility.sprints', state: state('sprints') },
+                { boardId: 1, feature: 'jsw.agility.estimation', state: state('estimation') },
+                { boardId: 1, feature: 'jsw.agility.releases', state: state('releases') },
+              ],
+            },
+          },
+        }
+      : {}),
   }
 }
