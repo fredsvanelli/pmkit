@@ -6,11 +6,11 @@ status: in_progress
 priority: low
 assignee: fred
 parent: EPC-14
-related: [PMK-82]
+related: [PMK-82, PMK-399]
 milestone: jira
 branch: fredsvanelli/pmk-381-check-jira
 created: 2026-11-23T16:11:26.811Z
-updated: 2026-11-25T04:14:52Z
+updated: 2026-11-25T04:23:13Z
 ---
 
 ## Description

@@ -69,3 +69,17 @@ Answered on 2026-11-25 by the coordinator; the design is approved.
 ## Left to the builder
 
 Assertion wording and the test name.
+
+## Result
+
+Run on 2026-11-25 against the owner's Jira Cloud site (host kept out of the repository, the PR and the issue), space Kudos: `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test --test-name-pattern Premium scripts/lib/jira/client-live.mjs`. Read-only: nothing was written to the site. No output held the token, the email or the host. A mutation (the Premium refusal mapped from another status) made the test fail, then it passed again on the real code.
+
+| Check | AC | Result |
+|---|---|---|
+| Plans reads answer the PMK-82 shapes | 1 | **skipped**: the site is on Jira Free; PMK-399 |
+| Plan and team lists page with `cursor`, `nextPageCursor`, `last` | 2 | **skipped**: needs Premium; PMK-399 |
+| A site without Premium answers 403; `jira plans list` and `get` show `available: false` with the hint | 3 | **pass** on a Free site (Q2: Standard not checked on its own) |
+| A Premium site whose token owner lacks Administer Jira answers 403 | 3 | **skipped**: needs Premium; PMK-399 |
+| The capacity unit matches Jira Plans | 4 | **skipped**: needs Premium; PMK-399 |
+
+No product code changed: the live answers matched the fake's off mode. Follow-ups in EPC-14: PMK-399 (the Premium checks), PMK-400 and PMK-401 (from PMK-378: the fake's remaining estimate with an estimate set; `events --since` reads a UTC date).
