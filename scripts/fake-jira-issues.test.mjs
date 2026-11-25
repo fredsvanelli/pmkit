@@ -287,7 +287,10 @@ test('sprints: create, start, move an item in, search it, close, and the item ke
   const moved = await api('POST', `${AGILE}/sprint/1/issue`, { issues: ['ENG-1'] })
   assert.deepEqual([moved.status, moved.json], [204, undefined])
   assert.deepEqual((await read('ENG-1')).fields.customfield_10020, [{ id: 1, name: 'Sprint 1', state: 'active', boardId: 1, goal: 'Ship', ...DATES }])
-  assert.deepEqual(keysOf(await search('sprint = "1"')), ['ENG-1'])
+  assert.deepEqual(keysOf(await search('sprint = 1')), ['ENG-1'])
+  // As on the site, a quoted value is a sprint name, not an id.
+  assert.deepEqual(keysOf(await search('sprint = "1"')), [])
+  assert.deepEqual(keysOf(await search('sprint = "Sprint 1"')), ['ENG-1'])
   assert.deepEqual(keysOf(await search('sprint is EMPTY')), [])
   assert.deepEqual(keysOf(await search('(sprint is EMPTY OR sprint not in openSprints())')), [])
   const closed = await api('POST', `${AGILE}/sprint/1`, { state: 'closed' })

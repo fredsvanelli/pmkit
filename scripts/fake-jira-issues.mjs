@@ -133,7 +133,7 @@ function linkItem(otherKey, verb, added) {
 
 // JQL: exactly the subset translateFilter and metricEvents emit; anything else is a 400.
 
-const TOKEN = /\s*(?:("(?:[^"\\]|\\.)*")|(>=|[=~<(),])|([A-Za-z_][\w.-]*))/y
+const TOKEN = /\s*(?:("(?:[^"\\]|\\.)*")|(>=|[=~<(),])|([A-Za-z_][\w.-]*|[0-9]+))/y
 const FORMS = { '=': ['project', 'assignee', 'labels', 'parent', 'sprint', 'fixVersion'], in: ['status', 'issuetype', 'parent', 'key'], is: ['assignee', 'sprint', 'fixVersion'], '>=': ['updated'], '<': ['updated'] }
 const VALUE = {
   project: (item) => item.key.slice(0, item.key.lastIndexOf('-')),
@@ -207,8 +207,17 @@ function parseJql(jql, sprintOf) {
       expect(')')
       return (item) => values.some((value) => same(field, VALUE[field](item), value))
     }
+    // As on the site, an unquoted sprint value is an id and a quoted one a name.
+    if (field === 'sprint') {
+      if (tokens[at]?.kind === 'word' && /^[0-9]+$/.test(tokens[at].value)) {
+        const id = tokens[at++].value
+        return (item) => VALUE.sprint(item).includes(id)
+      }
+      const name = string()
+      return (item) => (item.sprintIds ?? []).some((id) => sprintOf(id).name === name)
+    }
     const value = string()
-    if (field === 'sprint' || field === 'fixVersion') return (item) => VALUE[field](item).includes(value)
+    if (field === 'fixVersion') return (item) => VALUE[field](item).includes(value)
     if (field === 'labels') return (item) => item.fields.labels.includes(value)
     if (field !== 'updated') return (item) => same(field, VALUE[field](item), value)
     const day = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : fail()

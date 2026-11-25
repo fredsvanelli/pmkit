@@ -3,6 +3,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { sprintBoardHint } from './manifest.mjs'
+import { sprintKey } from './sprints.mjs'
 
 const DAY = 86400000
 
@@ -17,6 +18,9 @@ export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset 
 
 /** The ids of the space's epic-level work types, which issue searches leave out (ADR 0017). */
 export const epicTypeIds = (context) => context.raw.workTypes.filter((type) => type.level === 'epic').map((type) => type.id)
+
+// Jira reads a quoted sprint value as a sprint name, so an id goes unquoted (PMK-370, seen live); anything else stays a quoted name.
+const sprintId = (id) => sprintKey(String(id)) ?? jqlString(id)
 
 /** The NOT_SUPPORTED error of a sprint filter on a space with no sprint board or no Sprint field, else null. */
 export function sprintUnsupported(context) {
@@ -58,8 +62,8 @@ const HANDLERS = {
     const unsupported = sprintUnsupported(context)
     if (unsupported) throw unsupported
     if (filter.sprint === 'none') out.clauses.push('(sprint is EMPTY OR sprint not in openSprints())')
-    else if (filter.sprint !== 'current') out.clauses.push(`sprint = ${jqlString(filter.sprint)}`)
-    else if (activeId) out.clauses.push(`sprint = ${jqlString(activeId)}`)
+    else if (filter.sprint !== 'current') out.clauses.push(`sprint = ${sprintId(filter.sprint)}`)
+    else if (activeId) out.clauses.push(`sprint = ${sprintId(activeId)}`)
     else out.empty = true
     out.steps.add('sprint')
   },
