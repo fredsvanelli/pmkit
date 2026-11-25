@@ -97,7 +97,7 @@ test('the runbook names every command the test runs', () => {
   ]
   for (const command of commands) assert.ok(text.includes(`node scripts/pmkit.mjs ${command}\n`), command)
   assert.ok(text.includes('PMK-83') && text.includes('EPC-14') && text.includes('/pmkit:jira:product-discovery'))
-  assert.ok(text.includes('Live check (PMK-384') && text.includes('EPC-14'), 'the runbook records the live run and where the JPD checks wait')
+  assert.ok(text.includes('Live check (PMK-384'), 'the runbook records the live run')
 })
 
 test('the Jira Product Discovery flows, step by step', () => {
