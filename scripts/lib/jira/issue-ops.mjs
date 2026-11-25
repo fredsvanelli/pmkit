@@ -28,6 +28,7 @@ const STEPS = {
   text: (issue, filter) => [issue.title, issue.description].some((value) => lower(value).includes(lower(filter.text))),
   blocked: (issue, filter) => openBlocker(issue) === filter.blocked,
   sprint: (issue, filter) => issue.sprint === (filter.sprint === 'none' ? undefined : filter.sprint),
+  release: (issue, filter) => issue.release === filter.release || (issue.releases ?? []).includes(filter.release),
   updated: (issue, filter) =>
     (filter.updatedAfter === undefined || compareTimes(issue.updated, filter.updatedAfter) > 0) &&
     (filter.updatedBefore === undefined || compareTimes(issue.updated, filter.updatedBefore) < 0),

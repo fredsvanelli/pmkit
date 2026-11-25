@@ -473,6 +473,20 @@ test('a milestone value is NOT_SUPPORTED: Jira has no milestones', async () => {
   assert.deepEqual(fake.writes(), [])
 })
 
+// Jira's fixVersion = <id> also matches a version whose name is that id (PMK-373, seen live), so the search keeps only the release's own items.
+test('a release search leaves out the items of a version named like the release\'s id', async () => {
+  const { fake, tracker } = setup({ versions: [...VERSIONS, { id: '10203', name: '10200' }, { id: '10204', name: '3.0' }] })
+  const [own, alike, both] = [
+    seed(fake.state, 1, { fixVersions: [{ id: '10200' }] })[0],
+    seed(fake.state, 1, { fixVersions: [{ id: '10203' }] })[0],
+    seed(fake.state, 1, { fixVersions: [{ id: '10200' }, { id: '10204' }] })[0],
+  ]
+  assert.deepEqual((await tracker.searchIssues({ release: '2.0' })).issues.map((issue) => issue.id), [own, both])
+  assert.deepEqual((await tracker.searchIssues({ release: '3.0' })).issues.map((issue) => issue.id), [both])
+  assert.deepEqual((await tracker.searchIssues({ release: '10200' })).issues.map((issue) => issue.id), [alike])
+  assert.deepEqual((await tracker.searchIssues({ release: '2.0', limit: 1 })).issues.map((issue) => issue.id), [own])
+})
+
 test('searchIssues by release sends the version id in JQL; an unknown name returns no issues', async () => {
   const { fake, fetch, tracker } = setup({ versions: VERSIONS })
   const [inTwo, inA] = [seed(fake.state, 1, { fixVersions: [{ id: '10200' }] })[0], seed(fake.state, 1, { fixVersions: [{ id: '10201' }] })[0]]

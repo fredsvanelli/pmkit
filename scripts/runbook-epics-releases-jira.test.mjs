@@ -107,6 +107,8 @@ test('the runbook names every command the test runs', () => {
     'release list --json',
     'issues update ENG-2 --release 2.0 --json',
     'release issues 2.0 --json',
+    'release create 10100 --json',
+    'issues create --title-file tmp/title-2.txt --type feature --release 10100 --json',
     'release mark-released 2.0 --dry-run --json',
     'release mark-released 2.0 --json',
     'release create 3.0 --tag v3.0 --json',
@@ -122,6 +124,7 @@ test('the epic, status update and release flows, step by step', () => {
   write('epic-2.txt', 'Launch billing v2')
   write('epic.md', 'Bill every customer monthly.')
   write('title-1.txt', 'Send the first invoice')
+  write('title-2.txt', 'Send the yearly invoice')
   write('update.md', 'The payment provider is late.')
 
   // Capabilities
@@ -168,6 +171,10 @@ test('the epic, status update and release flows, step by step', () => {
   assert.deepEqual(release, { id: '2.0', name: '2.0', target: '2026-12-15', state: 'planned', description: '' })
   assert.deepEqual(body(pmkit(['release', 'list', '--json'])).map((item) => item.id), ['2.0'])
   assert.equal(body(pmkit(['issues', 'update', 'ENG-2', '--release', '2.0', '--json'])).after.release, '2.0')
+  assert.deepEqual(body(pmkit(['release', 'issues', '2.0', '--json'])).map((issue) => issue.id), ['ENG-2'])
+  // Jira's fixVersion = <id> also matches a version named like the id; the release still lists only its own items (PMK-373).
+  assert.equal(body(pmkit(['release', 'create', '10100', '--json'])).after.id, '10100')
+  assert.equal(body(pmkit(['issues', 'create', '--title-file', 'tmp/title-2.txt', '--type', 'feature', '--release', '10100', '--json'])).after.id, 'ENG-3')
   assert.deepEqual(body(pmkit(['release', 'issues', '2.0', '--json'])).map((issue) => issue.id), ['ENG-2'])
   const markDry = body(pmkit(['release', 'mark-released', '2.0', '--dry-run', '--json']))
   assert.equal(markDry.after.state, 'released')

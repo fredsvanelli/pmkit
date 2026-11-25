@@ -25,6 +25,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
   - `tmp/epic-2.txt`: `Launch billing v2`
   - `tmp/epic.md`: `Bill every customer monthly.`
   - `tmp/title-1.txt`: `Send the first invoice`
+  - `tmp/title-2.txt`: `Send the yearly invoice`
   - `tmp/update.md`: `The payment provider is late.`
 
 ## Capabilities
@@ -108,6 +109,16 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    ```
 
    Expect `after.release` `2.0` (Jira's fix version), and `ENG-2` in the release.
+
+   Jira matches a version filter by id or by name, so a release named like another version's id must not pull that version's items in. The test's Jira gives version `2.0` the id `10100`; make a release with that name and put a new work item in it:
+
+   ```
+   node scripts/pmkit.mjs release create 10100 --json
+   node scripts/pmkit.mjs issues create --title-file tmp/title-2.txt --type feature --release 10100 --json
+   node scripts/pmkit.mjs release issues 2.0 --json
+   ```
+
+   Expect `ENG-3` in release `10100`, and `release issues 2.0` still lists `ENG-2` alone.
 
 9. Mark the release released:
 

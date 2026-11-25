@@ -153,7 +153,7 @@ test('a sprint filter on a team-managed space with Sprints off names the Sprints
 
 test('release is the version id in JQL, and an unknown name matches nothing', async () => {
   const ctx = await context()
-  assert.deepEqual(translateFilter({ release: 'Release "A"' }, ctx, { versionId: '10201' }), { jql: `${SCOPE} AND fixVersion = "10201"${TAIL}`, clientSteps: [], serverLimit: undefined })
+  assert.deepEqual(translateFilter({ release: 'Release "A"' }, ctx, { versionId: '10201' }), { jql: `${SCOPE} AND fixVersion = "10201"${TAIL}`, clientSteps: ['release'], serverLimit: undefined })
   assert.deepEqual(translateFilter({ release: 'nope' }, ctx), { empty: true })
   assert.doesNotThrow(() => translateFilter({ sprint: undefined, release: undefined }, ctx))
 })
