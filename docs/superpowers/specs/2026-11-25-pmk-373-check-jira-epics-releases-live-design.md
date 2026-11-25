@@ -74,7 +74,7 @@ Test-first, in this PR.
 ### Docs
 
 - `docs/runbooks/epics-releases-jira.md`: the live-check line records the run, what passed and what was skipped; failure rows for the two `CONFLICT` cases; a step for the name-alike release filter (verified by `scripts/runbook-epics-releases-jira.test.mjs` on the fake); notes that Jira makes versions with the Releases feature off and keeps archived fix versions on any write.
-- PMK-79 design: no edit (history). No new ADR (the `CONFLICT` mapping and a client step are reversible). No new `CONTEXT.md` term.
+- PMK-79 design: no edit (history). No new ADR (the `CONFLICT` mapping and a client step are reversible). No new `CONTEXT.md` term; the Release entry says a Jira release name is unique in the space whatever its case, archived versions included (Interview Q4).
 
 ## Goals, non-goals, anti-goals
 
@@ -91,6 +91,15 @@ Test-first, in this PR.
 - **Q1. Releases on inside the test.** The rerunnable test turns Releases on when it finds it off and off again in `finally` (recommended: the run then sees `releases native` as a user with Releases on would, and leaves the board as found), or the test runs the release steps with the feature as found (Jira makes versions anyway) and the toggle stays a one-off by hand.
 - **Q2. PMK-398.** This PR settles it (the quoted id finds the version's items; the real gap is the name-alike, fixed here). Close PMK-398 as a duplicate of PMK-373 once this PR merges (recommended), or leave it open.
 - **Q3. Archived fix versions.** Jira keeps them on any write, so pmkit's re-sending of archived ids (`archivedVersionIds`) is redundant on this site. Keep it (recommended: company-managed is unchecked and the code is three lines), or delete it.
+
+## Interview
+
+Answered on 2026-11-25 by the coordinator; the design is approved.
+
+- Q1: yes. The live test turns Releases on when it finds it off and off again in `finally`.
+- Q2: yes. PMK-398 is linked as a duplicate of PMK-373 and closed (canceled) in this PR.
+- Q3: yes. pmkit keeps re-sending archived fix version ids; recorded only.
+- Q4: yes. `CONTEXT.md` Release gains the uniqueness rule; no new ADR. Release writes with Releases off stay ungated, recorded only.
 
 ## Left to the builder
 
