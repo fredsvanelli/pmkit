@@ -8,6 +8,8 @@
 // space, each answer checked against Jira's raw item, and deletes them.
 // Then the board features of a team-managed throwaway space (PMK-393), read-only: cycles, estimation and releases follow the
 // board's Sprints, Estimation and Releases features, and the real CLI's cycle list answers while Sprints is on.
+// Then the sprint flows (PMK-370): the real CLI opens, fills and closes sprints on the throwaway space's sprint board, each answer
+// checked against Jira's raw sprint and work items, and deletes every sprint and work item it made.
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -311,14 +313,24 @@ function liveRepo() {
   const repo = path.join(root, 'repo')
   fs.mkdirSync(repo)
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo })
-  const cli = (...args) => {
+  const exec = (...args) => {
     const result = spawnSync(process.execPath, [CLI, ...args, '--json'], { cwd: repo, env: { ...env, PMKIT_HOME: path.join(root, 'home') }, encoding: 'utf8' })
     assertNoSecret(`${result.stdout}${result.stderr}`)
+    return result
+  }
+  const cli = (...args) => {
+    const result = exec(...args)
     assert.equal(result.status, 0, hostless(`the CLI's ${args.slice(0, 2).join(' ')} exited ${result.status}: ${result.stdout.slice(0, 400)}`))
     const parsed = JSON.parse(result.stdout)
     return parsed.data ?? parsed
   }
-  return { root, repo, cli, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) }
+  /** The CLI's error answer to a run that must fail. */
+  const refused = (...args) => {
+    const result = exec(...args)
+    assert.notEqual(result.status, 0, `the CLI's ${args.slice(0, 2).join(' ')} succeeded`)
+    return JSON.parse(result.stdout).error
+  }
+  return { root, repo, cli, refused, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) }
 }
 
 const INIT = () => ['init', '--tracker', 'jira', '--git-host', 'none', '--site', SITE]
@@ -578,3 +590,113 @@ async function removeAll(jira, created, run, t) {
   t.diagnostic(left.length === 0 ? `deleted ${created.length} work items` : `left to delete by hand: ${left.join(', ')}`)
   return left
 }
+
+// Sprint flows (PMK-370). The CLI writes to the throwaway space only; every sprint and work item it makes is deleted in the finally,
+// and so is any sprint of the board the run finds that was not there before it (Jira can make one).
+const addDays = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10)
+
+test('sprint flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
+  const { jira, raw } = await discoverSpace(SPACE)
+  if (buildJiraCapabilities(raw, {}).find((entry) => entry.id === 'cycles').path !== 'native') return t.skip('the throwaway space has no sprints')
+  const board = raw.board.id
+  const boardSprints = async () => (await jira.paginate(`/rest/agile/1.0/board/${encodeURIComponent(board)}/sprint`, { query: { state: 'future,active,closed' }, key: 'values' })).items
+  const rawSprint = (id) => jira.request('GET', `/rest/agile/1.0/sprint/${encodeURIComponent(id)}`)
+  const rawItem = (key, fields, query = {}) => jira.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { fields, ...query } })
+  const before = new Set((await boardSprints()).map((sprint) => sprint.id))
+  const run = `pmkit${randomHex(4)}`
+  const today = new Date().toISOString().slice(0, 10)
+  const created = []
+  const made = (key) => {
+    created.push(key)
+    t.diagnostic(`created ${key}`)
+    return key
+  }
+  const { cli, refused, cleanup } = liveRepo()
+  let left = []
+  try {
+    const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
+    cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
+    const sprintField = cli('discover').fields.sprint?.id
+    assert.ok(sprintField, 'setup mapped no sprint field')
+
+    // AC 1: the dry run sends nothing; the real run creates the sprint and starts it.
+    const dry = cli('cycle', 'open', '--start', today, '--goal', run, '--name', `pmkit-live ${run}`, '--dry-run')
+    assert.deepEqual([dry.after.id, dry.after.state], [null, 'active'])
+    assert.deepEqual((await boardSprints()).filter((sprint) => !before.has(sprint.id)), [])
+    const first = cli('cycle', 'open', '--start', today, '--goal', run, '--name', `pmkit-live ${run}`).after
+    t.diagnostic(`created sprint ${first.id}`)
+    assert.deepEqual([first.state, first.start, first.end, first.goal], ['active', today, addDays(today, 13), run])
+    // AC 3: the dates reach Jira at 12:00 UTC exactly.
+    const opened = await rawSprint(first.id)
+    assert.deepEqual([opened.state, opened.startDate, opened.endDate, opened.originBoardId], ['active', `${today}T12:00:00.000Z`, `${addDays(today, 13)}T12:00:00.000Z`, board])
+    const second = cli('cycle', 'open', '--start', addDays(today, 14), '--name', `pmkit-live ${run} next`).after
+    t.diagnostic(`created sprint ${second.id}`)
+    assert.equal(second.state, 'planned')
+
+    // Two work items into the active sprint.
+    const a = made(cli('issues', 'create', '--title', `pmkit-live ${run} unfinished`, '--type', 'feature').after.id)
+    const b = made(cli('issues', 'create', '--title', `pmkit-live ${run} finished`, '--type', 'feature').after.id)
+    const added = cli('cycle', 'add', a, b, '--to', first.id)
+    assert.deepEqual(added.map((entry) => entry.after.sprint), [first.id, first.id])
+    assert.deepEqual((await rawItem(a, sprintField)).fields[sprintField].map((sprint) => sprint.id), [Number(first.id)])
+    await eventually(() => assert.deepEqual(cli('issues', 'list', '--sprint', 'current').issues.map((issue) => issue.id).sort(), [a, b].sort()))
+
+    // AC 6: the Sprint changelog item holds sprint ids, and pmkit reads it as a sprint event.
+    const histories = (await rawItem(a, 'summary', { expand: 'changelog' })).changelog.histories
+    const change = histories.flatMap((history) => history.items).find((item) => item.fieldId === sprintField)
+    assert.ok(change, 'no Sprint changelog item')
+    assert.deepEqual([change.from || null, change.to], [null, first.id])
+    const event = cli('issues', 'get', a, '--history').history.find((entry) => entry.field === 'sprint')
+    assert.deepEqual([event?.from, event?.to], [null, first.id])
+
+    // AC 5: Jira answers 204 to a subtask's move and does nothing; pmkit says so instead of reporting the move.
+    const types = await jira.request('GET', '/rest/api/3/issuetype/project', { query: { projectId: raw.space.id } })
+    const subtaskType = types.find((type) => type.hierarchyLevel === -1)
+    const parent = made(cli('issues', 'create', '--title', `pmkit-live ${run} parent`, '--type', 'feature').after.id)
+    const sub = made((await jira.request('POST', '/rest/api/3/issue', { body: { fields: { project: { key: SPACE }, issuetype: { id: subtaskType.id }, parent: { key: parent }, summary: `pmkit-live ${run} subtask` } } })).key)
+    const error = refused('cycle', 'add', sub, '--to', first.id)
+    assert.deepEqual([error.code, error.nextStep], ['CONFLICT', `pmkit cycle add ${parent} --to ${first.id}`])
+    assert.equal((await rawItem(sub, sprintField)).fields[sprintField], null)
+
+    // AC 1 and 2: close with A unfinished; the dry run sends nothing.
+    cli('issues', 'move', b, 'done')
+    const preview = cli('cycle', 'close', first.id, '--dry-run')
+    assert.deepEqual(preview.unfinished.map((issue) => issue.id), [a])
+    assert.equal((await rawSprint(first.id)).state, 'active')
+    const closed = cli('cycle', 'close', first.id)
+    assert.deepEqual([closed.sprint.state, typeof closed.sprint.closed, closed.unfinished.map((issue) => issue.id)], ['closed', 'string', [a]])
+    const done = await rawSprint(first.id)
+    assert.deepEqual([done.state, typeof done.completeDate], ['closed', 'string'])
+
+    // AC 2: A stays in the closed sprint only (not carried to the planned one), Jira's backlog shows it, and pmkit reads it as no sprint (ADR 0016).
+    assert.deepEqual((await rawItem(a, sprintField)).fields[sprintField].map((sprint) => [sprint.id, sprint.state]), [[Number(first.id), 'closed']])
+    // The board's backlog is a search too, so it trails the close.
+    await eventually(async () => {
+      const backlog = (await jira.paginate(`/rest/agile/1.0/board/${encodeURIComponent(board)}/backlog`, { query: { fields: 'summary' }, key: 'issues' })).items.map((item) => item.key)
+      assert.ok(backlog.includes(a), 'the board backlog does not show A')
+    })
+    await eventually(() => {
+      const ids = cli('issues', 'list', '--sprint', 'none').issues.map((issue) => issue.id)
+      assert.ok(ids.includes(a) && !ids.includes(b), '--sprint none does not list A alone of the two')
+    })
+    assert.equal(cli('issues', 'get', b).sprint, first.id)
+    assert.equal(cli('issues', 'get', a).sprint, undefined)
+
+    t.diagnostic(`sprints ${first.id} (opened active, closed) and ${second.id} (planned); dates at 12:00 UTC; unfinished item left in the closed sprint and shown in the backlog; subtask move refused CONFLICT`)
+  } finally {
+    cleanup()
+    left = await removeAll(jira, created, run, t)
+    for (const sprint of await boardSprints().catch(() => [])) {
+      if (before.has(sprint.id)) continue
+      try {
+        await jira.request('DELETE', `/rest/agile/1.0/sprint/${encodeURIComponent(sprint.id)}`)
+      } catch {
+        left.push(`sprint ${sprint.id}`)
+      }
+    }
+    const stray = (await boardSprints().catch(() => [{ id: 'unread' }])).filter((sprint) => !before.has(sprint.id))
+    left.push(...stray.map((sprint) => `sprint ${sprint.id}`).filter((name) => !left.includes(name)))
+    t.diagnostic(stray.length === 0 ? 'deleted the run\'s sprints' : `sprints left to delete by hand: ${stray.map((sprint) => sprint.id).join(', ')}`)
+  }
+  assert.deepEqual(left, [], 'work items or sprints left in the throwaway space')
+})
