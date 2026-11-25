@@ -2,7 +2,7 @@
 
 Reading Jira Product Discovery ideas and connecting one to an epic on a repository whose tracker is Jira Cloud (PMK-83): `jira ideas list` reads the ideas of a Jira Product Discovery project with their votes and delivery work, and `jira ideas connect <idea> <epic>` links an idea to an epic of the space with the delivery link type. The command `/pmkit:jira:product-discovery` walks this flow with the user. `scripts/runbook-product-discovery-jira.test.mjs` runs every step below with the real CLI and a stateful fake Jira in place of `fetch`, with the clock fixed at 2026-11-23 12:00 UTC (`PMKIT_NOW`), so `npm test` checks this runbook.
 
-Live check: skipped (no Jira credentials), see EPC-14. No step has run against a real site. A follow-up in EPC-14 settles the real shapes of the votes field and the delivery link type, and whether insights can be read at all (Jira's REST API does not return them).
+Live check (PMK-384, 2026-11-25): run on a Jira Cloud site without Jira Product Discovery installed (host kept out of the repository) with `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test --test-name-pattern "Product Discovery" scripts/lib/jira/client-live.mjs`. Step 10 passed live: `jira ideas list` (also with `--limit 1`) answers `available: false` with the hint, `--project <space>` answers `NOT_FOUND` with the hint, and `jira ideas connect` with two keys of the space answers `NOT_FOUND`. The run reworded the hint: such a site has no Jira Product Discovery to create a project in. Steps 2 to 8 need a site with Jira Product Discovery and were not run live (the test skips on such a site): the votes field's schema and the number search returns, the delivery link type's name and texts, and the epic in the idea's Delivery tab after a connect are the EPC-14 follow-up PMK-402. Insights stay unread: Jira's REST API does not return them.
 
 ## Before you start
 
@@ -120,7 +120,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
     node scripts/pmkit.mjs jira ideas list --json
     ```
 
-    Expect `available: false`, `reason: no_discovery_project`, `ideas: []` and `enableHint`: `Create a Jira Product Discovery project on acme.atlassian.net, or check that the token's owner can browse one`. The text output is one line, `Jira Product Discovery is not available on acme.atlassian.net:` and that hint. When the cached discovery has no Jira Product Discovery project (or not the one named, or not the idea's project or the delivery link type for a connect), pmkit reads Jira once more, so a project created since shows up.
+    Expect `available: false`, `reason: no_discovery_project`, `ideas: []` and `enableHint`: `Add Jira Product Discovery to acme.atlassian.net and create a project there, or check that the token's owner can browse one`. The text output is one line, `Jira Product Discovery is not available on acme.atlassian.net:` and that hint. When the cached discovery has no Jira Product Discovery project (or not the one named, or not the idea's project or the delivery link type for a connect), pmkit reads Jira once more, so a project created since shows up.
 
 ## Failures
 
@@ -132,4 +132,4 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
 | A `--project` that is not a Jira Product Discovery project, even on a site with none | `NOT_FOUND` | Pass one of the keys the error lists |
 | No delivery link type on the site | `NOT_SUPPORTED` | Check that Jira Product Discovery is installed and its `Polaris work item link` type exists |
 | The site's link types could not be read | `NOT_SUPPORTED` | Check that the token's owner can browse the link types, then run `pmkit discover` |
-| No Jira Product Discovery project (step 10) | none: `available: false`, exit 0 | Create a Jira Product Discovery project, or use a token whose owner can browse one |
+| No Jira Product Discovery project (step 10) | none: `available: false`, exit 0 | Add Jira Product Discovery to the site and create a project there, or use a token whose owner can browse one |

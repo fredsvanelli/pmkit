@@ -97,7 +97,7 @@ test('the runbook names every command the test runs', () => {
   ]
   for (const command of commands) assert.ok(text.includes(`node scripts/pmkit.mjs ${command}\n`), command)
   assert.ok(text.includes('PMK-83') && text.includes('EPC-14') && text.includes('/pmkit:jira:product-discovery'))
-  assert.ok(text.includes('Live check: skipped (no Jira credentials), see EPC-14'))
+  assert.ok(text.includes('Live check (PMK-384') && text.includes('PMK-402'), 'the runbook records the live run and its follow-up')
 })
 
 test('the Jira Product Discovery flows, step by step', () => {
@@ -162,7 +162,7 @@ test('a site without Jira Product Discovery answers available: false with the hi
   // Step 10, in a fresh repository: the cached discovery of the first one still names the IDEA project, and a cache that has a JPD project is not read again.
   const { pmkit } = session()
   const off = { PMKIT_FAKE_NO_DISCOVERY: '1' }
-  const hint = "Create a Jira Product Discovery project on acme.atlassian.net, or check that the token's owner can browse one"
+  const hint = "Add Jira Product Discovery to acme.atlassian.net and create a project there, or check that the token's owner can browse one"
   const offList = body(pmkit(['jira', 'ideas', 'list', '--json'], off))
   assert.deepEqual([offList.available, offList.reason, offList.enableHint, offList.ideas], [false, 'no_discovery_project', hint, []])
   assert.equal(pmkit(['jira', 'ideas', 'list'], off).stdout.trim(), `Jira Product Discovery is not available on acme.atlassian.net: ${hint}`)

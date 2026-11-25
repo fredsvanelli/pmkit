@@ -80,7 +80,7 @@ test('list answers available false when the site has no JPD project', async () =
   const { fetch, ideas } = await setup({ edit: (raw) => ({ ...raw, spaces: raw.spaces.filter((space) => space.type !== 'product_discovery') }) })
   const result = await ideas.list()
   assert.deepEqual(result, { available: false, reason: 'no_discovery_project', enableHint: IDEAS_HINT(SITE), site: SITE, ideas: [], hasMore: false })
-  assert.match(IDEAS_HINT(SITE), /acme\.atlassian\.net/)
+  assert.equal(IDEAS_HINT(SITE), "Add Jira Product Discovery to acme.atlassian.net and create a project there, or check that the token's owner can browse one")
   assert.equal(searches(fetch).length, 0)
 })
 
