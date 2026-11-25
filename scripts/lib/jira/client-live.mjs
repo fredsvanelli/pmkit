@@ -13,6 +13,8 @@
 // Then the epic, status update and release flows (PMK-373): the real CLI creates, reads, edits and moves an epic, publishes a status
 // update, and creates, fills and releases versions, each answer checked against Jira's raw answers. It turns the board's Releases
 // feature on when off and off again, and deletes every work item and version it made.
+// Then the time tracking flows (PMK-378): the real CLI logs time and reads the entries, history and metric events of a work item,
+// against Jira's raw worklogs, search and changelog, edits and deletes a worklog through the raw client, and deletes the work item.
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -880,4 +882,74 @@ test('epic, status update and release flows on the throwaway space', { skip: NEE
     if (toggled) t.diagnostic(left.includes('the Releases feature') ? 'Releases is still on: turn it off by hand' : 'turned Releases off again')
   }
   assert.deepEqual(left, [], 'work items, versions or the Releases feature left changed in the throwaway space')
+})
+
+// Time tracking flows (PMK-378). The CLI writes to the throwaway space only, and every work item it makes is deleted in the finally.
+test('time tracking flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
+  const jira = client()
+  if ((await jira.request('GET', '/rest/api/3/configuration')).timeTrackingEnabled !== true) return t.skip('the site has time tracking off')
+  const viewer = (await jira.session()).viewer.accountId
+  const run = `pmkit${randomHex(4)}`
+  const created = []
+  const { cli, refused, cleanup } = liveRepo()
+  let left = []
+  try {
+    const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
+    cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
+    assert.equal(cli('capabilities').capabilities.find((entry) => entry.id === 'time_tracking').path, 'native')
+    const x = cli('issues', 'create', '--title', `pmkit-live ${run} timed`, '--type', 'feature').after.id
+    created.push(x)
+    t.diagnostic(`created ${x}`)
+    const worklogPath = `/rest/api/3/issue/${encodeURIComponent(x)}/worklog`
+    const rawWorklogs = async (pageSize) => (await jira.paginate(worklogPath, { key: 'worklogs', pageSize })).items
+
+    // AC 1: the dry run sends nothing; each real run is a worklog of whole minutes by the viewer, started now.
+    assert.equal(cli('issues', 'log-time', x, '1h30', '--dry-run').minutes, 90)
+    assert.equal((await jira.request('GET', worklogPath)).total, 0)
+    const sent = Date.now()
+    assert.equal(cli('issues', 'log-time', x, '1h30').minutes, 90)
+    assert.equal(cli('issues', 'log-time', x, '45m').minutes, 45)
+    const logged = await rawWorklogs()
+    assert.deepEqual(logged.map((worklog) => [worklog.timeSpentSeconds, worklog.author.accountId]), [[5400, viewer], [2700, viewer]])
+    // Jira answers started in the token owner's zone (+hhmm); the instant is the one sent.
+    for (const worklog of logged) assert.ok(Math.abs(Date.parse(worklog.started.replace(/([+-]\d\d)(\d\d)$/, '$1:$2')) - sent) < 60_000, 'started is not now')
+    assert.equal(refused('issues', 'log-time', x, '0').code, 'INVALID_INPUT')
+    const listed = cli('issues', 'time-entries', x)
+    assert.deepEqual([listed.entries.map((entry) => [entry.minutes, entry.by]), listed.total, listed.totalTime, listed.byPerson.length], [[[90, viewer], [45, viewer]], 135, '2h15', 1])
+
+    // AC 1 and 2: GET worklog pages; a search carries 20 worklogs and the total, and the metric events read the rest.
+    for (let n = 0; n < 20; n += 1) await jira.request('POST', worklogPath, { body: { timeSpentSeconds: 60, started: new Date().toISOString().replace('Z', '+0000') } })
+    assert.equal((await rawWorklogs(5)).length, 22)
+    await eventually(async () => {
+      const { issues } = await jira.request('GET', '/rest/api/3/search/jql', { query: { jql: `key = ${x}`, fields: 'worklog' } })
+      const { worklog } = issues[0].fields
+      assert.deepEqual([worklog.maxResults, worklog.total, worklog.worklogs.length], [20, 22, 20])
+    })
+    assert.equal(cli('issues', 'time-entries', x).total, 155)
+    const today = new Date().toISOString().slice(0, 10)
+    await eventually(() => assert.equal(cli('events', '--since', today).filter((event) => event.issue === x && event.op === 'log_time').length, 22))
+
+    // AC 3: the time a worklog adds is its log_time event only.
+    const timeEvents = (history) => history.filter((event) => event.op === 'log_time').map((event) => event.minutes)
+    const counted = (history) => history.filter((event) => /^jira:(timespent|Worklog)/.test(String(event.field)))
+    let history = cli('issues', 'get', x, '--history').history
+    assert.equal(timeEvents(history).length, 22)
+    assert.deepEqual(counted(history), [])
+
+    // AC 5: a worklog edited or deleted in Jira writes no item shown as a jira: update.
+    const [, , edited, deleted] = await rawWorklogs()
+    await jira.request('PUT', `${worklogPath}/${encodeURIComponent(edited.id)}`, { body: { timeSpentSeconds: 1800 } })
+    await jira.request('DELETE', `${worklogPath}/${encodeURIComponent(deleted.id)}`)
+    const changelog = (await jira.paginate(`/rest/api/3/issue/${encodeURIComponent(x)}/changelog`, { key: 'values' })).items
+    assert.ok(changelog.some((entry) => entry.items.some((item) => item.field === 'WorklogTimeSpent')), 'the delete wrote no WorklogTimeSpent item')
+    history = cli('issues', 'get', x, '--history').history
+    assert.deepEqual([timeEvents(history).length, timeEvents(history).filter((minutes) => minutes === 30).length], [21, 1])
+    assert.deepEqual(counted(history), [])
+
+    t.diagnostic('worklogs logged, paged and capped at 20 in a search; metric events read all 22; edit and delete add no jira: update')
+  } finally {
+    cleanup()
+    left = await removeAll(jira, created, run, t)
+  }
+  assert.deepEqual(left, [], 'work items left in the throwaway space')
 })
