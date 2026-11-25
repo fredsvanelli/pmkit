@@ -165,6 +165,17 @@ test('the time a worklog adds is no event of the changelog, so it is not counted
   assert.equal((await one({ field: 'timeestimate', fieldId: 'timeestimate', from: '3600', to: '900' })).field, 'jira:timeestimate')
 })
 
+test('a worklog deleted in Jira writes WorklogTimeSpent, which is no event either (PMK-378)', async () => {
+  // The items the live site writes, in its order, when a worklog of 1800 seconds is deleted.
+  const events = toEvents(ITEM, [history([
+    { field: 'timespent', fieldId: 'timespent', from: '7200', fromString: '7200', to: '5400', toString: '5400' },
+    { field: 'timeestimate', fieldId: 'timeestimate', from: '0', fromString: '0', to: '1800', toString: '1800' },
+    { field: 'WorklogTimeSpent', from: '1800', fromString: '1800', to: null, toString: null },
+    { field: 'WorklogId', from: '10001', fromString: '10001', to: null, toString: null },
+  ])], await context())
+  assert.deepEqual(events.slice(1).map((event) => event.field), ['jira:timeestimate'])
+})
+
 test('the worklogs join the events as log_time events, sorted by time (PMK-80)', async () => {
   const worklogs = [{ id: '1', author: { accountId: 'acc-2' }, started: '2026-11-21T09:00:00.000+0000', timeSpentSeconds: 600 }]
   const events = toEvents(ITEM, [], await context(), [], worklogs)
