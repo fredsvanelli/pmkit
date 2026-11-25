@@ -6,11 +6,11 @@ status: in_review
 priority: low
 assignee: fred
 parent: EPC-14
-related: [PMK-80]
+related: [PMK-80, PMK-400, PMK-401]
 milestone: jira
 branch: fredsvanelli/pmk-378-check-jira
 created: 2026-11-23T05:37:43.860Z
-updated: 2026-11-25T04:01:52Z
+updated: 2026-11-25T04:23:17Z
 ---
 
 ## Description
