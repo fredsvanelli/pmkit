@@ -443,7 +443,10 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     [`POST ${API}/version`]({ body }) {
       if (typeof body?.name !== 'string' || !body.name.trim()) refuse(400, { name: 'The version name is required.' })
       if (String(body.projectId) !== SPACE.id) refuse(400, { projectId: 'Specify a valid project ID.' })
-      if (state.versions.some((version) => version.name === body.name)) refuse(400, { name: 'A version with this name already exists in this project.' })
+      // As on the site, a name is taken in any case, and an archived version's name cannot be reused.
+      const taken = state.versions.find((version) => version.name.toLowerCase() === body.name.toLowerCase())
+      if (taken?.archived) refuse(400, { name: 'You cannot add a version that has been archived. If you need to use this version, you must unarchive it first.' })
+      if (taken) refuse(400, { name: 'A version with this name already exists in this project.' })
       const { description, releaseDate } = body
       const version = { id: String(state.next.version++), name: body.name, ...(description ? { description } : {}), released: body.released === true, archived: body.archived === true, ...(releaseDate ? { releaseDate } : {}), projectId: SPACE.id }
       state.versions.push(version)

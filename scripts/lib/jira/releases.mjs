@@ -92,8 +92,11 @@ export function releaseOperations({ client, ops, getContext, now = () => new Dat
     if (!blank(input.name) && input.name !== id) throw invalid('a Jira version has one name, its id', 'Pass only the id, which becomes the name')
     if (!blank(input.target) && !validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD')
     if (!blank(input.description) && typeof input.description !== 'string') throw invalid('description must be a string')
-    if ((await versions()).some((version) => version.name === id)) throw new PmkitError('CONFLICT', `release ${id} already exists`, `pmkit release get ${id}`)
+    // Jira holds a version name once per space whatever its case, archived versions included (PMK-373, seen live).
     const context = await getContext()
+    const taken = (await readVersions(client, context.space)).find((version) => version.name.toLowerCase() === id.toLowerCase())
+    if (taken?.archived) throw new PmkitError('CONFLICT', `release ${id} is taken by archived version ${taken.name}`, `Unarchive or rename version ${taken.name} in Jira`)
+    if (taken) throw new PmkitError('CONFLICT', taken.name === id ? `release ${id} already exists` : `release ${id} is taken by version ${taken.name}, which differs only in case`, `pmkit release get ${taken.name}`)
     const body = { name: id, projectId: context.raw.space.id, ...(blank(input.description) ? {} : { description: input.description }), ...(blank(input.target) ? {} : { releaseDate: input.target }) }
     if (dryRun) return { before: null, after: toRelease({ ...body, released: false }) }
     return { before: null, after: toRelease(await client.request('POST', `${API}/version`, { body })) }

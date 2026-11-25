@@ -151,6 +151,8 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 | `epic create --start` in a space without a Start date field | `NOT_SUPPORTED` | `/pmkit:setup` |
 | `epic create --goal`, `epic goal` | `NOT_SUPPORTED` | Jira goals live in Atlassian Home, which pmkit does not read |
 | `release create --tag`, `release mark-released --tag` (step 10) | `INVALID_INPUT` | `Drop --tag on Jira` |
-| `release create` with a name the space already has | `CONFLICT` | `pmkit release list` |
+| `release create` with a name the space already has | `CONFLICT` | `pmkit release get <name>` |
+| `release create` with a name a version holds in another case (Jira keeps a name once whatever its case) | `CONFLICT` | `pmkit release get <that version>` |
+| `release create` with the name of an archived version, in any case (Jira does not reuse it) | `CONFLICT` | `Unarchive or rename version <name> in Jira` |
 | `issues update --release` with an unknown version | `INVALID_INPUT` | `pmkit release list` |
 | `milestone create`, `issues update --milestone` (step 10) | `NOT_SUPPORTED` | `Use a release (version) or an epic` |
