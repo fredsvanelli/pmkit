@@ -57,9 +57,14 @@ A.
 
 `scripts/runbook-plans-jira.test.mjs` on the fake, then the new live test (`PMKIT_LIVE=1 ... node --test --test-name-pattern plans scripts/lib/jira/client-live.mjs`).
 
-## Open questions for the owner
+## Interview
 
-- **Q1.** The site is on Jira Free, so ACs 1, 2 and 4 are skipped and left open in the PR, with one EPC-14 follow-up to run them on a Premium site (recommended), rather than a Premium trial on the owner's site. Yes?
+Answered on 2026-11-25 by the coordinator; the design is approved.
+
+- Q1: yes. ACs 1, 2 and 4, and AC 3's Premium site with a token owner lacking Administer Jira, are skipped and open in the PR, with one EPC-14 follow-up to run them on a Premium site. No Premium trial on the owner's site, and no unverified Premium test code now.
+- Q2: yes. AC 3's "Standard site" is recorded as checked on a Free site (also not Premium, same 403); a Standard site is not checked on its own.
+- Q3: yes. The two PMK-378 leftovers are filed as EPC-14 follow-ups now.
+- Q4: yes. No `CONTEXT.md` term (Plan and Scenario are there) and no ADR.
 
 ## Left to the builder
 
