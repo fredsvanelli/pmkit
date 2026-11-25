@@ -2,12 +2,14 @@
 id: PMK-370
 title: Check the Jira sprint flows against a live site
 type: chore
-status: backlog
+status: in_progress
 priority: low
+assignee: fred
 parent: EPC-14
 milestone: jira
+branch: fredsvanelli/pmk-370-check-jira
 created: 2026-11-23T02:44:34.393Z
-updated: 2026-11-23T02:44:34Z
+updated: 2026-11-25T00:24:49Z
 ---
 
 ## Description
