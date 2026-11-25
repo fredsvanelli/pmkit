@@ -964,8 +964,9 @@ test('time tracking flows on the throwaway space', { skip: NEEDS_SPACE }, async 
 test('jira plans answer available false on a site without Premium', { skip: NEEDS_SPACE }, async (t) => {
   const jira = client()
   const { applications = [] } = await jira.request('GET', '/rest/api/3/instance/license')
-  const edition = applications.find((app) => app.id === 'jira-software')?.plan ?? 'unlicensed'
-  if (['PREMIUM', 'ENTERPRISE'].includes(edition)) return t.skip(`the site is on Jira ${edition}: the Premium checks are an EPC-14 follow-up`)
+  const edition = applications.find((app) => app.id === 'jira-software')?.plan
+  // Only an edition known to lack Plans can show the off path: on any other a 403 could be a missing permission on Premium.
+  if (!['FREE', 'STANDARD'].includes(edition)) return t.skip(`the site's Jira edition is ${edition ?? 'unknown'}: the Premium checks are the EPC-14 follow-up PMK-399`)
   const refusal = await failure(jira.request('GET', '/rest/api/3/plans/plan'))
   assert.deepEqual([refusal.code, refusal.details?.jira?.status], ['AUTH', 403])
 

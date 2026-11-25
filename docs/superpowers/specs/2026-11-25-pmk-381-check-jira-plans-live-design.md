@@ -35,7 +35,7 @@ A.
 
 ## Design (approach A)
 
-- `test('plans on a site without Premium', { skip: NEEDS_SPACE })` in `client-live.mjs`, read-only, nothing to clean up but the temporary repository. Steps: raw license plan; skip when it is `PREMIUM` or `ENTERPRISE`; raw `GET plans/plan` fails `AUTH` with status 403; CLI `jira plans list` and `jira plans get 1` (`--json`) answer `available: false`, `reason: premium`, `enableHint` = `PLANS_HINT`, and the list `plans: []`, `hasMore: false`; `jira plans get abc` is `INVALID_INPUT`. Output prints the license plan and the codes only; `assertNoSecret`, `scrub` and `hostless` cover every answer.
+- `test('plans on a site without Premium', { skip: NEEDS_SPACE })` in `client-live.mjs`, read-only, nothing to clean up but the temporary repository. Steps: raw license plan; skip unless it is `FREE` or `STANDARD` (final review: an unknown edition could be Premium); raw `GET plans/plan` fails `AUTH` with status 403; CLI `jira plans list` and `jira plans get 1` (`--json`) answer `available: false`, `reason: premium`, `enableHint` = `PLANS_HINT`, and the list `plans: []`, `hasMore: false`; `jira plans get abc` is `INVALID_INPUT`. Output prints the license plan and the codes only; `assertNoSecret`, `scrub` and `hostless` cover every answer.
 - Test-first: the test is written and run before any other change; it is a characterisation of code that already behaves, so it passes on its first live run unless the site disagrees. No product code changes unless the run finds a difference.
 - `docs/runbooks/plans-jira.md`: the "Live check" line records the run, what passed and what is skipped, and that Jira's 403 on a non-Premium site names the permission even for an admin.
 - The header comment of `client-live.mjs` names PMK-381.
@@ -55,7 +55,7 @@ A.
 
 ## Check (SPEC-SS C)
 
-`scripts/runbook-plans-jira.test.mjs` on the fake, then the new live test (`PMKIT_LIVE=1 ... node --test --test-name-pattern plans scripts/lib/jira/client-live.mjs`).
+`scripts/runbook-plans-jira.test.mjs` on the fake, then the new live test (`PMKIT_LIVE=1 ... node --test --test-name-pattern Premium scripts/lib/jira/client-live.mjs`).
 
 ## Interview
 
