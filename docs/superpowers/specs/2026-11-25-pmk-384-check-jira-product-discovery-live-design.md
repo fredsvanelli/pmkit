@@ -43,6 +43,7 @@ A now; B depends on the owner's answer.
 - Test-first: the test is written and run before any other change; it characterises code that already behaves, so it passes on its first live run unless the site disagrees. No product code changes unless the run finds a difference.
 - `docs/runbooks/product-discovery-jira.md`: the "Live check" line records the run, what passed and what is skipped.
 - The header comment of `client-live.mjs` names PMK-384.
+- `IDEAS_HINT` (Q3) becomes `Add Jira Product Discovery to <site> and create a project there, or check that the token's owner can browse one`, so it also covers a site without Jira Product Discovery installed, as the owner's site is. Test-first: `ideas.test.mjs` and `runbook-product-discovery-jira.test.mjs` assert the new text before `ideas.mjs` changes; the runbook's step 10 and its Failures row follow.
 - No `CONTEXT.md` term, no ADR: nothing here is hard to reverse.
 
 ## Follow-ups (EPC-14)
@@ -58,6 +59,15 @@ A now; B depends on the owner's answer.
 ## Check (SPEC-SS C)
 
 `scripts/runbook-product-discovery-jira.test.mjs` on the fake, then the new live test (`PMKIT_LIVE=1 ... node --test --test-name-pattern "Product Discovery" scripts/lib/jira/client-live.mjs`).
+
+## Interview
+
+Answered on 2026-11-25 by the coordinator; the design is approved. ACs 1 and 2 wait on the owner's answer (approach A or B).
+
+- Q1: yes, if the owner picks A: ACs 1 and 2 go to one new EPC-14 follow-up linked to PMK-384.
+- Q2: yes. The connect check passes two Kudos keys with `--dry-run` and expects `NOT_FOUND` (not an idea) before any write; no item needs to exist.
+- Q3: no. Reword the hint so it also covers a site without Jira Product Discovery installed, test-first (see Design).
+- Q4: yes. No `CONTEXT.md` term (Idea, Insight and Vote are there) and no ADR.
 
 ## Left to the builder
 
