@@ -26,6 +26,9 @@ const stateFile = ${JSON.stringify(path.join(dir, 'state.json'))}
 const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : undefined
 const fake = fakeJiraIssues(state ? { state } : {})
 const routes = { ...fake.routes }
+// As on a live site (PMK-373), Jira's statuses list is not in workflow order: here every type lists To Do last.
+const statuses = 'GET /rest/api/3/project/ENG/statuses'
+routes[statuses] = { json: routes[statuses].json.map((type) => ({ ...type, statuses: [...type.statuses.filter((status) => status.statusCategory.key !== 'new'), ...type.statuses.filter((status) => status.statusCategory.key === 'new')] })) }
 if (process.env.PMKIT_FAKE_NO_EPIC) {
   for (const key of ['GET /rest/api/3/project/ENG', 'GET /rest/api/3/project/ENG/statuses']) {
     const json = structuredClone(routes[key].json)
@@ -137,7 +140,7 @@ test('the epic, status update and release flows, step by step', () => {
   // Create an epic: a dry run, then the real one
   const create = ['epic', 'create', '--title-file', 'tmp/epic.txt', '--start', '2026-11-23', '--target', '2026-12-31', '--description-file', 'tmp/epic.md']
   const dry = body(pmkit([...create, '--dry-run', '--json']))
-  assert.equal(dry.after.id, null)
+  assert.deepEqual([dry.after.id, dry.after.status], [null, { name: 'To Do', category: 'todo' }])
   assert.deepEqual(body(pmkit(['epic', 'list', '--json'])), [])
   const epic = body(pmkit([...create, '--json'])).after
   assert.equal(epic.id, 'ENG-1')
