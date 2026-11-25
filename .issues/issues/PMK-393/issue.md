@@ -7,11 +7,11 @@ priority: high
 estimate: 3
 assignee: fred
 parent: EPC-14
-related: [PMK-366]
+related: [PMK-366, PMK-396]
 milestone: jira
 branch: fredsvanelli/pmk-393-team-managed
 created: 2026-11-24T18:53:31.447Z
-updated: 2026-11-24T22:45:01Z
+updated: 2026-11-24T23:59:59Z
 ---
 
 ## Description
