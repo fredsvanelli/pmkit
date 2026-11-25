@@ -89,3 +89,11 @@ Test-first, in this PR.
 ## Left to the builder
 
 Assertion wording, the retry interval, names of work items, and how the worklogs of step 5 are written.
+
+## Interview
+
+Answered on 2026-11-25 by the coordinator; the design is approved.
+
+- Q1: pending with the owner (a site-wide change). Everything else goes ahead; steps 8 and 9 of the live test (AC 4 and 6) wait for the owner's answer.
+- Q2: yes. `timeestimate` stays a `jira:timeestimate` update; the fake writes it with each worklog and the runbook notes it.
+- No new `CONTEXT.md` term (Time entry already covers worklogs) and no ADR.
