@@ -2,7 +2,7 @@
 id: PMK-381
 title: Check the Jira plans flows against a live site
 type: chore
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-14
@@ -10,7 +10,7 @@ related: [PMK-82, PMK-399]
 milestone: jira
 branch: fredsvanelli/pmk-381-check-jira
 created: 2026-11-23T16:11:26.811Z
-updated: 2026-11-25T04:23:13Z
+updated: 2026-11-25T05:09:29Z
 ---
 
 ## Description
