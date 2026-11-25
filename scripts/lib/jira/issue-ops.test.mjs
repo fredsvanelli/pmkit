@@ -518,3 +518,16 @@ test('updateIssue refuses a sprint move Jira ignores: a subtask stays out, a nor
   // Out to the backlog, a done item reads its last closed sprint again (ADR 0016): not a move Jira ignored.
   assert.equal((await tracker.updateIssue(parent, { sprint: null }, ME)).after.sprint, '1')
 })
+
+test('an update that writes fields and then has its sprint move ignored says the fields were written', async () => {
+  const { fake, tracker } = setup({ sprints: [SPRINT] })
+  const [parent] = seed(fake.state, 1)
+  const [sub] = seed(fake.state, 1, { issuetype: { id: '10003', name: 'Sub-task' }, parent: { key: parent } })
+  await assert.rejects(tracker.updateIssue(sub, { title: 'Renamed', sprint: '1' }, ME), (error) => {
+    assert.equal(error.code, 'CONFLICT')
+    assert.match(error.message, new RegExp(`^Jira updated ${sub}, but did not move it to sprint 1: Jira keeps a subtask in its parent's sprint`))
+    assert.equal(error.nextStep, `pmkit cycle add ${parent} --to 1`)
+    return true
+  })
+  assert.equal((await tracker.getIssue(sub)).title, 'Renamed')
+})

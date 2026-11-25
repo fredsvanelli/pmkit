@@ -660,8 +660,8 @@ test('sprint flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => 
 
     // AC 1 and 2: close with A unfinished; the dry run sends nothing.
     cli('issues', 'move', b, 'done')
-    const preview = cli('cycle', 'close', first.id, '--dry-run')
-    assert.deepEqual(preview.unfinished.map((issue) => issue.id), [a])
+    // The unfinished list is a search, which trails B's move to done; the dry run can be retried, the close cannot.
+    await eventually(() => assert.deepEqual(cli('cycle', 'close', first.id, '--dry-run').unfinished.map((issue) => issue.id), [a]))
     assert.equal((await rawSprint(first.id)).state, 'active')
     const closed = cli('cycle', 'close', first.id)
     assert.deepEqual([closed.sprint.state, typeof closed.sprint.closed, closed.unfinished.map((issue) => issue.id)], ['closed', 'string', [a]])

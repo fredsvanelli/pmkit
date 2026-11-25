@@ -244,10 +244,12 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     // Jira answers 204 to a move it ignores, as for a subtask (PMK-370). A move to none is not checked: a done item then reads its last closed sprint (ADR 0016).
     if (plan.sprint && plan.sprint.to !== null && after.sprint !== plan.sprint.to) {
       const to = plan.sprint.to
+      // A write before the move went through, so the message says so, as the other partial writes here do.
+      const head = changed || plan.property ? `Jira updated ${before.id}, but did not move it to sprint ${to}` : `Jira did not move ${before.id} to sprint ${to}`
       if (item.fields.issuetype?.subtask === true && before.parent) {
-        throw new PmkitError('CONFLICT', `Jira did not move ${before.id} to sprint ${to}: Jira keeps a subtask in its parent's sprint`, `pmkit cycle add ${before.parent} --to ${to}`)
+        throw new PmkitError('CONFLICT', `${head}: Jira keeps a subtask in its parent's sprint`, `pmkit cycle add ${before.parent} --to ${to}`)
       }
-      throw new PmkitError('CONFLICT', `Jira did not move ${before.id} to sprint ${to}`, `Check ${before.id} on the sprint board in Jira`)
+      throw new PmkitError('CONFLICT', head, `Check ${before.id} on the sprint board in Jira`)
     }
     return { before, after }
   }
