@@ -104,3 +104,20 @@ Answered on 2026-11-24 by the coordinator; the design is approved.
 ## Left to the builder
 
 Assertion wording, the retry interval, the sprint names, and how the subtask is recognized (the work type's `subtask` flag or hierarchy level).
+
+## Result
+
+Run on 2026-11-24 against the owner's Jira Cloud site (host kept out of the repository, the PR and the issue), space Kudos: `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0, 14 pass, 3 skip (scoped token, company-managed space, limited token: as before). No output held the token, the email or the host. Kudos after the run: no work item, no sprint, features as found (Backlog, Sprints, Estimation on; Releases off).
+
+| Check | AC | Result |
+|---|---|---|
+| `cycle open --dry-run` sends nothing; `cycle open` creates and starts the sprint (`active`, end start + 13); a second `cycle open` is `planned`; `cycle close` completes it (`closed`, `completeDate`) | 1 | pass |
+| `issues list --sprint current` and `--sprint <id>` | 1 | **fail, then pass after the fix**: the filter sent `sprint = "<id>"`, which Jira reads as a sprint name, so nothing matched. The id now goes unquoted; the fake reads a quoted value as a name, as the site does |
+| A REST close with an item unfinished and a planned sprint waiting: the item keeps only the closed sprint, Jira's backlog lists it, `--sprint none` lists it, the done item keeps the closed sprint | 2 | pass: ADR 0016 holds (consequence line added) |
+| Dates at 12:00 UTC exactly (`startDate`, `endDate`) | 3 | pass on the API. The UI renders them in the viewer's profile zone: 23:00 the same day in the owner's zone (UTC+11). UI look not done (Interview Q3), open in the PR |
+| A cross-project Scrum board (saved filter `project = KAN`) with a sprint holding a Kudos item (owner's yes to Q1; one-off probe, filter, board, sprint and item deleted and checked gone) | 4 | board 1's sprint list never shows its sprints (future or active); `cycle list` leaves it out; `issues get` reads no sprint; `cycle add --to <its id>` is `INVALID_INPUT`. **Bug, fixed**: Jira lists that board under the space, discovery took the first Scrum board, read its features, got 400 and `discover` failed; a team-managed space now reads the board located in it (rechecked live). **Open**: `--sprint none` leaves such an item out (`openSprints()` covers every board), PMK-397 |
+| A subtask's move | 5 | **bug, fixed**: Jira answers 204 and does nothing; `cycle add` reported the move. Now `CONFLICT` naming the parent (live: refused, the subtask's Sprint field stays empty). An item the board filter hides cannot exist on a team-managed space (its filter is the whole space); company-managed skipped (owner's decision), open in the PR |
+| The Sprint changelog item: `fieldId` the sprint field, `from` empty, `to` the id; `issues get --history` has `sprint null -> <id>` | 6 | pass |
+| PMK-364, PMK-366, PMK-367, PMK-368 and PMK-393 checks, rerun | — | pass |
+
+Follow-ups in EPC-14: PMK-397 (`--sprint none` and another board's open sprint), PMK-398 (the release filter quotes the version id the same way; Releases is off on this site).
