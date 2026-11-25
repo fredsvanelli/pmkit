@@ -30,6 +30,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import nodeTest from 'node:test'
 import { isPmkitError } from '../errors.mjs'
+import { addDays } from '../local/sprints.mjs'
 import { createJiraClient } from './client.mjs'
 import { jiraCredential } from './credential.mjs'
 import { categoryOfStatus, discoveryView, fetchDiscovery } from './discovery.mjs'
@@ -593,8 +594,6 @@ async function removeAll(jira, created, run, t) {
 
 // Sprint flows (PMK-370). The CLI writes to the throwaway space only; every sprint and work item it makes is deleted in the finally,
 // and so is any sprint of the board the run finds that was not there before it (Jira can make one).
-const addDays = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10)
-
 test('sprint flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
   const { jira, raw } = await discoverSpace(SPACE)
   if (buildJiraCapabilities(raw, {}).find((entry) => entry.id === 'cycles').path !== 'native') return t.skip('the throwaway space has no sprints')
