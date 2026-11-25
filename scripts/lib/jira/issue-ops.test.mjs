@@ -2,7 +2,7 @@
 // the stateful fake Jira, through the tracker that gives them their context.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FAKE_ENV, TRACKER, fakeJiraFetch } from '../../fake-jira-api.mjs'
+import { FAKE_ENV, TRACKER, fakeJiraFetch, jiraSiteRoutes } from '../../fake-jira-api.mjs'
 import { fakeJiraIssues } from '../../fake-jira-issues.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { createJiraTracker } from './tracker.mjs'
@@ -412,6 +412,19 @@ test('updateIssue whose sprint move fails after the field write is UPSTREAM with
   const { fake, tracker } = setup({ sprints: [SPRINT], routes: { 'POST /rest/agile/1.0/sprint/1/issue': { status: 500, json: {} } } })
   const [key] = seed(fake.state)
   await assert.rejects(tracker.updateIssue(key, { sprint: '1', title: 'Renamed' }, ME), (error) => error.code === 'UPSTREAM' && error.message.startsWith('Jira updated ENG-1, but moving it to sprint 1 failed') && error.nextStep === 'pmkit cycle add ENG-1 --to 1')
+})
+
+// Jira's statuses list is not in workflow order: Kudos lists an in-progress status first (PMK-373, seen live).
+const doingFirst = () => {
+  const route = jiraSiteRoutes()['GET /rest/api/3/project/ENG/statuses']
+  const json = route.json.map((type) => ({ ...type, statuses: [...type.statuses.filter((status) => status.statusCategory.key !== 'new'), ...type.statuses.filter((status) => status.statusCategory.key === 'new')] }))
+  return { 'GET /rest/api/3/project/ENG/statuses': { json } }
+}
+
+test('an issue create dry run starts in the first To Do status, whatever the order of Jira\'s statuses list', async () => {
+  const { tracker } = setup({ routes: doingFirst() })
+  const dry = await tracker.createIssue({ title: 'First' }, ME, { dryRun: true })
+  assert.deepEqual(dry.after.status, { name: 'To Do', category: 'todo' })
 })
 
 test('the string none is not a sprint value in a write', async () => {
