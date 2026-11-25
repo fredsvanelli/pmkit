@@ -16,8 +16,8 @@
 // Then the time tracking flows (PMK-378): the real CLI logs time and reads the entries, history and metric events of a work item,
 // against Jira's raw worklogs, search and changelog, edits and deletes a worklog through the raw client, and deletes the work item.
 // Then the plans flows (PMK-381), read-only: on a site without Jira Premium, the raw Plans read answers 403 and the real CLI's
-// jira plans list and get answer available false with the hint; on a Premium site the test skips (the Premium checks are an
-// EPC-14 follow-up).
+// jira plans list and get answer available false with the hint; on any edition but Free or Standard the test skips (the Premium
+// checks are the EPC-14 follow-up PMK-399).
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
