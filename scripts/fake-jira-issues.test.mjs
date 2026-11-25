@@ -34,7 +34,7 @@ test('create answers ENG-1 in To Do and the item reads back with its fields', as
   assert.equal(item.key, 'ENG-1')
   assert.equal(item.fields.summary, 'First')
   assert.deepEqual(item.fields.status, { id: '1', name: 'To Do', statusCategory: { key: 'new' } })
-  assert.deepEqual(item.fields.issuetype, { id: '10001', name: 'Story' })
+  assert.deepEqual(item.fields.issuetype, { id: '10001', name: 'Story', subtask: false })
   assert.deepEqual(item.fields.priority, { id: '2', name: 'High' })
   assert.deepEqual(item.fields.assignee, { accountId: 'acc-2', displayName: 'Second User' })
   assert.deepEqual(item.fields.labels, ['x'])

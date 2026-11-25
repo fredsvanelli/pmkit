@@ -350,7 +350,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   /** The item as a read returns it; `propertyKeys` limits the properties (all when undefined). */
   function render(item, propertyKeys) {
     const logged = state.worklogs[item.key] ?? []
-    const fields = { ...item.fields, worklog: { startAt: 0, maxResults: 20, total: logged.length, worklogs: structuredClone(logged.slice(0, 20)) }, fixVersions: (item.fields.fixVersions ?? []).map((entry) => versionField(versionOf(entry.id))), subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
+    const fields = { ...item.fields, issuetype: { ...item.fields.issuetype, subtask: isSubtaskType(item) }, worklog: { startAt: 0, maxResults: 20, total: logged.length, worklogs: structuredClone(logged.slice(0, 20)) }, fixVersions: (item.fields.fixVersions ?? []).map((entry) => versionField(versionOf(entry.id))), subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
     if (item.sprintIds?.length) fields[SPRINT_FIELD] = item.sprintIds.map((id) => sprintField(sprintOf(id)))
     else fields[SPRINT_FIELD] = null
     const read = structuredClone({ id: item.id, key: item.key, fields })
@@ -380,6 +380,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     if (issues.length === 0) refuse(400, {}, ['issues must name at least one work item.'])
     if (target?.state === 'closed') refuse(400, {}, ['Cannot add issues to a closed sprint.'])
     for (const item of issues) {
+      // ponytail: the site answers 204 and leaves a subtask alone (it then shows the parent's sprint); the fake leaves it empty
+      if (isSubtaskType(item)) continue
       const before = item.sprintIds ?? []
       const after = [...before.filter((id) => sprintOf(id).state === 'closed'), ...(target ? [target.id] : [])]
       if (after.join() === before.join()) continue

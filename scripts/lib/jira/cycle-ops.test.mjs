@@ -161,3 +161,16 @@ test('moveToCycle reads the board sprints once for every issue it moves', async 
   assert.equal(reads() - start, 1)
   assert.equal((await tracker.updateIssue(a, { sprint: 'current' }, ME)).after.sprint, '1')
 })
+
+test('moveToCycle stops at a subtask Jira does not move and names the items moved', async () => {
+  const { fake, tracker } = setup({ sprints: [ACTIVE] })
+  const a = (await tracker.createIssue({ title: 'A' }, ME)).after.id
+  const b = (await tracker.createIssue({ title: 'B' }, ME)).after.id
+  fake.state.items[b].fields.issuetype = { id: '10003', name: 'Sub-task' }
+  fake.state.items[b].fields.parent = { key: a }
+  await assert.rejects(tracker.moveToCycle([a, b], '1', ME), (error) => {
+    assert.equal(error.code, 'CONFLICT')
+    assert.deepEqual(error.details.moved, [a])
+    return true
+  })
+})

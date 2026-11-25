@@ -500,3 +500,21 @@ test('searchIssues leaves an epic out, even one in a sprint, and getIssue still 
   assert.deepEqual((await tracker.searchIssues({ sprint: '1' })).issues.map((issue) => issue.id), [story])
   assert.equal((await tracker.getIssue(epic)).id, epic)
 })
+
+// Jira answers 204 to a subtask's sprint move and changes nothing: a subtask stays in its parent's sprint (PMK-370, seen live).
+test('updateIssue refuses a sprint move Jira ignores: a subtask stays out, a normal item and a move to none pass', async () => {
+  const { fake, tracker } = setup({ requireResolution: false, sprints: [{ ...SPRINT, state: 'closed', completeDate: '2026-11-20T12:00:00.000Z' }, { id: 2, state: 'active', name: 'Sprint 2', startDate: '2026-11-21T12:00:00.000Z', endDate: '2026-12-04T12:00:00.000Z' }] })
+  const [parent] = seed(fake.state, 1)
+  fake.state.items[parent].sprintIds = [1]
+  const [sub] = seed(fake.state, 1, { issuetype: { id: '10003', name: 'Sub-task' }, parent: { key: parent } })
+  await assert.rejects(tracker.updateIssue(sub, { sprint: '2' }, ME), (error) => {
+    assert.equal(error.code, 'CONFLICT')
+    assert.match(error.message, new RegExp(`^Jira did not move ${sub} to sprint 2: Jira keeps a subtask in its parent's sprint`))
+    assert.equal(error.nextStep, `pmkit cycle add ${parent} --to 2`)
+    return true
+  })
+  assert.equal((await tracker.updateIssue(parent, { sprint: '2' }, ME)).after.sprint, '2')
+  await tracker.moveToCategory(parent, 'done', ME)
+  // Out to the backlog, a done item reads its last closed sprint again (ADR 0016): not a move Jira ignored.
+  assert.equal((await tracker.updateIssue(parent, { sprint: null }, ME)).after.sprint, '1')
+})
