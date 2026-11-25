@@ -1,1 +1,10 @@
 {"at":"2026-11-11T22:34:42Z","by":"fred","op":"create","to":{"id":"PMK-262","title":"Cut the extra release and docs reads on Linear","type":"task","status":"backlog","priority":"low","estimate":3,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-11T22:34:42.919Z","updated":"2026-11-11T22:34:42Z"}}
+{"at":"2026-11-22T06:38:23Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T06:38:23Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T06:38:23Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-262-cut-the-extra-release-and-docs-reads-on"}
+{"at":"2026-11-22T06:57:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T06:57:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T06:57:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T06:57:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T06:57:36Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T17:58:45Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

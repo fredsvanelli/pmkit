@@ -2,12 +2,14 @@
 id: PMK-262
 title: Cut the extra release and docs reads on Linear
 type: task
-status: backlog
+status: done
 priority: low
 estimate: 3
+assignee: fred
 parent: EPC-5
+branch: pmk-262-cut-the-extra-release-and-docs-reads-on
 created: 2026-11-11T22:34:42.919Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description
@@ -35,7 +37,7 @@ PMK-246 and PMK-252 made pmkit read an issue's releases and docs on Linear where
 
 ## Acceptance criteria
 
-- [ ] A write on Linear that does not touch releases or docs sends no release or attachment read after the write
-- [ ] History, comments, delete and parent lookup on Linear send no release or attachment read
-- [ ] Every command shows the same output as before, checked by the existing tests
-- [ ] A test counts the requests of a bulk change on Linear and fails if the extra reads come back
+- [x] A write on Linear that does not touch releases or docs sends no release or attachment read after the write
+- [x] History, comments, delete and parent lookup on Linear send no release or attachment read
+- [x] Every command shows the same output as before, checked by the existing tests
+- [x] A test counts the requests of a bulk change on Linear and fails if the extra reads come back

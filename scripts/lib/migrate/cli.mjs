@@ -268,7 +268,7 @@ export async function runImport(ctx) {
     source: `Linear team ${linear.team} in workspace ${linear.workspace}`,
     target: `${local.path}/`,
     sourceCounts: [plural(snapshot.issues.length, 'issue'), plural(snapshot.epics.length, 'project'), plural(snapshot.sprints.length, 'cycle'),
-      plural(snapshot.comments?.length ?? 0, 'comment'), plural(snapshot.people?.length ?? 0, 'user')].join(', '),
+      plural(snapshot.comments?.length ?? 0, 'comment'), plural(snapshot.issues.reduce((sum, issue) => sum + (issue.docs?.length ?? 0), 0), 'doc'), plural(snapshot.people?.length ?? 0, 'user')].join(', '),
     targetCounts: `${local.path}/ has ${plural(target.memberIds.length, 'member')} and no issues`,
   }
   if (ctx.dryRun) return { data: previewJson(plan, budget), text: previewText(plan, budget, { dryRun: true, header }) }

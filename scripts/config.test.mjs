@@ -69,19 +69,19 @@ test('unsupportedTracker is null for local and for names outside TRACKERS, and g
   assert.equal(unsupportedTracker('local'), null)
   assert.equal(unsupportedTracker('trello'), null)
   assert.equal(unsupportedTracker('linear'), null)
-  assert.deepEqual(unsupportedTracker('jira'), {
-    message: 'tracker.system "jira" is not supported yet',
+  assert.deepEqual(unsupportedTracker('gitlab'), {
+    message: 'tracker.system "gitlab" is not supported yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml',
-    problem: 'tracker.system "jira" is not supported yet, set it to local',
+    problem: 'tracker.system "gitlab" is not supported yet, set it to local',
   })
   assert.equal(unsupportedTracker('linear', withLinear()), null)
 })
 
 test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitConfig', () => {
   assert.deepEqual(pmkitConfigMessages(template('pmkit.config.yaml')), [])
-  const jira = template('pmkit.config.yaml')
-  jira.tracker.system = 'jira'
-  assert.deepEqual(pmkitConfigMessages(jira), ['tracker.system "jira" is not supported yet, set it to local'])
+  const unsupported = template('pmkit.config.yaml')
+  unsupported.tracker.system = 'gitlab'
+  assert.deepEqual(pmkitConfigMessages(unsupported), ['tracker.system "gitlab" is not supported yet, set it to local'])
   const linear = template('pmkit.config.yaml')
   linear.tracker.system = 'linear'
   const trello = template('pmkit.config.yaml')
@@ -90,7 +90,7 @@ test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitC
   assert.deepEqual(pmkitConfigMessages(trello), [TRACKER_MSG])
   const gitlab = template('pmkit.config.yaml')
   gitlab.git_host.system = 'gitlab'
-  assert.deepEqual(pmkitConfigMessages(gitlab), ['git_host.system must be github or none'])
+  assert.deepEqual(pmkitConfigMessages(gitlab), ['git_host.system must be github, bitbucket or none'])
   for (const value of [null, 'local', ['local'], { tracker: 'linear' }]) {
     assert.deepEqual(pmkitConfigMessages(value), validatePmkitConfig(value), JSON.stringify(value))
   }
@@ -116,9 +116,9 @@ test('a hosted config with a bad mapping loads with the problem in pmkitProblems
   assert.deepEqual(loadConfig(root, { adapters: withLinear() }).pmkitProblems, ['mappings.status.reviewing: reviewing is not a category or blocked'])
 })
 
-test('jira throws NOT_SUPPORTED with linear registered', () => {
-  const root = basicWith(['system: local', 'system: jira'])
-  const expected = { code: 'NOT_SUPPORTED', message: 'tracker.system "jira" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }
+test('gitlab throws NOT_SUPPORTED with linear registered', () => {
+  const root = basicWith(['system: local', 'system: gitlab'])
+  const expected = { code: 'NOT_SUPPORTED', message: 'tracker.system "gitlab" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }
   assert.throws(() => loadConfig(root, { adapters: withLinear() }), expected)
   assert.throws(() => loadPmkitConfig(root, { adapters: withLinear() }), expected)
 })
@@ -163,7 +163,7 @@ test('loadConfig returns pmkitProblems on an older tracker format', () => {
   writeFileSync(file, readFileSync(file, 'utf8').replace(/^version: \d+$/m, 'version: 1'))
   const config = loadConfig(root)
   assert.equal(config.format.state, 'behind')
-  assert.deepEqual(config.pmkitProblems, ['git_host.system must be github or none'])
+  assert.deepEqual(config.pmkitProblems, ['git_host.system must be github, bitbucket or none'])
 })
 
 test('a .pmkit/config.yaml with no tracker.system carries its problems', () => {
@@ -191,7 +191,7 @@ test('an unknown tracker.system or a non-string tracker.path is INVALID_INPUT wi
   })
   const both = basicWith(['system: local', 'system: trello'], ['system: none', 'system: gitlab'])
   assert.throws(() => loadConfig(both), (error) => error.code === 'INVALID_INPUT' &&
-    error.message === `.pmkit/config.yaml is not valid: ${TRACKER_MSG}; git_host.system must be github or none`)
+    error.message === `.pmkit/config.yaml is not valid: ${TRACKER_MSG}; git_host.system must be github, bitbucket or none`)
   const path = basicWith(['path: .issues', 'path: 5'])
   assert.throws(() => loadConfig(path), (error) => error.code === 'INVALID_INPUT' &&
     error.message === '.pmkit/config.yaml is not valid: tracker.path must be a string' && error.nextStep === 'pmkit validate')
@@ -206,12 +206,12 @@ test('pmkitWriteRefusal and pmkitConfigWarning word the refusal', () => {
   assert.equal(pmkitConfigWarning(['a', 'b']), '.pmkit/config.yaml is not valid, so writes are refused: a; b; run pmkit validate')
 })
 
-test('tracker.system jira throws NOT_SUPPORTED', () => {
+test('tracker.system gitlab throws NOT_SUPPORTED', () => {
   const root = tmp()
   mkdirSync(join(root, '.pmkit'))
-  writeFileSync(join(root, '.pmkit', 'config.yaml'), 'version: 1\ntracker:\n  system: jira\n')
+  writeFileSync(join(root, '.pmkit', 'config.yaml'), 'version: 1\ntracker:\n  system: gitlab\n')
   assert.throws(() => loadConfig(root), (error) => error.code === 'NOT_SUPPORTED' &&
-    error.message === 'tracker.system "jira" is not supported yet' &&
+    error.message === 'tracker.system "gitlab" is not supported yet' &&
     error.nextStep === 'Set tracker.system to local in .pmkit/config.yaml')
 })
 
@@ -319,9 +319,23 @@ test('an empty or non-map .pmkit/config.yaml and a non-string tracker.path are I
   assert.throws(() => loadConfig(root), (error) => error.code === 'INVALID_INPUT' && /tracker\.path/.test(error.message))
 })
 
+test('git_host.system bitbucket needs a repo of workspace/repo_slug', () => {
+  const config = (repo) => {
+    const c = template('pmkit.config.yaml')
+    c.git_host.system = 'bitbucket'
+    if (repo === undefined) delete c.git_host.repo
+    else c.git_host.repo = repo
+    return c
+  }
+  const problem = 'git_host.repo must be workspace/repo_slug when git_host.system is bitbucket'
+  assert.deepEqual(validatePmkitConfig(config('acme/widgets')), [])
+  assert.deepEqual(validatePmkitConfig(config()), [problem])
+  assert.deepEqual(validatePmkitConfig(config('a/b/c')), [problem])
+})
+
 test('config.mjs exports the constants the schemas mirror', () => {
   assert.deepEqual(TRACKERS, ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops'])
-  assert.deepEqual(GIT_HOSTS, ['github', 'none'])
+  assert.deepEqual(GIT_HOSTS, ['github', 'bitbucket', 'none'])
   assert.deepEqual(CONFIRM, ['all_writes', 'single_writes', 'none'])
   assert.deepEqual(PREVIEW, ['bulk', 'delete', 'publish_update', 'move_scope'])
   assert.deepEqual(WEEKDAYS, ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])

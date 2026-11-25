@@ -196,8 +196,21 @@ test('a view with a criterion and a sort is accepted, and the sort orders the pr
 
 test('a one-issue batch keeps the code of the operation that failed', async () => {
   await withRepo(async (root) => {
+    // The message is the operation's own (cycle add), not a rule of the batch. Its code is INVALID_INPUT since PMK-152.
     const result = await bulk(root, 'sprint', '999', '--label', 'other', '--dry-run')
-    assert.equal(result.body.error.code, 'NOT_FOUND', JSON.stringify(result.body))
+    assert.equal(result.body.error.code, 'INVALID_INPUT', JSON.stringify(result.body))
+    assert.match(result.body.error.message, /: sprint 999 does not exist$/)
+  })
+})
+
+test('a filter with --sprint current and no active sprint warns instead of reading as nothing to change', async () => {
+  await withRepo(async (root) => {
+    const line = 'there is no active sprint, so --sprint current matches no issues; run pmkit cycle list'
+    const result = await bulk(root, 'priority', 'high', '--sprint', 'current', '--dry-run')
+    assert.equal(result.code, 0, JSON.stringify(result.body))
+    assert.equal(result.body.writes, 0)
+    assert.ok(result.body.warnings.includes(line), JSON.stringify(result.body.warnings))
+    assert.ok(result.stderr.includes(`warning: ${line}\n`), result.stderr)
   })
 })
 

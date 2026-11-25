@@ -1,10 +1,13 @@
 // The live probes of the Linear run (PMK-39): facts the PMK-35 to PMK-38 specs left open. Each probe is
 // probe({ tracker, client, actor, team }) and returns { asserted, recorded }. It asserts only what pmkit relies on and
 // records the rest, so the run's output grows the verification notes. `npm test` runs them over the fake only.
-// The probes create at most 4 issues in all (1 + 1 + 2).
+// The probes create at most 9 issues in all (1 + 1 + 2 + 3 + 1 + 1).
 
 import assert from 'node:assert/strict'
-import { CYCLES_QUERY, ISSUE_BY_ID_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { randomUUID } from 'node:crypto'
+import { parseChange } from '../bulk.mjs'
+import { ATTACHMENT_CREATE, CYCLES_QUERY, ISSUE_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { MILESTONE_CREATE } from './sandbox.mjs'
 
 const CRITERIA = [{ text: 'first criterion', done: false }, { text: 'second criterion', done: true }]
 const MARKER_COMMENT = ['<!-- pmkit:probe -->', '- [ ] a checklist item', '```', 'code fence', '```'].join('\n')
@@ -85,9 +88,91 @@ export async function cycleProbe({ client, team }) {
   }
 }
 
+/**
+ * PMK-255: the milestone writes of `issues create --parent <epic> --milestone`, `issues update --milestone` and `issues bulk milestone`
+ * reach Linear through the guard. The adapter creates no milestone, so the run makes one in its own epic.
+ */
+export async function milestoneProbe({ tracker, client, actor }) {
+  const epic = (await tracker.createDeliverable({ title: 'Probe milestone epic' }, actor)).after
+  const updated = (await tracker.createIssue({ title: 'Probe milestone update', parent: epic.id }, actor)).after
+  const projectId = (await rawIssue(client, updated.id)).project.id
+  const milestone = randomUUID()
+  await client.request(MILESTONE_CREATE, { input: { id: milestone, projectId, name: 'Probe milestone' } })
+  const created = (await tracker.createIssue({ title: 'Probe milestone create', parent: epic.id, milestone }, actor)).after
+  await tracker.updateIssue(updated.id, { milestone }, actor)
+  const bulked = (await tracker.createIssue({ title: 'Probe milestone bulk', parent: epic.id }, actor)).after
+  await parseChange('milestone', milestone).apply(tracker, bulked, actor)
+  const milestoneOf = async (id) => (await tracker.getIssue(id)).milestone ?? null
+  const recorded = { created: (await milestoneOf(created.id)) === milestone, updated: (await milestoneOf(updated.id)) === milestone, bulk: (await milestoneOf(bulked.id)) === milestone }
+  await parseChange('milestone', 'none').apply(tracker, bulked, actor)
+  recorded.cleared = (await milestoneOf(bulked.id)) === null
+  for (const [key, value] of Object.entries(recorded)) assert.equal(value, true, `the milestone write "${key}" did not read back`)
+  return {
+    asserted: ['issueCreate under an epic with a milestone', 'issueUpdate with a milestone', 'the bulk milestone change', 'the bulk milestone change to none'],
+    recorded,
+  }
+}
+
+/** PMK-259: issues unarchive on Linear sends issueUnarchive for an archived issue, through the guard, and the issue is back. */
+export async function unarchiveProbe({ tracker, actor }) {
+  const { after: issue } = await tracker.createIssue({ title: 'Probe unarchive' }, actor)
+  const archived = (await tracker.archive(issue.id, actor)).after.archived === true
+  await tracker.unarchive(issue.id, actor)
+  const back = (await tracker.searchIssues({})).issues.some((item) => item.id === issue.id && !item.archived)
+  assert.equal(archived && back, true, 'the issue did not come back from the archive')
+  return { asserted: ['archive then unarchive', 'the issue is listed again'], recorded: { archived, back } }
+}
+
+/**
+ * PMK-254: issues update --add-doc and --remove-doc on a real issue, and a hand-made attachment with a doc's link left alone.
+ * The probe sets a GitHub repo for its links and puts the config back after. The links are never opened.
+ */
+export async function docsProbe({ tracker, client, actor, config }) {
+  const held = config.pmkit.git_host
+  config.pmkit.git_host = { system: 'github', repo: 'pmkit-probe/pmkit' }
+  try {
+    const { after: issue } = await tracker.createIssue({ title: 'Probe docs' }, actor)
+    const uuid = (await rawIssue(client, issue.id)).id
+    const attachments = async () => (await client.paginate(ISSUE_ATTACHMENTS_QUERY, { id: uuid }, { select: (data) => data.issue.attachments, pageSize: 50 })).nodes
+    const a = 'docs/pmkit-probe-a.md'
+    const b = 'docs/pmkit-probe-b.md'
+    await tracker.updateIssue(issue.id, { docs: [a] }, actor, { docsBranch: 'main' })
+    const added = (await tracker.getIssue(issue.id)).docs ?? []
+    const again = await tracker.updateIssue(issue.id, { docs: [a] }, actor, { docsBranch: 'main' })
+    const handUrl = `https://github.com/pmkit-probe/pmkit/blob/main/${b}`
+    await client.request(ATTACHMENT_CREATE, { input: { issueId: uuid, url: handUrl, title: 'Hand-made link' } })
+    let conflict = false
+    try {
+      await tracker.updateIssue(issue.id, { docs: [a, b] }, actor, { docsBranch: 'main' })
+    } catch (error) {
+      conflict = error.code === 'CONFLICT'
+    }
+    const raw = await attachments()
+    const docNode = raw.find((node) => node.metadata?.pmkitDoc === a)
+    await tracker.updateIssue(issue.id, { docs: [] }, actor, { docsBranch: 'main' })
+    const left = await attachments()
+    const handMade = left.find((node) => node.url === handUrl)
+    const recorded = {
+      added: added.length === 1 && added[0] === a,
+      addAgainChangesNothing: again.before === again.after || JSON.stringify(again.before.docs) === JSON.stringify(again.after.docs),
+      conflict,
+      metadata: docNode?.metadata ?? null,
+      removed: ((await tracker.getIssue(issue.id)).docs ?? []).length === 0,
+      handMadeLeft: Boolean(handMade) && !handMade.metadata?.pmkitDoc,
+    }
+    for (const key of ['added', 'addAgainChangesNothing', 'conflict', 'removed', 'handMadeLeft']) assert.equal(recorded[key], true, `docs probe: ${key}`)
+    return { asserted: ['add and read back', 'adding again changes nothing', 'a hand-made link is a CONFLICT', 'remove', 'the hand-made attachment is left alone'], recorded }
+  } finally {
+    config.pmkit.git_host = held
+  }
+}
+
 export const PROBES = [
   ['description round trip', descriptionProbe],
   ['comment body and updatedAt', commentProbe],
   ['relation history codes', relationProbe],
   ['cycle dates', cycleProbe],
+  ['milestone writes', milestoneProbe],
+  ['unarchive', unarchiveProbe],
+  ['docs', docsProbe],
 ]

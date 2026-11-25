@@ -10,6 +10,7 @@ import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
 import { ACME_TEAM, ACME_USERS, FAKE_KEY, customView, fakeCustomViews, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { BB, FAKE_BB_ENV, fakeBitbucketFetch } from './fake-bitbucket-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -2180,8 +2181,11 @@ test('issues get shows the release and issues update --release changes it on Lin
   const real = await linear(fetch, ['issues', 'update', 'ACME-4', '--release', RB, '--json'])
   assert.equal(real.code, 0, real.stdout + real.stderr)
   assert.deepEqual(fake.records[3].releaseIds, [RB])
-  const refused = await linear(fetch, ['issues', 'update', 'ACME-3', '--release', 'none', '--json'])
-  assert.deepEqual(errorOf(refused), { code: 'INVALID_INPUT', message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue', nextStep: 'Change the releases of the issue in Linear' })
+  // PMK-260: --release none clears an issue in two releases, and its text showed both.
+  assert.match((await linear(fetch, ['issues', 'get', 'ACME-3'])).stdout, new RegExp(`release: +${RA}, ${RB}`))
+  const cleared = await linear(fetch, ['issues', 'update', 'ACME-3', '--release', 'none', '--json'])
+  assert.equal(cleared.code, 0, cleared.stdout + cleared.stderr)
+  assert.deepEqual(fake.records[2].releaseIds, [])
 })
 
 test('issues update --release on a workspace with releases off says releases are off', async () => {
@@ -2247,4 +2251,16 @@ test('issues get on Linear says the release is unknown when its read fails, and 
   assert.equal(result.code, 0, result.stderr)
   assert.match(result.stdout, /\nrelease: unknown \(/)
   assert.match(result.stderr, /note: the release of ACME-2 is unknown, because pmkit could not read it: /)
+})
+
+test('init --git-host bitbucket writes the repo of a bitbucket.org origin after one repository read (PMK-81)', async () => {
+  const context = fresh({ remote: false })
+  git(context.root, 'remote', 'add', 'origin', 'git@bitbucket.org:acme/widgets.git')
+  const bitbucket = fakeBitbucketFetch({ [`GET ${BB}`]: { json: { full_name: 'acme/widgets' } } })
+  const args = ['init', '--tracker', 'linear', '--git-host', 'bitbucket', ...RECOMMENDED, ...NO_TYPES, '--json']
+  const result = await run(args, { cwd: context.root, env: { ...context.env, ...FAKE_BB_ENV }, fetch: bitbucket, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch: fakeLinearFetch(fakeWorkspace()) }) } })
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const { system, repo } = parseYaml(read(context, '.pmkit/config.yaml')).git_host
+  assert.deepEqual({ system, repo }, { system: 'bitbucket', repo: 'acme/widgets' })
+  assert.deepEqual(bitbucket.calls.map((call) => call.url), ['https://api.bitbucket.org/2.0/repositories/acme/widgets'])
 })

@@ -2,14 +2,17 @@
 id: PMK-76
 title: Discover a Jira site and build its capability manifest
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 8
+assignee: fred
 parent: EPC-7
 blocked_by: [PMK-75]
+related: [PMK-366]
 milestone: jira
+branch: pmk-76-discover-a-jira-site-and-build-its
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:26Z
+updated: 2026-11-24T03:13:37Z
 ---
 
 ## Description

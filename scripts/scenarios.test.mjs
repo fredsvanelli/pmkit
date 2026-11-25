@@ -10,8 +10,8 @@
 // Each scenario entry then runs on a fresh copy of its fixture (scenario-helpers.mjs, runScenario):
 //
 // Rule 5  every read, dry run and write matches a call of the same step
-// Rule 6  every call of the procedure is used by an entry or listed in skip
-// Rule 7  the confirmation points of the file are confirmed or listed in notHit
+// Rule 6  every call of the procedure is used by an entry or listed in skip, in any scenario of the command (PMK-355)
+// Rule 7  the confirmation points of the file are confirmed or listed in notHit, in any scenario of the command
 // Rule 8  every read and dry run exits 0 (or with its expectError), prints JSON and writes nothing outside .git
 // Rule 9  every write and edit comes after a confirm, and a write that repeats a dry run after that dry run
 // Rule 10 every confirm names a confirmation point of the file
@@ -32,7 +32,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { COMMANDS } from './pmkit.mjs'
 import {
-  compareScenarios, loadScenarios, parseCommandFile, runScenario, scenarioName, snapshotFile, staleSnapshots, unknownFlags,
+  compareScenarios, loadScenarios, parseCommandFile, runScenario, scenarioName, siblingCoverage, snapshotFile, staleSnapshots, unknownFlags,
 } from './scenario-helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -61,8 +61,8 @@ const cliOf = (name) => COMMANDS.find((command) => command.name === name)
 const isWrite = (call) => call.dryRun || Boolean(cliOf(call.command)?.write)
 
 describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
-  test('there are 59 command files', () => {
-    assert.equal(FILES.length, 59, FILES.map((file) => file.rel).join(', '))
+  test('there are 61 command files', () => {
+    assert.equal(FILES.length, 61, FILES.map((file) => file.rel).join(', '))
   })
 
   test('every command file has a scenario', async () => {
@@ -244,15 +244,18 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
   })
 
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
-  test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
-    const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
-      .find((c) => c.step === '5' && c.command === 'issues list' && !c.dryRun)
-    assert.ok(call, 'step 5 runs issues list')
-    const categories = call.text.match(/--category (\S+)/)?.[1].split(',') ?? []
-    for (const name of ['todo', 'backlog', 'in_progress']) assert.ok(categories.includes(name), `step 5 reads ${name}`)
-    for (const name of ['done', 'canceled', 'triage', 'in_review']) assert.ok(!categories.includes(name), `step 5 leaves out ${name}`)
-    // `--sprint none` as a whole value: `--sprint none2` must not pass.
-    assert.match(call.text, /(?:^|\s)--sprint none(?:\s|$)/)
+  test('cycle/plan step 5 drafts from todo, backlog, in_progress and in_review issues with no sprint, in both calls', () => {
+    const calls = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
+      .filter((c) => c.step === '5' && c.command === 'issues list' && !c.dryRun)
+    assert.equal(calls.length, 2, 'step 5 runs issues list twice, the second with --blocked')
+    for (const call of calls) {
+      const categories = call.text.match(/--category (\S+)/)?.[1].split(',') ?? []
+      // in_review since PMK-164: cycle close sends one back with no sprint and its status kept.
+      for (const name of ['todo', 'backlog', 'in_progress', 'in_review']) assert.ok(categories.includes(name), `step 5 reads ${name}`)
+      for (const name of ['done', 'canceled', 'triage']) assert.ok(!categories.includes(name), `step 5 leaves out ${name}`)
+      // `--sprint none` as a whole value: `--sprint none2` must not pass.
+      assert.match(call.text, /(?:^|\s)--sprint none(?:\s|$)/)
+    }
   })
 
   test('cycle/plan step 8 shows the status of each offered issue', () => {
@@ -406,8 +409,9 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
         const command = FILES.find((f) => f.name === scenarioName(scenario.command))
         assert.ok(command, `rule 1: scenario ${name} names commands/${scenario.command}.md, which does not exist`)
         assert.equal(scenarioName(scenario.command), name, `rule 1: scenario ${name}.mjs names ${scenario.command}; the module name must be ${scenarioName(scenario.command)}`)
+        const siblings = siblingCoverage(entries, index, command.parsed, COMMANDS.map((c) => c.name))
         const { problems, snapshot } = await runScenario(scenario, {
-          name, parsed: command.parsed, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS,
+          name, parsed: command.parsed, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS, siblings,
         })
         assert.deepEqual(problems, [], `${file}:\n${problems.join('\n')}\nFix the scenario or the command file, then run ${REGENERATE}`)
         const target = path.join(SCENARIOS, file)
@@ -419,4 +423,128 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
       })
     })
   }
+})
+
+// PMK-163: a line right after a list item, with no blank line, that is not a list item and is indented less than the item's
+// content column is a lazy continuation in CommonMark: it joins the item's paragraph. PMK-124 found two that were meant for the outer step.
+const LIST_ITEM = /^( *)([-*+]|\d{1,9}[.)])( +)\S/
+const NOT_PROSE = /^ *(```|~~~|\||#|>)/
+
+/** The 1-based numbers of the lines that are an indented lazy continuation of the list item above them. */
+function lazyContinuations(text) {
+  const lines = text.split(/\r?\n/)
+  const hits = []
+  let fenced = false
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (/^ *(```|~~~)/.test(lines[i])) fenced = !fenced
+    const item = fenced ? null : LIST_ITEM.exec(lines[i])
+    if (!item) continue
+    const next = lines[i + 1]
+    if (next.trim() === '' || LIST_ITEM.test(next) || NOT_PROSE.test(next)) continue
+    const indent = next.length - next.trimStart().length
+    if (indent > 0 && indent < item[1].length + item[2].length + item[3].length) hits.push(i + 2)
+  }
+  return hits
+}
+
+function markdownFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) return markdownFiles(full)
+    return entry.name.endsWith('.md') ? [full] : []
+  })
+}
+
+test('lazyContinuations finds an indented paragraph glued to the list item above it, and nothing else', () => {
+  const step = '7. Draft the PR.\n   - When `existing` is `false`, show it.\n'
+  assert.deepEqual(lazyContinuations(`${step}   When the user approves, run it.\n`), [3])
+  assert.deepEqual(lazyContinuations(`${step}\n   When the user approves, run it.\n`), [])
+  assert.deepEqual(lazyContinuations(`${step}     more of the same sub-item\n`), [])
+  assert.deepEqual(lazyContinuations(`${step}   - another sub-item\n`), [])
+  assert.deepEqual(lazyContinuations('```\n- item\n  glued\n```\n'), [])
+  assert.deepEqual(lazyContinuations(`${step.replace(/\n/g, '\r\n')}   When the user approves, run it.\r\n`), [3])
+})
+
+test('no paragraph in commands, skills or docs is glued to the list item above it', () => {
+  const root = path.join(HERE, '..')
+  const found = ['commands', 'skills', 'docs'].flatMap((dir) => markdownFiles(path.join(root, dir)))
+    .flatMap((file) => lazyContinuations(fs.readFileSync(file, 'utf8')).map((line) => `${path.relative(root, file)}:${line}`))
+  assert.deepEqual(found, [], 'add a blank line before the paragraph, or indent it to the list item\'s text')
+})
+
+// PMK-156: the text of a numbered step, sub-items included, inside an optional `### <section>`.
+function stepText(rel, step, section) {
+  let text = fs.readFileSync(path.join(COMMANDS_DIR, rel), 'utf8')
+  if (section) text = text.split(`\n### ${section}\n`)[1].split(/\n### /)[0]
+  const lines = text.split('\n')
+  const start = lines.findIndex((line) => line.startsWith(`${step}. `))
+  assert.ok(start >= 0, `${rel} has a step ${step}`)
+  const end = lines.findIndex((line, i) => i > start && /^(\d+\. |#)/.test(line))
+  return lines.slice(start, end === -1 ? undefined : end).join('\n')
+}
+
+test('local/doctor step 3 settles migration problems before any fix', () => {
+  const step = stepText('local/doctor.md', '3')
+  const bullet = step.split('\n').find((line) => line.startsWith('   - `migration` problems'))
+  assert.ok(bullet, 'step 3 has a bullet for migration problems')
+  assert.match(bullet, /this pmkit has no migration from tracker format/)
+  assert.match(bullet, /\/pmkit:upgrade/)
+  assert.match(bullet, /migration <n> to <m> failed: <reason>/)
+  assert.match(bullet, /validate --json/)
+  assert.match(bullet, /go to step 6/)
+})
+
+test('local/doctor step 3 checks the tracker folder before setting tracker.system to local', () => {
+  const bullet = stepText('local/doctor.md', '3').split('\n').find((line) => line.startsWith('   - `config` problems'))
+  assert.match(bullet, /is not supported yet, set it to local/)
+  assert.match(bullet, /<tracker path>\/config\.yaml/)
+  assert.match(bullet, /move `\.pmkit\/config\.yaml` aside and run `\/pmkit:setup`/)
+})
+
+test('setup Existing config step 2 reads the problems by code, and only config and conflict make init --update refuse', () => {
+  const step = stepText('setup.md', '2', 'Existing config')
+  assert.match(step, /`config` or `conflict`[^\n]*make `init --update` refuse/)
+  assert.match(step, /`FORMAT` or `migration`[^\n]*do not stop the update/)
+  assert.match(step, /\/pmkit:local:doctor/)
+  assert.match(step, /\/pmkit:upgrade/)
+  assert.doesNotMatch(step, /A problem in `\.issues\/config\.yaml` or `\.pmkit\/config\.yaml` makes `init --update` refuse/)
+})
+
+test('cycle/close step 3 leaves canceled issues out of the unfinished ones, as closeCycle does (PMK-165)', () => {
+  const step = stepText('cycle/close.md', '3')
+  assert.match(step, /`canceled`[^\n]*left out/)
+  assert.match(step, /[Tt]he rest are unfinished/)
+})
+
+test('cycle/close step 6 asks whether an issue is the remaining work of an earlier split with AskUserQuestion (PMK-165)', () => {
+  assert.match(stepText('cycle/close.md', '6'), /Ask with `AskUserQuestion` whether that issue is the remaining work of an earlier split/)
+})
+
+test('cycle/close says once what it does with an invalid .pmkit/config.yaml: a report, no proposal, no question (PMK-159)', () => {
+  assert.match(stepText('cycle/close.md', '1'), /follow "An invalid `\.pmkit\/config\.yaml`" under "If something is missing"/)
+  const text = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'close.md'), 'utf8')
+  const bullet = text.split('\n## If something is missing\n')[1].split('\n').find((line) => line.startsWith('- An invalid `.pmkit/config.yaml`'))
+  assert.ok(bullet, 'If something is missing has the bullet')
+  for (const part of [/skip step 6/, /without a proposal or a question/, /pmkit validate/, /\/pmkit:local:doctor/, /stop/]) assert.match(bullet, part)
+  assert.doesNotMatch(stepText('cycle/close.md', '1'), /Steps 2 to 6 only read, so go on with them/)
+})
+
+test('cycle/close marks a split\'s new issue with its origin and finds a half-done split by that mark (PMK-160)', () => {
+  const calls = FILES.find((file) => file.rel === 'cycle/close.md').parsed.calls
+  const create = calls.find((call) => call.step === '7' && call.command === 'issues create')
+  assert.match(create.text, /--description-file <description file>/)
+  assert.match(stepText('cycle/close.md', '7'), /Remaining work of <original id>, split when sprint <sprint id> closed\./)
+  const search = calls.find((call) => call.step === '6' && call.command === 'issues list')
+  assert.ok(search, 'step 6 searches for the mark')
+  assert.match(search.text, /--text "split when sprint <sprint id> closed"/)
+  assert.match(stepText('cycle/close.md', '8'), /estimate update only when step 7 kept it/)
+})
+
+test('cycle/close points remaining work to remaining work when a carried blocker or sub-issue is split too, and creates first (PMK-161)', () => {
+  const step7 = stepText('cycle/close.md', '7')
+  assert.match(step7, /is itself split in this close, the `blocks` link goes from its new issue to the new issue/)
+  assert.match(step7, /is itself split in this close, it stays under the original, and its new issue moves under the new issue/)
+  const step8 = stepText('cycle/close.md', '8')
+  assert.match(step8, /run every split's create first/)
+  assert.doesNotMatch(step7, /Say the user can add the links by hand after the close/)
 })

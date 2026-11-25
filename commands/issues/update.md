@@ -18,7 +18,7 @@ This command edits title, type, priority, estimate, labels, sprint (a sprint id,
 - status: `/pmkit:issues:move`;
 - assignee: `/pmkit:issues:assign`;
 - parent, blocks, related and duplicate links: `/pmkit:issues:link`;
-- archive and unarchive: not done by this command; `issues archive` and `issues unarchive` (Local tracker) are separate writes with their own preview.
+- archive and unarchive: not done by this command; `issues archive` and `issues unarchive` (Local tracker and Linear) are separate writes with their own preview.
 
 `issues update` refuses parent, links and archived. Never try them here. Point the user to the command above.
 

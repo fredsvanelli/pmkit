@@ -63,9 +63,10 @@ Checked 2026-11-10 against Linear's public SDK schema (`packages/sdk/src/schema.
 | `name`, `target`, `released`, `description` | `name`, `targetDate`, `completedAt`, `description` |
 | `state` | `released` when `completedAt` is set, else `planned`. `stage.type` (`planned`, `started`, `completed`, `canceled`) decides only that a canceled release is left out. |
 | `release list` | `releases(filter: { pipeline: { teams: { some: { key: { eq: <team> } } } } })`, page by page (`ReleaseFilter.pipeline` is a `ReleasePipelineFilter`, whose `teams` is a `TeamCollectionFilter`). |
-| an issue's `release` / `releases` | `issues(filter: { id: { in } }) { id releases(first: 50) }` for up to 100 issues at once, and `issue(id) { releases(first, after) }` for an issue with more than 50. Sent only when `Organization.releasesEnabled` is true. |
+| an issue's `release` / `releases` | `issues(filter: { id: { in } }) { id releases(first: 20) }` for up to 100 issues at once, and `issue(id) { releases(first, after) }` for an issue with more than 20. Sent only when `Organization.releasesEnabled` is true. |
 | a release of another team | `Release.pipeline.teams` (a `TeamConnection`); a release whose pipeline does not list the scope team is refused. |
-| `issues update --release` | `issueUpdate` with `IssueUpdateInput.addedReleaseIds` and `removedReleaseIds`. |
+| `release create`, `release mark-released`, `issues create --release` (PMK-261) | `releaseCreate(input: { id, name, version, pipelineId, targetDate, description })` in the scope team's one pipeline (`Team.releasePipelines`); `releaseUpdate(id, { stageId: <the pipeline's completed stage>, completedAt })`; `IssueCreateInput.releaseIds`. The input types were introspected live on 2026-11-22; the writes ran against the fake only, since the workspace has releases off. `releaseComplete` completes by pipeline and version, not by id, so pmkit does not use it. |
+| `issues update --release` | `issueUpdate` with `IssueUpdateInput.addedReleaseIds` and `removedReleaseIds`. One release per pipeline (PMK-260): `none` removes every release, an id removes only the other releases of its pipeline, read with `issue(id) { releases { pipeline { id } } }` for the write only. |
 | the `release` filter | `IssueFilter.releases: { some: { id: { eq } } }` (`ReleaseCollectionFilter`). |
 
 Open until a workspace with releases runs them (acceptance criterion 5 of PMK-246):
@@ -74,7 +75,7 @@ Open until a workspace with releases runs them (acceptance criterion 5 of PMK-24
 - `Release.stage { type }`, `version`, `targetDate` and `completedAt` come back with the values the table assumes; in particular, whether a completed release always has `completedAt` set.
 - `Issue.releases` lists a release the issue was added to in the Linear app, and leaves a release the issue was removed from, also inside `issues(filter: { id: { in } })`.
 - `ReleasePipeline.teams` lists the teams a pipeline is linked to in the app.
-- The `x-complexity` header of `PmkitReleases` (page 100), `PmkitIssuesReleases` (100 issues x 20 releases) and `PmkitRelease` stays under Linear's limit of 10000 points. By the documented rule they cost about 380, 4300 and 280.
+- The `x-complexity` header of `PmkitReleases` (page 100), `PmkitIssuesReleases` (100 issues x 20 releases) and `PmkitRelease` stays under Linear's limit of 10000 points. By the documented rule they cost about 380, 4650 and 280.
 - `issueUpdate` accepts `addedReleaseIds` and `removedReleaseIds` from a personal API key, and the issue then shows in the release in the app.
 - `issues(filter: { releases: { some: { id: { eq } } } })` answers the release's issues.
 - A pipeline with no team linked: whether its releases should count for the scope team. pmkit leaves them out today.
@@ -83,7 +84,7 @@ A field Linear has renamed would reach the command as `UPSTREAM` with Linear's m
 
 ## Issue docs mapped (PMK-252)
 
-Written 2026-11-10 from Linear's public SDK schema, not checked against a workspace: nothing below ran against the live API, only against the fake in `scripts/fake-linear-api.mjs`. Nothing here is verified.
+Written 2026-11-10 from Linear's public SDK schema, then checked against the live workspace on 2026-11-22 (PMK-254, below).
 
 | pmkit | Linear (schema, to confirm) |
 |---|---|
@@ -91,18 +92,18 @@ Written 2026-11-10 from Linear's public SDK schema, not checked against a worksp
 | `issues update --add-doc` | `attachmentCreate(input: { issueId, url, title, metadata: { pmkitDoc } })`, with `url` = `https://github.com/<repo>/blob/<branch>/<path>`. |
 | `issues update --remove-doc` | `attachmentDelete(id)` of the attachments whose `metadata.pmkitDoc` is the path. |
 
-Open until a workspace runs them:
+Live run of 2026-11-22, probe `docs` (PMK-254; 53 tests: 39 passed, 0 failed, 16 skipped; the test team empty afterwards). Each point:
 
-- `Issue.attachments` answers inside `issues(filter: { id: { in } })`, and `attachments(first: 20)` is accepted there.
-- `Attachment.metadata` comes back as it was written (`{ pmkitDoc: <path> }`), also for an attachment made with a personal API key.
-- `AttachmentCreateInput` accepts `metadata` and `title` together with `issueId` and `url` from a personal API key.
-- The upsert by URL: `attachmentCreate` for an `issueId` and `url` that already have an attachment updates it. pmkit assumes it does, so it refuses (CONFLICT) to add a doc whose link a person attached by hand, and never rewrites or removes that attachment.
-- Whether Linear turns a `github.com/.../blob/...` URL into an integration attachment (another `sourceType`, its own `metadata`), which would drop `pmkitDoc` or fail the upsert.
-- `attachmentDelete` works with a personal API key, and the attachment leaves the issue.
-- The `x-complexity` header of `PmkitIssuesAttachments` (100 issues x 20 attachments of 4 scalar fields). By the documented rule it costs about 3000 points, under the limit of 10000.
-- An issue with more than 20 attachments (pull request links count) takes the one-issue read, 50 at a time.
+- Confirmed: `Issue.attachments` answers inside `issues(filter: { id: { in } })` with `attachments(first: 20)`; `getIssue` read the doc back through it.
+- Confirmed: `Attachment.metadata` comes back as written, `{ pmkitDoc: "docs/pmkit-probe-a.md" }`, on an attachment a personal API key made.
+- Confirmed: `AttachmentCreateInput` takes `issueId`, `url`, `title` and `metadata` together from a personal API key. Corrected in pmkit: `issueId` is now the issue's UUID, as every other write sends it; it was the identifier, which the sandbox guard refused.
+- Confirmed: a `github.com/.../blob/...` URL keeps `pmkitDoc`; Linear did not turn it into an integration attachment that drops the metadata.
+- Confirmed: `attachmentDelete` works from a personal API key, and the doc leaves the issue.
+- Confirmed: a hand-made attachment with a doc's link answers `CONFLICT` before any write, and is still there, unchanged, after the doc is removed.
+- Not checked live: Linear's upsert by URL itself. pmkit never relies on it: it sends no create for a doc already linked (adding it again changed nothing, live) and refuses a hand-made link before any create (live). A follow-up ticket holds it.
+- Not checked live: the `x-complexity` of `PmkitIssuesAttachments` alone (the whole run stayed under the limits, 327715 points in all) and an issue with more than 20 attachments. A follow-up ticket holds them.
 
-A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message, and the docs of the issue would read as `unknown`.
+A field Linear renamed would reach the command as `UPSTREAM` with Linear's message, and the docs of the issue read as unknown.
 
 ## Insights
 
@@ -159,6 +160,7 @@ Checked 2026-10-28 for PMK-38, by introspection and reads only, through a fetch 
 | `__type(ProjectUpdate)` | `id`, `body`, `health` (required), `user`, `project`, `createdAt`, `url`. |
 | `__type(ProjectUpdateCreateInput)` | `id` (client-chosen), `projectId` (required), `body`, `health`. |
 | `__type(ProjectCreateInput)` | `id` (client-chosen), `name` (required), `teamIds` (required), `content`, `description`, `startDate`, `targetDate`, `statusId`, `leadId`. |
+| `__type(ProjectUpdateInput)` | 31 fields, among them `statusId` (`String`), the one `epic move` sends (PMK-353). `Mutation.projectUpdate` takes `id: String!` and `input: ProjectUpdateInput!`. Introspected live on 2026-11-21 (PMK-356). |
 | `__type(ProjectMilestone)` | `id`, `name`, `description`, `targetDate`, `status` (`unstarted`, `next`, `overdue`, `done`), `progress`, `project`. No slug and no short identifier. |
 | `__type(Document)` | `id`, `slugId`, `title`, `content` (Markdown), `project`, `initiative`, `team`, `issue`, `url`. |
 | `__type(DocumentCreateInput)` | `title` (required), `content`, and one container such as `projectId`. No path. |
@@ -225,13 +227,13 @@ The team is named `pmkit-test`, has the key `PKT` and carries the marker `pmkit-
 | `findOrCreateTestTeam({ client, guard })` | Finds the team by name or creates it once. Returns `{ team: { id, key }, created }`. Sends no write when the team exists. |
 | `listTestTeamItems({ client, team, guard })` | Returns `{ issues, projects }` that the team holds and are not trashed. |
 | `trashTestTeamItems({ client, team, guard })` | Trashes those issues and projects. Returns the counts. |
-| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 15 mutations of this suite. PMK-41 passes its own allowlist. |
+| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 17 mutations of this suite. PMK-41 passes its own allowlist. |
 
 `preflight`, `waitForCycles` and `checkTestTeam` are exported too. The live run calls them in this order: `preflight`, `findOrCreateTestTeam`, `waitForCycles`.
 
 ### The write guard
 
-The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
+The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run, a `projectMilestoneId` included (PMK-255). The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `projectMilestoneCreate` (PMK-255: only on a project the run created, so the run has a milestone to point at, since the adapter creates none), `projectUpdate` (PMK-356 and PMK-348: only `statusId`, `name` and `content`, as strings, only on a project the run created, for the epic move and the epic edit), `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
 
 ### Request budget
 
@@ -254,6 +256,7 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 | A missing comment id | PMK-36 | `comments(filter: { id })` answers HTTP 200 with `errors[0]` holding `message: 'Argument Validation Error'`, `path: ['comments']`, and extensions `code: 'INVALID_INPUT'`, `type: 'invalid input'`, `userError: true`. The code is not `INPUT_ERROR`. The adapter maps this answer to NOT_FOUND. |
 | An update right after create | PMK-39 | The history had no `update` entry for a title change made seconds after create. Linear folds it into the create entry. See the section on folded quick edits below. |
 | `endsAt` equals the next `startsAt`, the time of day, `isPast` and `completedAt` | PMK-37 | `endsAt` equals the next `startsAt` on the 2 cycles read. Every time of day is `00:00:00.000Z`. No cycle was `isPast` and none had `completedAt` (third live run) |
+| The milestone writes of `issues create --parent <epic> --milestone`, `issues update --milestone` and `issues bulk milestone` | PMK-255 | Live run of 2026-11-22 (53 tests: 37 passed, 0 failed, 16 skipped; the test team empty afterwards). The guard let `projectMilestoneCreate` and each `projectMilestoneId` through; `ProjectMilestoneCreateInput` takes the `id` the run chooses; the three issues read back with the milestone, and the bulk change to `none` cleared it. |
 
 ### Open facts
 

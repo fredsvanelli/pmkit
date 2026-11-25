@@ -105,6 +105,20 @@ test('searchIssues --sprint current with no active sprint after the refresh answ
   assert.equal(state.refreshes, 1)
 })
 
+test('searchIssues by a sprint id the cached field lacks refreshes once: a new iteration lists its issues, an unknown one is INVALID_INPUT', async () => {
+  const { fake, ops, state } = await setup({ iterations: { iterations: [], completed: COMPLETED } })
+  fake.state.project.fields.find((field) => field.name === 'Sprint').configuration.iterations.push(...structuredClone(CURRENT))
+  fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
+  assert.deepEqual(ids((await ops.searchIssues({ sprint: '2026-11-16' })).issues), ['1'])
+  assert.equal(state.refreshes, 1)
+  await assert.rejects(ops.searchIssues({ sprint: '2027-01-04' }), (error) => {
+    assert.deepEqual([error.code, error.message, error.nextStep], ['INVALID_INPUT', 'sprint "2027-01-04" is not current, none or an existing sprint id', 'pmkit cycle list'])
+    assert.equal(error.details?.stale, undefined)
+    return true
+  })
+  assert.equal(state.refreshes, 2)
+})
+
 test('currentCycle is the active sprint, or null when none is active', async () => {
   const { cycles } = await setup()
   assert.equal((await cycles.currentCycle()).id, '2026-11-16')
@@ -112,15 +126,15 @@ test('currentCycle is the active sprint, or null when none is active', async () 
   assert.equal(await later.cycles.currentCycle(), null)
 })
 
-test('cycleIssues returns the issues of an iteration, and nothing for an unknown date', async () => {
+test('cycleIssues returns the issues of an iteration, and NOT_FOUND for an unknown date or a malformed id', async () => {
   const { fake, cycles } = await setup()
   fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-16' } } })
   fake.seed({ number: 2, item: { status: 'Todo', values: { Sprint: '2026-11-02' } } })
   fake.seed({ number: 3, item: { status: 'Todo' } })
   assert.deepEqual(ids(await cycles.cycleIssues('2026-11-16')), ['1'])
   assert.deepEqual(ids(await cycles.cycleIssues('2026-11-02')), ['2'])
-  assert.deepEqual(await cycles.cycleIssues('2027-01-04'), [])
-  assert.deepEqual(await cycles.cycleIssues('x'), [])
+  await assert.rejects(cycles.cycleIssues('2027-01-04'), { code: 'NOT_FOUND', message: 'sprint 2027-01-04 does not exist' })
+  await assert.rejects(cycles.cycleIssues('x'), { code: 'NOT_FOUND' })
 })
 
 const readNames = (fake) => fake.reads.map((call) => call.name)
@@ -142,7 +156,7 @@ test('cycleIssues on github.com reads the sprint\'s Project items, not the repos
   assert.ok(!readNames(fake).includes('PmkitIssues'))
   assert.equal(fake.reads.find((call) => call.name === 'PmkitSprintItems').variables.query, 'sprint:"Sprint 2"')
   clear()
-  assert.deepEqual(await cycles.cycleIssues('2027-01-04'), [])
+  await assert.rejects(cycles.cycleIssues('2027-01-04'), { code: 'NOT_FOUND' })
   assert.ok(!readNames(fake).includes('PmkitSprintItems'), 'a date the cached field lacks scans, as before')
 })
 
@@ -302,23 +316,29 @@ test('moveToCycle of the same id twice plans the second write from a fresh read'
   assert.equal(fake.mutations.filter((call) => call.name === 'PmkitSetProjectField').length, 1)
 })
 
+test('a completed iteration as the target of a move is CONFLICT and writes nothing', async () => {
+  const { fake, cycles, clear } = await setup()
+  fake.seed({ number: 1, item: { status: 'Todo' } })
+  clear()
+  await assert.rejects(cycles.moveToCycle(['1'], '2026-11-02', ME), { code: 'CONFLICT', message: 'sprint 2026-11-02 is closed', nextStep: 'pmkit cycle list --state planned' })
+  assert.deepEqual(fake.mutations, [])
+})
+
 test('moveToCycle checks every issue and the target before it writes', async () => {
   const { fake, cycles, clear } = await setup()
   fake.seed({ number: 1, item: { status: 'Todo' } })
   clear()
   await assert.rejects(cycles.moveToCycle(['1', '99'], '2026-11-16', ME), { code: 'NOT_FOUND' })
-  await assert.rejects(cycles.moveToCycle(['1'], '2027-01-04', ME), { code: 'NOT_FOUND', message: 'sprint 2027-01-04 does not exist', nextStep: 'pmkit cycle list' })
+  await assert.rejects(cycles.moveToCycle(['1'], '2027-01-04', ME), { code: 'INVALID_INPUT', message: 'sprint 2027-01-04 does not exist', nextStep: 'pmkit cycle list' })
   await assert.rejects(cycles.moveToCycle([], '2026-11-16', ME), { code: 'INVALID_INPUT', message: 'ids must be a non-empty list' })
   assert.deepEqual(fake.mutations, [])
   const later = await setup({ now: new Date('2026-12-30T00:00:00Z') })
   await assert.rejects(later.cycles.moveToCycle(['1'], 'current', ME), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
 })
 
-test('moveToCycle accepts a closed sprint as Local does, and the issue reads it', async () => {
-  const { fake, ops, cycles } = await setup()
-  fake.seed({ number: 1, item: { status: 'Todo' } })
-  const [result] = await cycles.moveToCycle(['1'], '2026-11-02', ME)
-  assert.equal(result.after.sprint, '2026-11-02')
+test('an issue in a completed iteration reads it as its sprint (a move into one is CONFLICT since PMK-166)', async () => {
+  const { fake, ops } = await setup()
+  fake.seed({ number: 1, item: { status: 'Todo', values: { Sprint: '2026-11-02' } } })
   assert.equal((await ops.getIssue('1')).sprint, '2026-11-02')
 })
 

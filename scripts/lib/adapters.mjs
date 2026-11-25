@@ -4,6 +4,7 @@
 // because no descriptor calls into config.mjs while the modules load.
 
 import { githubDescriptor } from './github/adapter.mjs'
+import { jiraDescriptor } from './jira/adapter.mjs'
 import { linearDescriptor } from './linear/adapter.mjs'
 
 /**
@@ -11,9 +12,10 @@ import { linearDescriptor } from './linear/adapter.mjs'
  * @property {string} system a name in TRACKERS
  * @property {boolean} hosted false only for local
  * @property {(pmkit: object) => string[]} configProblems the adapter's rules on a .pmkit/config.yaml whose shape is valid
- * @property {(config: object) => { defaults: object, epicPrefix: string | null, isEpicId?: (id: string) => boolean, trackerBranch?: boolean, remoteBranch?: boolean }} settings
+ * @property {(config: object) => { defaults: object, epicPrefix: string | null, isEpicId?: (id: string) => boolean, trackerBranch?: boolean, remoteBranch?: boolean, keepKeyCase?: boolean }} settings
  *   the behavior defaults commands read. isEpicId, when present, tells an epic id from an issue id; trackerBranch says the tracker names the branch;
  *   remoteBranch says the tracker creates the issue branch on origin itself, so issues branch checks that the local start holds origin/<base>.
+ *   keepKeyCase says issues branch keeps the issue key's case, as Jira's development panel needs (ADR 0015).
  * @property {(config: object, deps: { now: Function, random: Function, env: object, dryRun: boolean }) => Promise<object>} create the tracker
  */
 
@@ -31,6 +33,7 @@ export const ADAPTERS = {
   },
   linear: linearDescriptor(),
   github: githubDescriptor(),
+  jira: jiraDescriptor(),
 }
 
 /** The descriptor of a system, or null when the registry has none. */

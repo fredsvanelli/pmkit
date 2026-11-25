@@ -5,13 +5,14 @@
 import { buildDescription, CRITERIA_HEADING, parseDescription } from '../body-criteria.mjs'
 import { validBranch } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
-import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
+import { CREATE_KEYS, UPDATE_KEYS, checkKeys, criteriaOf, oneLine } from '../issue-fields.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { CATEGORIES, TERMINAL } from '../model.mjs'
 import { CLOSED, CLOSED_NOT_PLANNED, OPEN } from './discovery.mjs'
 import { itemOf, optionForPriority, PRIORITIES, ROLES, statusOf, toIssue } from './issues.mjs'
 import { parseFieldSource } from './mappings.mjs'
 import { sprintsOf } from './cycles.mjs'
+import { closedSprint } from '../issue-filter.mjs'
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 const notSupported = (message, nextStep) => new PmkitError('NOT_SUPPORTED', message, nextStep)
@@ -28,20 +29,6 @@ const sameText = (a, b) => String(a).toLowerCase() === String(b).toLowerCase()
 
 /** The Project as owner/number, as messages name it. */
 export const projectName = (context) => `${context.raw.project.owner}/${context.raw.project.number}`
-
-function oneLine(field, value) {
-  if (/[\r\n]/.test(value)) throw invalid(`${field} must not contain a line break`)
-  return value
-}
-
-function criteriaOf(value) {
-  if (!Array.isArray(value)) throw invalid('acceptanceCriteria must be a list')
-  return value.map((item) => {
-    const text = typeof item === 'string' ? item : item?.text
-    if (typeof text !== 'string' || text.trim() === '') throw invalid('each acceptance criterion needs text')
-    return { text: oneLine('acceptance criterion', text.trim()), done: item?.done === true }
-  })
-}
 
 function descriptionOf(value) {
   if (typeof value !== 'string') throw invalid('description must be a string')
@@ -132,6 +119,7 @@ function iterationOf(value, field, today) {
   const target = value === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === value)
   if (value === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
   if (!target) return null
+  if (target.state === 'closed') throw closedSprint(value)
   // sprintsOf keeps the first iteration of a start date, and so does this lookup.
   const all = [...(field.configuration?.completedIterations ?? []), ...(field.configuration?.iterations ?? [])]
   return all.find((iteration) => iteration.startDate === target.id)

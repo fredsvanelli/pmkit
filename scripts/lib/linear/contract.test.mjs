@@ -55,7 +55,7 @@ function linearContract({ cycles = [ACTIVE, PLANNED] } = {}) {
 // user-4 is the fake's app user, so the agents family runs native delegation (PMK-214).
 runTrackerContract({
   name: 'Linear tracker contract over the fake',
-  families: ['discovery', 'issues', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'deliverable-writes', 'milestones', 'documents', 'agents'],
+  families: ['discovery', 'issues', 'archive', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'deliverable-writes', 'milestones', 'documents', 'agents'],
   setup: () => ({ ...linearContract(), agent: 'agent:user-4' }),
 })
 
@@ -115,7 +115,7 @@ test('no file under PMKIT_HOME holds the key after a create', async () => {
 const assigned = []
 runTrackerContract({
   name: 'Linear tracker contract with assignee',
-  families: ['discovery', 'issues', 'history', 'threads'],
+  families: ['discovery', 'issues', 'archive', 'history', 'threads'],
   setup() {
     const env = linearContract()
     const assign = env.tracker.assign
@@ -130,7 +130,7 @@ runTrackerContract({
 // the 'update' entries and the history test takes its foldsQuickEdits branch.
 runTrackerContract({
   name: 'Linear tracker contract with folded quick edits',
-  families: ['discovery', 'issues', 'history', 'threads'],
+  families: ['discovery', 'issues', 'archive', 'history', 'threads'],
   setup() {
     const env = linearContract()
     const tracker = Object.assign(Object.create(env.tracker), {

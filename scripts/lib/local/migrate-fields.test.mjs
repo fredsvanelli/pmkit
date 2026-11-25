@@ -196,3 +196,10 @@ test('every import row of "What does not round-trip" appears in losses when its 
   }
   assert.equal(mapped.readRequests, 12)
 })
+
+// PMK-265: the docs of a Linear issue become the docs of its Local issue.
+test('an issue\'s docs are carried into its Local fields, and an issue without docs has no docs field', () => {
+  const mapped = map(snapshot({ issues: [issue('ACME-1', { docs: ['docs/a.md', 'docs/b.md'] }), issue('ACME-2', { docs: [] })] }))
+  assert.deepEqual(byKey(mapped.records.issue, 'ACME-1').fields.docs, ['docs/a.md', 'docs/b.md'])
+  assert.equal('docs' in byKey(mapped.records.issue, 'ACME-2').fields, false)
+})

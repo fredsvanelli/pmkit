@@ -140,9 +140,11 @@ test('loadConfig reads an older format through a migrated copy and the tracker r
 test('validateRepo reports an older format as one FORMAT problem', () => {
   const { root } = setup()
   const config = loadConfig(root, { formatVersion: 2, migrations: [renameLogTime] })
-  assert.deepEqual(validateRepo(root, { config }).problems, [
+  const result = validateRepo(root, { config })
+  assert.deepEqual(result.problems, [
     { path: '.issues/config.yaml', code: 'FORMAT', message: 'this repository uses tracker format 1, this pmkit writes format 2; run /pmkit:upgrade' },
   ])
+  assert.deepEqual([result.checked, result.skipped], [null, 'the tracker files are in format 1, not 2; see the problems'])
 })
 
 test('loadConfig refuses a newer format and returns the current one as it is', () => {
@@ -278,7 +280,31 @@ test('a failing step is INVALID_INPUT for loadConfig and migrate, and validate l
   assert.throws(() => runMigrate(root, { dryRun: true, migrations: [bad] }), check)
   const result = validateRepo(root, { migrations: [bad] })
   assert.deepEqual(result.problems, [problem('.issues/config.yaml')])
-  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
+  // The tracker files were not checked, so nothing reads as 0 issues (PMK-157).
+  assert.deepEqual([result.checked, result.skipped], [null, 'the tracker config could not be loaded; see the problems'])
+})
+
+test('validate lists a missing migration as a migration problem instead of failing (PMK-157)', () => {
+  const { root } = gitRepo()
+  // No step leads from format 1, the format of the fixture, toward the current one.
+  const result = validateRepo(root, { migrations: [] })
+  assert.equal(result.problems.length, 1)
+  assert.equal(result.problems[0].code, 'migration')
+  assert.match(result.problems[0].message, /^this pmkit has no migration from tracker format 1 toward format \d+$/)
+  assert.throws(() => loadConfig(root, { migrations: [] }), (error) => error.code === 'NOT_SUPPORTED' && error.nextStep === '/pmkit:upgrade' && error.details.migration.from === 1)
+})
+
+test('a step that leaves no config.yaml fails as that step, for planMigration and validate (PMK-157)', () => {
+  const { root } = gitRepo()
+  const gone = { from: 1, to: 2, describe: 'gone', run(dir) { fs.rmSync(path.join(dir, 'config.yaml')) } }
+  assert.throws(() => planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [gone] }), (error) => {
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.match(error.message, /^migration 1 to 2 failed: /)
+    assert.deepEqual(error.details, { migration: { from: 1, to: 2 } })
+    return true
+  })
+  const [problem] = validateRepo(root, { migrations: [gone] }).problems
+  assert.deepEqual([problem.path, problem.code], ['.issues/config.yaml', 'migration'])
 })
 
 test('validate lists a failing step at a custom tracker path', () => {
@@ -480,24 +506,37 @@ test('migrate writes nothing when a later step fails', () => {
   assert.equal(subjects(root), 'initial\n')
 })
 
-test('migrate refuses an invalid .pmkit/config.yaml before every other check', () => {
+test('migrate warns about an invalid .pmkit/config.yaml and still checks and migrates the tracker (PMK-158)', () => {
   const gitlab = (root) => {
     const file = path.join(root, '.pmkit', 'config.yaml')
     const text = fs.readFileSync(file, 'utf8')
     assert.ok(text.includes('system: none'))
     fs.writeFileSync(file, text.replace('system: none', 'system: gitlab'))
   }
-  // Format 1 in git, format 2 (nothing to migrate today) and format 1 outside git (NOT_CONFIGURED today).
-  for (const root of [gitRepo().root, makeRepo('team'), setup().root]) {
-    gitlab(root)
-    const before = hashTree(root)
-    for (const options of [{}, { dryRun: true }]) {
-      assert.throws(() => runMigrate(root, options), {
-        code: 'INVALID_INPUT',
-        message: '.pmkit/config.yaml is not valid, so writes are refused: git_host.system must be github or none',
-        nextStep: 'pmkit validate',
-      })
-      assert.equal(hashTree(root), before)
-    }
+  const warning = '.pmkit/config.yaml is not valid, so writes are refused: git_host.system must be github, bitbucket or none; run pmkit validate'
+  // A later pmkit may read an older .pmkit/config.yaml as invalid; migrate reads only tracker.system and tracker.path from it.
+  const inGit = gitRepo().root
+  gitlab(inGit)
+  const plan = runMigrate(inGit, { dryRun: true, ...options })
+  assert.deepEqual([plan.data.from, plan.data.to, plan.warnings], [1, 2, [warning]])
+  const done = runMigrate(inGit, options)
+  assert.deepEqual([done.data.to, done.warnings], [2, [warning]])
+  const current = makeRepo('team')
+  gitlab(current)
+  assert.deepEqual(runMigrate(current).warnings, [warning])
+  const outside = setup().root
+  gitlab(outside)
+  assert.throws(() => runMigrate(outside, options), { code: 'NOT_CONFIGURED' })
+})
+
+test('pmkit migrate exits 0 with a warning when .pmkit/config.yaml is not valid, as /pmkit:upgrade step 5 runs it (PMK-158)', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('system: none', 'system: gitlab'))
+  for (const args of [['migrate', '--dry-run'], ['migrate']]) {
+    const result = spawnSync(process.execPath, [CLI, ...args, '--json'], { cwd: root, env: { ...process.env, PMKIT_USER: 'fred' }, encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.equal(JSON.parse(result.stdout).steps.length, 0)
+    assert.match(result.stderr, /^warning: \.pmkit\/config\.yaml is not valid, so writes are refused: git_host\.system must be github, bitbucket or none; run pmkit validate$/m)
   }
 })

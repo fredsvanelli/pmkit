@@ -1,7 +1,7 @@
 // The capability manifest of the Linear tracker: one entry per capability, from the raw discovery and the config.
 // See "The capability manifest" in docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md.
 
-import { CAPABILITIES, SERVED_BY } from '../capabilities.mjs'
+import { CAPABILITIES, SERVED_BY, linkedCodeDetail } from '../capabilities.mjs'
 import { CAPACITY_FILE } from '../capacity-store.mjs'
 import { estimateScale } from './discovery.mjs'
 
@@ -66,9 +66,9 @@ function workspaceAnswers(raw) {
     strategic_goals: business
       ? { path: 'native', detail: { entity: 'initiative', unsupported: ['createGoal', 'setEpicGoal', 'updateGoal', 'deleteGoal'] } }
       : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
-    // The adapter reads releases and sets an issue's release (PMK-246); it does not create or mark them.
+    // The adapter reads, creates and marks releases and sets an issue's release (PMK-246, PMK-261).
     releases: releasesEnabled
-      ? { path: 'native', detail: { unsupported: ['createRelease', 'markReleased'] } }
+      ? { path: 'native' }
       : { path: 'absent', enableHint: RELEASES_HINT },
     // Linear has customer requests when customers are on, and the generic commands read them through linear customers (PMK-221).
     demand_signals: customersEnabled
@@ -119,7 +119,7 @@ export function buildLinearCapabilities(raw, pmkit = {}) {
   answers.capacity = answers.cycles.path === 'absent' ? { path: 'absent', enableHint: 'Capacity needs cycles' } : { path: 'derived', detail: { source: 'local', file: CAPACITY_FILE } }
   answers.linked_code = (raw.integrations ?? []).some((service) => GIT_INTEGRATIONS.includes(service))
     ? { path: 'native', detail: { source: 'integration' } }
-    : { path: 'derived', detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) }
+    : { path: 'derived', detail: linkedCodeDetail(gitHost), ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) }
 
   return CAPABILITIES.map((id) => {
     const answer = answers[id]

@@ -1,0 +1,2 @@
+{"at":"2026-11-24T23:59:59Z","by":"fred","op":"create","to":{"id":"PMK-396","title":"Gate Jira release writes on the releases capability","type":"feature","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-24T23:59:59.143Z","updated":"2026-11-24T23:59:59Z"}}
+{"at":"2026-11-24T23:59:59Z","by":"fred","op":"link","field":"related","to":"PMK-393"}

@@ -7,12 +7,12 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
 import { goalPrefixOf, loadConfig, validateLocalConfig } from '../config.mjs'
-import { formatMinutes, isPositiveMinutes } from '../duration.mjs'
+import { isPositiveMinutes } from '../duration.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
-import { CATEGORIES, LINK_KINDS, TERMINAL, pickMoveTarget } from '../model.mjs'
+import { CATEGORIES, LINK_KINDS, TERMINAL, epicEditInput, pickMoveTarget } from '../model.mjs'
 import { appendEvents, driftEvents, parseEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
@@ -20,7 +20,8 @@ import {
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
-import { eventInstant, lastEntry } from '../metrics.mjs'
+import { lastEntry } from '../metrics.mjs'
+import { summarizeTimeEntries } from '../time-entries.mjs'
 import { AGENT_ID, delegationComment } from '../delegation.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { mentionedIn } from '../mentions.mjs'
@@ -32,7 +33,7 @@ import { GOAL_STATUSES, goalStems, parseGoal, serializeGoal, sortGoals } from '.
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
-import { viewOverrides } from '../issue-filter.mjs'
+import { closedSprint, viewOverrides } from '../issue-filter.mjs'
 import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
 import { inboxGet, inboxUpdate } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
@@ -178,6 +179,10 @@ export function createLocalTracker(root, {
   function requireSprint(value) {
     if (value === 'current') return requireActiveSprintId()
     if (!sprintExists(value)) throw invalid(`sprint ${value} does not exist`, 'pmkit cycle list')
+    // A sprint file that does not parse is validate's to report, not a reason to refuse the write.
+    let state
+    try { state = readSprint(path.join(issuesDir, 'sprints'), String(value)).state } catch { state = undefined }
+    if (state === 'closed') throw closedSprint(value)
     return String(value)
   }
 
@@ -588,24 +593,17 @@ export function createLocalTracker(root, {
     return left
   }
 
-  function archive(id, actor, { dryRun } = {}) {
+  /** `archive` and its way back `unarchive` (PMK-250): an issue already in that state writes nothing. */
+  const setArchived = (archived, op) => (id, actor, { dryRun } = {}) => {
     requireWriter(actor)
     return change(id, actor, { dryRun }, (issue, meta, before) => {
-      if (before.archived) return []
-      issue.archived = true
-      return [{ ...meta, op: 'archive' }]
+      if (Boolean(before.archived) === archived) return []
+      issue.archived = archived
+      return [{ ...meta, op }]
     })
   }
-
-  /** The way back of `archive` (PMK-250): an issue that is not archived writes nothing. */
-  function unarchive(id, actor, { dryRun } = {}) {
-    requireWriter(actor)
-    return change(id, actor, { dryRun }, (issue, meta, before) => {
-      if (!before.archived) return []
-      issue.archived = false
-      return [{ ...meta, op: 'unarchive' }]
-    })
-  }
+  const archive = setArchived(true, 'archive')
+  const unarchive = setArchived(false, 'unarchive')
 
   const commentTexts = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.md')).map((name) => fs.readFileSync(path.join(dir, name), 'utf8')) : [])
   const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
@@ -1243,29 +1241,9 @@ export function createLocalTracker(root, {
       for (const name of fs.readdirSync(sprintsDir).filter((file) => file.endsWith('.yaml')).sort()) {
         try { sprints.push(readSprint(sprintsDir, path.basename(name, '.yaml'))) } catch { sprintsUnread.push(path.basename(name, '.yaml')) }
       }
-      sprints.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.id < b.id ? -1 : 1))
     }
-    const sprintOf = (at) => {
-      const instant = eventInstant(at)
-      if (Number.isNaN(instant)) return null
-      const day = new Date(instant).toISOString().slice(0, 10)
-      return sprints.find((sprint) => sprint.start <= day && day <= sprint.end)?.id ?? null
-    }
-    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes, time: formatMinutes(event.minutes), sprint: sprintOf(event.at) }))
-    const sum = (key) => {
-      const totals = new Map()
-      for (const entry of entries) totals.set(entry[key], (totals.get(entry[key]) ?? 0) + entry.minutes)
-      return [...totals].map(([value, minutes]) => ({ [key]: value, minutes, time: formatMinutes(minutes) }))
-    }
-    const total = entries.reduce((acc, entry) => acc + entry.minutes, 0)
     return {
-      issue: id,
-      entries: entries.map(({ sprint: _sprint, ...entry }) => entry),
-      total,
-      totalTime: formatMinutes(total),
-      byPerson: sum('by'),
-      bySprint: sum('sprint'),
-      ignored: logged.length - valid.length,
+      ...summarizeTimeEntries({ issue: id, entries: valid, sprints, ignored: logged.length - valid.length }),
       ...(sprintsUnread.length > 0 ? { sprintsUnread } : {}),
     }
   }
@@ -1329,8 +1307,8 @@ export function createLocalTracker(root, {
     requireWriter(actor)
     if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
     const known = ids.map(knownIssue)
-    const sprint = to === 'current' ? requireActiveSprintId() : to
-    if (sprint !== null) getSprint(sprint)
+    // The sprint is where the issues go, a value of the move: an unknown one is INVALID_INPUT, as in createIssue and updateIssue.
+    const sprint = to === null ? null : requireSprint(to)
     return known.map((id) => updateIssue(id, { sprint }, actor, { dryRun }))
   }
 
@@ -1460,6 +1438,28 @@ export function createLocalTracker(root, {
     if (dryRun) return { before, after }
     writeFile(file, content)
     append(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'move', field: 'status', from: before.status.name, to: name }])
+    return { before, after }
+  }
+
+  /**
+   * Edits the title and/or the description of an epic (PMK-348). The title is the one frontmatter line edited; the description is the body. Every other key and
+   * comment stays. One `update` event per changed field. An edit that changes nothing is refused, as a move to the status the epic already has.
+   */
+  function updateDeliverable(epicId, input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const fields = epicEditInput(input)
+    const { epic: before, dir } = readEpic(epicId)
+    const file = path.join(dir, 'epic.md')
+    const title = fields.title === undefined ? before.title : NORMALIZE.title(fields.title)
+    const description = fields.description === undefined ? before.description : (blank(fields.description) ? '' : plainText('description', fields.description))
+    const changed = [['title', before.title, title], ['description', before.description, description]].filter(([, from, to]) => from !== to)
+    if (changed.length === 0) throw invalid(`epic ${before.id} already has this title and description`, `pmkit epic get ${before.id}`)
+    const edited = editEpicFrontmatter(file, (yaml) => (title === before.title ? yaml : setScalar(yaml, ['title'], title)))
+    const content = `${edited.slice(0, edited.indexOf('\n---\n') + 5)}${description ? `${description}\n` : ''}`
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
+    if (dryRun) return { before, after }
+    writeFile(file, content)
+    append(path.join(dir, 'events.jsonl'), changed.map(([field, from, to]) => ({ at: stamp(), by: actor, op: 'update', field, from, to })))
     return { before, after }
   }
 
@@ -2403,7 +2403,7 @@ export function createLocalTracker(root, {
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
     listCustomers, getCustomer, createCustomer, updateCustomer, listRequests, getRequest, createRequest, updateRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
-    listDeliverables, getDeliverable, createDeliverable, moveDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
+    listDeliverables, getDeliverable, createDeliverable, moveDeliverable, updateDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, unarchive, delete: deleteIssue, restore, link, unlink, setParent,

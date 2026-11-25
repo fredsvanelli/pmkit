@@ -155,7 +155,7 @@ test('every pr command with git_host.system none exits 2 with NOT_SUPPORTED', as
     assert.equal(result.code, 2, args.join(' '))
     const error = errorOf(result)
     assert.equal(error.code, 'NOT_SUPPORTED')
-    assert.equal(error.nextStep, 'Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup')
+    assert.equal(error.nextStep, 'Set git_host.system to github or bitbucket in .pmkit/config.yaml, or run /pmkit:setup')
   }
 })
 

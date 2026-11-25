@@ -1,2 +1,10 @@
 {"at":"2026-10-28T00:11:40Z","by":"fred","op":"create","to":{"id":"PMK-162","title":"Cover a blocker already in the planned sprint in the cycle-plan scenario","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:40.357Z","updated":"2026-10-28T00:11:40Z"}}
 {"at":"2026-10-28T00:11:40Z","by":"fred","op":"link","field":"related","to":"PMK-123"}
+{"at":"2026-11-22T05:23:05Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T05:23:05Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T05:23:05Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-162-cover-a-blocker-already-in-the-planned"}
+{"at":"2026-11-22T05:23:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T05:29:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T05:29:25Z","by":"fred","op":"comment","to":"2026-11-22T05-29-25Z-fred.md"}
+{"at":"2026-11-22T05:29:33Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T05:53:12Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

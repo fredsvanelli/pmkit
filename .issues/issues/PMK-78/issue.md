@@ -2,14 +2,16 @@
 id: PMK-78
 title: "Map Jira sprints, including start and close"
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 5
+assignee: fred
 parent: EPC-7
 blocked_by: [PMK-77]
 milestone: jira
+branch: fredsvanelli/pmk-78-map
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:26Z
+updated: 2026-11-24T03:13:40Z
 ---
 
 ## Description

@@ -2,13 +2,16 @@
 id: PMK-81
 title: Add the Bitbucket Cloud git host
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 8
+assignee: fred
 parent: EPC-7
+related: [PMK-387, PMK-388, PMK-389, PMK-390, PMK-391]
 milestone: jira
+branch: fredsvanelli/pmk-81-bitbucket-cloud
 created: 2026-10-25T19:13:23Z
-updated: 2026-10-25T19:13:23Z
+updated: 2026-11-24T03:13:42Z
 ---
 
 ## Description
@@ -17,4 +20,4 @@ Source: Unified model, Q8 decision ("A now, B when the Jira adapter ships": "Bit
 
 ## Acceptance criteria
 
-- [ ] Implements the git host contract for Bitbucket Cloud: branches, pull requests, pipelines and deployments
+- [x] Implements the git host contract for Bitbucket Cloud: branches, pull requests, pipelines and deployments

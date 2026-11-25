@@ -254,3 +254,21 @@ test('the command file marks a draft in the document title and in the saved path
   assert.ok(text.includes('release-notes/<name>-draft.md'))
   assert.ok(text.includes('"(draft)"'))
 })
+
+// PMK-258: an issue in two releases, or whose release could not be read, is shown as such, never as release: null.
+test('a release-notes entry keeps an issue\'s releases or its unknown release, and never says release: null for them', () => {
+  const choice = { basis: 'period', reason: 'requested', draft: false, source: null, period: { since: '2026-10-01', until: '2026-10-31' }, skipped: [] }
+  const done = { status: { name: 'done', category: 'done' } }
+  const candidates = [
+    { issue: iss('A-1', { ...done, release: undefined, releases: ['r1', 'r2'] }), doneAt: '2026-10-10T00:00:00Z' },
+    { issue: iss('A-2', { ...done, release: undefined, releaseUnknown: 'Rate limited' }), doneAt: '2026-10-11T00:00:00Z' },
+    { issue: iss('A-3', { ...done, release: 'r1' }), doneAt: '2026-10-12T00:00:00Z' },
+  ]
+  const entries = buildNotes({ choice, candidates, types: ['task'] }).groups.flatMap((group) => group.issues)
+  const byId = Object.fromEntries(entries.map((entry) => [entry.id, entry]))
+  assert.deepEqual(byId['A-1'].releases, ['r1', 'r2'])
+  assert.equal('release' in byId['A-1'], false)
+  assert.equal(byId['A-2'].releaseUnknown, 'Rate limited')
+  assert.equal('release' in byId['A-2'], false)
+  assert.equal(byId['A-3'].release, 'r1')
+})

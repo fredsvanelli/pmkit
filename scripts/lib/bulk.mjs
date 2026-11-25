@@ -19,13 +19,37 @@ const oneLabel = (value, { allowComma = false } = {}) => {
   if (!allowComma && label.includes(',')) throw invalid(`"${label}" is one label with a comma in it; bulk adds one label at a time`, 'Run the command once for each label')
   return label
 }
+/** The refusal of a move whose transition needs `fields` (Jira): it names them and the move that passes them. */
+function needsFields(id, category, fields) {
+  const command = `pmkit issues move ${id} ${category} ${fields.map((field) => `--field ${field.id}=<value>`).join(' ')}`
+  return new PmkitError('INVALID_INPUT', `${id} needs ${fields.map((field) => field.name).join(', ')} to move to ${category}; run ${command}`, command, { requiredFields: fields })
+}
+
+/**
+ * moveToCategory, where a transition that needs fields is a refusal for that issue: a dry run that lists requiredFields
+ * would otherwise read as a planned move that the real run then refuses.
+ */
+export async function moveOrRefuse(tracker, id, category, actor, options) {
+  let result
+  try {
+    result = await tracker.moveToCategory(id, category, actor, options)
+  } catch (error) {
+    const fields = error?.details?.requiredFields
+    throw fields?.length ? needsFields(id, category, fields) : error
+  }
+  if (result?.requiredFields?.length) throw needsFields(id, category, result.requiredFields)
+  return result
+}
+
 const patchOf = (patch) => (tracker, issue, actor, options) => tracker.updateIssue(issue.id, patch, actor, options)
+// archive and unarchive: the change's name is its text and the tracker method it calls.
+const archiveChange = (method) => ({ text: method, apply: (tracker, issue, actor, options) => tracker[method](issue.id, actor, options) })
 
 // Per change: how to read the value into `text` and an `apply(tracker, issue, actor, { dryRun })` that returns { before, after }.
 const BUILDERS = {
   move: (value, { status }) => ({
     text: `move to ${value}${status ? ` (status ${status})` : ''}`,
-    apply: (tracker, issue, actor, { dryRun }) => tracker.moveToCategory(issue.id, value, actor, { status, dryRun }),
+    apply: (tracker, issue, actor, { dryRun }) => moveOrRefuse(tracker, issue.id, value, actor, { status, dryRun }),
   }),
   assign: (value) => ({
     text: `assign to ${value}`,
@@ -53,8 +77,8 @@ const BUILDERS = {
   },
   due: (value) => ({ text: `set due to ${value}`, apply: patchOf({ due: orNull(value) }) }),
   type: (value) => ({ text: `set type to ${value}`, apply: patchOf({ type: orNull(value) }) }),
-  archive: () => ({ text: 'archive', apply: (tracker, issue, actor, options) => tracker.archive(issue.id, actor, options) }),
-  unarchive: () => ({ text: 'unarchive', apply: (tracker, issue, actor, options) => tracker.unarchive(issue.id, actor, options) }),
+  archive: () => archiveChange('archive'),
+  unarchive: () => archiveChange('unarchive'),
   milestone: (value) => ({ text: `set milestone to ${value}`, apply: patchOf({ milestone: orNull(value) }) }),
   release: (value) => ({ text: `set release to ${value}`, apply: patchOf({ release: orNull(value) }) }),
   sprint: (value) => ({

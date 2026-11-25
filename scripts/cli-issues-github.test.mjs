@@ -124,7 +124,7 @@ test('issues unarchive and issues bulk unarchive refuse on GitHub and point at t
     assert.equal(result.code, 2, args.join(' '))
     assert.deepEqual(JSON.parse(result.stdout).error, {
       code: 'NOT_SUPPORTED',
-      message: 'unarchive works on the Local tracker only',
+      message: 'unarchive works on the Local tracker and Linear, not on GitHub',
       nextStep: 'Restore the item from the archived items of the Project on GitHub',
     })
   }

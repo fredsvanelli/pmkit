@@ -1,1 +1,10 @@
 {"at":"2026-11-15T23:21:51Z","by":"fred","op":"create","to":{"id":"PMK-329","title":"Skip a quote of definitions and keep a shown line in the adr-status fallback","type":"bug","status":"backlog","priority":"low","estimate":2,"assignee":"fred","labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-15T23:21:51.096Z","updated":"2026-11-15T23:21:51Z"}}
+{"at":"2026-11-22T01:46:52Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T01:46:52Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-329-skip-a-quote-of-definitions-and-keep-a"}
+{"at":"2026-11-22T01:56:54Z","by":"fred","op":"comment","to":"2026-11-22T01-56-54Z-fred.md"}
+{"at":"2026-11-22T01:56:54Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T01:56:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T01:56:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T01:56:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T02:55:21Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-11-22T02:56:03Z","by":"fred","op":"link","field":"related","to":"PMK-359"}

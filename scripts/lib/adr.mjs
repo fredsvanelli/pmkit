@@ -326,7 +326,7 @@ function sectionEnd(lines, from, held = []) {
         toNext()
         advance(1, false)
         if (spaceOrTab()) advance(1, true)
-        add({ type: 'quote' })
+        add({ type: 'quote', start: j })
         continue
       } else if (indent < 4 && CM_ATX.test(rest)) {
         add({ type: 'heading' })
@@ -418,8 +418,9 @@ const headingLike = (held) => held.map((item, i) => ({ ...item, heading: heading
 /**
  * What `adr-status` would delete that an HTML block took into the `## Status` section (PMK-299), `{ opener, lines }`, null when nothing. When the whole
  * section is replaced: the lines the section replaces that an HTML block continues and that read as a heading, and the lines after a blank line in
- * `held.unclosed`, the innermost block of kind 1 to 5 still open at the end of the walk: one directly in the document, one a list item holds, or one a
- * quote holds when the quote runs to the last line of a file with no final newline (with one, the empty last line ends the quote and the block). When
+ * `held.unclosed`, the innermost block of kind 1 to 5 still open at the end of the walk: one directly in the document, one a list item outside a quote holds, or one a
+ * quote holds when the quote runs to the last line of a file with no final newline (with one, the empty last line ends the quote and the block). A list item
+ * inside a quote follows the quote rule: `> - <!--`, `>`, `>   bar` names `>   bar` only with no final newline (PMK-330). When
  * the status line is written in place (PMK-314): the same lines, but only those of `held.openHtml`, the block of kind 1 to 5 directly in the document
  * still open at the end of the walk (then also `held.unclosed`), so its heading-like lines and its lines after a blank line; a plain line before any
  * blank is not named. One a quote or list item holds ends with its container and takes nothing (PMK-323). `opener` is the first line of the block,
@@ -508,7 +509,9 @@ const statusLineOf = (raw, paragraphOf) => {
     const sees = (i) => paragraphOf(i) === i || (glued !== undefined && paragraphOf(i) === glued)
     const text = (item, i) => i > first && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item)) && readsAsStatus(item) && sees(i)
     const later = readsAsStatus(raw[first]) && sees(first) ? -1 : raw.findIndex(text)
-    return later === -1 ? first : later
+    // With no later status the first line stays, unless it is hidden (a definition) and a paragraph is shown after it: that paragraph is the first line the reader sees (PMK-329).
+    if (later !== -1) return later
+    return sees(first) || glued === undefined ? first : glued
   }
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
   if (at === -1) return raw.findIndex((item) => item !== '')
@@ -524,7 +527,10 @@ const NOT_TEXT = /^(?:\[[^\]]*\]:|(?:[-*_][ \t]*){3,}$)/
 // The line must also read as a known status: with the emphasis and punctuation around it removed, its first word is one of `ADR_STATUSES` or a common ADR status, in any case (PMK-311 review).
 // Anything else (a date, a `**Date:**`, a status word nobody listed) is not replaced: the section is read whole and a write is refused, as before PMK-311.
 const KNOWN_STATUS = new Set([...ADR_STATUSES, 'proposed', 'rejected', 'draft'])
-const readsAsStatus = (item) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(item)?.[1].toLowerCase() ?? '')
+// Quote, bullet and ordered list markers at the start are skipped first: an ordered marker (1 to 9 digits, `.` or `)`, a space or tab, as in CommonMark) is not a word, so `1. Proposed` reads as
+// `- Proposed` does (PMK-328). Only after spaces, `>` and other markers: `1.Accepted`, `see 1. Proposed` and `**1. Accepted**` do not read as a status.
+const LIST_MARKERS = /^(?:[ \t>]|[-+*][ \t]|\d{1,9}[.)][ \t])*/
+const readsAsStatus = (item) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(item.replace(LIST_MARKERS, ''))?.[1].toLowerCase() ?? '')
 const topLevelStatus = (orig) => {
   for (let i = 0; i < orig.length; i++) {
     const item = orig[i].trim()
@@ -558,10 +564,18 @@ const statusSection = (lines, section, end) => {
     const map = new Map()
     // For the first line of a paragraph that opens with definitions, or of a run of paragraphs of definitions only, the first line shown after them.
     const after = new Map()
-    // The paragraphs of definitions only, by the block they are in.
-    const hidden = new Map()
-    // By the block they are in, the last run of paragraphs of definitions only that follow each other: its first line and the index of its last paragraph (PMK-325).
+    // By the block they are in, the last run of hidden blocks that follow each other: its first line and the index of its first and last block (PMK-325). A hidden block is a
+    // paragraph of definitions only, or a quote whose blocks are all hidden, which shows nothing (PMK-329); a list item never is, since its bullet is shown.
     const runs = new Map()
+    // Whether every block before `node` in its parent is hidden: one tracker, the runs (PMK-329).
+    const hiddenBefore = (node) => node.index === 1 || (runs.get(node.parent)?.from === 1 && runs.get(node.parent).index === node.index - 1)
+    const hide = (node, line) => {
+      const run = runs.get(node.parent)
+      if (run?.index === node.index - 1) run.index = node.index
+      else runs.set(node.parent, { line, from: node.index, index: node.index })
+      const quote = node.parent
+      if (quote.type === 'quote' && runs.get(quote).from === 1 && runs.get(quote).index === quote.children) hide(quote, quote.start)
+    }
     for (const paragraph of held.paragraphs) {
       // The definitions at its start are not shown: the paragraph the reader sees starts on the line after them, if any text is left.
       let { text } = paragraph
@@ -572,13 +586,10 @@ const statusSection = (lines, section, end) => {
         text = text.slice(length)
       }
       if (text === '') {
-        hidden.set(paragraph.parent, (hidden.get(paragraph.parent) ?? 0) + 1)
-        const run = runs.get(paragraph.parent)
-        if (run?.index === paragraph.index - 1) run.index = paragraph.index
-        else runs.set(paragraph.parent, { line: paragraph.lines[0], index: paragraph.index })
+        hide(paragraph, paragraph.lines[0])
         continue
       }
-      if (paragraph.parent.type !== 'document' && paragraph.index - 1 !== (hidden.get(paragraph.parent) ?? 0)) continue
+      if (paragraph.parent.type !== 'document' && !hiddenBefore(paragraph)) continue
       const start = paragraph.lines[skip] - section - 1
       map.set(start, start)
       if (skip > 0) after.set(paragraph.lines[0] - section - 1, start)
@@ -588,7 +599,7 @@ const statusSection = (lines, section, end) => {
       for (let node = paragraph; ; node = node.parent) {
         const run = runs.get(node.parent)
         if (run?.index === node.index - 1) after.set(run.line - section - 1, start)
-        if (node.parent.type === 'document' || node.index - 1 !== (hidden.get(node.parent) ?? 0)) break
+        if (node.parent.type === 'document' || !hiddenBefore(node)) break
       }
       for (const j of paragraph.lines.slice(skip + 1)) if (!paragraph.lazy.has(j)) map.set(j - section - 1, start)
     }

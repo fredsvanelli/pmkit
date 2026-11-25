@@ -3,11 +3,12 @@
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md, "Writes".
 
 import { PmkitError } from '../errors.mjs'
-import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
+import { CREATE_KEYS, UPDATE_KEYS, checkKeys, criteriaOf, oneLine } from '../issue-fields.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { estimateScale } from './discovery.mjs'
 import { cyclesOff } from './cycles.mjs'
 import { CRITERIA_HEADING, PRIORITY_TO_LINEAR, buildDescription, parseDescription } from './issues.mjs'
+import { activeReleases } from './releases.mjs'
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 // A name discovery may not know yet. The caller refreshes the discovery once and builds the input again.
@@ -25,11 +26,6 @@ export function createTeam(context) {
 
 export const teamOf = (context, id) => context.raw.teams.find((team) => team.id === id)
 export const teamStates = (context, team) => context.raw.states.filter((state) => state.team === team.id).sort((a, b) => a.position - b.position)
-
-function oneLine(field, value) {
-  if (/[\r\n]/.test(value)) throw invalid(`${field} must not contain a line break`)
-  return value
-}
 
 /** The label of a name: the team's label first, then the workspace's. Group labels are never applied. */
 function findLabel(context, team, name) {
@@ -100,15 +96,6 @@ export function requireAssignee(context, id) {
   if (!user) throw stale(`assignee "${id}" is not a member of this workspace`, 'pmkit discover')
   if (user.app) throw invalid(`assignee "${id}" is an app user, not a member`, 'pmkit discover')
   return id
-}
-
-function criteriaOf(value) {
-  if (!Array.isArray(value)) throw invalid('acceptanceCriteria must be a list')
-  return value.map((item) => {
-    const text = typeof item === 'string' ? item : item?.text
-    if (typeof text !== 'string' || text.trim() === '') throw invalid('each acceptance criterion needs text')
-    return { text: oneLine('acceptance criterion', text.trim()), done: item?.done === true }
-  })
 }
 
 function descriptionOf(value) {
@@ -197,7 +184,6 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
   return input
 }
 
-const activeReleaseIds = (node) => (node?.releases?.nodes ?? []).filter((item) => item.stage?.type !== 'canceled').map((item) => item.id)
 
 /**
  * The release input of a patch (PMK-246, one release per issue): add the new release and remove the current one. The caller has
@@ -205,15 +191,19 @@ const activeReleaseIds = (node) => (node?.releases?.nodes ?? []).filter((item) =
  */
 function releaseInput(release, { mode, beforeNode, releaseNode }) {
   if (mode === 'create') {
+    // PMK-261: a new issue goes straight into the release the caller resolved.
     if (release === null) return {}
-    throw new PmkitError('NOT_SUPPORTED', 'issues create does not set a Linear release', 'Create the issue, then run pmkit issues update <id> --release <release>')
+    if (!releaseNode) throw invalid(`release ${release} was not resolved to a Linear release`)
+    return { releaseIds: [releaseNode.id] }
   }
   if (release !== null && !releaseNode) throw invalid(`release ${release} was not resolved to a Linear release`)
   const target = release === null ? null : releaseNode.id
-  const current = activeReleaseIds(beforeNode)
+  const current = activeReleases(beforeNode?.releases?.nodes ?? [])
   const input = {}
-  if (target !== null && !current.includes(target)) input.addedReleaseIds = [target]
-  const removed = current.filter((id) => id !== target)
+  if (target !== null && !current.some((item) => item.id === target)) input.addedReleaseIds = [target]
+  // `none` clears every release; a target replaces only the release of its own pipeline (PMK-260). An unknown pipeline counts as the same.
+  const samePipeline = (item) => !item.pipeline?.id || !releaseNode?.pipeline?.id || item.pipeline.id === releaseNode.pipeline.id
+  const removed = current.filter((item) => item.id !== target && (target === null || samePipeline(item))).map((item) => item.id)
   if (removed.length > 0) input.removedReleaseIds = removed
   return input
 }
@@ -246,6 +236,7 @@ export function applyInput(node, input, context, { parent, project, cycle, relea
   if (input.cycleId !== undefined) next.cycle = input.cycleId === null ? null : { id: cycle.id, number: cycle.number }
   if (input.projectId !== undefined) next.project = input.projectId === null ? null : project
   if (input.projectMilestoneId !== undefined) next.projectMilestone = input.projectMilestoneId === null ? null : { id: input.projectMilestoneId }
+  if (input.releaseIds !== undefined) next.releases = { nodes: release ? [release] : [] }
   if (input.addedReleaseIds !== undefined || input.removedReleaseIds !== undefined) {
     const kept = (next.releases?.nodes ?? []).filter((item) => !(input.removedReleaseIds ?? []).includes(item.id))
     next.releases = { nodes: [...kept, ...(input.addedReleaseIds ? [release] : [])] }

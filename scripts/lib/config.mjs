@@ -8,7 +8,11 @@ import { CATEGORIES, FIELD_ROLES, PRIORITY_LABEL_LEVELS, STATUS_MAPPING_KEYS, is
 import { parseYaml } from './yaml.mjs'
 
 export const TRACKERS = ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops']
-export const GIT_HOSTS = ['github', 'none']
+export const GIT_HOSTS = ['github', 'bitbucket', 'none']
+// Bitbucket Cloud addresses a repository as workspace/repo_slug, each part limited to these characters.
+export const BITBUCKET_REPO = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+/** The hosts as "github, bitbucket or none", for messages. */
+export const GIT_HOSTS_TEXT = `${GIT_HOSTS.slice(0, -1).join(', ')} or ${GIT_HOSTS[GIT_HOSTS.length - 1]}`
 export const CONFIRM = ['all_writes', 'single_writes', 'none']
 export const PREVIEW = ['bulk', 'delete', 'publish_update', 'move_scope']
 export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -162,9 +166,12 @@ export function validatePmkitConfig(obj) {
   if (isObject(tracker)) problems.push(...scopeProblems(tracker.scope))
   const host = obj.git_host
   if (!isObject(host) || !GIT_HOSTS.includes(host.system)) {
-    problems.push(`git_host.system must be ${GIT_HOSTS.join(' or ')}`)
+    problems.push(`git_host.system must be ${GIT_HOSTS_TEXT}`)
   } else {
     if (host.repo !== undefined && typeof host.repo !== 'string') problems.push('git_host.repo must be a string')
+    if (host.system === 'bitbucket' && !(typeof host.repo === 'string' && BITBUCKET_REPO.test(host.repo))) {
+      problems.push('git_host.repo must be workspace/repo_slug when git_host.system is bitbucket')
+    }
     if (host.default_branch !== undefined && typeof host.default_branch !== 'string') problems.push('git_host.default_branch must be a string')
   }
   const policy = obj.write_policy

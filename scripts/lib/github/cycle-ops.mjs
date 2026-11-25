@@ -2,7 +2,7 @@
 // is the start date. Capacity lives in .pmkit/capacity.yaml, as on Linear, under the key github:<owner>/<number> of the Project.
 // See docs/specs/2026-11-17-pmk-88-github-iterations-milestones-epics-design.md, "Sprints".
 
-import { stoppedHalfway } from '../cycle-moves.mjs'
+import { checkMoveInput, moveTargetIn, stoppedHalfway } from '../cycle-moves.mjs'
 import { PmkitError } from '../errors.mjs'
 import { addDays, baseField, overlaps, SPRINT_STATES, validDate } from '../local/sprints.mjs'
 import { entryFor, readCapacity, writeEntry } from '../capacity-store.mjs'
@@ -68,14 +68,20 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
 
   async function cycleIssues(id) {
     const { context, field } = await scope()
-    // An id that is not a date names no iteration, so it holds no issue, as an unknown sprint on Linear.
-    if (!validDate(id)) return []
+    // An id that is not a date names no iteration: NOT_FOUND, as getSprint on Local and an unknown cycle on Linear.
+    if (!validDate(id)) throw notFound(id)
     // github.com and GHE.com filter the Project's items on GitHub (PMK-344). A sprint the cached discovery lacks, a title or field
     // name the filter cannot quote, and GHES read the repository through searchIssues, which refreshes the cache when it must.
     const sprint = sprintsOf(field.configuration, today()).sprints.find((item) => item.id === id)
     const quotable = sprint && !sprint.name.includes('"') && !/[\s"]/.test(field.name)
     if (context.features?.itemQuery === true && quotable) return ops.sprintIssues(sprint, field.name)
-    return (await ops.searchIssues({ sprint: id })).issues
+    // searchIssues refreshes a stale cache, then refuses a date no iteration has with INVALID_INPUT: here the sprint is the subject.
+    try {
+      return (await ops.searchIssues({ sprint: id })).issues
+    } catch (error) {
+      if (error.code === 'INVALID_INPUT' && !sprint) throw notFound(id)
+      throw error
+    }
   }
 
   /** The checked { start, end, name } of an openCycle input. The default end needs the field's duration, so openCycle sets it after the read. */
@@ -142,16 +148,12 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
 
   /**
    * `to` is a start date, 'current' for the active sprint, or null to take the issues out of their sprint. Every issue and the target
-   * are checked first, so a bad id writes nothing, and a closed sprint is a target as on Local. Each issue then gets one item write, after an item add when it has no item.
+   * are checked first, so a bad id writes nothing, and a closed sprint is CONFLICT as on Local (PMK-166). Each issue then gets one item write, after an item add when it has no item.
    */
   /** The sprint a move goes to: null for none, the active one for current, or the one starting on to. */
   async function moveTarget({ context, field, key }, to) {
     if (to === null) return null
-    const { sprints } = await readSprints(context, field, key)
-    const target = to === 'current' ? sprints.find((sprint) => sprint.state === 'active') : sprints.find((sprint) => sprint.id === to)
-    if (to === 'current' && !target) throw invalid('there is no active sprint', 'pmkit cycle list')
-    if (!target) throw notFound(to)
-    return target
+    return moveTargetIn((await readSprints(context, field, key)).sprints, to)
   }
 
   /**
@@ -165,11 +167,6 @@ export function cycleOperations({ client, ops, config, getContext, now = () => n
       reads.set(id, await ops.readNode(id))
     }
     return reads
-  }
-
-  function checkMoveInput(ids, to) {
-    if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
-    if (to !== null && typeof to !== 'string') throw invalid('to must be a sprint id, current or null')
   }
 
   async function moveToCycle(ids, to, actor, { dryRun = false } = {}) {

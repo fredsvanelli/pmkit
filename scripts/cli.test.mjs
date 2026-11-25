@@ -97,6 +97,19 @@ test('issues move prints status: backlog → in_progress', () => {
   assert.match(moved.stdout, /status: backlog → in_progress/)
 })
 
+test('issues move --field is ignored with a warning on a tracker whose move needs no fields, and still moves', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['issues', 'create', '--title', 'First'])
+  const moved = run(root, ['issues', 'move', after.id, 'in_progress', '--field', 'x=y'])
+  assert.equal(moved.status, 0, moved.stderr)
+  assert.match(moved.stdout, /status: backlog → in_progress/)
+  assert.match(moved.stderr, /warning: --field is ignored: this tracker's move needs no fields/)
+  const second = json(root, ['issues', 'create', '--title', 'Second'])
+  const asJson = json(root, ['issues', 'move', second.after.id, 'in_progress', '--field', 'x=y'])
+  assert.deepEqual(asJson.warnings, ["--field is ignored: this tracker's move needs no fields"])
+  assert.equal(run(root, ['issues', 'move', json(root, ['issues', 'create', '--title', 'Third']).after.id, 'in_progress']).stderr, '')
+})
+
 test('issues update --dry-run prints the change and leaves the repo byte-identical', () => {
   const root = makeRepo('basic')
   const { after } = json(root, ['issues', 'create', '--title', 'First'])
@@ -639,7 +652,7 @@ test('validate exits 0 and prints a .pmkit/config.yaml problem as path, code and
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: none/, 'system: gitlab'))
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github or none$/m)
+  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github, bitbucket or none$/m)
   const problem = json(root, ['validate']).problems.find((p) => p.path === '.pmkit/config.yaml')
   assert.equal(problem.code, 'config')
 })
@@ -658,7 +671,7 @@ test('validate lists tracker.system linear as a problem and exits 0', () => {
   useUnsupported(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 goals, 0 comments, 0 views')
+  assert.equal(text.stdout.split('\n')[0], 'tracker files not checked: the tracker config could not be loaded; see the problems')
   assert.match(text.stdout, UNSUPPORTED_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
@@ -672,7 +685,7 @@ test('validate with linear and a bad git_host lists both and exits 0', () => {
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
   assert.match(text.stdout, UNSUPPORTED_LINE)
-  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github or none$/m)
+  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github, bitbucket or none$/m)
 })
 
 test('issues list with linear still exits 2 with NOT_SUPPORTED', () => {
@@ -1612,13 +1625,30 @@ test('issues list --sprint current says there is no active sprint and still list
   }
 })
 
-test('issues list --sprint current --json keeps parseable stdout and puts the reason in a warning line', () => {
+test('issues list --sprint current --json keeps parseable stdout and puts the reason in a warning line and in warnings', () => {
   const root = makeRepo('basic')
   try {
     assert.equal(run(root, ['issues', 'create', '--title', 'First']).status, 0)
     const result = run(root, ['issues', 'list', '--sprint', 'current', '--json'])
     assert.equal(result.status, 0)
-    assert.deepEqual(JSON.parse(result.stdout), { issues: [], problems: [] })
+    // The agent reads the JSON, so the warning is there too (PMK-154).
+    assert.deepEqual(JSON.parse(result.stdout), { issues: [], problems: [], warnings: [NO_SPRINT_WARNING.slice('warning: '.length)] })
+    assert.equal(result.stderr, `${NO_SPRINT_WARNING}\n`)
+    // A search with nothing to warn about keeps its shape.
+    assert.deepEqual(Object.keys(json(root, ['issues', 'list'])), ['issues', 'problems'])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('views run of a view with sprint current gives the no-active-sprint warning on stderr and in warnings', () => {
+  const root = makeRepo('basic')
+  try {
+    assert.equal(run(root, ['views', 'save', 'now', '--sprint', 'current']).status, 0)
+    const result = run(root, ['views', 'run', 'now', '--json'])
+    assert.equal(result.status, 0)
+    const body = JSON.parse(result.stdout)
+    assert.deepEqual([body.issues, body.warnings], [[], [NO_SPRINT_WARNING.slice('warning: '.length)]])
     assert.equal(result.stderr, `${NO_SPRINT_WARNING}\n`)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
@@ -1714,12 +1744,12 @@ const editPmkit = (root, from, to) => {
 const MAYBE = ['confirm: single_writes', 'confirm: maybe']
 const GITLAB = ['system: none', 'system: gitlab']
 const CONFIRM_MSG = 'write_policy.confirm must be one of all_writes, single_writes, none'
-const HOST_MSG = 'git_host.system must be github or none'
+const HOST_MSG = 'git_host.system must be github, bitbucket or none'
 const REFUSAL = (...p) => `.pmkit/config.yaml is not valid, so writes are refused: ${p.join('; ')}`
 const WARNING = (...p) => `warning: ${REFUSAL(...p)}; run pmkit validate`
 const errorOf = (result) => JSON.parse(result.stdout).error
 
-test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () => {
+test('every write but migrate refuses an invalid .pmkit/config.yaml and writes nothing', () => {
   const WRITES = {
     'issues create': ['--title', 'Second', '--type', 'task'],
     'issues update': ['ISS-5N1R', '--title', 'Renamed'],
@@ -1757,6 +1787,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'goal delete': ['GOAL-8K2W'],
     'epic goal': ['EPC-2M9D', 'none'],
     'epic move': ['EPC-2M9D', 'done'],
+    'epic update': ['EPC-2M9D', '--title', 'Edited epic'],
     'customers create': ['--name', 'Acme'],
     'customers update': ['CUS-1', '--tier', 'gold'],
     'requests create': ['--title', 'CSV export'],
@@ -1773,6 +1804,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'linear triage set': ['--off'],
     'github discussions comment': ['1', '--body-file', input('comment.md')],
     'github draft-issues convert': ['PVTI_1'],
+    'jira ideas connect': ['IDEA-1', 'ENG-1'],
     migrate: [],
     'local-migrate export': ['--workspace', 'acme', '--team', 'ACME'],
     'local-migrate import': ['--workspace', 'acme', '--team', 'ACME'],
@@ -1787,8 +1819,9 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
   const env = { PATH: `${fake.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: fake.responses }
   const before = hashTree(root)
   const expected = { code: 'INVALID_INPUT', message: REFUSAL(CONFIRM_MSG), nextStep: 'pmkit validate' }
+  // migrate warns instead (PMK-158): it reads only the tracker settings of the file. scripts/migrations.test.mjs covers it.
   const calls = [
-    ...Object.entries(WRITES).flatMap(([name, argv]) => [[...name.split(' '), ...argv, '--json'], [...name.split(' '), ...argv, '--dry-run', '--json']]),
+    ...Object.entries(WRITES).filter(([name]) => name !== 'migrate').flatMap(([name, argv]) => [[...name.split(' '), ...argv, '--json'], [...name.split(' '), ...argv, '--dry-run', '--json']]),
     ['cycle', 'capacity', '2026-10-12', '--days-off', 'fred=2026-10-20', '--json'],
   ]
   for (const args of calls) {
@@ -1904,6 +1937,9 @@ test('every read goes on with one warning', () => {
     'github discussions list': [],
     'github discussions get': ['1'],
     'github draft-issues list': [],
+    'jira plans list': [],
+    'jira plans get': ['12'],
+    'jira ideas list': [],
     'local-migrate status': [],
     render: ['board'],
   }
@@ -2362,7 +2398,12 @@ test('release-notes on a closed sprint leaves out an issue done after the sprint
   const ids = before.groups.flatMap((g) => g.issues.map((i) => i.id))
   assert.ok(ids.length > 0)
   const open = json(root, ['issues', 'create', '--title', 'Finished late', '--type', 'bug']).after.id
+  // A closed sprint takes no issue since PMK-166, so the setup reopens the sprint file for this one update.
+  const sprintFile = path.join(root, '.issues', 'sprints', '2026-09-28.yaml')
+  const closedText = fs.readFileSync(sprintFile, 'utf8')
+  fs.writeFileSync(sprintFile, closedText.replace(/^state: closed$/m, 'state: active'))
   json(root, ['issues', 'update', open, '--sprint', '2026-09-28'])
+  fs.writeFileSync(sprintFile, closedText)
   json(root, ['issues', 'move', open, 'done'])
   const after = notes(root, ['--sprint', '2026-09-28'])
   assert.ok(!after.groups.flatMap((g) => g.issues.map((i) => i.id)).includes(open))
@@ -2856,4 +2897,20 @@ test('goals overview carries each goal\'s own warnings, so a cut epic read makes
   assert.deepEqual(data.warnings, ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'])
   assert.match(text, /^incomplete: /m)
   assert.ok(data.items.every((item) => !('warnings' in item)))
+})
+
+test('cycle add into a closed sprint exits 2 with CONFLICT and moves nothing, dry run included (PMK-166)', () => {
+  const root = makeRepo('team')
+  try {
+    const id = json(root, ['issues', 'create', '--title', 'Late']).after.id
+    const before = hashTree(root)
+    for (const extra of [['--dry-run'], []]) {
+      const result = run(root, ['cycle', 'add', id, '--to', '2026-09-28', ...extra, '--json'])
+      assert.equal(result.status, 2, result.stdout)
+      assert.deepEqual(JSON.parse(result.stdout).error, { code: 'CONFLICT', message: 'sprint 2026-09-28 is closed', nextStep: 'pmkit cycle list --state planned' })
+      assert.equal(hashTree(root), before)
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })

@@ -452,6 +452,26 @@ test('import writes every record and validates', async () => {
   assert.match(JSON.parse(result.stdout).next, /^commit \.issues\/ and \.pmkit\/migrations\/2026-10-23-import-linear\.yaml$/)
 })
 
+// PMK-265: the docs pmkit linked on Linear come into the Local issues, and the dry run counts them.
+test('import brings each issue\'s docs and the dry run counts them, leaving out an attachment pmkit did not create', async () => {
+  const { context, fake } = importSetup()
+  const reader = fake.issues.records.find((record) => record.title === 'Read the config')
+  reader.attachments.push(
+    { id: 'att-1', url: 'https://github.com/acme/app/blob/main/docs/adr/0001-a.md', title: 'docs/adr/0001-a.md', metadata: { pmkitDoc: 'docs/adr/0001-a.md' }, createdAt: '2026-10-27T12:00:01.000Z' },
+    { id: 'att-pr', url: 'https://github.com/acme/app/pull/3', title: 'PR 3', metadata: {}, createdAt: '2026-10-27T12:00:02.000Z' },
+  )
+  const dry = await cli(context, IMPORT.filter((arg) => arg !== '--json').concat('--dry-run'), { fetch: fake.fetch })
+  assert.equal(dry.code, 0, dry.stderr || dry.stdout)
+  assert.match(dry.stdout, /^source: .*\b1 doc\b/m)
+  assert.equal((await confirmed(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  const listed = JSON.parse((await run(['issues', 'list', '--json'], { cwd: context.root, env: context.env })).stdout)
+  const issues = listed.issues ?? listed
+  const imported = issues.find((issue) => issue.title === 'Read the config')
+  const got = JSON.parse((await run(['issues', 'get', imported.id, '--json'], { cwd: context.root, env: context.env })).stdout)
+  assert.deepEqual(got.docs, ['docs/adr/0001-a.md'])
+  assert.equal(issues.filter((issue) => issue.title !== 'Read the config').every((issue) => issue.docs === undefined), true)
+})
+
 test('import never commits', async () => {
   const { context, fake } = importSetup()
   assert.equal((await confirmed(context, IMPORT, { fetch: fake.fetch })).code, 0)

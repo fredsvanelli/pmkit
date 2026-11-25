@@ -80,6 +80,7 @@ Covers: "With `auto_commit: false`, the default, no command commits"; "A `--dry-
   - `auto_commit true: one commit per write, tracker clean afterwards`: HEAD grows by 1, subject is `pmkit: <command> <id>`, `git status --porcelain -- .issues` is empty.
   - `auto_commit false: no commit, files left uncommitted`: HEAD unchanged, `git status --porcelain -- .issues` not empty. Also one case without the key set to prove the default is `false`.
   - `--dry-run with auto_commit true: no commit, nothing written`: HEAD unchanged, `git status --porcelain` empty.
+
   Add `issues branch` for the commit and dry-run tests (it runs `git switch -c`; assert on the new branch). `issues branch` and `cycle close` may need fixture state; read the existing tests in `scripts/cli.test.mjs` and reuse their setup.
   In `cli-pr.test.mjs` add `pr sync --dry-run with auto_commit true does not commit` using the fake `gh` already there, and make sure the repo is removed in `finally`. In `migrations.test.mjs` add `migrate --dry-run with auto_commit true does not commit` and `migrate with auto_commit keeps a staged outside file staged and out of the commit` (assert `git status --porcelain` shows the file staged and `git show --name-only --format= HEAD` has tracker paths only).
 

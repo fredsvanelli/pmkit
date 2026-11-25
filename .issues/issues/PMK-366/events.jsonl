@@ -1,0 +1,9 @@
+{"at":"2026-11-22T19:42:30Z","by":"fred","op":"create","to":{"id":"PMK-366","title":"Check Jira discovery and the manifest against a live site","type":"chore","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-22T19:42:30.042Z","updated":"2026-11-22T19:42:30Z"}}
+{"at":"2026-11-22T19:42:33Z","by":"fred","op":"link","field":"related","to":"PMK-76"}
+{"at":"2026-11-24T18:41:24Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-24T18:41:24Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-24T18:41:24Z","by":"fred","op":"update","field":"branch","from":null,"to":"fredsvanelli/pmk-366-check-jira"}
+{"at":"2026-11-24T18:53:36Z","by":"fred","op":"link","field":"related","to":"PMK-393"}
+{"at":"2026-11-24T19:14:45Z","by":"fred","op":"comment","to":"2026-11-24T19-14-45Z-fred.md"}
+{"at":"2026-11-24T19:14:45Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-25T15:31:26Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

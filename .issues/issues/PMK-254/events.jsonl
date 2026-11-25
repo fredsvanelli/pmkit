@@ -1,1 +1,9 @@
 {"at":"2026-11-11T22:34:42Z","by":"fred","op":"create","to":{"id":"PMK-254","title":"Verify Linear issue docs against a live workspace","type":"task","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-11T22:34:42.296Z","updated":"2026-11-11T22:34:42Z"}}
+{"at":"2026-11-22T17:10:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T17:10:26Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T17:10:26Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-254-verify-linear-issue-docs-against-a-live"}
+{"at":"2026-11-22T17:29:33Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:29:33Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:29:33Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T17:29:34Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T17:58:45Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

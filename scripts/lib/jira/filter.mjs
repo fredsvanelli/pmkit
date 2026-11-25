@@ -1,0 +1,115 @@
+// The pmkit searchIssues filter as JQL, plus the names of the steps the adapter finishes on the client.
+// Pure: it makes no request. See the spec's "Search: Native search (criterion 3)" and its table.
+
+import { PmkitError } from '../errors.mjs'
+import { sprintBoardHint } from './manifest.mjs'
+import { sprintKey } from './sprints.mjs'
+
+const DAY = 86400000
+
+// A JQL string literal: every value is quoted, and \ and " are escaped, so no user text becomes JQL syntax.
+export function jqlString(value) {
+  return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+}
+
+const list = (values) => `(${values.map(jqlString).join(', ')})`
+export const dayOf = (instant, offset) => new Date(Date.parse(instant) + offset * DAY).toISOString().slice(0, 10)
+
+
+/** The ids of the space's epic-level work types, which issue searches leave out (ADR 0017). */
+export const epicTypeIds = (context) => context.raw.workTypes.filter((type) => type.level === 'epic').map((type) => type.id)
+
+// Jira reads a quoted sprint value as a sprint name, so an id goes unquoted (PMK-370, seen live). Callers pass checked board
+// sprint ids; the quoted fallback is defensive, so an unchecked value can only be read as a name, never as JQL.
+const sprintId = (id) => sprintKey(String(id)) ?? jqlString(id)
+
+/** The NOT_SUPPORTED error of a sprint filter on a space with no sprint board or no Sprint field, else null. */
+export function sprintUnsupported(context) {
+  const space = context.space
+  if (context.boardId === null) return new PmkitError('NOT_SUPPORTED', sprintBoardHint(context.raw), '/pmkit:setup')
+  if (!context.fields.sprint) return new PmkitError('NOT_SUPPORTED', `No sprint field in space ${space}`, '/pmkit:setup')
+  return null
+}
+
+// One handler per filter key, in FILTER_KEYS order. Each adds to out.clauses and out.steps; out.empty says nothing can match.
+const HANDLERS = {
+  text(filter, out) {
+    const quoted = jqlString(filter.text)
+    out.clauses.push(`(summary ~ ${quoted} OR description ~ ${quoted})`)
+    out.steps.add('text')
+  },
+  categories(filter, out, context) {
+    const ids = context.raw.statuses.filter((status) => filter.categories.includes(context.categoryOf(status.name, status.categoryKey))).map((status) => status.id)
+    if (ids.length === 0) out.empty = true
+    else out.clauses.push(`status in ${list(ids)}`)
+  },
+  types(filter, out, context) {
+    const ids = filter.types.map((type) => context.workTypeOf(type)?.id).filter((id) => id !== undefined)
+    if (ids.length === 0) out.empty = true
+    else out.clauses.push(`issuetype in ${list(ids)}`)
+  },
+  assignee(filter, out, context) {
+    if (filter.assignee === 'none') return out.clauses.push('assignee is EMPTY')
+    const account = filter.assignee === 'me' ? context.viewer?.id : filter.assignee
+    if (!account) throw new PmkitError('INVALID_INPUT', 'the signed-in Jira user is unknown, so "me" cannot be resolved', 'pmkit issues list')
+    out.clauses.push(`assignee = ${jqlString(account)}`)
+  },
+  labels(filter, out) {
+    for (const label of filter.labels) out.clauses.push(`labels = ${jqlString(label)}`)
+  },
+  sprint(filter, out, context, { activeId }) {
+    // null is no sprint filter, as on Linear.
+    if (typeof filter.sprint !== 'string') return
+    const unsupported = sprintUnsupported(context)
+    if (unsupported) throw unsupported
+    if (filter.sprint === 'none') out.clauses.push('(sprint is EMPTY OR sprint not in openSprints())')
+    else if (filter.sprint !== 'current') out.clauses.push(`sprint = ${sprintId(filter.sprint)}`)
+    else if (activeId) out.clauses.push(`sprint = ${sprintId(activeId)}`)
+    else out.empty = true
+    out.steps.add('sprint')
+  },
+  // The version id the caller resolved from the name; an unknown name matches nothing, as on Local. Jira's fixVersion = <id>
+  // also matches a version named like the id (PMK-373, seen live), so the clause narrows and the release step decides.
+  release(filter, out, context, { versionId }) {
+    if (versionId === undefined) out.empty = true
+    else out.clauses.push(`fixVersion = ${jqlString(versionId)}`)
+    out.steps.add('release')
+  },
+  parent(filter, out) {
+    out.clauses.push(`parent = ${jqlString(filter.parent)}`)
+  },
+  blocked(filter, out) {
+    out.steps.add('blocked')
+  },
+  // JQL dates are minutes in the user's time zone (UTC-12 to UTC+14), so the clause is widened past any zone (two days
+  // ahead for the upper bound, one behind for the lower) and the exact compare runs on the client.
+  updatedBefore(filter, out) {
+    out.clauses.push(`updated < ${jqlString(dayOf(filter.updatedBefore, 2))}`)
+    out.steps.add('updated')
+  },
+  updatedAfter(filter, out) {
+    out.clauses.push(`updated >= ${jqlString(dayOf(filter.updatedAfter, -1))}`)
+    out.steps.add('updated')
+  },
+}
+
+// The step names in the order the adapter runs them.
+const STEP_ORDER = ['text', 'blocked', 'sprint', 'release', 'updated']
+
+/**
+ * Translates a filter that checkFilter accepted (the caller checks) into { empty: true } when nothing can match, else
+ * { jql, clientSteps, serverLimit }. `activeId` is the id of the board's active sprint, which `current` means; `versionId` is the Jira id of the release filter's version, undefined when none has its name. `serverLimit` is set only when no client step runs and the order is created.
+ */
+export function translateFilter(filter, context, { activeId, versionId } = {}) {
+  const epics = epicTypeIds(context)
+  const scope = [`project = ${jqlString(context.space)}`, ...(epics.length > 0 ? [`issuetype not in ${list(epics)}`] : [])]
+  const out = { clauses: scope, steps: new Set(), empty: false }
+  for (const [key, handle] of Object.entries(HANDLERS)) {
+    if (filter[key] !== undefined) handle(filter, out, context, { activeId, versionId })
+  }
+  if (out.empty) return { empty: true }
+  const clientSteps = STEP_ORDER.filter((step) => out.steps.has(step))
+  const { limit } = filter
+  const serverLimit = clientSteps.length === 0 && (filter.sort ?? 'created') === 'created' && Number.isInteger(limit) && limit >= 1 ? limit : undefined
+  return { jql: `${out.clauses.join(' AND ')} ORDER BY created ASC, key ASC`, clientSteps, serverLimit }
+}

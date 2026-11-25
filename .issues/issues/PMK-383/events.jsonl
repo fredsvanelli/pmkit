@@ -1,0 +1,2 @@
+{"at":"2026-11-23T16:11:27Z","by":"fred","op":"create","to":{"id":"PMK-383","title":"Tidy the PMK-82 Jira plans review minors","type":"chore","status":"backlog","priority":"low","labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-23T16:11:27.010Z","updated":"2026-11-23T16:11:27Z"}}
+{"at":"2026-11-23T16:11:39Z","by":"fred","op":"link","field":"related","to":"PMK-82"}

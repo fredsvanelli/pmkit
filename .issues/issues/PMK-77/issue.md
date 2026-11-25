@@ -2,14 +2,17 @@
 id: PMK-77
 title: "Implement work items, transitions, links and JQL for Jira"
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 8
+assignee: fred
 parent: EPC-7
 blocked_by: [PMK-76]
+related: [PMK-367]
 milestone: jira
+branch: pmk-77-implement-work-items-transitions-links
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:26Z
+updated: 2026-11-24T03:13:39Z
 ---
 
 ## Description

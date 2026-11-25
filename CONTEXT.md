@@ -9,12 +9,40 @@ The system that holds a team's issues, sprints and epics. In the MVP it is the L
 _Avoid_: backend, board, project management tool
 
 **Git host**:
-The service that hosts the repository and its pull requests. It is separate from the tracker. pmkit reaches GitHub through the `gh` and `git` CLIs and holds no token. `git_host.system` is `github` or `none`.
+The service that hosts the repository and its pull requests. It is separate from the tracker. pmkit reaches GitHub through the `gh` and `git` CLIs and holds no token. It reaches Bitbucket Cloud through its REST API with the token in `BITBUCKET_TOKEN`, which it stores nowhere (ADR 0018). `git_host.system` is `github`, `bitbucket` or `none`, and `git_host.repo` names the repository as `owner/name` on GitHub and `workspace/repo_slug` on Bitbucket.
 _Avoid_: forge, remote, provider
 
 **Workspace**:
 The Linear organization that a personal API key belongs to, named by its URL key in `tracker.scope.workspace`. The key comes from `LINEAR_API_KEY`, and pmkit stores it nowhere.
-_Avoid_: organization, account
+_Avoid_: organization, account, Bitbucket workspace (the first half of `git_host.repo` on Bitbucket)
+
+**Site**:
+The Jira Cloud site a repository uses, named by its host in `tracker.scope.site`, such as `acme.atlassian.net`. The API token comes from `JIRA_EMAIL` and `JIRA_API_TOKEN`, and pmkit stores it nowhere. pmkit supports Jira Cloud only (ADR 0013).
+_Avoid_: instance, server, workspace (Linear's)
+
+**Space**:
+A Jira space, company-managed or team-managed, named by its key in `tracker.scope.space`, such as `ENG`. A repository uses one space.
+_Avoid_: project (Jira's old name for a space; reads GitHub Project or Epic), board
+
+**Work type**:
+A kind of Jira work item a space offers, such as Story, Bug, Epic or Sub-task, each with its own statuses and a hierarchy level. A pmkit type maps to one work type.
+_Avoid_: issue type (Jira's old name), type (alone; reads the pmkit type)
+
+**Transition**:
+A move of a Jira work item from one status to another that the space's workflow allows. On Jira, `issues move` runs the one transition that reaches the target status, never a chain of them.
+_Avoid_: status change (on Jira, alone), workflow step
+
+**Screen field**:
+A field a Jira transition asks for on its screen before it moves the work item, such as Resolution on a move to Done. pmkit asks the user for each required one that has no default, and never fills one itself.
+_Avoid_: transition field, required field (alone)
+
+**Sprint board**:
+The Jira board of a space that runs sprints, and its sprints are the space's sprints. On a company-managed space it is the space's first Scrum board. On a team-managed space it is the space's one board, which stays a simple board whatever is on, when the space's Sprints board feature is on. A space without one has no sprints. Opening a sprint there creates it and, when it starts today or earlier and no sprint is active, starts it; closing completes it.
+_Avoid_: board (alone; reads a GitHub Project), Scrum board (a team-managed space runs sprints on a simple board), Kanban board (it has no sprints)
+
+**Board feature**:
+A switch on a team-managed space's board that turns on one part of Jira, such as Sprints, Estimation or Releases. On a team-managed space the board features, not the board's kind, decide whether the space has sprints, estimates and releases.
+_Avoid_: space feature, setting (alone; reads Jira's global settings)
 
 **Adapter**:
 The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`. The CLI picks the tracker adapter by `tracker.system` from the registry in `scripts/lib/adapters.mjs`, and commands reach it only through the contract operations.
@@ -33,7 +61,7 @@ An issue whose `parent` names another issue or an epic. The parent's `children` 
 _Avoid_: subtask, child ticket
 
 **Epic**:
-A larger body of work with a status that `epic move` changes, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
+A larger body of work with a title and a description that `epic update` edits, a status that `epic move` changes, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it. On Jira an epic is a work item of an epic-level work type, and it is never an issue in a search (ADR 0017).
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
 
 **Goal**:
@@ -45,8 +73,12 @@ A named target with an optional due date that issues and epics point to by id.
 _Avoid_: release, phase, version
 
 **Release**:
-A version of the product, kept as `releases/<version>.md`, that issues point to through `release`. It may name a git tag, and it is `planned` until `release mark-released` records when it shipped.
-_Avoid_: milestone (a milestone is a target, not a version), version (outside the file name), deploy
+A version of the product, kept as `releases/<version>.md`, that issues point to through `release`. It may name a git tag, and it is `planned` until `release mark-released` records when it shipped. On Jira a release is a version of the space, named by the version name, which is unique in the space whatever its case, archived versions included, and an issue's release is its fix version; Jira has no milestones and versions have no git tag.
+_Avoid_: milestone (a milestone is a target, not a version), version (outside the file name and Jira), deploy
+
+**Status update**:
+A dated note on an epic's progress with a health (`on_track`, `at_risk`, `off_track`), an author and a body, newest first. The latest one gives the epic its health. On Jira it is a comment on the epic that pmkit marks as an update; a plain comment is not one.
+_Avoid_: comment (alone), report, Home update (Atlassian Home, which pmkit does not write yet)
 
 **Release notes**:
 The done issues of a release, a sprint or a period, grouped by type and written for a user of the product. The command says which basis it used and whether the notes are a draft. `/pmkit:report:release-notes` writes them and saves them as a document after the user confirms.
@@ -73,8 +105,28 @@ An accepted request, read as a sign that someone wants its issue. `demand list` 
 _Avoid_: vote, upvote
 
 **Sprint**:
-A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.
+A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. On the Local tracker and GitHub the sprint's id is its start date; on Linear it is the cycle number and on Jira the Jira sprint id. Jira calls a planned sprint a future sprint. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.
 _Avoid_: iteration, cycle (outside the CLI and contract names)
+
+**Plan**:
+A Jira Premium cross-team plan (Jira Plans, formerly Advanced Roadmaps): a named set of issue sources (boards, spaces or filters) scheduled together, with teams and their capacity. A plan is site-wide, not part of one space. `jira plans list` and `jira plans get` read plans; pmkit does not write them.
+_Avoid_: roadmap, advanced roadmap, portfolio
+
+**Scenario**:
+One alternative version of a plan's schedule. Every plan has a default scenario; Jira's public API names only that one, so pmkit reads no other.
+_Avoid_: what-if, sandbox, draft plan
+
+**Idea**:
+A Jira Product Discovery work item: something the team might build, collected with evidence and votes before it is planned. An idea lives in a Product Discovery project, not in the tracker's space, and is not an issue. Connecting an idea to an epic hands it to delivery; the epic implements the idea. `jira ideas list` reads ideas and `jira ideas connect` connects one.
+_Avoid_: feature request, suggestion
+
+**Insight**:
+A piece of evidence attached to an idea in Jira Product Discovery, such as a customer quote or a link to a support ticket. Jira's REST API does not return insights, so pmkit reports them as unread.
+_Avoid_: data point, evidence
+
+**Vote**:
+A Jira Product Discovery vote on an idea, counted in a votes field of the idea's project. Jira Product Discovery computes the count; pmkit reads it and casts none. Not a demand signal, which is an accepted request.
+_Avoid_: upvote, demand
 
 **Status**:
 A name a tracker gives to a step of its workflow, such as `In review`. Each status belongs to one category, and commands reason by the category.
@@ -135,6 +187,10 @@ _Avoid_: longest path, critical chain
 **Stalled**:
 An issue in `in_progress` or `in_review`, or an open pull request, with no activity for more than `stuck_business_days` business days. An issue's activity is its newest event and, with a git host, the last update of the open pull request of its branch. `pmkit risks` lists stalled issues and pull requests.
 _Avoid_: stale (backlog grooming's term for old backlog issues), idle
+
+**Time entry**:
+One amount of whole minutes logged on an issue by a member, dated by when the work was done. On the Local tracker it is a `log_time` event; on Jira it is a worklog, dated by its start and rounded to the nearest minute. `issues time-entries` lists them with the total per member and per sprint.
+_Avoid_: worklog (outside Jira), timesheet
 
 **Thread**:
 A root comment and its replies. Replies attach to the root, so a thread is one level deep. Resolving a thread resolves all of it. `resolveThread` on a reply's ID marks the root of its thread.

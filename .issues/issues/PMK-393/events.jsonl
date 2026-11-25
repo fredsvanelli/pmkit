@@ -1,0 +1,14 @@
+{"at":"2026-11-24T18:53:31Z","by":"fred","op":"create","to":{"id":"PMK-393","title":"Read team-managed board features in the Jira manifest","type":"bug","status":"backlog","priority":"low","estimate":3,"labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-24T18:53:31.447Z","updated":"2026-11-24T18:53:31Z"}}
+{"at":"2026-11-24T18:53:36Z","by":"fred","op":"link","field":"related","to":"PMK-366"}
+{"at":"2026-11-24T19:04:30Z","by":"fred","op":"update","field":"priority","from":"low","to":"high"}
+{"at":"2026-11-24T19:04:30Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-24T22:45:01Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-24T22:45:01Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-24T22:45:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"fredsvanelli/pmk-393-team-managed"}
+{"at":"2026-11-24T23:59:59Z","by":"fred","op":"link","field":"related","to":"PMK-396"}
+{"at":"2026-11-25T00:12:45Z","by":"fred","op":"comment","to":"2026-11-25T00-12-45Z-fred.md"}
+{"at":"2026-11-25T00:12:45Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-25T00:12:46Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-25T00:12:46Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-25T00:12:57Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-25T15:31:32Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

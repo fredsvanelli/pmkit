@@ -176,23 +176,36 @@ query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String, $sort: [
 
 // PMK-246: Linear releases. A release node carries its stage type, so pmkit can leave canceled releases out.
 // Linear refuses a query above 10000 complexity points (field 0.1, object 1, a connection times its page; PMK-41 hit it),
-// so the lists keep small selections: about 3.8 points a release in a list and 2.1 an issue's release. Only the read of one
+// so the lists keep small selections: about 3.8 points a release in a list and 2.2 an issue's release. Only the read of one
 // release takes the pipeline's teams, so a release of another team is refused. ponytail: 250 teams per pipeline is read as all.
-const RELEASE_FIELDS = 'id name version description targetDate completedAt stage { type } pipeline { id }'
+const RELEASE_BASE_FIELDS = 'id name version description targetDate completedAt stage { type }'
+const RELEASE_FIELDS = `${RELEASE_BASE_FIELDS} pipeline { id }`
 // What an issue's release needs: the id and whether it is canceled.
 const ISSUE_RELEASE_FIELDS = 'id stage { type }'
-// An issue's releases in the batch read: 100 issues x 20 releases x 2.1 is about 4300 points.
+// An issue's releases in the batch read: 100 issues x (20 releases x 2.2 + about 2.5) is about 4650 points.
 export const BATCH_RELEASES_PAGE = 20
 
 export const RELEASES_QUERY = `query PmkitReleases($filter: ReleaseFilter, $first: Int!, $after: String) {
   releases(filter: $filter, first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} }
 }`
 
-export const RELEASE_QUERY = `query PmkitRelease($id: String!) { release(id: $id) { ${RELEASE_FIELDS.replace('pipeline { id }', 'pipeline { id teams(first: 250) { nodes { key } } }')} } }`
+export const RELEASE_QUERY = `query PmkitRelease($id: String!) { release(id: $id) { ${RELEASE_BASE_FIELDS} pipeline { id teams(first: 250) { nodes { key } } } } }`
 
 // The releases of up to 100 issues in one request (review of PMK-246). An issue whose list has a next page is read again alone.
 export const ISSUES_RELEASES_QUERY = `query PmkitIssuesReleases($ids: [ID!], $first: Int!) {
   issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id releases(first: ${BATCH_RELEASES_PAGE}) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } } }
+}`
+
+// PMK-261: the scope team's pipelines with their stages, and the release writes. The writes answer the list's release fields.
+export const TEAM_RELEASE_PIPELINES_QUERY = `query PmkitTeamReleasePipelines($team: String!) {
+  teams(filter: { key: { eq: $team } }, first: 1) { nodes { releasePipelines(first: 50) { nodes { id name stages(first: 50) { nodes { id type } } } } } }
+}`
+export const RELEASE_CREATE = `mutation PmkitReleaseCreate($input: ReleaseCreateInput!) { releaseCreate(input: $input) { success release { ${RELEASE_FIELDS} } } }`
+export const RELEASE_UPDATE = `mutation PmkitReleaseUpdate($id: String!, $input: ReleaseUpdateInput!) { releaseUpdate(id: $id, input: $input) { success release { ${RELEASE_FIELDS} } } }`
+
+// PMK-260: an issue's releases with their pipelines, read only for a release write, so the list reads keep their cost.
+export const ISSUE_RELEASE_PIPELINES_QUERY = `query PmkitIssueReleasePipelines($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { releases(first: $first, after: $after) { nodes { ${ISSUE_RELEASE_FIELDS} pipeline { id } } ${PAGE_INFO} } }
 }`
 
 export const ISSUE_RELEASES_QUERY = `query PmkitIssueReleases($id: String!, $first: Int!, $after: String) {

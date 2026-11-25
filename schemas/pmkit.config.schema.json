@@ -28,7 +28,7 @@
         },
         "scope": {
           "title": "Tracker scope",
-          "description": "Hosted trackers only: the names that pick the team, project or space, such as team: ENG. GitHub Issues uses host (such as github.com), repo (owner/name) and project (the Project's owner/number, or none). Ignored by the local tracker.",
+          "description": "Hosted trackers only: the names that pick the team, project or space, such as team: ENG. GitHub Issues uses host (such as github.com), repo (owner/name) and project (the Project's owner/number, or none). Jira uses site (the site's host, such as acme.atlassian.net) and space (the space key, such as ENG). Ignored by the local tracker.",
           "type": "object",
           "properties": {
             "workspace": {
@@ -55,8 +55,8 @@
       "properties": {
         "system": {
           "title": "Git host system",
-          "description": "github opens pull requests with the gh CLI; none turns pull requests off.",
-          "enum": ["github", "none"]
+          "description": "github opens pull requests with the gh CLI; bitbucket opens pull requests through the Bitbucket Cloud REST API with BITBUCKET_TOKEN; none turns pull requests off.",
+          "enum": ["github", "bitbucket", "none"]
         },
         "repo": {
           "title": "Repository",

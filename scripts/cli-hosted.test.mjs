@@ -61,23 +61,23 @@ test('a hosted config with a bad mapping warns on a read and refuses a write', a
   assert.equal(errorOf(create).code, 'INVALID_INPUT')
 })
 
-test('jira exits 2 with NOT_SUPPORTED with linear registered', async () => {
+test('gitlab exits 2 with NOT_SUPPORTED with linear registered', async () => {
   const root = makeRepo('team')
-  editFile(path.join(root, '.pmkit', 'config.yaml'), /^ {2}system: local$/m, '  system: jira')
+  editFile(path.join(root, '.pmkit', 'config.yaml'), /^ {2}system: local$/m, '  system: gitlab')
   const result = await call(root, ['issues', 'list', '--json'], { adapters: withLinear(mirrorLinear()) })
   assert.equal(result.code, 2)
   assert.deepEqual(JSON.parse(result.stdout), {
-    error: { code: 'NOT_SUPPORTED', message: 'tracker.system "jira" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' },
+    error: { code: 'NOT_SUPPORTED', message: 'tracker.system "gitlab" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' },
   })
 })
 
-test('validate with a hosted config checks only .pmkit/config.yaml', async () => {
+test('validate with a hosted config checks only .pmkit/config.yaml, and says it skipped the tracker files', async () => {
   const result = await call(mirrorRepo('team'), ['validate', '--json'], { adapters: withLinear(mirrorLinear()) })
   assert.equal(result.code, 0, result.stderr)
-  assert.deepEqual(JSON.parse(result.stdout), {
-    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 },
-    problems: [],
-  })
+  const skipped = 'the tracker is linear, so validate checks only .pmkit/config.yaml and the ADRs'
+  assert.deepEqual(JSON.parse(result.stdout), { checked: null, skipped, problems: [] })
+  const text = await call(mirrorRepo('team'), ['validate'], { adapters: withLinear(mirrorLinear()) })
+  assert.equal(text.stdout, `tracker files not checked: ${skipped}\nno problems\n`)
 })
 
 test('a hosted actor that cannot be resolved names PMKIT_USER and pmkit discover', async () => {
@@ -133,7 +133,7 @@ test('risks lists an epic whose updates reject, as it does for a throw', async (
 // .pmkit/config.yaml says linear, over a tracker whose operations all return promises. A missing await, or a call past
 // the contract, makes the two outputs differ.
 // docs next-adr answers differently on Linear by design: no tracker folder and a repository file. Its Linear answer has a test in cli-degraded.test.mjs.
-const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.github && !command.exempt && !command.systems && !command.byTracker)
+const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.github && !command.jira && !command.exempt && !command.systems && !command.byTracker)
 
 test('every command that is not local or exempt has mirror cases', () => {
   for (const command of MIRRORED) {
@@ -156,6 +156,11 @@ test('the linear commands are the triage and customers commands and stay out of 
 test('the github commands are the discussions and draft-issues commands and stay out of the mirror', () => {
   assert.deepEqual(COMMANDS.filter((command) => command.github).map((command) => command.name), ['github discussions list', 'github discussions get', 'github discussions comment', 'github draft-issues list', 'github draft-issues convert'])
   assert.ok(MIRRORED.every((command) => !command.github))
+})
+
+test('the jira commands are the plans commands and stay out of the mirror', () => {
+  assert.deepEqual(COMMANDS.filter((command) => command.jira).map((command) => command.name), ['jira plans list', 'jira plans get', 'jira ideas list', 'jira ideas connect'])
+  assert.ok(MIRRORED.every((command) => !command.jira))
 })
 
 // PMK-46 added customer and request operations that every tracker implements. The Linear-only `customers` extension of PMK-42 stays outside the contract.

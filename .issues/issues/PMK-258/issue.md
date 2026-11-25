@@ -2,12 +2,14 @@
 id: PMK-258
 title: Fix Linear write edge cases for docs and releases
 type: bug
-status: backlog
+status: done
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-5
+branch: pmk-258-fix-linear-write-edge-cases-for-docs-and
 created: 2026-11-11T22:34:42.607Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description
@@ -38,8 +40,8 @@ The reviews of PMK-246 and PMK-252 approved writes on Linear with edge cases tha
 
 ## Acceptance criteria
 
-- [ ] A docs change on an issue whose attachment metadata is not normalized keeps the doc and says what it did
-- [ ] A write whose final re-read fails exits with code 0, says the write was done, and notes that the issue could not be read back
-- [ ] A doc path with a backslash `..` part is refused before any request
-- [ ] `/pmkit:spec:record-decision` skips an issue whose docs dry run answers `CONFLICT` and says so
-- [ ] Release notes show an issue in two releases, or with an unread release, as such and never as `release: null`
+- [x] A docs change on an issue whose attachment metadata is not normalized keeps the doc and says what it did
+- [x] A write whose final re-read fails exits with code 0, says the write was done, and notes that the issue could not be read back
+- [x] A doc path with a backslash `..` part is refused before any request
+- [x] `/pmkit:spec:record-decision` skips an issue whose docs dry run answers `CONFLICT` and says so
+- [x] Release notes show an issue in two releases, or with an unread release, as such and never as `release: null`

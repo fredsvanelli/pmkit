@@ -27,8 +27,8 @@ import { ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { PROBES } from './live-probes.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
-/** The families the Linear run covers. cycle-lifecycle, time, releases, milestone-writes, document-writes and deliverable-writes stay out; the live write guard has no projectUpdate rule, so deliverable-writes (epic move) cannot run live. */
-export const LINEAR_FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'milestones', 'documents']
+/** The families the Linear run covers. cycle-lifecycle, time, releases, milestone-writes and document-writes stay out. deliverable-writes (epic move) runs since the guard takes projectUpdate on the run's projects (PMK-356). */
+export const LINEAR_FAMILIES = ['discovery', 'issues', 'archive', 'relations', 'history', 'threads', 'cycles', 'deliverables', 'deliverable-writes', 'milestones', 'documents']
 
 /** The reason the live run cannot start, or false when the gate is open. */
 export function skipReason(env) {
@@ -212,7 +212,7 @@ export function registerLiveSuite(run) {
       test(`probe: ${name}`, async (t) => {
         const env = await run.setup()
         try {
-          const { asserted, recorded } = await probe({ tracker: env.tracker, client: run.client, actor: env.actor, team: run.team })
+          const { asserted, recorded } = await probe({ tracker: env.tracker, client: run.client, actor: env.actor, team: run.team, config: run.config })
           for (const line of asserted) t.diagnostic(`asserted: ${line}`)
           t.diagnostic(`recorded: ${JSON.stringify(recorded)}`)
         } finally {

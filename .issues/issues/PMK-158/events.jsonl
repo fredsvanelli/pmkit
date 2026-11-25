@@ -1,3 +1,12 @@
 {"at":"2026-10-28T00:11:39Z","by":"fred","op":"create","to":{"id":"PMK-158","title":"Make next steps runnable and keep upgrade working across config shapes","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:39.454Z","updated":"2026-10-28T00:11:39Z"}}
 {"at":"2026-10-28T00:11:39Z","by":"fred","op":"link","field":"related","to":"PMK-118"}
 {"at":"2026-10-28T00:11:39Z","by":"fred","op":"link","field":"related","to":"PMK-120"}
+{"at":"2026-11-22T04:33:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T04:33:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T04:33:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-158-make-next-steps-runnable-and-keep"}
+{"at":"2026-11-22T04:34:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:48:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:48:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:48:49Z","by":"fred","op":"comment","to":"2026-11-22T04-48-49Z-fred.md"}
+{"at":"2026-11-22T04:48:50Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T05:53:09Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

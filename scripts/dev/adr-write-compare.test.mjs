@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
-import { ADR_STATUSES, adrKeptLines, setAdrStatus } from '../lib/adr.mjs'
-import { HTML_CONTAINERS, KNOWN_STATUS, ONE_SPACE, STATUS_BREAKS, STATUS_NEAR, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, oneSpacePairs, statusBreakPairs, statusBreakTriples, writeShape } from './adr-write-compare.mjs'
+import { ADR_STATUSES, adrFenceHeld, adrHtmlHeld, adrKeptLines, adrStatusDropped, setAdrStatus } from '../lib/adr.mjs'
+import { HTML_CONTAINERS, KNOWN_STATUS, ONE_SPACE, STATUS_BREAKS, STATUS_NEAR, STATUS_OTHER, STATUS_WORDS, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, oneSpacePairs, statusBreakPairs, statusBreakTriples, textOf, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
 const SENTINEL = 'Superseded by sentinel.md'
@@ -143,6 +143,29 @@ test('the helper copy of the known status rule has not drifted from scripts/lib/
   }
 })
 
+test('the helper copy reads an ordered list item as a status as scripts/lib/adr.mjs does (PMK-328)', () => {
+  // adr.mjs refuses a status followed by another line that reads as a known status, so the refusal says how it reads each line.
+  const reads = ['1. Proposed', '1) Proposed', '10. Proposed', '1.\tProposed', '> 1. Proposed', '- 1. Proposed']
+  const not = ['1.Accepted', 'see 1. Proposed', '**1. Accepted**', '1234567890. Proposed', '(1) x']
+  for (const line of [...reads, ...not]) {
+    const refused = adrStatusDropped(`## Status\n\nAccepted\n\n${line}\n\n## Context\n`).length > 0
+    assert.equal(readsAsStatus(line), reads.includes(line), JSON.stringify(line))
+    assert.equal(refused, reads.includes(line), JSON.stringify(line))
+  }
+})
+
+test('setAdrStatus writes oneSpacePairs bodies in place over their one-space line, which makes a write that keeps the space fail the run (PMK-331)', () => {
+  // A body counts when no guard refuses it and the write replaces exactly the one-space line. Next to a break line the write adds a line instead, so only these bodies can catch the mutation.
+  const inPlace = new Map(ONE_SPACE.map((line) => [line, 0]))
+  for (const body of oneSpacePairs()) {
+    const text = textOf(body)
+    if (adrStatusDropped(text).length > 0 || adrHtmlHeld(text) !== null || adrFenceHeld(text) !== null) continue
+    const written = writeShape(text, setAdrStatus(text, 'deprecated').text)
+    if (written.inPlace && inPlace.has(written.oldLine)) inPlace.set(written.oldLine, inPlace.get(written.oldLine) + 1)
+  }
+  assert.deepEqual(Object.fromEntries(inPlace), { 'Accepted ': 315, '  Proposed ': 315 })
+})
+
 test('writeShape gives the raw old and new line of an in-place write', () => {
   const body = '  Accepted  \nDate: x'
   const placed = shape(body, inPlaceAfter(body, 'Accepted', 'Superseded by sentinel.md'))
@@ -245,7 +268,7 @@ test('each generator loop of the corpus has its own size, so dropping one fails 
   assert.equal(count(oneSpacePairs()), 2 * 151 * 7 + 118 * 2 * 7)
   // 2 statuses, with and without a blank line, 5 kinds after `> ` and `- `, 6 ends.
   assert.equal(HTML_CONTAINERS.length, 2 * 2 * 10 * 6)
-  // Every loop of `cases`: 2,173,356 cases before PMK-327 with these counts, then 240 + 1,638 + 42,588.
+  // Every loop of `cases`: 2,173,356 cases before PMK-327 with these counts, then 240 + 1,638 + 42,588 + 3,766 (the HTML containers, the status-then-break pairs and triples, the one-space pairs).
   assert.equal(count(cases({ seed: 1, random: 10, statusRandom: 10, breakRandom: 10, lines: 8 })), 2173356 + 240 + 1638 + 42588 + 3766)
 })
 
@@ -256,8 +279,13 @@ test('the corpus holds HTML blocks of kinds 1 to 5 in containers, status lines b
     assert.equal(found.length, 4, JSON.stringify([open, prefix, end]))
     for (const item of found) assert.equal(item.text.endsWith('\n'), end !== 'end of file, no final newline')
   }
-  // A status line: a PMK-315 one (STATUSY) or a one-space one, never a break line.
-  const isStatus = (line) => STATUS_NEAR.includes(line) && !STATUS_BREAKS.includes(line)
+  // A status line, by the issue's rule and not by the list the pairs are built from (PMK-331): a PMK-315 status line (STATUS_WORDS, STATUS_OTHER), or one with exactly one space after it.
+  const STATUS = [...STATUS_WORDS, ...STATUS_OTHER]
+  const isStatus = (line) => {
+    const core = /[^ ] $/.test(line) ? line.slice(0, -1) : line
+    return STATUS.includes(core) || STATUS.includes(core.trimStart())
+  }
+  for (const line of ['lazy', 'a', '', 'Accepted  ', 'Accepted\\']) assert.ok(!isStatus(line), line)
   assert.equal(STATUS_NEAR.length, 26)
   for (const body of statusBreakPairs()) {
     const [s, b] = body.split('\n')

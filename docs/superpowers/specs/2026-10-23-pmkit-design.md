@@ -93,7 +93,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Issues | `searchIssues(filter)`, `getIssue(id)`, `createIssue(input, actor)`, `updateIssue(id, patch, actor)`, `moveToCategory(id, category, actor, { status })`, `assign(id, member, actor)`, `archive(id, actor)` |
 | Relations | `link(from, to, kind, actor)`, `unlink(from, to, kind, actor)` with kind `blocks`, `related` or `duplicate`; `setParent(id, parent, actor)` |
 | History and comments | `getHistory(id, { since })`, `listComments(id)`, `comment(id, body, actor, { replyTo })`, `resolveThread(id, commentId, actor)` |
-| Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
+| Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` with `sprint` a sprint id, `current` for the active sprint or `null` for no sprint |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)`, `listStatusUpdates(epic)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
 | Goals | `listGoals()`, `getGoal(id)`, `createGoal(input, actor)`, `goalProgress(id)`, `setEpicGoal(epic, goal, actor)` |
@@ -104,7 +104,9 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Documents | `readDocument(path)`, `createDocument(path, body, actor)`, `listDocuments()` |
 | Time | `logTime(id, minutes, actor)` |
 
-Natural-language queries are translated by the command, not by the contract **(builder's call)**. `/pmkit:issues:find` turns the question into CLI filter flags, shows the flags in one line, and runs them. The contract's `searchIssues` takes a structured filter: `text`, `categories`, `types`, `assignee` (member id, `me` or `none`), `labels`, `sprint` (id, `current` or `none`), `parent`, `blocked`, `updatedBefore`, `updatedAfter`, `sort` (`priority`, `updated`, `created`, `due`; `created` by default, oldest first), `limit`. Every issue table a command shows uses creation order, oldest first, unless the user asks for another order. The same order picks the next issue in `/pmkit:issues:work` and `/pmkit:issues:mine`, and the sprint scope in `/pmkit:cycle:plan`.
+A sprint in a write (`createIssue`, `updateIssue`, `moveToCycle`) is a sprint id, `current` for the active sprint or `null` for no sprint. The string `none` is not a sprint value in a write: the CLI maps `--sprint none` and `--to none` to `null`. A sprint that is a value of the operation (a field, the target of a move, a search filter) and names no sprint, `none` in a write included, fails with `INVALID_INPUT` and next step `pmkit cycle list`; a sprint that is the subject of the operation (`cycleIssues`, `closeCycle`, `getCapacity`) and does not exist is `NOT_FOUND` (PMK-152).
+
+Natural-language queries are translated by the command, not by the contract **(builder's call)**. `/pmkit:issues:find` turns the question into CLI filter flags, shows the flags in one line, and runs them. The contract's `searchIssues` takes a structured filter: `text`, `categories`, `types`, `assignee` (member id, `me` or `none`), `labels`, `sprint` (id, `current` or `none`; an id no sprint has fails with `INVALID_INPUT`, so a typo never reads as a sprint with no issues), `parent`, `blocked`, `updatedBefore`, `updatedAfter`, `sort` (`priority`, `updated`, `created`, `due`; `created` by default, oldest first), `limit`. Every issue table a command shows uses creation order, oldest first, unless the user asks for another order. The same order picks the next issue in `/pmkit:issues:work` and `/pmkit:issues:mine`, and the sprint scope in `/pmkit:cycle:plan`.
 
 Git host operations: `currentBranch()`, `createBranch(name, { from })`, `push(branch)`, `openPullRequest({ title, body, head, base, draft })`, `getPullRequest({ number | head })`, `markReady(number)`, `prChecks(number)`, `prReviews(number)`.
 
@@ -338,7 +340,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 
 | Command | Does |
 |---|---|
-| `init --tracker local [--git-host github\|none] [--prefix ISS] [--estimate-unit points\|hours\|sizes] [--member id --name n --email e] [--members-file f\|-]` | writes `.pmkit/config.yaml` and scaffolds `.issues/` from the templates; refuses to overwrite |
+| `init --tracker local [--git-host github\|bitbucket\|none] [--prefix ISS] [--estimate-unit points\|hours\|sizes] [--member id --name n --email e] [--members-file f\|-]` | writes `.pmkit/config.yaml` and scaffolds `.issues/` from the templates; refuses to overwrite |
 | `init --update [--replace path ...]` plus the `init` flags to change | runs setup again on a configured project: keeps the answers and the comments in both config files, edits only the lines its flags name, adds missing template files, reports `differs` for a template file the user edited and replaces it only when `--replace` names it **(builder's call)** |
 | `capabilities` | prints the manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members, estimate scale |
@@ -348,8 +350,8 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `issues dependencies <id>` | the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |
 | `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]` | creates |
 | `issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
-| `issues move <id> <category> [--status name]` | changes status by category |
-| `issues assign <id> <member\|none>` | assigns |
+| `issues move <id> <category> [--status name] [--field id=value ...]` | changes status by category |
+| `issues assign <id> <member\|me\|none>` | assigns |
 | `issues link <from> <to> --kind blocks\|related\|duplicate [--remove]` | links or unlinks; only the issue whose file changes has to exist, so a dangling reference can be removed **(builder's call)** |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | comments |
@@ -359,8 +361,8 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `cycle list [--state s]`, `cycle current`, `cycle issues <id>` | reads sprints |
 | `cycle open --start d [--end d] [--goal g] [--name n]` | opens a sprint; the end defaults from `sprint_length_days` |
 | `cycle close <id>` | closes and prints the unfinished issues |
-| `cycle add <id...> --to <sprint\|none>` | moves issues into or out of a sprint |
-| `cycle capacity <id> [--set member=n,..]` | reads or sets capacity |
+| `cycle add <id...> --to <sprint\|current\|none>` | moves issues into or out of a sprint |
+| `cycle capacity <id\|current> [--set member=n,..]` | reads or sets capacity |
 | `epic list`, `epic get <id>`, `epic progress <id>` | reads epics |
 | `epic create --title t [--start d] [--target d]` | creates an epic |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
@@ -369,7 +371,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `milestone create <id> [--name n] [--due YYYY-MM-DD]` | creates a milestone |
 | `release list [--state planned\|released]`, `release get <id>`, `release issues <id> [--archived]` | reads releases |
 | `release create <id> [--name n] [--tag t] [--target YYYY-MM-DD]`, `release mark-released <id> [--tag t]` | creates a release, marks it released |
-| `release-notes [--release id\|--sprint id\|current\|--since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
+| `release-notes [--release id \| --sprint id\|current \| --since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time [--since d] [--until d]` | median and p85 days from first `in_progress` to `done` |

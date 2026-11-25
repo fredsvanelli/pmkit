@@ -215,6 +215,7 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
     deliverableProgress: projects.deliverableProgress,
     createDeliverable: projects.createDeliverable,
     moveDeliverable: projects.moveDeliverable,
+    updateDeliverable: projects.updateDeliverable,
     publishStatusUpdate: projects.publishStatusUpdate,
     listStatusUpdates: projects.listStatusUpdates,
     listMilestones: projects.listMilestones,
@@ -224,7 +225,7 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
   const refused = {
     // Archive works on the Project item; unarchive is Local only, as on Linear (PMK-250).
     unarchive: guarded(async () => {
-      throw unarchiveNotSupported('github')
+      throw unarchiveNotSupported()
     }),
     restore: guarded(async () => {
       throw new PmkitError('NOT_SUPPORTED', 'GitHub has no trash, so a deleted issue cannot come back', 'pmkit issues create')

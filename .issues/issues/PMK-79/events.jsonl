@@ -1,2 +1,13 @@
 {"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-79","title":"Map Jira epics, versions and status updates","type":"feature","status":"backlog","priority":"low","estimate":5,"labels":[],"parent":"EPC-7","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
 {"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-77"}
+{"at":"2026-11-23T03:41:51Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-23T03:41:51Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-23T03:41:51Z","by":"fred","op":"update","field":"branch","from":null,"to":"fredsvanelli/pmk-79-map"}
+{"at":"2026-11-23T05:05:01Z","by":"fred","op":"comment","to":"2026-11-23T05-05-01Z-fred.md"}
+{"at":"2026-11-23T05:05:02Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-23T05:05:02Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-374"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-375"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-376"}
+{"at":"2026-11-23T05:13:22Z","by":"fred","op":"link","field":"related","to":"PMK-377"}
+{"at":"2026-11-24T03:13:40Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

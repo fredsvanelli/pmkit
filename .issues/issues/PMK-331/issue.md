@@ -2,13 +2,14 @@
 id: PMK-331
 title: Tally the corpus HTML ends apart and guard the one-space write in npm test
 type: chore
-status: backlog
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
+branch: pmk-331-tally-the-corpus-html-ends-apart-and
 created: 2026-11-15T23:21:51.307Z
-updated: 2026-11-15T23:21:51Z
+updated: 2026-11-22T02:55:22Z
 ---
 
 ## Description
@@ -44,6 +45,6 @@ Source: PMK-327 (PR #303, review cycle 1, notes N1 to N4 and N8).
 
 ## Acceptance criteria
 
-- [ ] The full run's tally shows the HTML container cases by kind or tagged end, apart from the PMK-321 ones, so a `--base 3fb6707b` run shows the 60 HTML end-of-file writes on their own lines, in the PR
-- [ ] `isStatus` fails on a non-status line (shown by a mutation), and a test fails when no `oneSpacePairs` body is written in place over its one-space line (shown by a mutation), with the PMK-324 prefix test green and its constant unchanged
-- [ ] The count comment and the CHANGELOG and code wording match the code; nothing in `scripts/lib` changes
+- [x] The full run's tally shows the HTML container cases by kind or tagged end, apart from the PMK-321 ones, so a `--base 3fb6707b` run shows the 60 HTML end-of-file writes on their own lines, in the PR
+- [x] `isStatus` fails on a non-status line (shown by a mutation), and a test fails when no `oneSpacePairs` body is written in place over its one-space line (shown by a mutation), with the PMK-324 prefix test green and its constant unchanged
+- [x] The count comment and the CHANGELOG and code wording match the code; nothing in `scripts/lib` changes

@@ -3,16 +3,16 @@
 
 import { PmkitError } from '../errors.mjs'
 import { resolveDefaultBranch } from '../config.mjs'
-import { repoDocPath } from '../doc-path.mjs'
+import { repoDocPath, storedDocPath } from '../doc-path.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
-import { checkFilter } from '../issue-filter.mjs'
-import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { checkFilter, closedSprint, unknownSprint } from '../issue-filter.mjs'
+import { cycleKey, cycleState } from './cycles.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASE_PIPELINES_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
-import { blockedOpen, docPaths, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
-import { allReleases, releasesOff } from './releases.mjs'
+import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
+import { activeReleases, allReleases, releasesOff } from './releases.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
 
 const SEARCH_PAGE = 100
@@ -66,6 +66,9 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return node
   }
 
+  /** Whether an issueUpdate input changes the issue's releases: only through these two keys (PMK-262). */
+  const changesReleases = (input) => input.addedReleaseIds !== undefined || input.removedReleaseIds !== undefined
+
   // A failed release read leaves the release unknown rather than failing the issue read or the write that returned it.
   const unreadable = (error) => error instanceof PmkitError && ['UPSTREAM', 'RATE_LIMITED', 'AUTH'].includes(error.code)
   const notes = []
@@ -86,31 +89,52 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    * whose list has a next page. With releases off it sends nothing and toIssue shows no release.
    */
   async function attachReleasesTo(all) {
-    const nodes = all.filter((node) => node.releases === undefined && !node.releasesUnread)
-    if (nodes.length === 0 || !(await releasesOn())) return all
+    if (!all.some((node) => node.releases === undefined && !node.releasesUnread) || !(await releasesOn())) return all
+    return attachInBatches(all, { query: ISSUES_RELEASES_QUERY, field: 'releases', unreadKey: 'releasesUnread', readOne: attachReleases, unknown: unknownReleases })
+  }
+
+  const idList = (ids) => (ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', '))
+
+  /**
+   * The batch read of one list (releases or attachments) for every node that lacks it: one request per 100 issues. An issue whose list
+   * has a next page is read alone with `readOne`, and a failure of that read marks only that issue; a failure of the batch request marks
+   * the chunk's issues not read yet. An incomplete read (lessons) leaves the list unknown with a note, never empty (PMK-262).
+   */
+  async function attachInBatches(all, { query, field, unreadKey, readOne, unknown }) {
+    const nodes = all.filter((node) => node[field] === undefined && !node[unreadKey])
     for (let at = 0; at < nodes.length; at += 100) {
       const chunk = nodes.slice(at, at + 100)
       try {
-        const data = await client.request(ISSUES_RELEASES_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
-        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.releases]))
+        const data = await client.request(query, { ids: chunk.map((node) => node.id), first: chunk.length })
+        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item[field]]))
         for (const node of chunk) {
           const connection = byId.get(node.id)
-          if (connection && connection.pageInfo?.hasNextPage !== true) node.releases = { nodes: connection.nodes }
-          else await attachReleases(node)
+          if (connection && connection.pageInfo?.hasNextPage !== true) {
+            node[field] = { nodes: connection.nodes }
+            continue
+          }
+          try {
+            await readOne(node)
+          } catch (error) {
+            if (!unreadable(error)) throw error
+            unknown([node], error)
+          }
         }
       } catch (error) {
         if (!unreadable(error)) throw error
-        // An incomplete read (lessons): the issue still comes back, its release is unknown, and a note says why.
-        const unread = chunk.filter((node) => node.releases === undefined)
-        for (const node of unread) node.releasesUnread = error
-        const ids = unread.map((node) => node.identifier).filter(Boolean)
-        notes.push(`the release of ${ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', ')} ${ids.length === 1 ? 'is' : 'are'} unknown, because pmkit could not read it: ${error.message}`)
+        unknown(chunk.filter((node) => node[field] === undefined && !node[unreadKey]), error)
       }
     }
     return all
   }
 
-  const idList = (ids) => (ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', '))
+  /** The note and the mark of issues whose release is unknown. */
+  function unknownReleases(nodes, error) {
+    if (nodes.length === 0) return
+    for (const node of nodes) node.releasesUnread = error
+    const ids = nodes.map((node) => node.identifier).filter(Boolean)
+    notes.push(`the release of ${idList(ids)} ${ids.length === 1 ? 'is' : 'are'} unknown, because pmkit could not read it: ${error.message}`)
+  }
 
   /** Puts one issue's attachments on its node, every page. A list the page cap cut is UPSTREAM, so part of it never reads as the whole. */
   async function attachDocs(node) {
@@ -125,23 +149,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    * next page. A refused or failed read leaves them unknown on the node (attachmentsUnread) with a note, never an empty list.
    */
   async function attachDocsTo(all) {
-    const nodes = all.filter((node) => node.attachments === undefined && !node.attachmentsUnread)
-    for (let at = 0; at < nodes.length; at += 100) {
-      const chunk = nodes.slice(at, at + 100)
-      try {
-        const data = await client.request(ISSUES_ATTACHMENTS_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
-        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.attachments]))
-        for (const node of chunk) {
-          const connection = byId.get(node.id)
-          if (connection && connection.pageInfo?.hasNextPage !== true) node.attachments = { nodes: connection.nodes }
-          else await readDocsAlone(node)
-        }
-      } catch (error) {
-        if (!unreadable(error)) throw error
-        unknownDocs(chunk.filter((node) => node.attachments === undefined && !node.attachmentsUnread), error)
-      }
-    }
-    return all
+    return attachInBatches(all, { query: ISSUES_ATTACHMENTS_QUERY, field: 'attachments', unreadKey: 'attachmentsUnread', readOne: attachDocs, unknown: unknownDocs })
   }
 
   /** The note and the mark of issues whose docs are unknown: never an empty list. */
@@ -152,25 +160,31 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     notes.push(`the docs of ${idList(ids)} are unknown, because pmkit could not read them: ${error.message}`)
   }
 
-  /** The one-issue read of a list the batch cut. Its failure marks only that issue, the rest of the batch keeps what it read. */
-  async function readDocsAlone(node) {
-    try {
-      await attachDocs(node)
-    } catch (error) {
-      if (!unreadable(error)) throw error
-      unknownDocs([node], error)
-    }
-  }
 
-  /** The node of an issue id, archived ones included. A malformed id or a trashed issue is NOT_FOUND, and a malformed one sends no request. */
-  async function readNode(id) {
+  /**
+   * The node of an issue id, archived ones included. A malformed id or a trashed issue is NOT_FOUND, and a malformed one sends no request.
+   * `extras: false` reads no release or attachment, for a caller that shows neither or carries them over with `keep` (PMK-262).
+   */
+  async function readNode(id, { extras = true } = {}) {
     requireWorkspace()
     if (!isIssueId(id)) throw notFound(id)
     const data = await client.request(ISSUE_BY_ID_QUERY, { id: issueKey(id) })
     const node = data?.issues?.nodes?.[0]
     if (!node || node.trashed === true) throw notFound(id)
     await completeNested(node)
+    if (!extras) return node
     return (await attachDocsTo(await attachReleasesTo([node])))[0]
+  }
+
+  /** Copies the releases and the attachments of `from` onto `node`, each one asked for, read or unread, so mapped reads neither again (PMK-262). */
+  function keep(node, from, { releases = true, docs = true } = {}) {
+    const copy = (list, unread) => {
+      if (from[list] !== undefined) node[list] = from[list]
+      if (from[unread]) node[unread] = from[unread]
+    }
+    if (releases) copy('releases', 'releasesUnread')
+    if (docs) copy('attachments', 'attachmentsUnread')
+    return node
   }
 
   /** A context that knows every state the nodes name: a state missing from a cached discovery refreshes it once. */
@@ -192,6 +206,10 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const current = await context()
     const members = current.raw.users.filter((user) => !user.app).map((user) => user.id)
     checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: (id) => cycleKey(id) !== null })
+    if (current.scopeTeam && typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint)) {
+      // A cycle number no cycle of the team has is a typo, not a sprint with no issues (Local refuses it the same way).
+      await cycleNodeFor(filter.sprint, current.scopeTeam, { closedOk: true })
+    }
     let epicProject
     if (filter.parent !== undefined && !isIssueId(filter.parent) && resolveEpic) {
       epicProject = await resolveEpic(filter.parent)
@@ -205,14 +223,17 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       limit: translated.serverLimit,
     })
     for (const node of nodes) await completeNested(node)
-    await attachReleasesTo(nodes)
-    await attachDocsTo(nodes)
     const mapping = await contextFor(nodes)
     const rows = nodes
-      .map((node) => ({ issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) }))
+      .map((node) => ({ node, issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) }))
       .filter((row) => row.issue !== null)
+    // The blocked check, the order and the limit read neither list, so only the issues kept read their releases and docs (PMK-262).
+    const byId = new Map(rows.map((row) => [row.issue.id, row.node]))
+    const kept = finishSearch(rows, filter, mapping).map((issue) => byId.get(issue.id))
+    await attachReleasesTo(kept)
+    await attachDocsTo(kept)
     // With a caller limit sent to Linear, paginate's hasMore says the limit cut the read. hasMore means the page cap cut it.
-    return { issues: finishSearch(rows, filter, mapping), problems: [], hasMore: translated.serverLimit === undefined && hasMore }
+    return { issues: kept.map((node) => toIssue(node, mapping)), problems: [], hasMore: translated.serverLimit === undefined && hasMore }
   }
 
   /** ADR-0005: Linear records every write as the key's owner, so any other actor would make pmkit's output disagree with Linear. */
@@ -246,7 +267,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       return { kind: 'epic', node }
     }
     try {
-      return { kind: 'issue', node: await readNode(parent) }
+      return { kind: 'issue', node: await readNode(parent, { extras: false }) }
     } catch (error) {
       if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw missing()
       throw error
@@ -256,9 +277,9 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   /**
    * The { id, number } node of the cycle a sprint value names in `team`: 'current' is the active cycle, else a cycle number.
    * Returns undefined for no value, for null and for a team with cycles off, where toInput decides. Reads the cycle, so a
-   * bad value fails before the write: NOT_FOUND for an unknown cycle, INVALID_INPUT for no active one.
+   * bad value fails before the write: INVALID_INPUT for an unknown cycle and for no active one, CONFLICT for a closed one unless `closedOk`.
    */
-  async function cycleNodeFor(sprint, team) {
+  async function cycleNodeFor(sprint, team, { closedOk = false } = {}) {
     if (sprint === undefined || sprint === null || team.cyclesEnabled !== true) return undefined
     if (typeof sprint !== 'string') throw new PmkitError('INVALID_INPUT', 'sprint must be a string')
     const teamClause = { team: { key: { eq: team.key } } }
@@ -269,11 +290,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       return { id: active.id, number: active.number }
     }
     const number = cycleKey(sprint)
-    const missing = new PmkitError('NOT_FOUND', `sprint ${sprint} does not exist`, 'pmkit cycle list')
+    const missing = unknownSprint(sprint)
     if (number === null) throw missing
     const data = await client.request(CYCLE_BY_NUMBER_QUERY, { filter: { and: [teamClause, { number: { eq: number } }] } })
     const found = data?.cycles?.nodes?.[0]
     if (!found) throw missing
+    // A write never puts an issue into a closed cycle (PMK-166); a search of one is fine.
+    if (!closedOk && cycleState(found) === 'closed') throw closedSprint(sprint)
     return { id: found.id, number: found.number }
   }
 
@@ -287,14 +310,20 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       throw new PmkitError('INVALID_INPUT', message, 'Add --parent <epic>')
     }
     const milestoneNode = await milestoneNodeFor(input?.milestone, { project: epicNode })
+    // PMK-261: the release of a new issue, refused when releases are off; a new issue is in no release yet, so nothing to replace.
+    let releaseNode
+    if (input?.release !== undefined && input.release !== null) {
+      if (!(await releasesOn())) throw releasesOff()
+      releaseNode = await resolveRelease(input.release)
+    }
     const { team, linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
       const teamNode = createTeam(ctx)
       const cycle = await cycleNodeFor(input?.sprint, teamNode)
-      const linear = toInput(input, { mode: 'create', team: teamNode, context: ctx, parentNode, epicNode, cycleNode: cycle, milestoneNode })
+      const linear = toInput(input, { mode: 'create', team: teamNode, context: ctx, parentNode, epicNode, cycleNode: cycle, milestoneNode, releaseNode })
       return { team: teamNode, linearInput: linear, current: ctx, cycleNode: cycle }
     })
     if (dryRun) {
-      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier, project: epicNode, cycle: cycleNode })
+      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier, project: epicNode, cycle: cycleNode, release: releaseNode })
       return { before: null, after: { ...toIssue(preview, current), id: null } }
     }
     const id = uuid()
@@ -307,8 +336,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       node = (await client.request(ISSUE_BY_ID_QUERY, { id }))?.issues?.nodes?.[0]
       if (!node) throw error
     }
-    // A new issue is in no release (create sets none), so its releases are not read.
-    node.releases ??= { nodes: [] }
+    // A new issue is in the release it was created in, or none, so its releases are not read.
+    node.releases ??= { nodes: releaseNode ? [releaseNode] : [] }
     node.attachments ??= { nodes: [] }
     return { before: null, after: await mapped(node) }
   }
@@ -326,11 +355,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (!(await releasesOn())) throw releasesOff()
     if (release !== null && !releaseReads.has(release)) releaseReads.set(release, resolveRelease(release).catch((error) => { releaseReads.delete(release); throw error }))
     const target = release === null ? null : await releaseReads.get(release)
-    // The one-release rule needs the real count: an unknown list refuses the write, and a node without one reads it.
+    // The write needs the real list: an unknown one refuses the write, and a node without one reads it.
     if (beforeNode.releasesUnread) throw beforeNode.releasesUnread
     if (beforeNode.releases === undefined) await attachReleases(beforeNode)
-    const count = beforeNode.releases.nodes.filter((item) => item.stage?.type !== 'canceled').length
-    if (count > 1) throw new PmkitError('INVALID_INPUT', `the issue is in ${count} Linear releases, and pmkit sets one release per issue`, 'Change the releases of the issue in Linear')
+    // One release per pipeline (PMK-260, option B of PMK-246-1): a target replaces only its own pipeline's release, so the pipelines are read.
+    if (target !== null && activeReleases(beforeNode.releases.nodes).length > 0) {
+      beforeNode.releases = { nodes: await allReleases(client, ISSUE_RELEASE_PIPELINES_QUERY, { id: beforeNode.id }, (data) => data.issue.releases) }
+    }
     return target
   }
 
@@ -348,7 +379,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return node
   }
 
-  async function updateIssue(id, patch, actor, { dryRun = false, docsBranch } = {}) {
+  async function updateIssue(id, patch, actor, { dryRun = false, docsBranch, docsHost } = {}) {
     await requireViewer(actor)
     const beforeNode = await readNode(id)
     const releaseNode = await releaseNodeFor(patch.release, beforeNode)
@@ -361,7 +392,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
-    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs, docsBranch)
+    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs, docsBranch, docsHost)
     let result = { before, after: before }
     if (Object.keys(linearInput).length > 0) result = await writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode })
     if (change === null) return result
@@ -369,46 +400,63 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       const { docs, ...rest } = result.after
       return { before, after: patch.docs.length > 0 ? { ...rest, docs: patch.docs } : rest }
     }
-    await writeDocs(before.id, change, { fieldsWritten: Object.keys(linearInput) })
+    await writeDocs(before.id, change, { fieldsWritten: Object.keys(linearInput), uuid: beforeNode.id })
     // The issue is read again, so `after` is what Linear holds: its attachments changed after the update's own answer.
-    return { before, after: await mapped(await readNode(before.id)) }
+    // Everything was written, so a read-back that fails is a warning, never an error that sends the caller to write again (PMK-258).
+    try {
+      return { before, after: await mapped(keep(await readNode(before.id, { extras: false }), beforeNode, { releases: !changesReleases(linearInput), docs: false })) }
+    } catch (error) {
+      if (!(error instanceof PmkitError)) throw error
+      const { docs, ...rest } = result.after
+      const expected = patch.docs.length > 0 ? { ...rest, docs: patch.docs } : rest
+      return { before, after: expected, warnings: [`${before.id} is updated and its docs are linked, but reading it back failed (${error.message}), so this record is the one pmkit expected: pmkit issues get ${before.id} shows it as it is now`] }
+    }
   }
 
   /** The docs a write adds (paths) and removes (attachment nodes), or null when the list is the one the issue has. An unread list refuses. */
-  function docChange(beforeNode, docList, branch) {
+  function docChange(beforeNode, docList, branch, host) {
     if (beforeNode.attachmentsUnread) throw beforeNode.attachmentsUnread
     const docs = [...new Set(docList.map(repoDocPath))]
     const nodes = beforeNode.attachments?.nodes ?? []
     const isDoc = (item) => typeof item.metadata?.pmkitDoc === 'string'
-    const current = docPaths(nodes)
-    const add = docs.filter((path) => !current.includes(path)).map((path) => ({ path, url: docUrl(path, branch) }))
+    // Compared in normal form: a doc another client stored as ./docs/a.md is docs/a.md, kept as it is (PMK-258).
+    const docOf = (item) => storedDocPath(item.metadata.pmkitDoc)
+    const current = nodes.filter(isDoc).map(docOf)
+    for (const item of nodes.filter((node) => isDoc(node) && docOf(node) !== node.metadata.pmkitDoc && docs.includes(docOf(node)))) {
+      notes.push(`${beforeNode.identifier} links ${docOf(item)} as ${item.metadata.pmkitDoc}, written by another client; pmkit kept it as it is`)
+    }
+    const add = docs.filter((path) => !current.includes(path)).map((path) => ({ path, url: docUrl(path, branch, host) }))
     // attachmentCreate upserts by url, so an attachment a person made with this link would be rewritten, and removed later as a doc.
     const taken = add.map((item) => nodes.find((node) => node.url === item.url && !isDoc(node))).filter(Boolean)
     if (taken.length > 0) {
       throw new PmkitError('CONFLICT', `${beforeNode.identifier} already has an attachment with the link ${taken[0].url} that pmkit did not create, so pmkit leaves it alone and does not link ${add.find((item) => item.url === taken[0].url).path}`, 'Remove that attachment in Linear, then run the command again')
     }
-    const remove = nodes.filter((item) => isDoc(item) && !docs.includes(item.metadata.pmkitDoc))
+    const remove = nodes.filter((item) => isDoc(item) && !docs.includes(docOf(item)))
     if (add.length === 0 && remove.length === 0) return null
     return { add, remove }
   }
 
-  /** The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata. */
-  function docUrl(path, branch) {
-    const host = config.pmkit?.git_host
-    if (host?.system !== 'github' || !host.repo) {
+  /**
+   * The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata.
+   * The CLI always passes the branch it resolved with origin/HEAD; the fallback to the config is for a caller without git.
+   */
+  function docUrl(path, branch, host = 'github.com') {
+    const gitHost = config.pmkit?.git_host
+    if (gitHost?.system !== 'github' || !gitHost.repo) {
       throw new PmkitError('NOT_CONFIGURED', 'a Linear doc is a link to the file on GitHub, and git_host has no GitHub repo', '/pmkit:link-repo')
     }
     const encode = (value) => value.split('/').map(encodeURIComponent).join('/')
-    return `https://github.com/${host.repo}/blob/${encode(branch ?? resolveDefaultBranch(config.pmkit).branch)}/${encode(path)}`
+    return `https://${host}/${gitHost.repo}/blob/${encode(branch ?? resolveDefaultBranch(config.pmkit).branch)}/${encode(path)}`
   }
 
   /** attachmentCreate for each added path, then attachmentDelete for each removed one. A failure names what was done and what was not. */
-  async function writeDocs(id, { add, remove }, { fieldsWritten = [] } = {}) {
+  // `id` names the issue in messages; `uuid` is what Linear gets, as every other write sends it (PMK-254).
+  async function writeDocs(id, { add, remove }, { fieldsWritten = [], uuid } = {}) {
     const linked = []
     const unlinked = []
     try {
       for (const item of add) {
-        const answer = await client.request(ATTACHMENT_CREATE, { input: { issueId: id, url: item.url, title: item.path, metadata: { pmkitDoc: item.path } } })
+        const answer = await client.request(ATTACHMENT_CREATE, { input: { issueId: uuid, url: item.url, title: item.path, metadata: { pmkitDoc: item.path } } })
         if (answer?.attachmentCreate?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not link ${item.path}`)
         linked.push(item.path)
       }
@@ -435,7 +483,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (same(preview, before)) return { before, after: before }
     if (dryRun) return { before, after: preview }
     const node = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input: linearInput })).issueUpdate.issue
-    return { before, after: await mapped(node) }
+    // An update never changes the docs, and changes the releases only through these keys: what beforeNode read stands (PMK-262).
+    return { before, after: await mapped(keep(node, beforeNode, { releases: !changesReleases(linearInput) })) }
   }
 
   /**
@@ -496,8 +545,37 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (before.archived) return { before, after: before }
     if (dryRun) return { before, after: { ...before, archived: true } }
     await client.request(ISSUE_ARCHIVE, { id: beforeNode.id })
-    // The archive payload has no issue fields, so the issue is read again; readNode includes archived issues.
-    return { before, after: await mapped(await readNode(id)) }
+    // The archive payload has no issue fields, so the issue is read again; readNode includes archived issues. Its lists do not change.
+    return { before, after: await mapped(keep(await readNode(id, { extras: false }), beforeNode)) }
+  }
+
+  /**
+   * Brings an archived issue back with issueUnarchive (PMK-259). An issue that is not archived changes nothing; one in Linear's trash is
+   * refused and pointed to `issues restore`, which is the way back from the trash (PMK-222).
+   */
+  async function unarchive(id, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    let beforeNode
+    try {
+      beforeNode = await readNode(id)
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.code !== 'NOT_FOUND' || !isIssueId(id)) throw error
+      const raw = (await client.request(ISSUE_BY_ID_QUERY, { id: issueKey(id) }))?.issues?.nodes?.[0]
+      if (raw?.trashed === true) throw new PmkitError('INVALID_INPUT', `${raw.identifier} is in Linear's trash, not archived`, `pmkit issues restore ${raw.identifier}`)
+      throw error
+    }
+    const before = toIssue(beforeNode, await contextFor([beforeNode]))
+    if (!before.archived) return { before, after: before }
+    if (dryRun) return { before, after: { ...before, archived: false } }
+    const answer = await client.request(ISSUE_UNARCHIVE, { id: beforeNode.id })
+    if (answer?.issueUnarchive?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not unarchive ${before.id}`, `Run pmkit issues unarchive ${before.id} again`)
+    // The write worked: a read-back that fails is a warning, never an error that would send the caller to unarchive again.
+    try {
+      return { before, after: await mapped(keep(await readNode(id, { extras: false }), beforeNode)) }
+    } catch (error) {
+      if (!(error instanceof PmkitError)) throw error
+      return { before, after: { ...before, archived: false }, warnings: [`${before.id} is unarchived, but reading it back failed (${error.message}): pmkit issues get ${before.id} shows it as it is now`] }
+    }
   }
 
   /** The records that point at the issue, from its node: others it blocks, related in either direction, duplicates of it and its children. */
@@ -521,7 +599,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    */
   async function deleteIssue(id, actor, { dryRun = false } = {}) {
     await requireViewer(actor)
-    const node = await readNode(id)
+    // The delete shows no release or doc, so none is read (PMK-262).
+    const node = await readNode(id, { extras: false })
     const before = toIssue(node, await contextFor([node]))
     // The shared read leaves archived children and relations out. A failed read here fails the delete: it never means "no references".
     const archivedNode = (await client.request(ISSUE_REFERENCES_QUERY, { id: node.id }))?.issues?.nodes?.[0]
@@ -550,17 +629,18 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const node = (await client.request(ISSUE_BY_ID_QUERY, { id: issueKey(id) }))?.issues?.nodes?.[0]
     if (!node) throw notFound(id)
     if (node.trashed !== true) throw new PmkitError('INVALID_INPUT', `${node.identifier} is not in Linear's trash`, `pmkit issues get ${node.identifier}`)
-    const restored = await mapped({ ...node, trashed: false, archivedAt: null })
+    const preview = { ...node, trashed: false, archivedAt: null }
+    const restored = await mapped(preview)
     if (dryRun) return { before: null, after: restored }
     const answer = await client.request(ISSUE_UNARCHIVE, { id: node.id })
     if (answer?.issueUnarchive?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not restore ${node.identifier}`, `Run pmkit issues restore ${node.identifier} again`)
     // The write worked: a read-back that fails is a warning, never an error that would send the caller to restore again.
     try {
-      return { before: null, after: await mapped(await readNode(node.identifier)), warnings: [] }
+      return { before: null, after: await mapped(keep(await readNode(node.identifier, { extras: false }), preview)), warnings: [] }
     } catch (error) {
       return { before: null, after: restored, warnings: [`${node.identifier} is restored, but reading it back failed (${error.message}), so this record is the one read before the restore: pmkit issues get ${node.identifier} shows it as it is now`] }
     }
   }
 
-  return { attachReleasesTo, attachDocsTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  return { attachReleasesTo, attachDocsTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, unarchive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, keep, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

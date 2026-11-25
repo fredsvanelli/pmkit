@@ -125,9 +125,11 @@ export function parseCommandFile(text, cliNames) {
           headingPrefix = numbered ? null : heading[2]
         } else {
           sectionName = heading[1] === '##' ? heading[2] : ''
-          section = SECTIONS[sectionName] ?? 'other'
+          // A `## <name> path` section, such as `## Epic path`, is steps too, its ids prefixed with the heading as under a `###` heading without a number (PMK-355).
+          const pathSection = !(sectionName in SECTIONS) && / path$/.test(sectionName)
+          section = pathSection ? 'steps' : SECTIONS[sectionName] ?? 'other'
           headingNumber = null
-          headingPrefix = null
+          headingPrefix = pathSection ? sectionName : null
         }
         continue
       }
@@ -216,11 +218,15 @@ export function matchEntry(entry, calls, cliNames) {
   return { key: callKey(match), viaDryRun }
 }
 
-/** Rule 6: call keys of the procedure that no entry uses and no skip excuses, and stale or empty skips. */
-export function coverageProblems(calls, usedKeys, skip) {
+/**
+ * Rule 6: call keys of the procedure that no entry uses and no skip excuses, and stale or empty skips. The rule holds per command file (PMK-355): a key that
+ * `siblings`, the other scenarios of the same command, use or skip is covered. Stale and empty skips are still this scenario's own.
+ */
+export function coverageProblems(calls, usedKeys, skip, siblings = {}) {
   const keys = [...new Set(calls.filter((call) => call.section !== 'other').map(callKey))]
+  const covered = (key) => usedKeys.has(key) || key in skip || siblings.usedKeys?.has(key) || key in (siblings.skip ?? {})
   const problems = keys
-    .filter((key) => !usedKeys.has(key) && !(key in skip))
+    .filter((key) => !covered(key))
     .map((key) => `call \`${key}\` is not used by any entry and not in skip`)
   for (const [key, reason] of Object.entries(skip)) {
     if (typeof reason !== 'string' || !reason.trim()) problems.push(`skip \`${key}\` needs a non-empty reason`)
@@ -229,10 +235,32 @@ export function coverageProblems(calls, usedKeys, skip) {
   return problems
 }
 
-/** Rules 7 and 10: the confirmation points of the file against the confirms and notHit of a scenario. */
-export function pointProblems(points, confirmed, notHit) {
+/**
+ * The coverage of the other scenarios of a command, for rules 6 and 7 per command file (PMK-355): the keys their entries use, read without running them (an entry whose args
+ * are a function of an earlier result is left out), the points they confirm, and their skip and notHit.
+ */
+export function siblingCoverage(entries, index, parsed, cliNames) {
+  const siblings = { usedKeys: new Set(), confirmed: [], skip: {}, notHit: {} }
+  entries.forEach((scenario, other) => {
+    if (other === index) return
+    Object.assign(siblings.skip, scenario.skip)
+    Object.assign(siblings.notHit, scenario.notHit)
+    for (const entry of scenario.steps) {
+      if ('confirm' in entry) siblings.confirmed.push(entry.confirm)
+      const kind = ['read', 'dryRun', 'write'].find((k) => k in entry)
+      if (!kind || !Array.isArray(entry[kind])) continue
+      const match = matchEntry({ ...entry, kind, args: entry[kind] }, parsed.calls, cliNames)
+      if (match.key) siblings.usedKeys.add(match.key)
+    }
+  })
+  return siblings
+}
+
+/** Rules 7 and 10: the confirmation points of the file against the confirms and notHit of a scenario; a point `siblings` confirm or excuse is covered (PMK-355). */
+export function pointProblems(points, confirmed, notHit, siblings = {}) {
+  const covered = (point) => confirmed.includes(point) || point in notHit || siblings.confirmed?.includes(point) || point in (siblings.notHit ?? {})
   const problems = points
-    .filter((point) => !confirmed.includes(point) && !(point in notHit))
+    .filter((point) => !covered(point))
     .map((point) => `confirmation point \`${point}\` is neither confirmed nor in notHit`)
   for (const key of new Set(confirmed)) {
     if (!points.includes(key)) problems.push(`confirm \`${key}\` is not a confirmation point of the command file`)
@@ -675,7 +703,7 @@ const parseJson = (text) => {
  * Rule 8 compares `hashTree`, which hashes file paths and contents: a new empty folder or a mode change passes.
  * Reads ignore `.issues/.cache` and so does the snapshot; a dry run does not.
  */
-export async function runScenario(scenario, { name, parsed, cliCommands, fixturesDir, inputsDir, run = runPmkit }) {
+export async function runScenario(scenario, { name, parsed, cliCommands, fixturesDir, inputsDir, run = runPmkit, siblings = {} }) {
   const cliNames = cliCommands.map((command) => command.name)
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-scn-'))
   const problems = []
@@ -757,8 +785,8 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
 
     problems.push(...orderProblems(trace).map((problem) => `rule 9: ${problem}`))
     if (stopped) return { problems, snapshot: null }
-    problems.push(...coverageProblems(parsed.calls, usedKeys, scenario.skip ?? {}).map((problem) => `rule 6: ${problem}`))
-    problems.push(...pointProblems(parsed.points, confirmed, scenario.notHit ?? {})
+    problems.push(...coverageProblems(parsed.calls, usedKeys, scenario.skip ?? {}, siblings).map((problem) => `rule 6: ${problem}`))
+    problems.push(...pointProblems(parsed.points, confirmed, scenario.notHit ?? {}, siblings)
       .map((problem) => `rule ${problem.startsWith('confirm ') ? 10 : 7}: ${problem}`))
     try {
       await scenario.expect?.(makeRepoView(root, baseline, gh, env, tracker), saved)

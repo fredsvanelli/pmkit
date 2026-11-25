@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'track-agents', 'review', 'todos', 'security-alerts', 'unblock', 'delete', 'bulk', 'run-view', 'investigate-bug', 'inbox-digest'], spec: ['import', 'record-decision', 'adr-status', 'from-prd'], backlog: ['groom', 'triage', 'prioritize-by-demand', 'request-queue'], report: ['status', 'release-notes', 'roadmap-review', 'initiatives-and-goals', 'release-readiness'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], github: ['discussions', 'draft-issues'], local: ['doctor', 'render', 'migrate'] }
+const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'track-agents', 'review', 'todos', 'security-alerts', 'unblock', 'delete', 'bulk', 'run-view', 'investigate-bug', 'inbox-digest'], spec: ['import', 'record-decision', 'adr-status', 'from-prd'], backlog: ['groom', 'triage', 'prioritize-by-demand', 'request-queue'], report: ['status', 'release-notes', 'roadmap-review', 'initiatives-and-goals', 'release-readiness'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], github: ['discussions', 'draft-issues'], jira: ['plans-scenarios', 'product-discovery'], local: ['doctor', 'render', 'migrate'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -194,6 +194,8 @@ test('record-decision.md covers the three places, the numbering, the bulk commen
   assert.match(step(5), /--dry-run/)
   assert.match(step(6), /no commit yet/, 'the preview warns that the repository file has no commit')
   assert.match(step(6), /bulk change/)
+  // PMK-258: a hand-made attachment with the ADR's link answers CONFLICT: that issue is skipped and named, and the step goes on.
+  assert.match(step(6), /answers `CONFLICT`[^.]*skip the link of that issue/)
   assert.match(step(6), /unless `write_policy\.confirm` is `none`/, 'step 6 says what the Confirmation points say')
   assert.match(step(3), /only a valid branch name/)
   assert.match(step(2), /replaces older ADRs/, 'step 2 finds every replaced ADR the user names')
@@ -255,6 +257,35 @@ test('triage-rotation.md previews the set in step 6 and writes it in step 7', ()
   assert.ok(calls(step(6)).length > 0 && calls(step(6)).every((call) => call.includes('--dry-run')), 'step 6 previews with --dry-run')
   assert.ok(calls(step(7)).length > 0 && calls(step(7)).every((call) => !call.includes('--dry-run')), 'step 7 writes without --dry-run')
   assert.match(step(5), /AskUserQuestion/)
+})
+
+test('plans-scenarios.md stops on another tracker in step 1, lists in step 2, gets in step 4 and never writes', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/jira/plans-scenarios.md'), 'utf8')
+  const step = (number) => text.split('\n').find((line) => line.startsWith(`${number}. `)) ?? ''
+  const calls = (line, verb) => [...line.matchAll(new RegExp(`pmkit\\.mjs" ${verb}[^\`]*\``, 'g'))].map((match) => match[0])
+  assert.match(step(1), /capabilities --json/)
+  assert.match(step(1), /works only with the Jira tracker/)
+  assert.ok(calls(step(2), 'jira plans list').length > 0)
+  assert.ok(calls(step(4), 'jira plans get').length > 0)
+  assert.match(step(3), /AskUserQuestion/)
+  assert.ok(!text.includes('--dry-run'), 'the command only reads')
+})
+
+test('product-discovery.md stops on another tracker in step 1, lists in step 2, connects only after a dry run and one confirmation', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/jira/product-discovery.md'), 'utf8')
+  const step = (number) => text.split('\n').find((line) => line.startsWith(`${number}. `)) ?? ''
+  const calls = (line, verb) => [...line.matchAll(new RegExp(`pmkit\\.mjs" ${verb}[^\`]*\``, 'g'))].map((match) => match[0])
+  assert.match(step(1), /capabilities --json/)
+  assert.match(step(1), /works only with the Jira tracker/)
+  assert.ok(calls(step(2), 'jira ideas list').length > 0)
+  assert.match(step(2), /AskUserQuestion/)
+  assert.match(step(3), /insights/)
+  const connects = calls(step(4), 'jira ideas connect')
+  assert.equal(connects.length, 2, 'step 4 previews, then connects')
+  assert.ok(connects[0].includes('--dry-run') && !connects[1].includes('--dry-run'), 'the dry run comes before the write')
+  assert.ok(step(4).indexOf(connects[0]) < step(4).indexOf('AskUserQuestion') && step(4).indexOf('AskUserQuestion') < step(4).lastIndexOf(connects[1]), 'one confirmation between the dry run and the write')
+  const points = text.split('## Confirmation points')[1].split('\n## ')[0]
+  assert.match(points, /- Step 4:/)
 })
 
 test('customers.md previews set and link in step 5 and writes them in step 6', () => {

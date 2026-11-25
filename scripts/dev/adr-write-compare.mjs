@@ -11,10 +11,11 @@ const minus = (a, b) => {
 /** The trimmed non-blank lines of `before` that `after` no longer has, as a multiset. */
 export const removedLines = (before, after) => minus(lines(before), lines(after))
 
-// A copy of the PMK-311 rule of `scripts/lib/adr.mjs` (`readsAsStatus`: the first word of the line, emphasis and punctuation skipped, is a known status). It is a copy on purpose:
+// A copy of the PMK-311 rule of `scripts/lib/adr.mjs` (`readsAsStatus`: the first word of the line, quote, bullet and ordered list markers (PMK-328), emphasis and punctuation skipped, is a known status). It is a copy on purpose:
 // the line a write may replace must not be chosen by the head under test, which is the defect of PMK-315. A change to the rule in adr.mjs has to change this list too.
 export const KNOWN_STATUS = new Set(['accepted', 'deprecated', 'superseded', 'proposed', 'rejected', 'draft'])
-export const readsAsStatus = (line) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(line)?.[1].toLowerCase() ?? '')
+const LIST_MARKERS = /^(?:[ \t>]|[-+*][ \t]|\d{1,9}[.)][ \t])*/
+export const readsAsStatus = (line) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(line.replace(LIST_MARKERS, ''))?.[1].toLowerCase() ?? '')
 
 // A copy of the PMK-314 rule of `scripts/lib/adr.mjs` (`hardBreak`: two or more trailing spaces, or an odd number of trailing backslashes, which `setAdrStatus` keeps on the line it replaces), for the same reason as the copy above (PMK-321).
 // A test compares `expectedLine` with what `setAdrStatus` writes; a change to the rule in adr.mjs has to change this one too.
@@ -107,8 +108,8 @@ const HTML = ['<!-- x -->', '<!-- c', '-->', '<div>', '</div>', '<div class="a">
 const DEFS = ['[a]: /u', '[a]: /u "t"', "[b]: <u> 't'", '[a]: /u (t)', '[a]:', '/u', '"t"', '[a]: /u "t" x', '[ ]: /u', '[a]: /u\t', '[a]', ': /u', '  [a]: /u', '[a]: (u)']
 const UNDERLINES = ['---', '===', '--', '-', ' ---', '   ===', '----  ']
 // PMK-315: the lines that make the status line choice matter: known status words with and without emphasis, a date, `Supersedes`, `Key: value`, and a status with its own date.
-const STATUS_WORDS = ['Accepted', 'accepted', '**Accepted**', '*Proposed*', '_Deprecated_', 'Proposed', 'Rejected', 'Draft', 'Superseded by ADR 2', '**Superseded by ADR 2**', 'Superseded by [ADR 2](0002-x.md)', '  Accepted', '    Accepted']
-const STATUS_OTHER = ['Date: 2024-01-02', '2024-01-02', '- Date: 2024-01-02', 'Supersedes ADR 1', 'Supersedes: ADR 1', '**Supersedes** ADR 1', 'Status: Accepted', 'Deciders: a, b', 'Key: value', 'Accepted Date: 2024-01-02', 'Proposed by a']
+export const STATUS_WORDS = ['Accepted', 'accepted', '**Accepted**', '*Proposed*', '_Deprecated_', 'Proposed', 'Rejected', 'Draft', 'Superseded by ADR 2', '**Superseded by ADR 2**', 'Superseded by [ADR 2](0002-x.md)', '  Accepted', '    Accepted']
+export const STATUS_OTHER = ['Date: 2024-01-02', '2024-01-02', '- Date: 2024-01-02', 'Supersedes ADR 1', 'Supersedes: ADR 1', '**Supersedes** ADR 1', 'Status: Accepted', 'Deciders: a, b', 'Key: value', 'Accepted Date: 2024-01-02', 'Proposed by a']
 const STATUSY = [...STATUS_WORDS, ...STATUS_OTHER]
 const ALPHABET = [...ITEMS, ...TEXT, ...QUOTES, ...FENCES, ...BLANKS, ...BREAKS, ...HTML, ...DEFS]
 // The weights of each kind in a random run: lists and text most, so nesting and lazy lines meet often. COMPOSED builds a line from parts.
@@ -139,7 +140,8 @@ function containerCases(opens, ends) {
 }
 const CONTAINERS = containerCases(['> ```', '- ```', '> <div>', '- <div>'], ENDS)
 // PMK-327: an HTML block of kind 1 to 5 (`<script>`, `<!--`, `<?`, `<!X`, `<![CDATA[`) in a quote or list item, which only its end line closes, with the ends above and the end of the file with no final newline (PMK-323).
-export const HTML_CONTAINERS = containerCases(['<!-- x', '<?php', '<![CDATA[', '<!X', '<script>'].flatMap((open) => [`> ${open}`, `- ${open}`]), { ...ENDS, 'end of file, no final newline': [] })
+// `group` tallies them apart from the PMK-321 cases, whose ends have the same names (PMK-331); those keep their shape, which the PMK-324 prefix test hashes.
+export const HTML_CONTAINERS = containerCases(['<!-- x', '<?php', '<![CDATA[', '<!X', '<script>'].flatMap((open) => [`> ${open}`, `- ${open}`]), { ...ENDS, 'end of file, no final newline': [] }).map((item) => ({ ...item, group: 'HTML, PMK-327' }))
 
 /** Mulberry32: the random numbers of the runs, from `seed`. */
 const prng = (seed) => () => {
@@ -199,7 +201,8 @@ export function* statusBreakTriples() {
   for (const s of STATUS_NEAR) for (const t of STATUS_NEAR) for (const b of STATUS_BREAKS) for (const u of UNDERLINES) yield `${s}\n${t}\n${b}\n${u}`
 }
 // `setAdrStatus` writes in place only over the one status line of a section (next to a break line, which is a status line too, it adds a new line): the one-space lines also come next to each
-// line of the corpus, as the break lines do in `breakPairs`, so a section where one is the only status line is written over.
+// line of the corpus, as the break lines do in `breakPairs`, so a section where one is the only status line is written over. Only these pairs catch a write that keeps the space: 630 of them
+// are written in place over a one-space line, a number a test pins (PMK-331).
 export function* oneSpacePairs() {
   for (const o of ONE_SPACE) for (const a of [...STATUS_ALL, ...ALPHABET]) for (const u of UNDERLINES) yield `${o}\n${a}\n${u}`
   for (const a of ALPHABET) for (const o of ONE_SPACE) for (const u of UNDERLINES) yield `${a}\n${o}\n${u}`

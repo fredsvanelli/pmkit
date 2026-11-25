@@ -138,20 +138,17 @@ function withReleases() {
   return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace({ releasesEnabled: true }), ...fake.routes }) }
 }
 
-test('release is previewed and written on Linear, and an issue in two releases is rejected', async () => {
+test('release is previewed and written on Linear, and an issue in two releases of one pipeline keeps only the new one (PMK-260)', async () => {
   const { fake, fetch } = withReleases()
   const context = setup()
   const dry = await bulk(context, fetch, ['release', REL_B, '--category', 'backlog', '--dry-run'])
   assert.equal(dry.code, 0, JSON.stringify(dry.body))
-  assert.deepEqual(dry.body.items.map((item) => [item.id, item.state]), [['ACME-1', 'change'], ['ACME-2', 'change'], ['ACME-3', 'rejected']])
+  assert.deepEqual(dry.body.items.map((item) => [item.id, item.state]), [['ACME-1', 'change'], ['ACME-2', 'change'], ['ACME-3', 'change']])
   assert.deepEqual(dry.body.items[1].changes.map((change) => [change.field, change.from, change.to]), [['release', REL_A, REL_B]])
-  assert.deepEqual(dry.body.items[2].error, { code: 'INVALID_INPUT', message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue', nextStep: 'Change the releases of the issue in Linear' })
   assert.deepEqual(fake.mutations, [])
-  // The rejected issue is a blocker, so the real run writes nothing.
-  const real = await bulk(context, fetch, ['release', REL_B, '--category', 'backlog'])
-  assert.equal(real.body.error.code, 'INVALID_INPUT')
-  assert.match(real.body.error.message, /^issues bulk cannot write: ACME-3 was rejected: INVALID_INPUT the issue is in 2 Linear releases/)
-  assert.deepEqual(fake.mutations, [])
+  const real = await bulk(context, fetch, ['release', REL_B, '--category', 'backlog', '--expect', dry.body.digest])
+  assert.equal(real.code, 0, JSON.stringify(real.body))
+  assert.deepEqual(fake.records[2].releaseIds, [REL_B])
 })
 
 test('release is written on Linear with the digest, and none clears it', async () => {
@@ -177,22 +174,22 @@ test('release on a workspace with releases off refuses NOT_SUPPORTED', async () 
   assert.deepEqual(fake.mutations, [])
 })
 
-test('bulk unarchive is NOT_SUPPORTED on Linear before any read, even when nothing is archived', async () => {
-  const { fake, fetch } = withIssues(['One'])
-  const result = await bulk(setup(), fetch, ['unarchive', '--category', 'backlog', '--archived', '--dry-run'])
-  assert.equal(result.body.error.code, 'NOT_SUPPORTED')
-  assert.deepEqual(fake.mutations, [])
-})
-
-test('bulk unarchive answers NOT_SUPPORTED first on Linear, whatever its other flags (PMK-256)', async () => {
-  const { fake, fetch } = withIssues(['One'])
+// PMK-259: bulk unarchive works on Linear, with the same preview and digest as every bulk change.
+test('bulk unarchive on Linear previews the archived matches only and brings them back', async () => {
+  const fake = fakeLinearIssues()
+  fake.seed({ title: 'Live' })
+  fake.seed({ title: 'Old one' }, { archivedAt: '2026-10-20T00:00:00.000Z' })
+  fake.seed({ title: 'Old two' }, { archivedAt: '2026-10-21T00:00:00.000Z' })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes })
   const context = setup()
-  for (const args of [['--view', 'x', '--dry-run'], ['value', '--category', 'backlog', '--dry-run'], ['--max', '0', '--category', 'backlog'], ['--archived', '--view', 'x', '--category', 'backlog'], ['--limit', '5'], ['--limit', '5', '--bogus']]) {
-    const result = await bulk(context, fetch, ['unarchive', ...args])
-    assert.equal(result.body.error.code, 'NOT_SUPPORTED', args.join(' '))
-    assert.match(result.body.error.message, /unarchive works on the Local tracker only/)
-  }
+  const dry = await bulk(context, fetch, ['unarchive', '--category', 'backlog', '--archived', '--dry-run'])
+  assert.equal(dry.code, 0, JSON.stringify(dry.body))
+  assert.deepEqual(dry.body.items.map((item) => [item.id, item.state]), [['ACME-2', 'change'], ['ACME-3', 'change']])
   assert.deepEqual(fake.mutations, [])
+  const real = await bulk(context, fetch, ['unarchive', '--category', 'backlog', '--archived', '--expect', dry.body.digest])
+  assert.equal(real.code, 0, JSON.stringify(real.body))
+  assert.deepEqual(real.body.applied, ['ACME-2', 'ACME-3'])
+  assert.deepEqual(fake.mutations, ['PmkitIssueUnarchive', 'PmkitIssueUnarchive'])
 })
 
 test('due, type and archive are written on Linear', async () => {

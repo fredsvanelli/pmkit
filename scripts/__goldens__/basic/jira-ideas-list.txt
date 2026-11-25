@@ -1,0 +1,20 @@
+$ pmkit jira ideas list
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `jira ideas list` works only with the Jira tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit jira ideas list --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`jira ideas list` works only with the Jira tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)

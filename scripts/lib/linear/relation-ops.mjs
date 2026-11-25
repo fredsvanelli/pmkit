@@ -80,11 +80,11 @@ export function relationOperations({ client, ops, uuid }) {
     } catch (error) {
       if (!isUnconfirmed(error)) throw error
       // The relation id pmkit chose tells whether the create happened. One read, then the original error.
-      const again = await ops.readNode(from)
+      const again = ops.keep(await ops.readNode(from, { extras: false }), a)
       if (!again.relations.nodes.some((item) => item.id === id)) throw error
       return { before, after: await ops.mapped(again) }
     }
-    return { before, after: await ops.mapped(await ops.readNode(from)) }
+    return { before, after: await ops.mapped(ops.keep(await ops.readNode(from, { extras: false }), a)) }
   }
 
   async function unlink(from, to, kind, actor, { dryRun = false } = {}) {
@@ -94,7 +94,7 @@ export function relationOperations({ client, ops, uuid }) {
     if (dryRun) return { before, after: withLink(before, b.identifier, kind, false) }
     // Each relation is its own delete; deletes are idempotent, so none is sent twice.
     for (const relation of found) await client.request(RELATION_DELETE, { id: relation.id })
-    return { before, after: await ops.mapped(await ops.readNode(from)) }
+    return { before, after: await ops.mapped(ops.keep(await ops.readNode(from, { extras: false }), a)) }
   }
 
   /** The parent's identifier followed by its ancestors', from one query nested PARENT_CHAIN_DEPTH levels. */

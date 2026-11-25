@@ -2,12 +2,14 @@
 id: PMK-254
 title: Verify Linear issue docs against a live workspace
 type: task
-status: backlog
+status: done
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-5
+branch: pmk-254-verify-linear-issue-docs-against-a-live
 created: 2026-11-11T22:34:42.296Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description
@@ -33,6 +35,6 @@ PMK-252 stores the docs of a Linear issue as attachments that link to the file o
 
 ## Acceptance criteria
 
-- [ ] Each point in the PMK-252 section of the API verification notes is marked confirmed or corrected, with the date and how it was checked
-- [ ] Adding, reading and removing a doc works on a real Linear issue, and a hand-made attachment with the same link is left alone
-- [ ] Any difference between the real API and the fake is fixed in the adapter and in the fake, with a test
+- [x] Each point in the PMK-252 section of the API verification notes is marked confirmed or corrected, with the date and how it was checked
+- [x] Adding, reading and removing a doc works on a real Linear issue, and a hand-made attachment with the same link is left alone
+- [x] Any difference between the real API and the fake is fixed in the adapter and in the fake, with a test

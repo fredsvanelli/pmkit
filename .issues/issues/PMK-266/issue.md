@@ -2,12 +2,14 @@
 id: PMK-266
 title: "Tidy the Linear release, docs and archive code"
 type: chore
-status: backlog
+status: done
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-5
+branch: pmk-266-tidy-the-linear-release-docs-and-archive
 created: 2026-11-11T22:34:43.213Z
-updated: 2026-11-11T22:34:43Z
+updated: 2026-11-22T17:58:45Z
 ---
 
 ## Description
@@ -38,7 +40,7 @@ The reviews of PMK-246, PMK-250 and PMK-252 left small code and doc cleanups tha
 
 ## Acceptance criteria
 
-- [ ] `release list` on Linear with no `tracker.scope.team` answers `NOT_CONFIGURED`
-- [ ] The fake Linear API and the API verification notes use the same release page size and complexity figure as the code
-- [ ] The release query no longer depends on a text replace, and a test fails if its team field goes missing
-- [ ] `npm test` passes with no change to any command's output
+- [x] `release list` on Linear with no `tracker.scope.team` answers `NOT_CONFIGURED`
+- [x] The fake Linear API and the API verification notes use the same release page size and complexity figure as the code
+- [x] The release query no longer depends on a text replace, and a test fails if its team field goes missing
+- [x] `npm test` passes with no change to any command's output

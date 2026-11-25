@@ -39,10 +39,11 @@ export function parseRemoteUrl(url) {
 }
 
 const GITHUB_HOSTS = ['github.com', 'www.github.com', 'ssh.github.com']
+const BITBUCKET_HOST = 'bitbucket.org'
 
 /**
  * What a remote URL says about the git host. github.com, www.github.com and ssh.github.com (GitHub over port 443) are `github`,
- * with the repo as owner/name. Anything else, a URL that does not parse and a GitHub path that is not owner/name say nothing
+ * with the repo as owner/name; bitbucket.org is `bitbucket`, with the repo as workspace/slug. Anything else, a URL that does not parse and a GitHub path that is not owner/name say nothing
  * (`system: null`). A URL never says `none`: a host this function does not know may be GitHub Enterprise or an SSH alias.
  */
 export function inferHost(url) {
@@ -50,6 +51,10 @@ export function inferHost(url) {
   if (!parsed) return { system: null, repo: null, host: null }
   if (GITHUB_HOSTS.includes(parsed.host) && !parsed.owner.includes('/')) {
     return { system: 'github', repo: `${parsed.owner}/${parsed.name}`, host: parsed.host }
+  }
+  // Bitbucket Cloud has one web host and no nested groups: workspace/repo_slug.
+  if (parsed.host === BITBUCKET_HOST && !parsed.owner.includes('/')) {
+    return { system: 'bitbucket', repo: `${parsed.owner}/${parsed.name}`, host: BITBUCKET_HOST }
   }
   return { system: null, repo: null, host: parsed.host }
 }
@@ -76,4 +81,14 @@ export function chooseRemote(remotes, wanted) {
     return { remote: remotes[0], state: 'chosen', notes: [`there is no origin, so ${remotes[0].name}, the only remote, was read`] }
   }
   return { remote: null, state: 'ambiguous', notes: [`there is no origin and there are several remotes (${names.join(', ')}); pass --remote <name> or --git-host`] }
+}
+
+/**
+ * The web host of a remote URL for the repo `repo` (owner/name): its host when the URL parses, names that repo (ignoring case) and the
+ * host has a dot; GitHub's own aliases give github.com. Anything else, an SSH alias such as `work` included, is null (PMK-264).
+ */
+export function webHost(url, repo) {
+  const parsed = parseRemoteUrl(url)
+  if (!parsed || typeof repo !== 'string' || `${parsed.owner}/${parsed.name}`.toLowerCase() !== repo.toLowerCase() || !parsed.host.includes('.')) return null
+  return GITHUB_HOSTS.includes(parsed.host) ? 'github.com' : parsed.host
 }

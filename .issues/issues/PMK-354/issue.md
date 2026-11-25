@@ -2,11 +2,12 @@
 id: PMK-354
 title: Test that every remote tracker routes the operations its adapters implement
 type: feature
-status: backlog
+status: done
 parent: EPC-6
 related: [PMK-353]
+branch: pmk-354-test-that-every-remote-tracker-routes
 created: 2026-11-21T07:03:23.598Z
-updated: 2026-11-21T07:03:23Z
+updated: 2026-11-22T02:55:23Z
 ---
 
 ## Description
@@ -25,6 +26,6 @@ The Linear and GitHub trackers build their contract from a `contract` map in `sc
 
 ## Acceptance criteria
 
-- [ ] A test fails when an operation returned by a Linear or GitHub `*-ops.mjs` module is missing from that tracker's `contract` map
-- [ ] The test passes on the current code
-- [ ] Removing `moveDeliverable` from `scripts/lib/github/tracker.mjs` makes the test fail and name the operation
+- [x] A test fails when an operation returned by a Linear or GitHub `*-ops.mjs` module is missing from that tracker's `contract` map
+- [x] The test passes on the current code
+- [x] Removing `moveDeliverable` from `scripts/lib/github/tracker.mjs` makes the test fail and name the operation

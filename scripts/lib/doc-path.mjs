@@ -9,7 +9,17 @@ export function repoDocPath(path) {
   const bad = (why) => new PmkitError('INVALID_INPUT', `the doc path ${JSON.stringify(path)} ${why}`, 'Pass the path of a file in the repository, relative to its root, such as docs/adr/0001-use-points.md')
   if (typeof path !== 'string' || /^(?:[A-Za-z]:|[/\\]|tracker:)/.test(path)) throw bad('is not a path relative to the repository root')
   const parts = path.split('/').filter((part) => part !== '' && part !== '.')
-  if (parts.includes('..')) throw bad('leaves the repository')
+  // A backslash part is a separator on Windows, so `docs\\..\\x.md` leaves the repository too (PMK-258).
+  if (path.split(/[/\\]/).includes('..')) throw bad('leaves the repository')
   if (parts.length === 0) throw bad('names no file')
   return parts.join('/')
+}
+
+/** A stored doc path in normal form, to compare with: another client may have written `./docs/a.md`. A path that is not valid stays as it is (PMK-258). */
+export function storedDocPath(path) {
+  try {
+    return repoDocPath(path)
+  } catch {
+    return path
+  }
 }

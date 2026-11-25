@@ -2133,7 +2133,8 @@ for (const [name, text, dropped, kept] of [
   // A definition over two lines: its destination line is part of it, not a line glued to the first line's paragraph.
   ['a definition over two lines as the first line', '## Status\n\n[Draft]:\nRejected\n\n> Proposed\n\n## Context\n', ['[Draft]:', 'Rejected'], '> Proposed'],
   // Review cycle 2: unchanged by the fix above, the destination line of a definition is part of it and never a glued line.
-  ['a definition over two lines with no later status', '## Status\n\n[Draft]:\nRejected\n\nsee ADR 3\n\n## Context\n', ['Rejected', 'see ADR 3'], '[Draft]:'],
+  // PMK-329 changed this row on purpose: with no line that reads as a status, the fallback keeps the first line shown, never the hidden definition (PMK-322 kept `[Draft]:`).
+  ['a definition over two lines with no later status', '## Status\n\n[Draft]:\nRejected\n\nsee ADR 3\n\n## Context\n', ['[Draft]:', 'Rejected'], 'see ADR 3'],
   // A definition is not shown, so the paragraph after it is the first one the reader sees in its item or quote.
   ['an item that opens with a definition', '## Status\n\n- [Accepted]: /u\n\n  Proposed\n\n## Context\n', ['- [Accepted]: /u'], 'Proposed'],
   // Review cycle 2: a definition is hidden, so the first paragraph the reader sees starts after it, and its glued line is chosen as for a plain first line (as on develop).
@@ -2229,6 +2230,70 @@ for (const [name, text, dropped] of [
   })
 }
 
+// PMK-328: an ordered list item reads as a status when its text does, as a bullet item: a second status refuses (the guard), the section is read whole (adr-get),
+// and a first item that reads as a status is kept in the refusal's names. The bullet row is the control each ordered row is compared with.
+const ORDERED = [['1.', '1. '], ['1)', '1) '], ['10.', '10. '], ['an indented 1.', '  1. '], ['1. in a quote', '> 1. '], ['a tab after 1.', '1.\t']]
+for (const [name, marker] of [['a bullet', '- '], ...ORDERED]) {
+  const text = `## Status\n\nAccepted\n\n${marker}Proposed\n\n## Context\n`
+  const line = `${marker}Proposed`.trim()
+  test(`a status, then ${name} item that reads as a status refuses as two statuses, real and dry run, and adr-get reads the section whole (PMK-328)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), [line])
+    assert.equal(adrInfo(text).status, `Accepted ${line}`)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      assert.ok(result.data.error.message.includes(`would delete the other text of the Status section, "${line}"`), result.data.error.message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+  test(`${name} item that reads as a status, then a quote, keeps the item and names the quote (PMK-328)`, () => {
+    assert.deepEqual(adrStatusDropped(`## Status\n\n${marker}Accepted\n\n> Proposed\n\n## Context\n`), ['> Proposed'])
+  })
+}
+// PMK-328, unchanged: no space after the marker, a number inside the text, emphasis before the number and a 10-digit number are not list items that read as a status.
+for (const [name, other] of [['1.Accepted', '1.Accepted'], ['see 1. Proposed', 'see 1. Proposed'], ['emphasis before the number', '**1. Accepted**'], ['a 10-digit number', '1234567890. Proposed']]) {
+  test(`a status, then ${name}, is still written in place (PMK-328)`, () => {
+    const text = `## Status\n\nAccepted\n\n${other}\n\n## Context\n`
+    assert.deepEqual(adrStatusDropped(text), [])
+    assert.equal(adrInfo(text).status, 'Accepted')
+    assert.equal(setAdrStatus(text, 'deprecated').text, `## Status\n\nDeprecated\n\n${other}\n\n## Context\n`)
+  })
+}
+
+// PMK-329: a quote that holds only definitions shows nothing, so the paragraph after it is the first one shown, as after a paragraph of definitions (PMK-325);
+// and with no line that reads as a status, the fallback keeps the first line shown, never a hidden definition.
+for (const [name, text, dropped, kept] of [
+  ['a quote of definitions before a quote with a glued status and a later status', '## Status\n\n> [a]: /u\n\n> Date: x\n> Accepted\n\n> Proposed\n\n## Context\n', ['> [a]: /u', '> Date: x', '> Proposed'], '> Accepted'],
+  ['a quote of definitions before a quote with a glued status', '## Status\n\n> [a]: /u\n\n> Date: x\n> Accepted\n\n## Context\n', ['> [a]: /u', '> Date: x'], '> Accepted'],
+  ['a quote of a quote of definitions before an inner quote with a glued status', '## Status\n\n> > [a]: /u\n\n> > Date: x\n> > Accepted\n\n## Context\n', ['> > [a]: /u', '> > Date: x'], '> > Accepted'],
+  ['a definitions block and no line that reads as a status', '## Status\n\n[a]: /u\n\nDate: x\nFoo\n\n## Context\n', ['[a]: /u', 'Foo'], 'Date: x'],
+]) {
+  test(`the refusal for ${name} keeps the line the reader sees and names every other line (PMK-329)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message } = result.data.error
+      assert.ok(message.includes(`the other text of the Status section, ${dropped.map((line) => `"${line}"`).join(', ')}; nothing`), message)
+      assert.ok(!message.includes(`"${kept}"`), message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+}
+// PMK-329, unchanged: a list item of definitions shows its bullet, and a thematic break after a quote of definitions is shown, so the first line stays the fallback.
+for (const [name, text, dropped] of [
+  ['a list item of definitions before an item with a glued status', '## Status\n\n- [a]: /u\n\n- Date: x\n  Accepted\n\n> Proposed\n\n## Context\n', ['- [a]: /u', '- Date: x', 'Accepted']],
+  ['a quote of definitions and a thematic break before a paragraph', '## Status\n\n> [a]: /u\n\n---\nDate: x\nFoo\n\n## Context\n', ['---', 'Date: x', 'Foo']],
+]) {
+  test(`with ${name} the choice of the status line is as before (PMK-329)`, () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+  })
+}
+
 // PMK-319: two closed fences that share their opener are two fences in the refusal, not one. PMK-322: each is named with the lines it takes, so they read apart
 // (PMK-319 asserted `the code fences "```", "```" take "## X", "## Y"`, which does not say which fence takes which line), and the adr-get note counts them the same way.
 const TICKS = '"```"'
@@ -2296,6 +2361,12 @@ test('a closing fence line is not taken out of the other text in place of a line
   assert.match(message, /the other text of the Status section, "```"/)
 })
 
+// The HTML blocks of kind 1 to 5, the containers that hold one with the prefix of their first and later lines, and the ends of the file the PMK-323 and PMK-326 loops share (PMK-330).
+// A CRLF loop writes each `\n` as `\r\n`.
+const HTML_KINDS = ['<!--', '<?php', '<![CDATA[', '<!X', '<script>']
+const HTML_CONTAINERS = [['quote', '> ', '> '], ['list item', '- ', '  ']]
+const ENDINGS = [['', 'with no final newline'], ['\n', 'with a final newline']]
+const crlf = (text) => text.replaceAll('\n', '\r\n')
 // PMK-314: a section with a top-level status line is written in place and nothing is deleted, so the HTML block and fence guards and the adr-get notes do not run for it.
 for (const [name, text] of [
   ['a closed comment holding a heading', '## Status\n\nAccepted\n\n<!--\n## X\n-->\n\n## Context\n'],
@@ -2333,7 +2404,7 @@ for (const [name, text] of [
   ['a fence a quote closes after an earlier fence a quote closes', '## Status\n\nAccepted\n\n> ```\n> ## X\n\n> ```\n> ## Y\n\n## Context\n'],
   // PMK-323: an HTML block of kind 1 to 5 its quote or list item holds at the end of the file. The container ends with the file and ends the block, so nothing comes after it to take,
   // as for a fence (PMK-320): only a top-level block still open at the end of the walk is named in place.
-  ...['<!--', '<?php', '<![CDATA[', '<!X', '<script>'].flatMap((opener) => [['quote', '> ', '> '], ['list item', '- ', '  ']].flatMap(([container, first, rest]) => [['', 'with no final newline'], ['\n', 'with a final newline']].map(([end, how]) =>
+  ...HTML_KINDS.flatMap((opener) => HTML_CONTAINERS.flatMap(([container, first, rest]) => ENDINGS.map(([end, how]) =>
     [`an HTML block ${opener} a ${container} holds at the end of the file ${how}`, `## Status\n\nAccepted\n\n${first}${opener}\n${rest}## X${end}`]))),
 ]) {
   test(`${name} after a status line of its own is written in place, real and dry run, with no note in adr-get (PMK-314)`, async () => {
@@ -2365,21 +2436,22 @@ for (const [name, text] of [
   })
 }
 // PMK-326: the PMK-323 cases with CRLF line ends. adr-status writes the file back with LF line ends (the PMK-311 `OTHER` loop: `adr-status keeps CRLF line ends, dry run writes nothing, real writes only the status (PMK-311)`), so the expected text is the LF one.
-const HTML_KINDS = ['<!--', '<?php', '<![CDATA[', '<!X', '<script>']
-const ENDINGS = [['', 'with no final newline'], ['\r\n', 'with a final newline']]
 for (const opener of HTML_KINDS) {
-  for (const [container, first, rest] of [['quote', '> ', '> '], ['list item', '- ', '  ']]) {
+  for (const [container, first, rest] of HTML_CONTAINERS) {
     for (const [end, how] of ENDINGS) {
       test(`an HTML block ${opener} a ${container} holds at the end of the file ${how} is written in place with CRLF line ends too, real and dry run, with no note in adr-get (PMK-326)`, async () => {
-        const text = `## Status\r\n\r\nAccepted\r\n\r\n${first}${opener}\r\n${rest}## X${end}`
+        const text = crlf(`## Status\n\nAccepted\n\n${first}${opener}\n${rest}## X${end}`)
         const after = text.replaceAll('\r\n', '\n').replace('Accepted', 'Deprecated')
         assert.equal(adrHtmlHeld(text), null)
+        assert.equal(adrFenceHeld(text), null)
+        assert.deepEqual(adrFenceBlocks(text), [])
         const root = repo()
         writeAdr(root, 'docs/adr/0001-a.md', text)
         const get = await adrGetFrom(root, '1')
         assert.equal(get.data.status, 'Accepted')
         assert.deepEqual(get.data.notes, [])
         assert.equal(get.data.htmlHeld, null)
+        assert.equal(get.data.fenceHeld, null)
         const dry = await adrStatus(root, '1', 'deprecated', '--dry-run')
         assert.equal(dry.code, 0, dry.stderr)
         assert.equal(dry.data.after, after)
@@ -2391,7 +2463,7 @@ for (const opener of HTML_KINDS) {
   }
   for (const [end, how] of ENDINGS) {
     test(`the HTML guard still refuses an unclosed top-level ${opener} block ${how} with CRLF line ends, real and dry run (PMK-326)`, async () => {
-      const text = `## Status\r\n\r\nAccepted\r\n\r\n${opener}\r\n## X${end}`
+      const text = crlf(`## Status\n\nAccepted\n\n${opener}\n## X${end}`)
       const held = { opener, lines: ['## X'] }
       assert.deepEqual(adrHtmlHeld(text), held)
       const root = repo()
@@ -2406,11 +2478,30 @@ for (const opener of HTML_KINDS) {
     })
   }
 }
+// PMK-330: the PMK-323 control with CRLF line ends: a top-level block of kind 1 to 5 that never closes, after a block of the same kind its quote or list item holds, still refuses.
+for (const opener of HTML_KINDS) {
+  for (const [container, first, rest] of HTML_CONTAINERS) {
+    for (const [end, how] of ENDINGS) {
+      test(`the HTML guard still refuses an unclosed top-level ${opener} block ${how} after one a ${container} holds, with CRLF line ends, real and dry run (PMK-330)`, async () => {
+        const text = crlf(`## Status\n\nAccepted\n\n${first}${opener}\n${rest}## Y\n\n${opener}\n## X${end}`)
+        assert.deepEqual(adrHtmlHeld(text), { opener, lines: ['## X'] })
+        const root = repo()
+        writeAdr(root, 'docs/adr/0001-a.md', text)
+        for (const flag of [['--dry-run'], []]) {
+          const result = await adrStatus(root, '1', 'deprecated', ...flag)
+          assert.equal(result.code, 2)
+          assert.equal(result.data.error.message, `docs/adr/0001-a.md: setting the status would delete "## X", which the HTML block "${opener}" takes into the Status section; nothing was written`)
+        }
+        assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+      })
+    }
+  }
+}
 // The guards still refuse when the whole section is replaced: an unclosed comment or fence, no known status line, a status in an item, an ambiguous section.
 for (const [name, text, guard] of [
   ['an unclosed comment after the status line', '## Status\n\nAccepted\n\n<!--\n## X\n', 'HTML'],
   // PMK-323: a top-level block of kind 1 to 5 that never closes, with and without a final newline, after a block of the same kind its quote or list item holds.
-  ...['<!--', '<?php', '<![CDATA[', '<!X', '<script>'].flatMap((opener) => [
+  ...HTML_KINDS.flatMap((opener) => [
     [`an unclosed top-level ${opener} block at the end of the file`, `## Status\n\nAccepted\n\n${opener}\n## X`, 'HTML'],
     [`an unclosed top-level ${opener} block after one a list item holds`, `## Status\n\nAccepted\n\n- ${opener}\n  ## Y\n\n${opener}\n## X\n`, 'HTML'],
   ]),

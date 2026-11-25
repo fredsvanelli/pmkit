@@ -368,6 +368,7 @@ export function mapImport(snapshot, target, { readRequests = 0 } = {}) {
       ...(item.sprint && sprintOf.has(String(item.sprint)) ? { sprint: sprintOf.get(String(item.sprint)) } : {}),
       ...(item.due ? { due: item.due } : {}),
       ...(item.archived ? { archived: true } : {}),
+      ...(item.docs?.length ? { docs: item.docs } : {}),
       created: item.created,
       description: item.description ?? '',
       acceptanceCriteria: item.acceptanceCriteria ?? [],

@@ -1,2 +1,12 @@
 {"at":"2026-10-28T00:11:38Z","by":"fred","op":"create","to":{"id":"PMK-154","title":"Say when a current reader finds no active sprint","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:38.633Z","updated":"2026-10-28T00:11:38Z"}}
 {"at":"2026-10-28T00:11:38Z","by":"fred","op":"link","field":"related","to":"PMK-116"}
+{"at":"2026-11-22T03:54:36Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T03:54:36Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T03:54:36Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-154-say-when-a-current-reader-finds-no"}
+{"at":"2026-11-22T03:54:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:05:21Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:05:22Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:05:22Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T04:05:36Z","by":"fred","op":"comment","to":"2026-11-22T04-05-36Z-fred.md"}
+{"at":"2026-11-22T04:05:36Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T05:53:07Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

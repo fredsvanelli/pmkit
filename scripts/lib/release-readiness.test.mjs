@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildReadiness, chooseReadinessBasis } from './release-readiness.mjs'
+import { readinessText } from './format.mjs'
 
 const rel = (id, state = 'planned', tag) => ({ id, state, tag })
 const ms = (id, due) => ({ id, name: id, due })
@@ -151,4 +152,24 @@ test('a basis whose issues are all canceled is empty, so it is never ready', () 
 test('empty is false while a pull request of a canceled issue is still open, so empty never comes with ready false', () => {
   const data = build({ issues: [issue('A-1', 'canceled', 'a1')], prs: [pr(1, 'a1')] })
   assert.deepEqual([data.empty, data.ready], [false, false])
+})
+
+test('PMK-81: a deploy with no ref (Bitbucket) is not verified against the release tag, never false', () => {
+  const data = build({ deploys: [{ ref: null, environment: 'prod', state: 'success' }, { ref: 'v1.1', environment: 'prod', state: 'success' }] })
+  assert.deepEqual(data.deploys.map((d) => d.matchesRelease), [null, true])
+  const milestone = build({ choice: { ...choice, basis: 'milestone', source: { id: 'beta' } }, deploys: [{ ref: null }] })
+  assert.equal(milestone.deploys[0].matchesRelease, false)
+})
+
+test('PMK-81: the readiness text says a Bitbucket deploy is not verified against the tag', () => {
+  const data = build({ gitHost: { system: 'bitbucket', available: true }, deploys: [{ ref: null, sha: null, environment: 'prod', state: 'success', createdAt: '2026-11-20T10:00:00Z' }] })
+  const text = readinessText(data)
+  assert.match(text, /not verified on Bitbucket/)
+  assert.doesNotMatch(text, /null/)
+})
+
+test('PMK-81: a pull request whose checks were not read has checks null, and the text says so', () => {
+  const data = build({ issues: [issue('A-1', 'todo', 'a1')], gitHost: { system: 'bitbucket', available: true }, prs: [pr(1, 'a1', { statusCheckRollup: null })] })
+  assert.equal(data.pullRequests[0].checks, null)
+  assert.match(readinessText(data), /checks not read/)
 })

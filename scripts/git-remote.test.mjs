@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
+import { chooseRemote, inferHost, parseRemoteUrl, webHost } from './lib/git-remote.mjs'
 
 const parsed = (url) => parseRemoteUrl(url)
 
@@ -94,4 +94,33 @@ test('chooseRemote honors a wanted name and rejects an unknown one', () => {
   const out = chooseRemote([remote('origin')], 'nope')
   assert.equal(out.state, 'unknown-name')
   assert.equal(out.remote, null)
+})
+
+// PMK-264: the web host a Linear doc links to, from the origin remote of the configured repo.
+test('webHost is the remote\'s web host for the configured repo, and null for anything else', () => {
+  assert.equal(webHost('git@ghe.example.com:acme/app.git', 'acme/app'), 'ghe.example.com')
+  assert.equal(webHost('https://GHE.example.com/Acme/App.git', 'acme/app'), 'ghe.example.com')
+  assert.equal(webHost('https://github.com/acme/app', 'acme/app'), 'github.com')
+  assert.equal(webHost('git@ssh.github.com:acme/app.git', 'acme/app'), 'github.com')
+  assert.equal(webHost('git@ghe.example.com:acme/other.git', 'acme/app'), null)
+  assert.equal(webHost('work:acme/app.git', 'acme/app'), null)
+  assert.equal(webHost('not a url', 'acme/app'), null)
+  assert.equal(webHost('git@ghe.example.com:acme/app.git', undefined), null)
+})
+
+test('inferHost maps bitbucket.org to bitbucket with the workspace/slug repo', () => {
+  const expected = { system: 'bitbucket', repo: 'ws/slug', host: 'bitbucket.org' }
+  assert.deepEqual(inferHost('https://bitbucket.org/ws/slug.git'), expected)
+  assert.deepEqual(inferHost('https://user@bitbucket.org/ws/slug'), expected)
+  assert.deepEqual(inferHost('git@bitbucket.org:ws/slug.git'), expected)
+})
+
+test('inferHost does not accept a bitbucket.org path that is not workspace/slug', () => {
+  assert.deepEqual(inferHost('https://bitbucket.org/ws'), { system: null, repo: null, host: null })
+})
+
+test('webHost is bitbucket.org for a bitbucket.org remote that names the repo', () => {
+  assert.equal(webHost('https://bitbucket.org/ws/slug.git', 'ws/slug'), 'bitbucket.org')
+  assert.equal(webHost('git@bitbucket.org:ws/slug.git', 'ws/slug'), 'bitbucket.org')
+  assert.equal(webHost('git@bitbucket.org:ws/other.git', 'ws/slug'), null)
 })

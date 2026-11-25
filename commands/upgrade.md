@@ -59,7 +59,7 @@ With more than one install that applies (a user install and a project install), 
 1. Skip this step when `.pmkit/config.yaml` is missing or its tracker is not `local`.
 2. Run the CLI of the new version, from its `installPath`. The session still runs the old code. Take `installPath` from the list read again in step 4, or from step 1 when step 4 did not run. When step 1 found a folder install (`claude --plugin-dir`), use `${CLAUDE_PLUGIN_ROOT}` as `installPath`. Use `node "<installPath>/scripts/pmkit.mjs" migrate --dry-run --json`.
 3. When `from` equals `to` and `steps` is empty, say that the tracker is already on the current format.
-4. Otherwise show every file under `steps[].changes` with its action, and ask once. After approval, run `node "<installPath>/scripts/pmkit.mjs" migrate --json`. Show the commit message when the result has a `commit`. When the user declines, change nothing and go to step 6.
+4. Otherwise show every file under `steps[].changes` with its action, and ask once. After approval, run `node "<installPath>/scripts/pmkit.mjs" migrate --json`. Show the commit message when the result has a `commit`. When the user declines, change nothing and go to step 6. A `warning: .pmkit/config.yaml is not valid` on the dry run or the real run does not stop the migration, which reads only the tracker settings of that file: show it once and keep it for step 6.
 5. `CONFLICT` means the tracker path has uncommitted changes. Show the message and ask the user to commit or discard them. When the user has done so, run `node "<installPath>/scripts/pmkit.mjs" migrate --dry-run --json` again, show its files and ask again before migrating, as in sub-step 4. `NOT_CONFIGURED` means the project is not a git repository, and the migration needs git history as the way back.
 
 ### 6. Next steps
@@ -69,7 +69,7 @@ With more than one install that applies (a user install and a project install), 
    - Claude Code: `/reload-plugins`, and "restart Claude Code if the new commands do not show".
    - Codex, only when `codex` is on the `PATH`: `codex plugin marketplace upgrade fredsvanelli`, then restart Codex.
    - OpenCode, only when `opencode` is on the `PATH`: "pmkit for OpenCode arrives with build step 3".
-3. For each `Setup:` reason in the sections of step 3, show the reason and suggest `/pmkit:setup`.
+3. For each `Setup:` reason in the sections of step 3, show the reason and suggest `/pmkit:setup`. When step 5 warned that `.pmkit/config.yaml` is not valid, suggest `/pmkit:setup` for it too, since the new version reads that file and refuses writes until it is fixed.
 
 ## Confirmation points
 

@@ -33,6 +33,7 @@ The investigation only reads. Do not edit code, run a test that writes files, re
    - the evidence, as `file:line` in the code, or the lines of the log that support it, quoted in full and short. For the chat only: the comment of step 10 gets the run link and the step or job name instead of log lines;
    - the confidence (`high`, `medium` or `low`) and the reason. This is the only confidence rule of the command. The sources are the issue with its comments, the CI log, the diff and the code. `high` needs evidence in two of them, for example the failing line in the log and the code at that line. A hypothesis that rests on one source, or on a source that is cut or possibly old, is at most `medium`. A guess with no evidence in the code or the log is `low` and says so;
    - the check that would confirm or reject it, as a read-only step the user can run.
+
    Say which sources were not read (no branch, no git host, no failed run, a cut log or diff) and what that leaves open. When the sources do not support a hypothesis, say that no cause was found. Do not invent one.
 9. Show the diagnosis. Lead with the issue line, then the sources read and not read, then the hypotheses. Never propose or make a fix in this command. Offer `/pmkit:issues:work <id>` to fix it.
 10. Offer to post the diagnosis as a comment on the issue.

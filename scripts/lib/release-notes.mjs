@@ -1,6 +1,9 @@
 import { compareIds } from './ids.mjs'
 import { eventInstant } from './metrics.mjs'
 
+/** The warning and the text line of notes whose read the tracker cut (hasMore). One copy for both (PMK-266). */
+export const NOTES_CUT = 'Linear has more issues than the 1000 pmkit read, so the notes may be missing issues'
+
 // Pure release notes functions: no file access. The caller passes records it already read from the tracker.
 
 const DAY_MS = 86400000
@@ -74,7 +77,8 @@ const entryOf = (issue, doneAt) => ({
   parent: issue.parent ?? null,
   archived: issue.archived === true,
   doneAt: doneAt ?? null,
-  release: issue.release ?? null,
+  // Two or more releases, or one pmkit could not read, are shown as such, never as release: null (PMK-258).
+  ...(Array.isArray(issue.releases) ? { releases: issue.releases } : issue.releaseUnknown !== undefined ? { releaseUnknown: issue.releaseUnknown } : { release: issue.release ?? null }),
   status: issue.status?.name ?? null,
   assignee: issue.assignee ?? null,
   estimate: issue.estimate ?? null,

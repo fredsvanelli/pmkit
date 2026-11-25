@@ -139,7 +139,11 @@ exit 0
   "noMoves": {
     "reason": "no_candidates",
     "message": "the overloaded members have no issue in todo to move"
-  }
+  },
+  "warnings": [
+    "ISS-3Q6T: CONFLICT The issue file contains git conflict markers.",
+    "the delivered count is not verified: an issue file did not parse"
+  ]
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.

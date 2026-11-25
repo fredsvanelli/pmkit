@@ -1,2 +1,11 @@
 {"at":"2026-10-28T00:11:38Z","by":"fred","op":"create","to":{"id":"PMK-155","title":"Check the design spec CLI table against the usage strings","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:38.781Z","updated":"2026-10-28T00:11:38Z"}}
 {"at":"2026-10-28T00:11:38Z","by":"fred","op":"link","field":"related","to":"PMK-117"}
+{"at":"2026-11-22T03:09:06Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-22T03:09:06Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-22T03:09:10Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-155-check-the-design-spec-cli-table-against"}
+{"at":"2026-11-22T03:10:25Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:16:05Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:16:05Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-22T03:16:23Z","by":"fred","op":"comment","to":"2026-11-22T03-16-23Z-fred.md"}
+{"at":"2026-11-22T03:16:23Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-22T05:53:08Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

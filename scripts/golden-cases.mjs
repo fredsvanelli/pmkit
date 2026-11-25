@@ -86,6 +86,10 @@ export const CASES = {
   'github discussions comment': () => [['1', '--body-file', input('comment.md')]],
   'github draft-issues list': () => [[]],
   'github draft-issues convert': () => [['PVTI_1']],
+  'jira plans list': () => [[]],
+  'jira plans get': () => [['12']],
+  'jira ideas list': () => [[]],
+  'jira ideas connect': () => [['IDEA-1', 'ENG-1']],
   'epic list': () => [[]],
   'epic get': (a) => [[a.epic]],
   'epic progress': (a) => [[a.epic]],
@@ -93,6 +97,8 @@ export const CASES = {
   // The epic of no-sprints links to the goal, so the case removes the link there and is a refusal elsewhere.
   'epic goal': (a) => [[a.epic, 'none'], [a.epic, a.goal]],
   'epic move': (a) => [[a.epic, 'done'], [a.epic, 'in_review']],
+  // PMK-348: a title edit, and the edit that changes nothing (no flag) refused.
+  'epic update': (a) => [[a.epic, '--title', 'Golden epic, edited'], [a.epic]],
   'goal list': () => [[]],
   'goal get': (a) => [[a.goal]],
   'goal progress': (a) => [[a.goal]],

@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 
 import { branchName } from './lib/ids.mjs'
 import { operationName } from './lib/linear/client.mjs'
+import { BATCH_RELEASES_PAGE } from './lib/linear/documents.mjs'
 
 export const FAKE_KEY = 'lin_api_TESTKEYTESTKEYTESTKEY'
 
@@ -809,13 +810,37 @@ export function fakeLinearIssues({
     const listed = releaseRecords.filter((item) => team === undefined || pipelines.find((pipe) => pipe.id === item.pipeline)?.teams.includes(teamId))
     return { releases: connection(listed.map(releaseNode), first, after) }
   })
+  // PMK-261: a team's pipelines with their stages (planned, then completed), and the release create and update.
+  const stagesOf = (pipe) => pipe.stages ?? [{ id: `${pipe.id}-planned`, type: 'planned' }, { id: `${pipe.id}-done`, type: 'completed' }]
+  routes.PmkitTeamReleasePipelines = query('PmkitTeamReleasePipelines', ({ team }) => {
+    const teamId = teams.find((item) => item.key === team)?.id
+    const own = pipelines.filter((pipe) => pipe.teams.includes(teamId)).map((pipe) => ({ id: pipe.id, name: pipe.name, stages: { nodes: stagesOf(pipe) } }))
+    return { teams: { nodes: teamId ? [{ releasePipelines: { nodes: own } }] : [] } }
+  })
+  routes.PmkitReleaseCreate = mutation('PmkitReleaseCreate', ({ input }) => {
+    if (!pipelines.some((pipe) => pipe.id === input.pipelineId)) throw new FakeInputError('Could not find referenced ReleasePipeline.')
+    const record = { id: input.id ?? `release-${releaseRecords.length + 1}`, name: input.name, version: input.version ?? null, pipeline: input.pipelineId, stage: 'planned', targetDate: input.targetDate ?? null, completedAt: null, description: input.description ?? null }
+    releaseRecords.push(record)
+    return { releaseCreate: { success: true, release: releaseNode(record) } }
+  })
+  routes.PmkitReleaseUpdate = mutation('PmkitReleaseUpdate', ({ id, input }) => {
+    const record = requireRelease(id)
+    const stage = stagesOf(pipelines.find((pipe) => pipe.id === record.pipeline) ?? { id: record.pipeline }).find((item) => item.id === input.stageId)
+    if (input.stageId !== undefined && !stage) throw new FakeInputError('Could not find referenced ReleaseStage.')
+    if (stage) record.stage = stage.type
+    if (input.completedAt !== undefined) record.completedAt = input.completedAt
+    return { releaseUpdate: { success: true, release: releaseNode(record) } }
+  })
   routes.PmkitRelease = query('PmkitRelease', ({ id }) => {
     const found = releaseRecords.find((item) => item.id === id)
     if (!found) throw new FakeInputError('Entity not found: Release')
     return { release: releaseNode(found) }
   })
   routes.PmkitIssuesReleases = query('PmkitIssuesReleases', ({ ids = [], first = 50 }) => ({
-    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, releases: connection(record.releaseIds.map((rid) => releaseNode(requireRelease(rid))), nestedPage) })), first),
+    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, releases: connection(record.releaseIds.map((rid) => releaseNode(requireRelease(rid))), BATCH_RELEASES_PAGE) })), first),
+  }))
+  routes.PmkitIssueReleasePipelines = query('PmkitIssueReleasePipelines', ({ id, first, after }) => ({
+    issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
   }))
   routes.PmkitIssueReleases = query('PmkitIssueReleases', ({ id, first, after }) => ({
     issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
@@ -1082,6 +1107,12 @@ export function fakeLinearProjects({
       for (const key of Object.keys(input ?? {})) if (key !== 'statusId') throw new FakeValidationError(`Unknown input field ${key}`)
       const project = requireProject(id)
       project.statusId = input.statusId
+      return { projectUpdate: { success: true, project: projectNode(project, false) } }
+    }),
+    PmkitProjectEdit: mutation('PmkitProjectEdit', ({ id, input }) => {
+      for (const key of Object.keys(input ?? {})) if (key !== 'name' && key !== 'content') throw new FakeValidationError(`Unknown input field ${key}`)
+      const project = requireProject(id)
+      Object.assign(project, input)
       return { projectUpdate: { success: true, project: projectNode(project, false) } }
     }),
     PmkitProjectDelete: mutation('PmkitProjectDelete', ({ id }) => {

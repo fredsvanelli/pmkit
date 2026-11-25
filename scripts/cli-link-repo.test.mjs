@@ -8,6 +8,7 @@ import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from './fake-linear-api.mjs'
+import { BB, FAKE_BB_ENV, FAKE_BB_TOKEN, fakeBitbucketFetch } from './fake-bitbucket-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { hashTree, makeRepo, tempDir, userStoreEnv } from './test-helpers.mjs'
 
@@ -666,4 +667,85 @@ test('the refusal of a remote that is not valid carries the note that says why',
   const error = errorOf(await link(root, ['--git-host', 'github']))
   assert.equal(error.code, 'INVALID_INPUT')
   assert.match(error.message, /valid host name and owner\/name/)
+})
+
+// Bitbucket Cloud (PMK-81): the repository is read once with BITBUCKET_TOKEN before anything is written.
+const BB_REPO = { json: { full_name: 'acme/widgets', mainbranch: { name: 'main' } } }
+const linkBitbucket = (root, args = [], { env = { ...childEnv(), ...FAKE_BB_ENV }, routes = { [`GET ${BB}`]: BB_REPO } } = {}) => {
+  const fetch = fakeBitbucketFetch(routes)
+  return { fetch, result: run(['link-repo', ...args, '--json'], { cwd: root, env, fetch }) }
+}
+const failure = (result) => {
+  assert.notEqual(result.code, 0, result.stdout)
+  return JSON.parse(result.stdout).error
+}
+
+test('Bitbucket: a bitbucket.org origin gives bitbucket and workspace/slug, read once before the write', async () => {
+  const root = local({ remotes: { origin: 'git@bitbucket.org:acme/widgets.git' } })
+  const { fetch, result } = linkBitbucket(root)
+  const data = dataOf(await result)
+  assert.deepEqual(data.gitHost, { before: 'none', after: 'bitbucket', source: 'remote' })
+  assert.deepEqual(data.repo, { before: null, after: 'acme/widgets', source: 'remote' })
+  assert.equal(read(root), CONFIG.replace('  system: none # no host yet\n', '  system: bitbucket # no host yet\n  repo: acme/widgets\n'))
+  assert.deepEqual(fetch.calls.map((call) => `${call.method} ${call.url}`), ['GET https://api.bitbucket.org/2.0/repositories/acme/widgets'])
+  assert.ok(!JSON.stringify(data).includes(FAKE_BB_TOKEN))
+})
+
+test('Bitbucket: the dry run makes the same read and writes nothing', async () => {
+  const root = local({ remotes: { origin: 'https://bitbucket.org/acme/widgets.git' } })
+  const before = hashTree(root)
+  const { fetch, result } = linkBitbucket(root, ['--dry-run'])
+  const data = dataOf(await result)
+  assert.equal(data.gitHost.after, 'bitbucket')
+  assert.equal(fetch.calls.length, 1)
+  assert.deepEqual(hashTree(root), before)
+})
+
+test('Bitbucket: without BITBUCKET_TOKEN the link is AUTH and the file stays as it was', async () => {
+  const root = local({ remotes: { origin: 'git@bitbucket.org:acme/widgets.git' } })
+  const { fetch, result } = linkBitbucket(root, [], { env: childEnv() })
+  const error = failure(await result)
+  assert.equal(error.code, 'AUTH')
+  assert.equal(read(root), CONFIG)
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('Bitbucket: a repository Bitbucket does not find is NOT_CONFIGURED and the file stays as it was', async () => {
+  const root = local({ remotes: { origin: 'git@bitbucket.org:acme/widgets.git' } })
+  const { result } = linkBitbucket(root, [], { routes: { [`GET ${BB}`]: { status: 404, json: { type: 'error', error: { message: 'Repository not found' } } } } })
+  const error = failure(await result)
+  assert.equal(error.code, 'NOT_CONFIGURED')
+  assert.equal(read(root), CONFIG)
+})
+
+test('Bitbucket: --git-host bitbucket --repo works with any remote and warns about a GitHub one', async () => {
+  const root = local({ remotes: { origin: 'git@github.com:acme/app.git' } })
+  const { fetch, result } = linkBitbucket(root, ['--git-host', 'bitbucket', '--repo', 'acme/widgets'])
+  const data = dataOf(await result)
+  assert.equal(fetch.calls.length, 1)
+  assert.deepEqual(data.gitHost, { before: 'none', after: 'bitbucket', source: 'flag' })
+  assert.deepEqual(data.repo, { before: null, after: 'acme/widgets', source: 'flag' })
+  assert.ok(data.warnings.some((warning) => /which is GitHub/.test(warning)), data.warnings.join('\n'))
+  assert.equal(data.defaultBranch.after, null)
+  assert.match(read(root), /^ {2}system: bitbucket # no host yet\n {2}repo: acme\/widgets\n/m)
+})
+
+test('Bitbucket: --git-host bitbucket with no repo to take, and a --repo that is not workspace/repo_slug, are INVALID_INPUT', async () => {
+  const none = errorOf(await linkBitbucket(local({ remotes: { origin: 'git@github.com:acme/app.git' } }), ['--git-host', 'bitbucket']).result)
+  assert.match(none.message, /bitbucket needs a repo/)
+  assert.match(none.nextStep, /--repo workspace\/repo_slug/)
+  const bad = errorOf(await linkBitbucket(local(), ['--git-host', 'bitbucket', '--repo', 'acme/wid!gets']).result)
+  assert.match(bad.message, /workspace\/repo_slug/)
+})
+
+test('Bitbucket: the default branch comes from the remote HEAD of a bitbucket.org origin', async () => {
+  const root = local({ remotes: { origin: 'git@bitbucket.org:acme/widgets.git' } })
+  git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/develop')
+  const data = dataOf(await linkBitbucket(root).result)
+  assert.deepEqual(data.defaultBranch, { before: null, after: 'develop', source: 'remote' })
+})
+
+test('without a remote the note lists every git host', async () => {
+  const data = dataOf(await link(local(), ['--dry-run']))
+  assert.ok(data.notes.some((note) => /pass --git-host github, bitbucket or none/.test(note)), data.notes.join('\n'))
 })

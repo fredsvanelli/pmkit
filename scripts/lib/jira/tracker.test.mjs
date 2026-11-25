@@ -1,0 +1,208 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import fs from 'node:fs'
+import path from 'node:path'
+import { assertTracker } from '../contract.mjs'
+import { ADAPTERS } from '../adapters.mjs'
+import { FAKE_EMAIL, FAKE_ENV, FAKE_TOKEN, TRACKER, fakeJiraFetch, jiraSiteRoutes } from '../../fake-jira-api.mjs'
+import { fakeJiraIssues } from '../../fake-jira-issues.mjs'
+import { makeRepo, tempDir, userStoreEnv } from '../../test-helpers.mjs'
+import { cachePut, repoHash } from '../user-store.mjs'
+import { run } from '../../pmkit.mjs'
+import { jiraDescriptor } from './adapter.mjs'
+import { createJiraTracker } from './tracker.mjs'
+
+globalThis.fetch = () => {
+  throw new Error('the real fetch was called')
+}
+
+const NOW = () => new Date('2026-11-22T12:00:00Z')
+const config = (pmkit = {}) => ({ root: '/nowhere', pmkit: { version: 1, tracker: TRACKER, git_host: { system: 'github' }, ...pmkit } })
+
+function setup(routes = {}, env = FAKE_ENV) {
+  const fetch = fakeJiraFetch({ ...jiraSiteRoutes(), ...routes })
+  return { fetch, tracker: createJiraTracker(config(), { env: { ...env, ...userStoreEnv().env }, now: NOW, fetch }) }
+}
+
+/** A tracker over the stateful fake, with its own user store and root; `at` shares them between trackers. */
+function issuesSetup({ pmkit = {}, at = { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } } } = {}) {
+  const fake = fakeJiraIssues()
+  const fetch = fakeJiraFetch(fake.routes)
+  const tracker = createJiraTracker({ root: at.root, pmkit: { version: 1, tracker: TRACKER, mappings: { types: { story: 'Story' } }, ...pmkit } }, { env: at.env, now: NOW, fetch })
+  return { fake, fetch, tracker, at }
+}
+const projectReads = (fetch) => fetch.calls.filter((call) => new URL(call.url).pathname === '/rest/api/3/project/ENG').length
+
+test('the Jira tracker holds every contract operation', () => {
+  assertTracker(setup().tracker)
+})
+
+test('the Jira tracker exposes plans', () => {
+  const { tracker } = setup()
+  assert.equal(typeof tracker.plans.list, 'function')
+  assert.equal(typeof tracker.plans.get, 'function')
+})
+
+test('a missing token fails at creation with no request', () => {
+  const fetch = fakeJiraFetch(jiraSiteRoutes())
+  assert.throws(() => createJiraTracker(config(), { env: { JIRA_EMAIL: 'a@b.c' }, now: NOW, fetch }), { code: 'AUTH' })
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('one discovery per run, and discover refresh reads again', async () => {
+  const { fetch, tracker } = setup()
+  const found = await tracker.discover()
+  assert.equal(found.space.key, 'ENG')
+  assert.equal(found.raw.space.key, 'ENG')
+  const calls = fetch.calls.length
+  const manifest = await tracker.capabilities()
+  assert.equal(fetch.calls.length, calls)
+  assert.deepEqual(Object.keys(manifest), ['tracker', 'gitHost', 'generatedAt', 'discoveredAt', 'site', 'space', 'plan', 'capabilities', 'warnings'])
+  assert.equal(manifest.tracker, 'jira')
+  assert.equal(manifest.generatedAt, '2026-11-22T12:00:00Z')
+  assert.deepEqual(manifest.space, { key: 'ENG', name: 'Engineering', style: 'company-managed', type: 'software' })
+  assert.equal(manifest.capabilities.length, 20)
+  await tracker.discover({ refresh: true })
+  assert.ok(fetch.calls.length > calls)
+})
+
+test('an operation of a later task is a NOT_SUPPORTED stub', async () => {
+  await assert.rejects(setup().tracker.listGoals(), {
+    code: 'NOT_SUPPORTED',
+    message: 'the Jira adapter does not implement listGoals yet',
+    nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
+  })
+})
+
+test('a Data Center site is NOT_SUPPORTED', async () => {
+  await assert.rejects(setup({ 'GET /rest/api/3/serverInfo': { json: { deploymentType: 'DataCenter' } } }).tracker.discover(), { code: 'NOT_SUPPORTED' })
+})
+
+function jiraRepo() {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^ {2}system: local$/m, '  system: jira\n  scope:\n    site: acme.atlassian.net\n    space: ENG'))
+  return root
+}
+const cli = (args) => run(args, { cwd: jiraRepo(), env: { ...FAKE_ENV, ...userStoreEnv().env, PMKIT_NOW: '2026-11-22T12:00:00Z' }, adapters: { ...ADAPTERS, jira: jiraDescriptor({ fetch: fakeJiraFetch(jiraSiteRoutes()) }) } })
+
+test('discover prints the site, the space, the work types and the fields', async () => {
+  const result = await cli(['discover'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /^site: acme\.atlassian\.net, viewer Test User, Jira Software paid$/m)
+  assert.match(result.stdout, /^space: ENG Engineering \(company-managed, software\)$/m)
+  assert.match(result.stdout, /^ {2}OPS {2}Operations {2}team-managed$/m)
+  assert.match(result.stdout, /^ {2}Epic \(epic\), Story, Bug, Sub-task \(subtask\)$/m)
+  assert.match(result.stdout, /^ {2}estimate +customfield_10016 +Story Points$/m)
+  assert.match(result.stdout, /^ {2}acceptance_criteria +\(none\)$/m)
+  assert.match(result.stdout, /^ {2}To Do \(todo\)$/m)
+})
+
+test('capabilities heads with the site, the space and the plan', async () => {
+  const result = await cli(['capabilities'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /^site: acme\.atlassian\.net$/m)
+  assert.match(result.stdout, /^space: ENG \(company-managed\)$/m)
+  assert.match(result.stdout, /^plan: Jira Software paid$/m)
+})
+
+test('a second tracker reads the discovery from the cache, and discover with refresh reads Jira', async () => {
+  const first = issuesSetup()
+  await first.tracker.discover({ refresh: true })
+  assert.equal(projectReads(first.fetch), 1)
+  const second = issuesSetup({ at: first.at })
+  await assert.rejects(second.tracker.getIssue('ENG-1'), { code: 'NOT_FOUND' })
+  await second.tracker.capabilities()
+  assert.equal(projectReads(second.fetch), 0, 'the guarded read and capabilities read the cache')
+  await second.tracker.discover({ refresh: true })
+  assert.equal(projectReads(second.fetch), 1)
+})
+
+test('a cached raw discovery from PMK-76, without members, is read again', async () => {
+  const at = { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
+  const old = issuesSetup({ at })
+  const raw = (await old.tracker.discover({ refresh: true })).raw
+  const { members: _members, ...pmk76 } = raw
+  cachePut(repoHash(at.root), 'jira-acme.atlassian.net-eng', pmk76, { ttlSeconds: 3600 }, { env: at.env, now: NOW })
+  const next = issuesSetup({ at })
+  await next.tracker.capabilities()
+  assert.equal(projectReads(next.fetch), 1)
+})
+
+// PMK-393: a cache written before the board features were read (or before Sprints was turned on) says the space has no sprint
+// board; the sprint operations read Jira once more before refusing.
+async function noSprintBoardCache() {
+  const at = { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
+  const raw = (await issuesSetup({ at }).tracker.discover({ refresh: true })).raw
+  cachePut(repoHash(at.root), 'jira-acme.atlassian.net-eng', { ...raw, board: { ...raw.board, type: 'simple' } }, { ttlSeconds: 3600 }, { env: at.env, now: NOW })
+  return issuesSetup({ at, pmkit: { mappings: { types: { story: 'Story' }, fields: { sprint: 'customfield_10020' } } } })
+}
+
+test('a cached discovery with no sprint board is read again before the sprint operations refuse', async () => {
+  const cycles = await noSprintBoardCache()
+  assert.deepEqual(await cycles.tracker.listCycles(), [])
+  assert.equal(projectReads(cycles.fetch), 1)
+  const search = await noSprintBoardCache()
+  assert.deepEqual((await search.tracker.searchIssues({ sprint: 'none' })).issues, [])
+  assert.equal(projectReads(search.fetch), 1)
+  // A write naming a sprint gets past the sprint board check to the sprint lookup: sprint 41 does not exist on the board.
+  const create = await noSprintBoardCache()
+  const refused = await create.tracker.createIssue({ title: 'In a sprint', type: 'story', sprint: '41' }, 'acc-1').catch((error) => error)
+  assert.notEqual(refused.code, 'NOT_SUPPORTED', refused.message)
+  const update = await noSprintBoardCache()
+  const { after } = await update.tracker.createIssue({ title: 'Later in a sprint', type: 'story' }, 'acc-1')
+  assert.equal(projectReads(update.fetch), 0, 'a write without a sprint reads the cache')
+  const moved = await update.tracker.updateIssue(after.id, { sprint: '41' }, 'acc-1').catch((error) => error)
+  assert.notEqual(moved.code, 'NOT_SUPPORTED', moved.message)
+  assert.equal(projectReads(update.fetch), 1)
+})
+
+test('a fresh discovery with no sprint board refuses without reading Jira again', async () => {
+  const at = { root: tempDir(), env: { ...FAKE_ENV, ...userStoreEnv().env } }
+  const fake = fakeJiraIssues()
+  const fetch = fakeJiraFetch({ ...fake.routes, 'GET /rest/agile/1.0/board': { json: { isLast: true, values: [{ id: 2, name: 'ENG kanban', type: 'kanban' }] } }, 'GET /rest/agile/1.0/board/2/configuration': { json: {} } })
+  const tracker = createJiraTracker({ root: at.root, pmkit: { version: 1, tracker: TRACKER, mappings: { types: { story: 'Story' } } } }, { env: at.env, now: NOW, fetch })
+  await assert.rejects(tracker.listCycles(), { code: 'NOT_SUPPORTED', message: 'Sprints need a Scrum board in space ENG' })
+  assert.equal(projectReads(fetch), 1)
+})
+
+test('a mapping Jira no longer has is NOT_CONFIGURED with the broken list, after one refresh of a cached discovery', async () => {
+  const first = issuesSetup()
+  await first.tracker.discover({ refresh: true })
+  const broken = issuesSetup({ at: first.at, pmkit: { mappings: { types: { story: 'Story' }, status: { done: 'Gone' } } } })
+  await assert.rejects(broken.tracker.getIssue('ENG-1'), (error) => {
+    assert.equal(error.code, 'NOT_CONFIGURED')
+    assert.equal(error.nextStep, '/pmkit:setup')
+    assert.deepEqual(error.details.mappings.map((item) => item.key), ['mappings.status.done'])
+    return true
+  })
+  assert.equal(projectReads(broken.fetch), 1, 'one refresh')
+  assert.deepEqual(broken.fake.writes(), [])
+})
+
+test('archive, unarchive, restore and delegate are NOT_SUPPORTED with what Jira lacks', async () => {
+  const { tracker, fake } = issuesSetup()
+  const archive = "Jira archives work items only on Premium; archive it in Jira, and it leaves pmkit's searches"
+  await assert.rejects(tracker.archive('ENG-1', 'acc-1'), { code: 'NOT_SUPPORTED', message: archive })
+  await assert.rejects(tracker.unarchive('ENG-1', 'acc-1'), { code: 'NOT_SUPPORTED', message: archive })
+  await assert.rejects(tracker.restore('ENG-1', 'acc-1'), { code: 'NOT_SUPPORTED', message: 'Jira has no trash, so a deleted work item cannot come back' })
+  await assert.rejects(tracker.delegate('ENG-1', 'agent', 'acc-1'), { code: 'NOT_SUPPORTED', message: 'The Jira adapter does not serve agent_delegation yet' })
+  assert.deepEqual(fake.writes(), [])
+})
+
+test('the discovery cache file holds no credential', async () => {
+  const { tracker, at } = issuesSetup()
+  await tracker.discover({ refresh: true })
+  const file = path.join(at.env.PMKIT_HOME, 'cache', repoHash(at.root), 'jira-acme.atlassian.net-eng.json')
+  const text = fs.readFileSync(file, 'utf8')
+  assert.ok(text.includes('"members"'))
+  for (const secret of [FAKE_TOKEN, FAKE_EMAIL]) assert.ok(!text.includes(secret), 'a credential reached the cache')
+})
+
+test('Jira has no milestones: the list is empty, a get is NOT_FOUND and a create is NOT_SUPPORTED', async () => {
+  const { fake, tracker } = issuesSetup()
+  assert.deepEqual(await tracker.listMilestones(), [])
+  await assert.rejects(tracker.getMilestone('m1'), { code: 'NOT_FOUND', message: 'milestone m1 does not exist: Jira has no milestones' })
+  await assert.rejects(tracker.createMilestone({ id: 'm1' }, 'acc-1'), { code: 'NOT_SUPPORTED', message: 'Jira has no milestones', nextStep: 'Use a release (version) or an epic' })
+  assert.deepEqual(fake.writes(), [])
+})

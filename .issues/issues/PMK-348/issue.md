@@ -2,12 +2,14 @@
 id: PMK-348
 title: Adicionar epic update para editar o título e a descrição de um épico existente
 type: feature
-status: backlog
+status: done
 priority: low
 estimate: 8
+assignee: fred
 parent: EPC-6
+branch: pmk-348-adicionar-epic-update-para-editar-o
 created: 2026-11-18T01:40:58.684Z
-updated: 2026-11-18T01:40:58Z
+updated: 2026-11-22T02:55:22Z
 ---
 
 ## Description
@@ -38,10 +40,10 @@ Os épicos criados antes da descrição no `epic create` (como o EPC-10) ficaram
 
 ## Acceptance criteria
 
-- [ ] `pmkit epic update <id> --description-file d` troca a descrição, e `pmkit epic get <id>` mostra o texto novo
-- [ ] `pmkit epic update <id> --title-file t` troca o título e mantém a descrição
-- [ ] O dry-run mostra o antes e o depois e não grava nada
-- [ ] No tracker local, o histórico do épico registra a edição com autor e data
-- [ ] No Linear e no GitHub, a edição chega ao tracker remoto
-- [ ] Um ID de épico inexistente responde NOT_FOUND
-- [ ] O comando sem nenhuma mudança responde INVALID_INPUT
+- [x] `pmkit epic update <id> --description-file d` troca a descrição, e `pmkit epic get <id>` mostra o texto novo
+- [x] `pmkit epic update <id> --title-file t` troca o título e mantém a descrição
+- [x] O dry-run mostra o antes e o depois e não grava nada
+- [x] No tracker local, o histórico do épico registra a edição com autor e data
+- [x] No Linear e no GitHub, a edição chega ao tracker remoto
+- [x] Um ID de épico inexistente responde NOT_FOUND
+- [x] O comando sem nenhuma mudança responde INVALID_INPUT

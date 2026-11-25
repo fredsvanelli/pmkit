@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
-import { repoDocPath } from './lib/doc-path.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
+import { repoDocPath, storedDocPath } from './lib/doc-path.mjs'
+import { BITBUCKET_REPO, ESTIMATE_UNITS, GIT_HOSTS, GIT_HOSTS_TEXT, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError, unarchiveNotSupported } from './lib/errors.mjs'
@@ -16,7 +16,7 @@ import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fi
 import {
   aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
 } from './lib/metrics.mjs'
-import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
+import { NOTES_CUT, buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { buildReadiness, chooseReadinessBasis } from './lib/release-readiness.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
@@ -37,13 +37,17 @@ import { validateRepo } from './lib/validate.mjs'
 import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
-import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
+import { chooseRemote, inferHost, parseRemoteUrl, webHost } from './lib/git-remote.mjs'
 import { HOST_NAME } from './lib/github/client.mjs'
+import { SPACE_KEY as JIRA_SPACE_KEY } from './lib/jira/adapter.mjs'
+import { HOST as JIRA_HOST } from './lib/jira/client.mjs'
+import { discoveryView as jiraDiscoveryView } from './lib/jira/discovery.mjs'
+import { SPACE_PATH, proposeJiraSetup, proposeSpace } from './lib/jira/setup.mjs'
 import { discoveryView as githubDiscoveryView, fetchDiscovery as fetchGithubDiscovery, fetchLinkedProjects, mappedLabelNames, fetchProject as fetchGithubProject, hasIssueFields, parseProject as parseGithubProject, parseRepo as parseGithubRepo } from './lib/github/discovery.mjs'
 import { NONE, proposeGithubSetup, proposeProject } from './lib/github/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
-import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
+import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, moveOrRefuse, parseChange, valueError } from './lib/bulk.mjs'
 import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
@@ -51,7 +55,11 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
+import { createBitbucketClient } from './lib/bitbucket/client.mjs'
+import { createBitbucketHost } from './lib/bitbucket/host.mjs'
 import { commentText as discussionCommentText, getText as discussionGetText, listText as discussionListText } from './lib/github/discussions.mjs'
+import { listText as plansListText, getText as plansGetText } from './lib/jira/plans-text.mjs'
+import { listText as ideasListText, connectText as ideasConnectText } from './lib/jira/ideas-text.mjs'
 import { convertText as draftConvertText, listText as draftListText } from './lib/github/draft-issues.mjs'
 import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
@@ -251,17 +259,25 @@ const filterText = (filter) => Object.entries(filter).filter(([, value]) => valu
 /** The filter line of a stored view, or what made its file unreadable. */
 const storedViewText = (view) => (view.unreadable === undefined ? `filter: ${filterText(view.filter)}` : `a file that could not be read (${view.unreadable})`)
 
-/** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
+const NO_ACTIVE_SPRINT = 'there is no active sprint, so --sprint current matches no issues; run pmkit cycle list'
+
+/** The no-active-sprint warning for a search with `sprint: current` that found nothing, or []. */
+async function noActiveSprintWarning(tracker, found, sprint) {
+  return sprint === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null ? [NO_ACTIVE_SPRINT] : []
+}
+
+/**
+ * The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values.
+ * The warnings are in the JSON too, as `warnings`, when there is one: the agent reads the JSON (PMK-154).
+ */
 async function issueSearchResult(tracker, found, { sort, sprint }) {
   const warnings = [...found.problems.map(problemLine), ...(found.warnings ?? [])]
   if (found.hasMore === true) {
     const order = (sort ?? 'created') === 'created' ? '' : '; the order covers the issues read'
     warnings.push(`Linear has more matching issues than the 1000 pmkit read; narrow the filter${order}`)
   }
-  if (sprint === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null) {
-    warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
-  }
-  return { data: found, text: issueTable(found.issues, { sprint: sprint === undefined }), warnings }
+  warnings.push(...await noActiveSprintWarning(tracker, found, sprint))
+  return { data: warnings.length === 0 ? found : { ...found, warnings }, text: issueTable(found.issues, { sprint: sprint === undefined }), warnings }
 }
 
 /** The create or update input from field flags and body files. */
@@ -326,7 +342,9 @@ async function docLinks(ctx, id, patch) {
   // An unread list (Linear, PMK-252) is not an empty one: writing the whole new list from it could unlink docs the read never saw.
   if (issue.docsUnknown !== undefined) throw new PmkitError('UPSTREAM', `the docs of ${id} are unknown, because pmkit could not read them: ${issue.docsUnknown}`, `Run pmkit issues get ${id} again`)
   const current = issue.docs ?? []
-  const kept = current.filter((item) => !removes.includes(item))
+  // On Linear a doc another client stored as ./docs/a.md is docs/a.md, so --remove-doc docs/a.md finds it (PMK-258).
+  const linear = ctx.config().system === 'linear'
+  const kept = current.filter((item) => !removes.includes(linear ? storedDocPath(item) : item))
   patch.docs = [...kept, ...adds.filter((item) => !kept.includes(item))]
 }
 
@@ -341,6 +359,12 @@ function originHead(ctx) {
     originHeads.set(ctx, ref.startsWith(prefix) ? ref.slice(prefix.length) : null)
   }
   return originHeads.get(ctx)
+}
+
+/** The web host of origin when origin is git_host.repo, or null (PMK-264). */
+function originWebHost(ctx) {
+  const result = readGit(ctx, ['remote', 'get-url', 'origin'])
+  return !result.error && result.status === 0 ? webHost(result.stdout.trim(), ctx.config().pmkit?.git_host?.repo) : null
 }
 
 /** Whether `ref` resolves to a commit. Reads local refs only. */
@@ -718,9 +742,21 @@ async function unlinkMany(ctx, tracker, actor, from, targets) {
   return { data: { results }, text: results.map((item) => writeText(item, ctx)).join('\n\n'), commit: `${from} --remove ${targets.join(' ')}` }
 }
 
-const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
+/** The --field id=value options of issues move as an object, undefined when none was given. */
+const FIELD_IGNORED = "--field is ignored: this tracker's move needs no fields"
 
-const NOTES_CUT = 'Linear has more issues than the 1000 pmkit read, so the notes may be missing issues'
+function moveFields(values) {
+  if (values.length === 0) return undefined
+  const fields = {}
+  for (const value of values) {
+    const at = String(value).indexOf('=')
+    if (at < 1) throw usageError(`--field takes id=value, got ${value}`, 'Use --field <id>=<value>, for example --field resolution=Done')
+    fields[value.slice(0, at)] = value.slice(at + 1)
+  }
+  return fields
+}
+
+const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
 /** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
 async function releasedWarnings(ctx, patch) {
@@ -834,6 +870,9 @@ const requestTable = (requests) => table(
   requests.map((r) => [r.id, r.title, r.state, r.customer ? (r.customer.name ?? r.customer.id) : '', r.from ?? '', r.target?.id ?? '', r.created ?? '']),
 )
 
+/** A Jira site's plan as one phrase: the Jira Software license plan, or that it is unknown. */
+const jiraPlan = (plan) => (plan?.software ? `Jira Software ${plan.software}` : 'Jira Software plan unknown')
+
 /**
  * The member the caller is. A tracker whose discover() names a viewer, such as Linear, writes as that viewer (ADR-0005).
  * Otherwise from the tracker's members: by git email, then PMKIT_USER. Throws NOT_CONFIGURED when none matches.
@@ -910,15 +949,16 @@ async function flowInputs(ctx, tracker, statuses) {
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
 // `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear(feature).
 // `github: true` does the same for GitHub-only features (discussions, draft issues): they use ctx.github(feature).
+// `jira: true` does the same for Jira-only features (Plans): they use ctx.jira(feature).
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear or github writes only .pmkit/config.yaml and returns what setup must ask',
-    usage: '[--tracker local|linear|github] [--git-host github|none] [--workspace key] [--team KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'workspace', 'team', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'priority-label', 'estimate-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear, github or jira writes only .pmkit/config.yaml and returns what setup must ask',
+    usage: '[--tracker local|linear|github|jira] [--git-host github|bitbucket|none] [--workspace key] [--team KEY] [--site h] [--space KEY] [--host h] [--repo owner/name] [--project owner/number|none] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--priority-label level=label ...] [--estimate-label value=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'workspace', 'team', 'site', 'space', 'host', 'repo', 'project', 'status', 'field', 'type-label', 'priority-label', 'estimate-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
-    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
+    usage: '[--git-host github|bitbucket|none] [--repo owner/name|workspace/repo_slug] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
     flags: ['git-host', 'repo', 'default-branch', 'remote', 'team', 'recheck-team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
   },
   {
@@ -929,6 +969,8 @@ export const COMMANDS = [
       // A hosted manifest names its workspace; the Local one has none, so its output stays as it was.
       const hosted = manifest.workspace
         ? [['workspace', `${manifest.workspace.urlKey} (${manifest.workspace.plan})`], ['team', manifest.team ?? '(none)'], ['discovered', manifest.discoveredAt]]
+        : manifest.site
+          ? [['site', manifest.site], ['space', `${manifest.space.key} (${manifest.space.style})`], ['plan', jiraPlan(manifest.plan)], ['discovered', manifest.discoveredAt]]
         : manifest.repo
           ? [['repository', `${manifest.repo} on ${manifest.host}`], ['project', manifest.project ?? 'none']]
           : []
@@ -947,6 +989,14 @@ export const COMMANDS = [
             `workspace: ${d.workspace.name} (${d.workspace.urlKey}), plan ${d.workspace.plan}${d.auth ? `, viewer ${d.auth.viewer.name}` : ''}`,
             'teams:', ...(d.teams.length > 0 ? d.teams.map((t) => `  ${t.key}  ${t.name}  cycles ${onOff(t.cycles)}, triage ${onOff(t.triage)}, estimate ${t.estimate.type}`) : ['  (none)']),
           ]
+        : d.site
+          ? [
+              `site: ${d.site}${d.viewer ? `, viewer ${d.viewer.name}` : ''}, ${jiraPlan(d.plan)}`,
+              `space: ${d.space.key} ${d.space.name} (${d.space.style}, ${d.space.type})`,
+              'spaces:', ...d.spaces.map((s) => `  ${s.key}  ${s.name}  ${s.style}`),
+              'work types:', `  ${d.workTypes.map((t) => (t.level === 'standard' ? t.name : `${t.name} (${t.level})`)).join(', ') || '(none)'}`,
+              'fields:', ...Object.entries(d.fields).map(([role, f]) => `  ${role.padEnd(20)}${f ? `${f.id}  ${f.name}` : '(none)'}`),
+            ]
         : d.repo
           ? [
               `repository: ${d.repo} on ${d.host}${d.ghesVersion ? ` (GitHub Enterprise Server ${d.ghesVersion})` : ''}${d.viewer?.id ? `, viewer ${d.viewer.id}` : ''}`,
@@ -1123,15 +1173,28 @@ export const COMMANDS = [
       await tickCriteria(ctx, id, patch)
       await docLinks(ctx, id, patch)
       if (Object.keys(patch).length === 0) throw usageError('issues update needs at least one field flag', 'pmkit issues update <id> --priority high')
-      // Linear links a doc to the file on the default branch, resolved here as every reader does (PMK-228), with its note.
-      const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear'
-      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: defaultBranch(ctx) } : {}) }))
-      return { ...result, warnings: await releasedWarnings(ctx, patch), ...(linkDocs ? { notes: defaultBranchNotes(ctx) } : {}) }
+      // Linear links an added doc to the file on the default branch, resolved once here as every reader does (PMK-228), with its note.
+      // A change that only removes docs builds no link, so it reads no branch (PMK-266).
+      const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear' && ctx.list('add-doc').length > 0
+      const branch = linkDocs ? resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) }) : null
+      // The link goes to the GitHub host of origin when origin is the configured repo, as on GitHub Enterprise (PMK-264).
+      const docsHost = linkDocs ? (originWebHost(ctx) ?? 'github.com') : null
+      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: branch.branch, docsHost } : {}) }))
+      return { ...result, warnings: [...(result.data.warnings ?? []), ...(await releasedWarnings(ctx, patch))], ...(linkDocs ? { notes: branch.note === null ? [] : [branch.note] } : {}) }
     },
   },
   {
-    name: 'issues move', summary: 'changes status by category', usage: '<id> <category> [--status name]', write: true, args: ['id', 'category'], flags: ['status'],
-    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })),
+    name: 'issues move', summary: 'changes status by category', usage: '<id> <category> [--status name] [--field id=value ...]', write: true, args: ['id', 'category'], flags: ['status', 'field'],
+    run: async (ctx) => {
+      const fields = moveFields(ctx.list('field'))
+      const result = await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), ...(fields === undefined ? {} : { fields }), dryRun: ctx.dryRun })
+      const needs = (result.requiredFields ?? []).map((field) => `needs: ${field.name} (${field.id}${field.allowed?.length > 0 ? `: ${field.allowed.join(', ')}` : ''})`)
+      // A tracker that sent the fields marks its result with the non-enumerable fieldsUsed; any other one ignored them.
+      const warnings = fields !== undefined && result.fieldsUsed !== true ? [FIELD_IGNORED] : []
+      const data = warnings.length > 0 ? { ...result, warnings } : result
+      if (!ctx.dryRun || needs.length === 0) return { ...issueWrite(ctx, data), warnings }
+      return { data, text: `${writeText(result, { dryRun: false })}\n${needs.join('\n')}\ndry run: nothing was written`, commit: result.after.id, warnings }
+    },
   },
   {
     name: 'issues assign', summary: 'assigns', usage: '<id> <member|me|none>', write: true, args: ['id', 'member'], flags: [],
@@ -1278,7 +1341,7 @@ export const COMMANDS = [
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).archive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
-    name: 'issues unarchive', summary: 'brings an archived issue back (Local tracker)', usage: '<id>', write: true, args: ['id'], flags: [],
+    name: 'issues unarchive', summary: 'brings an archived issue back (Local tracker and Linear)', usage: '<id>', write: true, args: ['id'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).unarchive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
       // A call that changes nothing has no commit and says so in both the text and the JSON.
@@ -1420,7 +1483,7 @@ export const COMMANDS = [
         ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
         ...(p.native ? [`native: ${percent(p.native.progress)} of ${p.native.scope} issues in Linear's own count`] : []),
       ].join('\n')
-      const warnings = p.hasMore === true ? ['Linear has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000'] : []
+      const warnings = p.hasMore === true ? [`${{ github: 'GitHub', jira: 'Jira' }[ctx.config().system] ?? 'Linear'} has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000`] : []
       return { data: p, text, warnings, notes: await capabilityNotes(await ctx.tracker(), 'deliverables') }
     },
   },
@@ -1433,6 +1496,18 @@ export const COMMANDS = [
       for (const key of ['start', 'target', 'goal']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       if (ctx.opt('description-file') !== undefined) input.description = readInput(ctx.opt('description-file'))
       const result = await (await ctx.tracker()).createDeliverable(input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'epic update', summary: 'changes the title or the description of an epic', usage: '<id> [--title t | --title-file f] [--description-file f]', write: true, args: ['id'], flags: ['title', 'title-file', 'description-file'],
+    run: async (ctx) => {
+      const input = {}
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title !== undefined) input.title = title
+      if (ctx.opt('description-file') !== undefined) input.description = readInput(ctx.opt('description-file'))
+      if (Object.keys(input).length === 0) throw usageError('epic update needs --title, --title-file or --description-file', `pmkit epic update ${ctx.args[0]} --description-file description.md`)
+      const result = await (await ctx.tracker()).updateDeliverable(ctx.args[0], input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
     },
   },
@@ -1685,7 +1760,7 @@ export const COMMANDS = [
       if (ctx.list('login').length > 0 && !ctx.flag('reviews')) throw usageError('--login matches review requests, so it needs --reviews', 'Add --reviews, or drop --login')
       const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
       const { user, since, hidden, items, complete, problems } = result
-      const reviews = ctx.flag('reviews') ? reviewRequests(ctx, user, ctx.list('login')) : null
+      const reviews = ctx.flag('reviews') ? await reviewRequests(ctx, user, ctx.list('login')) : null
       const lines = []
       if (items.length === 0) lines.push(`no unseen mentions, assignments or status changes for ${user}${since === null ? '' : ` since ${since}`}`)
       else lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text', 'Seen', 'Key'], items.map((i) => [i.at, i.kind, i.issue, i.title ?? '(unreadable)', i.by ?? '', i.in, inboxText(i), i.seen ? 'yes' : 'no', i.key])))
@@ -2150,7 +2225,7 @@ export const COMMANDS = [
       const { from, note: fromNote, sync } = branchBase(ctx)
       // Like the other notes of this command, it reaches the text as a stderr note, and the JSON as `notes`, which the agent reads.
       // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
-      const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
+      const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title, { keepKeyCase: ctx.settings().keepKeyCase === true })
       // The dry run is before the branch exists (pull or --from help); the real run is after (only moving the new branch does).
       const syncNote = syncNotes(from, sync)
       const createdNote = syncNotes(from, sync, branch)
@@ -2171,7 +2246,7 @@ export const COMMANDS = [
         const notes = [...syncNote, ...linked(dry, false)]
         return { data: { branch, from, ...(notes.length > 0 ? { notes } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
       }
-      host.createBranch(branch, { from })
+      await host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor, { base })
       const notes = [...createdNote, ...linked(result, true)]
       return { data: { branch, from, ...result, ...(notes.length > 0 ? { notes } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...notes, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
@@ -2187,7 +2262,7 @@ export const COMMANDS = [
       const body = ctx.opt('body-file') !== undefined ? readInput(ctx.opt('body-file')) : defaultPrBody(issue)
       const request = { title: `${issue.title} (${issue.id})`, body, head: issue.branch, base: defaultBranch(ctx), draft: ctx.flag('draft') }
       // gh refuses a second pull request for a branch, so an open one is pushed to and returned as it is.
-      const found = host.getPullRequest({ head: issue.branch })
+      const found = await host.getPullRequest({ head: issue.branch })
       const open = found?.state === 'OPEN' ? found : null
       // In the JSON too, as `issues branch` does: the agent reads the JSON. The push is never refused for it.
       const behind = behindNotes(ctx, issue.branch, request.base, !ctx.dryRun)
@@ -2198,9 +2273,9 @@ export const COMMANDS = [
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
         return { data: { ...request, existing: open !== null, pr: open, ...behindData }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...behind, ...(await capabilityNotesOrNone(ctx))] }
       }
-      host.push(issue.branch)
+      await host.push(issue.branch)
       if (open) return { data: { ...open, existing: true, ...behindData }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
-      const pr = host.openPullRequest(request)
+      const pr = await host.openPullRequest(request)
       return { data: { ...pr, existing: false, ...behindData }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
@@ -2212,7 +2287,7 @@ export const COMMANDS = [
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
       // The detail read gives the base of the pull request in the same gh call (PMK-308); the default branch only when gh leaves it out.
-      const found = host.getPullRequest({ head: issue.branch }, { detail: true })
+      const found = await host.getPullRequest({ head: issue.branch }, { detail: true })
       const pr = withoutDetail(found)
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
       if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
@@ -2220,12 +2295,13 @@ export const COMMANDS = [
       const behind = behindNotes(ctx, issue.branch, found.detail?.baseRefName || defaultBranch(ctx), true)
       const behindData = behind.length > 0 ? { notes: behind } : {}
       if (ctx.dryRun) return { data: { ...pr, isDraft: false, ...behindData }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
-      const ready = host.markReady(pr.number)
+      const ready = await host.markReady(pr.number)
       return { data: { ...ready, ...behindData }, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
     name: 'pr review', summary: 'posts one review that comments on the open pull request of an issue, with inline comments on lines of its diff', usage: '--issue <id> --body-file f [--comments-file f] [--redact]', write: true, args: [], flags: ['issue', 'body-file', 'comments-file', 'redact'],
+    unsupportedOn: { bitbucket: 'Post the review on the pull request page, or post it on the issue with pmkit issues comment' },
     run: async (ctx) => {
       if (ctx.opt('issue') === undefined) throw usageError('pr review needs --issue', 'pmkit pr review --issue <id> --body-file <file>')
       if (ctx.opt('body-file') === undefined) throw usageError('pr review needs --body-file', 'pmkit pr review --issue <id> --body-file <file>')
@@ -2249,14 +2325,14 @@ export const COMMANDS = [
       }
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
-      const found = host.getPullRequest({ head: issue.branch })
+      const found = await host.getPullRequest({ head: issue.branch })
       if (found?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}, or post the review on the issue with pmkit issues comment`)
       // Every inline line is checked against the diff before any write, so a dry run shows what GitHub would refuse.
       let commitId = null
       if (comments.length > 0) {
         // The head is read before the diff, so the lines checked are never newer than the commit the review is pinned to.
-        commitId = host.prRefs(found.number).headRefOid
-        const diff = host.prDiff(found.number)
+        commitId = (await host.prRefs(found.number)).headRefOid
+        const diff = await host.prDiff(found.number)
         if (diff === null) throw usageError(`GitHub refused the diff of pull request #${found.number} as too large, so the lines of the inline comments cannot be checked`, 'Put the findings in the body and post the review without --comments-file')
         const lines = new Map()
         for (const section of splitDiff(diff)) lines.set(section.path, new Set([...(lines.get(section.path) ?? []), ...rightLines(section.text)]))
@@ -2268,7 +2344,7 @@ export const COMMANDS = [
       const notes = [...(redacted?.count > 0 ? [`redacted ${redacted.count} ${redacted.count === 1 ? 'value' : 'values'}: ${Object.entries(redacted.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`] : []), ...(await capabilityNotesOrNone(ctx))]
       const what = `a review with ${comments.length} inline ${comments.length === 1 ? 'comment' : 'comments'} on pull request #${pr.number} ${pr.url}`
       if (ctx.dryRun) return { data, text: `would post ${what}\ndry run: nothing was written`, notes }
-      const review = host.postReview(pr.number, { body, comments, commitId })
+      const review = await host.postReview(pr.number, { body, comments, commitId })
       return { data: { ...data, review }, text: `posted ${what}\n${review.url}`, notes }
     },
   },
@@ -2276,10 +2352,10 @@ export const COMMANDS = [
     name: 'pr status', summary: 'pull request, checks, reviews and the blockers verdict of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
     run: async (ctx) => {
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch }, { detail: true })
-      const checks = pr ? host.prChecks(pr.number) : []
+      const pr = await host.getPullRequest({ head: branch }, { detail: true })
+      const checks = pr ? await host.prChecks(pr.number) : []
       const reviews = pr?.detail.reviews ?? []
       // The checks are read once: collectBlockers gets the list this command already has. A merged or closed pull request reads nothing more.
       // A blocker read that fails for a reason that may pass (rate limit, 5xx, network) must not lose the pull request and its checks:
@@ -2288,7 +2364,7 @@ export const COMMANDS = [
       let failed = null
       if (pr) {
         try {
-          found = collectBlockers({ ...host, prChecks: () => checks }, pr)
+          found = hostBlockers({ ...host, prChecks: () => checks }, pr)
         } catch (error) {
           if (!isPmkitError(error) || (error.code !== 'UPSTREAM' && error.code !== 'RATE_LIMITED')) throw error
           failed = { area: 'blockers', code: error.code, message: error.message, nextStep: error.nextStep }
@@ -2299,7 +2375,7 @@ export const COMMANDS = [
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
       if (failed) lines.push(`blockers: not verified (${failed.message})`)
-      else if (pr?.state === 'OPEN') lines.push(`blockers: ${blockedText(prSummary(pr, found))}`)
+      else if (pr?.state === 'OPEN') lines.push(openBlockersLine(host, pr, found))
       const blockers = found && { blocked: found.blocked, blocking: found.blocking, pending: found.pending, unknown: found.unknown, unchecked: found.unchecked }
       return { data: { branch, pr: withoutDetail(pr), checks, reviews, blockers }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
@@ -2310,9 +2386,11 @@ export const COMMANDS = [
       const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
       if (limit !== undefined && (limit < 1 || limit > 100)) throw usageError('--limit must be from 1 to 100')
       if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
-      const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
-      const lines = deploys.map((d) => `${d.environment} ${d.state ?? 'unknown'} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
+      const deploys = await ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
+      // A Bitbucket deploy has no ref, and may have no commit: what is missing is left out, never printed as null.
+      const lines = deploys.map((d) => [d.environment, d.state ?? 'unknown', d.ref, d.sha?.slice(0, 7), d.createdAt, d.url].filter((part) => part !== null && part !== undefined && part !== '').join(' '))
       const warnings = unknownDeployWarnings(deploys)
+      if (ctx.host().deploysCut?.()) warnings.push(deploysCutWarning(ctx.opt('environment')))
       return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), warnings, notes: await capabilityNotesOrNone(ctx) }
     },
   },
@@ -2325,9 +2403,9 @@ export const COMMANDS = [
       const tail = ctx.opt('tail') === undefined ? 200 : whole('tail', ctx.opt('tail'))
       if (tail < 1) throw usageError('--tail must be at least 1')
       const host = ctx.host()
-      const branch = runId === undefined ? ctx.opt('branch') ?? host.currentBranch() : undefined
+      const branch = runId === undefined ? ctx.opt('branch') ?? await host.currentBranch() : undefined
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch> or --run <id>, or switch to a branch')
-      const found = host.ciLogs({ branch, runId })
+      const found = await host.ciLogs({ branch, runId })
       if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const { log, truncated } = tailLines(found.log, tail)
       const failed = FAILED_RUN.has(found.conclusion)
@@ -2337,7 +2415,7 @@ export const COMMANDS = [
         : !failed ? `${label} did not fail (${found.conclusion ?? found.status}), ${hasLog ? 'the log below holds its failed steps' : 'so it has no failed-step log'}`
           : hasLog ? null
             : found.conclusion === 'startup_failure' ? `${label} ended with startup_failure: it never started a job, so it has no log`
-              : `${label} failed (${found.conclusion}) but GitHub returned no log for it`
+              : `${label} failed (${found.conclusion}) but ${hostName(host)} returned no log for it`
       const newer = found.newerRun
       const supersededNote = newer ? `newer run ${newer.runId} of ${found.workflowName ?? 'the same workflow'} ended ${newer.conclusion} on ${newer.createdAt}, so this failure may already be fixed` : null
       const run = { ...found, log, failed, hasLog, logNote, supersededNote }
@@ -2355,55 +2433,52 @@ export const COMMANDS = [
       const requested = ctx.opt('base')
       if (requested !== undefined && (requested === '' || requested.startsWith('-'))) throw new PmkitError('INVALID_INPUT', `base "${requested}" is not a valid branch name`, 'Use a branch name that does not start with -')
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const found = host.getPullRequest({ head: branch })
+      const found = await host.getPullRequest({ head: branch })
       const notes = []
       // Only an open or merged pull request holds the work of the branch. A closed one is not what the review looks at.
       let pr = found && (found.state === 'OPEN' || found.state === 'MERGED') ? found : null
       if (found && !pr) notes.push(`pull request #${found.number} is closed without merge, so this is the local diff`)
-      // The refs of a pull request are read once, and only by the paths that need them.
+      // The refs of a pull request are read once, and only by the paths that need them. A Bitbucket read is a promise, kept as one.
       let refsOf
       const prRefs = () => (refsOf ??= host.prRefs(found.number))
       // gh returns the newest merged pull request of a name, so a reused branch name finds an old one. Its head is then not on the branch
       // (a tip of the local branch or of origin, or behind one: the local branch may be ahead of or behind what was merged).
-      if (pr?.state === 'MERGED') {
-        const onBranch = host.branchHas(branch, () => prRefs().headRefOid)
-        if (onBranch === false) {
-          notes.push(`pull request #${pr.number} is merged and its head is not on ${branch}, so it is not used and this is the local diff`)
-          pr = null
-        }
+      if (pr?.state === 'MERGED' && await mergedHeadOnBranch(host, branch, prRefs) === false) {
+        notes.push(`pull request #${pr.number} is merged and its head is not on ${branch}, so it is not used and this is the local diff`)
+        pr = null
       }
       let full = null
       let local = null
       let incomplete = false
       if (pr) {
-        full = host.prDiff(pr.number)
+        full = await host.prDiff(pr.number)
         if (full === null) {
-          notes.push(`GitHub refused the diff of pull request #${pr.number} because it is too large, so this is the local diff`)
+          notes.push(`${hostName(host)} refused the diff of pull request #${pr.number} because it is too large, so this is the local diff`)
         } else {
-          const unpushed = host.unpushedCommits(branch)
+          const unpushed = await host.unpushedCommits(branch)
           if (unpushed > 0) notes.push(unpushed === 1 ? `${branch} has 1 local commit that is not on origin, so the pull request diff does not include it` : `${branch} has ${unpushed} local commits that are not on origin, so the pull request diff does not include them`)
         }
       }
       const source = full === null ? 'local' : 'pull_request'
       if (full === null) {
         // A stacked pull request is compared with its own base, not the default branch. --base still wins.
-        const prBase = requested === undefined && pr ? prRefs().baseRefName : undefined
+        const prBase = requested === undefined && pr ? (await prRefs()).baseRefName : undefined
         const diffAgainst = (name) => host.localDiff({ branch, base: name })
         if (prBase !== undefined) {
           try {
-            local = diffAgainst(prBase)
+            local = await diffAgainst(prBase)
           } catch (error) {
             if (error.code !== 'INVALID_INPUT' || !/base branch/.test(error.message)) throw error
             incomplete = true
             notes.push(...defaultBranchNotes(ctx))
-            local = diffAgainst(defaultBranch(ctx))
+            local = await diffAgainst(defaultBranch(ctx))
             notes.push(`the base ${prBase} of pull request #${pr.number} does not exist here or on origin, so this is the local diff against ${local.base}; run git fetch origin`)
           }
         } else {
           if (requested === undefined) notes.push(...defaultBranchNotes(ctx))
-          local = diffAgainst(requested ?? defaultBranch(ctx))
+          local = await diffAgainst(requested ?? defaultBranch(ctx))
         }
         full = local.diff
         if (local.uncommitted) notes.push('the local diff includes the uncommitted changes of tracked files')
@@ -2411,14 +2486,14 @@ export const COMMANDS = [
         // whatever the working tree adds to the diff.
         if (pr?.state === 'MERGED' && local.committedEmpty) {
           incomplete = true
-          notes.push(`pull request #${pr.number} is merged and GitHub refused its diff as too large, and the commits of ${branch} no longer differ from ${local.base}, so the diff is not available`)
+          notes.push(`pull request #${pr.number} is merged and ${hostName(host)} refused its diff as too large, and the commits of ${branch} no longer differ from ${local.base}, so the diff is not available`)
         }
       }
       // The notes about the working tree are warnings: a tree that cannot be read must not stop the command.
       let tree = local
       let treeError = local?.treeError ?? null
       if (local === null) {
-        try { tree = host.workingTree(branch) } catch (error) { treeError = error.message }
+        try { tree = await host.workingTree(branch) } catch (error) { treeError = error.message }
       }
       if (treeError !== null) {
         incomplete = true
@@ -2451,11 +2526,12 @@ export const COMMANDS = [
   },
   {
     name: 'pr blockers', summary: 'what blocks the pull request of a branch: checks, reviews, conflicts, open threads and policies; reads only', usage: '[--branch b]', args: [], flags: ['branch'],
+    unsupportedOn: { bitbucket: 'Read the merge checks on the pull request page' },
     run: async (ctx) => {
       const host = ctx.host()
-      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const branch = ctx.opt('branch') ?? await host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch }, { detail: true })
+      const pr = await host.getPullRequest({ head: branch }, { detail: true })
       if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const found = collectBlockers(host, pr)
       return { data: { branch, pr: withoutDetail(pr), ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
@@ -2474,9 +2550,9 @@ export const COMMANDS = [
       const problems = found.problems.map(({ id, code, message }) => ({ id, code, message }))
       for (const issue of candidates) {
         try {
-          const pr = host.getPullRequest({ head: issue.branch })
+          const pr = await host.getPullRequest({ head: issue.branch })
           if (pr?.mergedAt) {
-            await tracker.moveToCategory(issue.id, 'done', actor, { dryRun: ctx.dryRun })
+            await moveOrRefuse(tracker, issue.id, 'done', actor, { dryRun: ctx.dryRun })
             moved.push({ id: issue.id, pr: pr.number })
           }
         } catch (error) {
@@ -2630,12 +2706,50 @@ export const COMMANDS = [
       return { data: result, text: draftConvertText(result, ctx.dryRun), warnings: result.warnings }
     },
   },
+  // Jira Plans (PMK-82): read the site's plans, their scenario, scheduling, releases and teams' capacity, for /pmkit:jira:plans-scenarios.
+  {
+    name: 'jira plans list', summary: "the site's Jira Plans, with their default scenario; says so when the site has no Premium or the token lacks Administer Jira",
+    usage: '[--archived] [--trashed] [--limit n]', jira: true, flags: ['archived', 'trashed', 'limit'],
+    run: async (ctx) => {
+      const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      if (limit !== undefined && limit < 1) throw usageError('--limit must be at least 1')
+      const result = await (await ctx.jira('plans')).list({ archived: ctx.flag('archived'), trashed: ctx.flag('trashed'), limit })
+      return { data: result, text: plansListText(result), warnings: result.warnings }
+    },
+  },
+  {
+    name: 'jira plans get', summary: "one plan: its dependency mode, estimation, default scenario, releases and each team's capacity",
+    usage: '<id>', jira: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.jira('plans')).get(ctx.args[0])
+      return { data: result, text: plansGetText(result), warnings: result.warnings }
+    },
+  },
+  // Jira Product Discovery (PMK-83): read one JPD project's ideas and connect an idea to an epic of the space.
+  {
+    name: 'jira ideas list', summary: "one Jira Product Discovery project's ideas, newest first, with votes and connected epics; insights are unread; says so when the site has no JPD project",
+    usage: '[--project KEY] [--limit n]', jira: true, flags: ['project', 'limit'],
+    run: async (ctx) => {
+      const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      if (limit !== undefined && limit < 1) throw usageError('--limit must be at least 1')
+      const result = await (await ctx.jira('ideas')).list({ project: ctx.opt('project'), limit })
+      return { data: result, text: ideasListText(result), warnings: result.warnings }
+    },
+  },
+  {
+    name: 'jira ideas connect', summary: "connects an idea to an epic of the space with Jira Product Discovery's delivery link; --dry-run previews",
+    usage: '<idea> <epic>', write: true, jira: true, args: ['idea', 'epic'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.jira('ideas')).connect(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: ideasConnectText(result, ctx.dryRun) }
+    },
+  },
   {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.goals} goals, ${c.comments} comments, ${c.views} views`
+      const head = c === null ? `tracker files not checked: ${result.skipped}` : `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.goals} goals, ${c.comments} comments, ${c.views} views`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
@@ -2703,8 +2817,9 @@ async function runRisks(ctx) {
   try {
     const host = ctx.host()
     try {
-      prs = host.listPullRequests()
+      prs = await host.listPullRequests()
       if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
+      hostWarnings.push(...uncheckedPrsWarnings(host, prs))
       openPrsByBranch = prsByBranch(prs)
     } catch (error) {
       if (!affectsOneCall(error)) throw error
@@ -2714,7 +2829,7 @@ async function runRisks(ctx) {
     if (Array.isArray(prs)) {
       for (const issue of needsPrLookup(all, { eventsByIssue, openPrsByBranch, today, stuckBusinessDays })) {
         try {
-          const pr = host.getPullRequest({ head: issue.branch })
+          const pr = await host.getPullRequest({ head: issue.branch })
           if (pr !== null && pr.state !== 'OPEN') closedPrsByBranch[issue.branch] = pr
         } catch (error) {
           // A branch hand-edited to something gh rejects (INVALID_INPUT) fails only this lookup.
@@ -2725,7 +2840,7 @@ async function runRisks(ctx) {
     }
     let defaultBranchCi
     try {
-      defaultBranchCi = { branch, ...failingWorkflows(host.listRuns({ branch })) }
+      defaultBranchCi = { branch, ...failingWorkflows(await host.listRuns({ branch })) }
     } catch (error) {
       if (!affectsOneCall(error)) throw error
       defaultBranchCi = { branch, error: errorOf(error) }
@@ -2997,38 +3112,9 @@ async function runReleaseReadiness(ctx) {
   let prs = null
   let prsIncomplete = false
   let deploys = null
-  const affectsOneCall = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
-  // Collected apart from `warnings`, so a host that turns out to be unavailable drops what it said about the lists it read.
-  const hostWarnings = []
   try {
-    const host = ctx.host()
-    try {
-      prs = host.listPullRequests()
-      if (prs.length === 200) {
-        prsIncomplete = true
-        hostWarnings.push('only the 200 most recently created open pull requests were read')
-      }
-    } catch (error) {
-      if (!affectsOneCall(error)) throw error
-      prs = { error: errorOf(error) }
-      hostWarnings.push(`pull requests not checked: ${error.message}`)
-    }
-    try {
-      deploys = host.listDeploys({})
-      // The tag's own deploy may be older than the newest 20: ask for the deploys made for the tag, as `v1` and as `refs/tags/v1`.
-      if (choice.basis === 'release' && choice.source.tag) {
-        const known = new Set(deploys.map((d) => d.id))
-        for (const ref of [choice.source.tag, `refs/tags/${choice.source.tag}`]) {
-          for (const deploy of host.listDeploys({ ref, limit: 100 })) if (!known.has(deploy.id)) { known.add(deploy.id); deploys.push(deploy) }
-        }
-        deploys.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-      }
-    } catch (error) {
-      if (!affectsOneCall(error)) throw error
-      deploys = { error: errorOf(error) }
-      hostWarnings.push(`deploys not checked: ${error.message}`)
-    }
-    if (Array.isArray(deploys)) hostWarnings.push(...unknownDeployWarnings(deploys))
+    let hostWarnings
+    ({ prs, prsIncomplete, deploys, hostWarnings } = await readReadinessHost(ctx.host(), choice))
     warnings.push(...hostWarnings)
   } catch (error) {
     if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') warnings.push(`no git host is configured, ${NO_HOST_READ}`)
@@ -3043,13 +3129,65 @@ async function runReleaseReadiness(ctx) {
   return { data: report, text: readinessText(report), warnings, notes }
 }
 
+/** A host error that stops one release-readiness read (rate limit, 5xx, network), not the report. */
+const failsOneRead = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
+
+/**
+ * The host reads of release-readiness: the open pull requests and the deploys, each `{ error }` when a read that may pass failed.
+ * The warnings are returned apart, so a host that turns out to be unavailable drops what it said about the lists it read.
+ */
+async function readReadinessHost(host, choice) {
+  const hostWarnings = []
+  const prs = await readReadinessPrs(host, hostWarnings)
+  const deploys = await readReadinessDeploys(host, choice, hostWarnings)
+  if (Array.isArray(deploys)) hostWarnings.push(...unknownDeployWarnings(deploys))
+  return { prs, prsIncomplete: Array.isArray(prs) && prs.length === 200, deploys, hostWarnings }
+}
+
+async function readReadinessPrs(host, hostWarnings) {
+  try {
+    const prs = await host.listPullRequests()
+    if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
+    hostWarnings.push(...uncheckedPrsWarnings(host, prs))
+    return prs
+  } catch (error) {
+    if (!failsOneRead(error)) throw error
+    hostWarnings.push(`pull requests not checked: ${error.message}`)
+    return { error: errorOf(error) }
+  }
+}
+
+async function readReadinessDeploys(host, choice, hostWarnings) {
+  try {
+    const deploys = await host.listDeploys({})
+    if (host.deploysCut?.()) hostWarnings.push(deploysCutWarning())
+    // The tag's own deploy may be older than the newest 20: ask for the deploys made for the tag, as `v1` and as `refs/tags/v1`.
+    // A Bitbucket deploy has no ref, so there is no deploy of the tag to ask for (PMK-81).
+    if (choice.basis === 'release' && choice.source.tag && host.system !== 'bitbucket') await addTagDeploys(host, choice.source.tag, deploys)
+    return deploys
+  } catch (error) {
+    if (!failsOneRead(error)) throw error
+    hostWarnings.push(`deploys not checked: ${error.message}`)
+    return { error: errorOf(error) }
+  }
+}
+
+/** Adds the deploys made for a tag that `deploys` lacks, then sorts the list newest first. */
+async function addTagDeploys(host, tag, deploys) {
+  const known = new Set(deploys.map((d) => d.id))
+  for (const ref of [tag, `refs/tags/${tag}`]) {
+    for (const deploy of await host.listDeploys({ ref, limit: 100 })) if (!known.has(deploy.id)) { known.add(deploy.id); deploys.push(deploy) }
+  }
+  deploys.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+}
+
 // Errors a dry run reports for one issue. Any other error is about the change or the tracker, so it stops the whole command.
 const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
 
 async function runBulk(ctx) {
   const [kind, value] = ctx.args
-  // PMK-256: Linear refuses unarchive before anything else is read or checked, whatever the other flags are.
-  if (kind === 'unarchive' && ctx.config().system !== 'local') throw unarchiveNotSupported(ctx.config().system)
+  // PMK-256: GitHub refuses unarchive before anything else is read or checked, whatever the other flags are. Linear unarchives (PMK-259).
+  if (kind === 'unarchive' && ctx.config().system === 'github') throw unarchiveNotSupported()
   const tracker = await ctx.tracker()
   const view = ctx.opt('view')
   // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
@@ -3092,8 +3230,9 @@ async function runBulk(ctx) {
   const preview = buildPreview({ change, found, results })
   const releaseWarnings = kind === 'release' && value !== 'none' ? await releasedWarnings(ctx, { release: value }) : []
   const archiveWarnings = kind === 'archive' && preview.writes > 0 ? ['archived issues leave every list and are never matched by a bulk change again'] : []
-  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: [...releaseWarnings, ...archiveWarnings] }
-  const warnings = [...found.problems.map(problemLine), ...releaseWarnings, ...archiveWarnings]
+  const sprintWarnings = await noActiveSprintWarning(tracker, found, filter.sprint)
+  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: [...sprintWarnings, ...releaseWarnings, ...archiveWarnings] }
+  const warnings = [...found.problems.map(problemLine), ...sprintWarnings, ...releaseWarnings, ...archiveWarnings]
   if (ctx.dryRun) return { data, text: bulkText(preview, { dryRun: true }), warnings }
 
   if (preview.blockers.length > 0) {
@@ -3213,11 +3352,11 @@ async function runTrackAgents(ctx) {
     if (read.problem) row.problems.push(read.problem)
     if (host !== null) {
       if (!row.branch) row.pr = { state: 'no_branch' }
-      else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+      else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: `not read: ${hostName(host)} rate limit reached earlier in this run` }
       else {
         try {
-          const pr = cachedHost.getPullRequest({ head: row.branch }, { detail: true })
-          row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'no_pr' }
+          const pr = await cachedHost.getPullRequest({ head: row.branch }, { detail: true })
+          row.pr = pr ? prSummary(pr, hostBlockers(cachedHost, pr)) : { state: 'no_pr' }
         } catch (error) {
           // A missing or logged out gh fails every lookup the same way, so it stops the command.
           if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
@@ -3236,8 +3375,8 @@ async function runTrackAgents(ctx) {
   if (found.problems.length > 0) causes.push('an issue file did not parse')
   if (found.hasMore === true) causes.push('the issue read was cut')
   if (rows.some((row) => row.delegation.state === 'unknown')) causes.push('the comments of an issue could not be read or were cut')
-  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
-  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push(`a pull request could not be read from ${hostName(host)}`)
+  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push(notVerifiedCause(host))
   const incompleteLine = `the list is incomplete: ${causes.join('; ') || 'some reads failed'}, so what is marked unknown or not verified is not confirmed`
   if (incomplete) warnings.push(incompleteLine)
   if (host !== null) notes.push(...(await capabilityNotesOrNone(ctx)))
@@ -3267,7 +3406,7 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
   let list = []
   let cut = false
   try {
-    list = host.listPullRequests()
+    list = await host.listPullRequests()
     if (list.length === 200) {
       cut = true
       causes.push('only the 200 most recently created open pull requests were read')
@@ -3309,11 +3448,11 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
     if (!issue) {
       // A pull request with no issue is not read in detail: that read costs several calls, and a bot with no work behind it is noise.
       row.pr = { state: item.isDraft === true ? 'draft' : 'open', number: item.number, url: item.url, blocked: null, blocking: [], unknown: ['not read: no issue has this branch'], unchecked: [] }
-    } else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+    } else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: `not read: ${hostName(host)} rate limit reached earlier in this run` }
     else {
       try {
-        const pr = cachedHost.getPullRequest({ number: item.number }, { detail: true })
-        row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'unknown', code: 'UPSTREAM', message: `pull request #${item.number} was listed but could not be read` }
+        const pr = await cachedHost.getPullRequest({ number: item.number }, { detail: true })
+        row.pr = pr ? prSummary(pr, hostBlockers(cachedHost, pr)) : { state: 'unknown', code: 'UPSTREAM', message: `pull request #${item.number} was listed but could not be read` }
       } catch (error) {
         if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
         row.pr = { state: 'unknown', code: error.code, message: error.message }
@@ -3325,8 +3464,8 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
     rows.push(row)
   }
   if (rows.some((row) => row.problems.some((problem) => problem.message.startsWith('the comments')) || (row.delegation?.state === 'unknown' && row.delegate !== null))) causes.push('the comments of an issue could not be read or were cut')
-  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
-  if (rows.some((row) => row.issueMatch === 'found' && (row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0))) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push(`a pull request could not be read from ${hostName(host)}`)
+  if (rows.some((row) => row.issueMatch === 'found' && (row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0))) causes.push(notVerifiedCause(host))
   const incomplete = causes.length > 0
   const incompleteLine = `the list is incomplete: ${causes.join('; ')}, so what is marked unknown or not verified is not confirmed`
   if (incomplete) warnings.push(incompleteLine)
@@ -3436,7 +3575,8 @@ async function runGoalsOverview(ctx) {
 /** The load per member for the active sprint, or for all open work without one. Writes nothing. */
 async function runTeamLoad(ctx) {
   const { data, warnings, notes } = await teamLoadReport(ctx, { wanted: ctx.opt('sprint') })
-  return { data, text: teamLoadText(data), warnings, notes }
+  // The warnings are in the JSON too when there is one, as in issues list (PMK-154).
+  return { data: warnings.length === 0 ? data : { ...data, warnings }, text: teamLoadText(data), warnings, notes }
 }
 
 /**
@@ -3480,7 +3620,7 @@ async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = 
     if (sprint === null) throw new PmkitError('NOT_FOUND', `sprint ${wanted} does not exist`, 'pmkit cycle list')
   }
   const found = noSprintNamed ? { issues: [], problems: [], hasMore: false } : await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
-  if (noSprintNamed) warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
+  if (noSprintNamed) warnings.push(NO_ACTIVE_SPRINT)
   warnings.push(...found.problems.map(problemLine))
   const truncated = found.hasMore === true
   if (truncated) warnings.push('the issue read was cut before the end, so the load covers only part of the scope and no move is proposed')
@@ -3767,7 +3907,9 @@ const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: '
 /** Plans the migration, then writes it unless `dryRun`. `formatVersion` and `migrations` default to the real ones. */
 export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSION, migrations = MIGRATIONS } = {}) {
   const config = loadConfig(root, { checkFormat: false })
-  if (config.pmkitProblems.length > 0) throw pmkitWriteRefusal(config.pmkitProblems)
+  // migrate reads only tracker.system and tracker.path from .pmkit/config.yaml, which loadConfig checked, and writes only tracker
+  // files. Other problems warn, so a pmkit that reads the file's older shape as invalid can still migrate the tracker (PMK-158).
+  const warnings = config.pmkitProblems.length > 0 ? [pmkitConfigWarning(config.pmkitProblems)] : []
   const { version } = config.format
   const trackerPath = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
   const state = formatState(version, formatVersion)
@@ -3783,7 +3925,7 @@ export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSIO
           ...(commit !== undefined ? [`committed: ${commit}`] : []),
           ...(dryRun ? ['dry run: nothing was written'] : []),
         ]
-    return { data, text: lines.join('\n') }
+    return { data, text: lines.join('\n'), warnings }
   }
   if (state === 'current') return result([])
   const inside = gitIn(root, 'rev-parse', '--is-inside-work-tree')
@@ -3867,7 +4009,8 @@ function initLabels(ctx) {
 const LINEAR_FLAGS = ['workspace', 'team', 'status', 'field', 'type-label']
 const LOCAL_ONLY_FLAGS = ['prefix', 'id-style', 'estimate-unit', 'label', 'member', 'name', 'email', 'members-file']
 const GITHUB_FLAGS = ['host', 'repo', 'project', 'priority-label', 'estimate-label']
-const HOSTED_INIT = ['linear', 'github']
+const JIRA_FLAGS = ['site', 'space']
+const HOSTED_INIT = ['linear', 'github', 'jira']
 
 /** Refuses each flag of `flags` that the call passed: it applies only with --tracker `system`. */
 function rejectFlags(ctx, flags, system) {
@@ -3876,7 +4019,7 @@ function rejectFlags(ctx, flags, system) {
   }
 }
 
-function runInit(ctx) {
+async function runInit(ctx) {
   const { opt } = ctx
   const update = ctx.flag('update')
   // A Linear repository takes the hosted branch. setup cannot move a repository from one tracker to another.
@@ -3894,18 +4037,23 @@ function runInit(ctx) {
       system = filed
     }
   }
+  if (system !== 'jira') rejectFlags(ctx, JIRA_FLAGS, 'jira')
   if (system === 'linear') {
     rejectFlags(ctx, GITHUB_FLAGS, 'github')
     return runInitLinear(ctx)
   }
   if (system === 'github') return runInitGithub(ctx)
   rejectFlags(ctx, GITHUB_FLAGS, 'github')
+  if (system === 'jira') {
+    rejectFlags(ctx, ['workspace', 'team'], 'linear')
+    return runInitJira(ctx)
+  }
   for (const flag of LINEAR_FLAGS) {
     if (opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker linear`, `Remove --${flag}`)
   }
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
   const host = opt('git-host')
-  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   const idStyle = opt('id-style')
   if (idStyle !== undefined && !ID_STYLES.includes(idStyle)) throw usageError(`--id-style must be ${ID_STYLES.join(' or ')}`)
   const unit = opt('estimate-unit')
@@ -3954,14 +4102,14 @@ function runInit(ctx) {
     pmkit = read(pmkitFile)
     local = read(issuesConfig)
     if (host !== undefined) pmkit = edit(pmkitFile, 'git_host.system', () => setScalar(pmkit, ['git_host', 'system'], host))
-    pmkit = withGithubRepo(pmkit, root, host)
+    pmkit = await withHostRepo(ctx, pmkit, host)
   } else {
-    const repo = originRepo(root)
+    const repo = originRepo(root, host)
     pmkit = template('pmkit.config.yaml').replace(
       /git_host:\n {2}system: .*\n {2}repo: .*\n/,
       `git_host:\n  system: ${host ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`,
     )
-    withGithubRepo(pmkit, root, host)
+    await withHostRepo(ctx, pmkit, host)
     local = setScalar(template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`), ['version'], FORMAT_VERSION)
   }
   // pmkit is final here. This check runs first and alone, before any .issues/config.yaml parse and before entries exist.
@@ -4053,25 +4201,46 @@ function runInit(ctx) {
   }
 }
 
-// The GitHub repository the origin remote names, read the way link-repo reads it, or undefined when there is none.
-const originRepo = (root) => {
+// The git hosts that need git_host.repo, and the name a message gives each.
+const REPO_HOSTS = ['github', 'bitbucket']
+const HOST_NAMES = { github: 'GitHub', bitbucket: 'Bitbucket Cloud' }
+const REPO_FORMS = { github: 'owner/name', bitbucket: 'workspace/repo_slug' }
+
+// The repository the origin remote names on `host`, read the way link-repo reads it, or undefined when there is none.
+// Any host but bitbucket reads a GitHub origin, as init always did, so a Bitbucket repo never lands under github.
+const originRepo = (root, host) => {
   const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS })
-  return remote.status === 0 ? (inferHost(remote.stdout.trim()).repo ?? undefined) : undefined
+  if (remote.status !== 0) return undefined
+  const inferred = inferHost(remote.stdout.trim())
+  return inferred.system === (host === 'bitbucket' ? 'bitbucket' : 'github') ? inferred.repo : undefined
 }
 
-// init never writes git_host.system github without a repo, which validate reports. A config that has none takes the origin's, or the call is refused.
-function withGithubRepo(text, root, host) {
-  if (host !== 'github') return text
+// Reads the Bitbucket repository once, so a missing or refused token (AUTH) or a repository Bitbucket does not find (NOT_CONFIGURED) stops the call before it writes.
+async function verifyBitbucketRepo(ctx, repo) {
+  await createBitbucketClient({ env: ctx.env, repo, fetch: ctx.fetch }).get('')
+}
+
+// init never writes a repo host without a repo, which validate reports. A config that has none takes the origin's, or the call is refused.
+// --git-host bitbucket then reads the repository once.
+async function withHostRepo(ctx, text, host) {
+  if (!REPO_HOSTS.includes(host)) return text
   let held
   try {
     held = parseYaml(text)?.git_host?.repo
   } catch {
     return text // the caller reports a file that does not parse
   }
-  if (held) return text
-  const repo = originRepo(root)
-  if (!repo) throw usageError('git_host github needs a repo, and the origin remote is not a GitHub repository', 'Add a GitHub origin remote, or leave out --git-host and run /pmkit:link-repo --git-host github --repo owner/name')
-  return setScalar(text, ['git_host', 'repo'], repo)
+  let repo = held
+  if (!repo) {
+    repo = originRepo(ctx.root, host)
+    if (!repo) {
+      throw usageError(`git_host ${host} needs a repo, and the origin remote is not a ${HOST_NAMES[host]} repository`,
+        `Add a ${HOST_NAMES[host]} origin remote, or leave out --git-host and run /pmkit:link-repo --git-host ${host} --repo ${REPO_FORMS[host]}`)
+    }
+    text = setScalar(text, ['git_host', 'repo'], repo)
+  }
+  if (host === 'bitbucket') await verifyBitbucketRepo(ctx, repo)
+  return text
 }
 
 // link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
@@ -4136,12 +4305,40 @@ async function linkTeam(ctx, parsed, wanted, source) {
   return { description, truncated }
 }
 
+/**
+ * The git host link-repo writes and where it comes from: --git-host, else a remote on a host that names a repository, else the file.
+ * remoteNamesRepo: the remote names the repository only when it is on the host being written.
+ */
+function resolveLinkHost({ flagHost, flagRepo, flagBranch, inferred, heldSystem }) {
+  const fromRemote = REPO_HOSTS.includes(inferred.system)
+  const hostAfter = flagHost ?? (fromRemote ? inferred.system : heldSystem)
+  const hostSource = flagHost !== undefined ? 'flag' : fromRemote ? 'remote' : 'file'
+  checkLinkFlags(hostAfter, flagRepo, flagBranch)
+  return { hostAfter, hostSource, remoteNamesRepo: fromRemote && inferred.system === hostAfter }
+}
+
+/** Refuses --repo and --default-branch on no host, and a --repo that is not workspace/repo_slug on Bitbucket. */
+function checkLinkFlags(hostAfter, flagRepo, flagBranch) {
+  if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github or bitbucket', 'Pass --git-host github or bitbucket, or remove --repo')
+  if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github or bitbucket', 'Pass --git-host github or bitbucket, or remove --default-branch')
+  if (flagRepo !== undefined && hostAfter === 'bitbucket' && !BITBUCKET_REPO.test(flagRepo)) throw usageError('--repo must be workspace/repo_slug on Bitbucket, like acme/widgets')
+}
+
+/**
+ * A repo host link-repo would write without a repo: refused, except a file that is already github without one, which is not made
+ * worse (so --team or --default-branch still work on it) and gets the warning returned here. Bitbucket always needs a repo.
+ */
+function linkRepoMissing(heldSystem, hostAfter, invalidRemote) {
+  if (heldSystem !== hostAfter || hostAfter === 'bitbucket') throw usageError(`git_host ${hostAfter} needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, `Pass --repo ${REPO_FORMS[hostAfter]}, or --git-host none`)
+  return 'git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name'
+}
+
 async function runLinkRepo(ctx) {
   const flagHost = ctx.opt('git-host')
   const flagRepo = ctx.opt('repo')
   const flagBranch = ctx.opt('default-branch')
   const wantedRemote = ctx.opt('remote')
-  if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   if (flagRepo !== undefined && !/^[^/\s]+\/[^/\s]+$/.test(flagRepo)) throw usageError('--repo must be owner/name, like acme/app')
   if (flagBranch !== undefined && !validBranch(flagBranch)) throw usageError(`--default-branch ${flagBranch} is not a branch name`, 'Pass a branch name such as main')
 
@@ -4167,19 +4364,16 @@ async function runLinkRepo(ctx) {
     notes.push(`could not read the git remotes (${read.reason}), so the git host was not inferred`)
   }
   const inferred = chosen.remote ? inferHost(chosen.remote.url) : { system: null, repo: null, host: null }
-  if (read.ok && chosen.state === 'none') notes.push('there is no git remote, so the git host was not inferred; pass --git-host github or none')
+  if (read.ok && chosen.state === 'none') notes.push(`there is no git remote, so the git host was not inferred; pass --git-host ${GIT_HOSTS_TEXT}`)
   // An inference never lowers a configured host. Only --git-host none does.
   if (chosen.remote && inferred.system === null && flagHost === undefined) {
     notes.push(inferred.host === null
       ? `the URL of remote ${chosen.remote.name} is not recognized (${chosen.remote.url}), so git_host was not changed`
-      : `remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, so git_host was not changed; pass --git-host github if it is GitHub (Enterprise or an SSH alias), or --git-host none to lower it`)
+      : `remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub or Bitbucket Cloud, so git_host was not changed; pass --git-host github if it is GitHub (Enterprise or an SSH alias), --git-host bitbucket --repo workspace/repo_slug if it is Bitbucket Cloud behind an SSH alias, or --git-host none to lower it`)
   }
 
   const held = { system: parsed.git_host.system, repo: parsed.git_host.repo ?? null, branch: parsed.git_host.default_branch ?? null }
-  const hostAfter = flagHost ?? (inferred.system === 'github' ? 'github' : held.system)
-  const hostSource = flagHost !== undefined ? 'flag' : inferred.system === 'github' ? 'remote' : 'file'
-  if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github', 'Pass --git-host github, or remove --repo')
-  if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github', 'Pass --git-host github, or remove --default-branch')
+  const { hostAfter, hostSource, remoteNamesRepo } = resolveLinkHost({ flagHost, flagRepo, flagBranch, inferred, heldSystem: held.system })
   let repoAfter = held.repo
   let invalidRemote = null
   let repoSource = 'file'
@@ -4189,7 +4383,7 @@ async function runLinkRepo(ctx) {
   } else if (flagRepo !== undefined) {
     repoAfter = flagRepo
     repoSource = 'flag'
-  } else if (inferred.system === 'github') {
+  } else if (remoteNamesRepo) {
     repoAfter = inferred.repo
     repoSource = 'remote'
   } else if (flagHost === 'github' && chosen.remote) {
@@ -4209,31 +4403,27 @@ async function runLinkRepo(ctx) {
   let branchAfter = held.branch
   let branchSource = 'file'
   // The branch comes from the remote only when that remote is the repository being written.
-  const inferredBranch = inferred.system === 'github' && sameRepo(repoAfter, inferred.repo) ? readDefaultBranch(ctx, chosen.remote.name) : null
+  const inferredBranch = remoteNamesRepo && sameRepo(repoAfter, inferred.repo) ? readDefaultBranch(ctx, chosen.remote.name) : null
   if (flagHost === 'none') {
     branchAfter = null
     branchSource = 'flag'
   } else if (flagBranch !== undefined) {
     branchAfter = flagBranch
     branchSource = 'flag'
-  } else if (inferredBranch !== null && hostAfter === 'github') {
+  } else if (inferredBranch !== null) {
     branchAfter = inferredBranch
     branchSource = 'remote'
   }
-  // A file that is already github without a repo is not made worse, so --team or --default-branch still work on it.
-  if (hostAfter === 'github' && repoAfter === null) {
-    if (held.system !== 'github') throw usageError(`git_host github needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, 'Pass --repo owner/name, or --git-host none')
-    warnings.push('git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name')
-  }
+  if (REPO_HOSTS.includes(hostAfter) && repoAfter === null) warnings.push(linkRepoMissing(held.system, hostAfter, invalidRemote))
   // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
   if (branchSource === 'file' && held.branch !== null && held.repo !== null && !sameRepo(repoAfter, held.repo)) {
     notes.push(`the repo changed from ${held.repo} to ${repoAfter ?? 'none'} and the default branch could not be inferred, so default_branch ${held.branch} may be wrong; pass --default-branch <name>, or run git remote set-head <remote> --auto and run this again`)
   }
   if (chosen.remote && flagHost !== undefined) {
     if (inferred.system !== null && inferred.system !== flagHost) {
-      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is GitHub, and --git-host ${flagHost} was used as given`)
-    } else if (inferred.system === null && inferred.host !== null && flagHost === 'github') {
-      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, and --git-host github was used as given`)
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is ${HOST_NAMES[inferred.system]}, and --git-host ${flagHost} was used as given`)
+    } else if (inferred.system === null && inferred.host !== null && REPO_HOSTS.includes(flagHost)) {
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as ${HOST_NAMES[flagHost]}, and --git-host ${flagHost} was used as given`)
     }
   }
   if (flagRepo !== undefined && inferred.repo !== null && !sameRepo(inferred.repo, flagRepo)) {
@@ -4292,6 +4482,8 @@ async function runLinkRepo(ctx) {
     }
     if (problems.length > 0) throw usageError(`the new .pmkit/config.yaml would not be valid: ${problems.join('; ')}`, 'Fix the values you passed')
   }
+  // The dry run and the write both read the repository, so the preview fails the way the write would.
+  if (hostAfter === 'bitbucket') await verifyBitbucketRepo(ctx, repoAfter)
 
   if (!ctx.dryRun && teamChanged && broken.length > 0) {
     throw new PmkitError('NOT_CONFIGURED', `team ${scope.team.after} does not fit the mappings in .pmkit/config.yaml: ${broken.map((item) => item.problem).join('; ')}`, '/pmkit:setup', { mappings: broken })
@@ -4370,7 +4562,7 @@ function hostedInitFile(ctx, system, label) {
     if (ctx.opt(flag) !== undefined || ctx.list(flag).length > 0) throw usageError(`${label} sets --${flag} itself`, `Remove --${flag}`)
   }
   const gitHost = ctx.opt('git-host')
-  if (gitHost !== undefined && !GIT_HOSTS.includes(gitHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (gitHost !== undefined && !GIT_HOSTS.includes(gitHost)) throw usageError(`--git-host must be ${GIT_HOSTS_TEXT}`)
   const update = ctx.flag('update')
   const pmkitFile = path.join('.pmkit', 'config.yaml')
   const file = path.join(ctx.root, pmkitFile)
@@ -4382,7 +4574,7 @@ function hostedInitFile(ctx, system, label) {
     text = before
   } else {
     if (fs.existsSync(file)) throw new PmkitError('CONFLICT', `${slash(pmkitFile)} already exists`, 'Edit it, or delete it to start over')
-    const repo = originRepo(ctx.root)
+    const repo = originRepo(ctx.root, gitHost)
     text = fs.readFileSync(path.join(TEMPLATES, 'pmkit.config.yaml'), 'utf8')
       .replace(/tracker:\n {2}system: .*\n {2}path: .*\n/, `tracker:\n  system: ${system}\n`)
       .replace(/git_host:\n {2}system: .*\n {2}repo: .*\n {2}default_branch: .*\n/, `git_host:\n  system: ${gitHost ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`)
@@ -4521,6 +4713,17 @@ function githubInitHeader(scope, raw, viewer, project, answered) {
 }
 
 // init --tracker github. See docs/specs/2026-11-16-pmk-86-github-discovery-and-setup-design.md, "Setup".
+/**
+ * The git_host.repo of init --tracker github. git_host github needs a repo: a remote that is not github.com (GHES, GHE.com) names
+ * none, so the tracker's repository fills it. git_host bitbucket takes the origin's and reads the repository once.
+ */
+async function githubInitHostRepo(ctx, file, draft, text, scope) {
+  if ((draft?.git_host?.system ?? file.gitHost) === 'github' && !draft?.git_host?.repo) {
+    text = file.edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], originRepo(ctx.root) ?? scope.repo))
+  }
+  return file.gitHost === 'bitbucket' ? withHostRepo(ctx, text, 'bitbucket') : text
+}
+
 async function runInitGithub(ctx) {
   for (const flag of ['workspace', 'team']) {
     if (ctx.opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker linear`, `Remove --${flag}`)
@@ -4531,10 +4734,7 @@ async function runInitGithub(ctx) {
   const { draft, current } = hostedDraft(file.text)
   let { text } = file
   const scope = githubScope(ctx, current.scope)
-  // git_host github needs a repo. A remote that is not github.com (GHES, GHE.com) names none, so the tracker's repository fills it.
-  if ((draft?.git_host?.system ?? file.gitHost) === 'github' && !draft?.git_host?.repo) {
-    text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], originRepo(ctx.root) ?? scope.repo))
-  }
+  text = await githubInitHostRepo(ctx, file, draft, text, scope)
 
   // The repository first, with the default scopes. The Project is read only once it is chosen (ADR 0007).
   const { client, exec } = await adapter.connect({ root: ctx.root, env: ctx.env, host: scope.host })
@@ -4579,7 +4779,7 @@ async function runInitLinear(ctx) {
   const file = hostedInitFile(ctx, 'linear', 'Linear')
   const { edit } = file
   const root = ctx.root
-  let text = withGithubRepo(file.text, root, file.gitHost)
+  let text = await withHostRepo(ctx, file.text, file.gitHost)
   const { draft, current } = hostedDraft(text)
 
   // Only the workspace pins the key. The team and the mappings are what this call decides, so the discovery ignores them.
@@ -4630,6 +4830,88 @@ async function runInitLinear(ctx) {
     ...hostedInitLines(ctx, { proposal, statuses, notes: proposal.notes, entry }),
   ]
   return { data, text: lines.join('\n') }
+}
+
+/**
+ * The space step of a Jira init: the answer, else the held space, else a question with the site's spaces. Discovers the chosen
+ * space; a space the site lacks is INVALID_INPUT for an answer and the question with broken for a held one.
+ */
+async function resolveJiraSpace(ctx, adapter, site, held) {
+  const answer = ctx.opt('space') === undefined ? undefined : String(ctx.opt('space'))
+  const wanted = answer ?? (typeof held === 'string' && held !== '' ? held : undefined)
+  const listSpaces = async () => {
+    const client = await adapter.connect({ env: ctx.env, site })
+    const { items } = await client.paginate('/rest/api/3/project/search')
+    return { client, spaces: items.map((space) => ({ key: space.key, name: space.name })) }
+  }
+  if (wanted !== undefined) {
+    const config = { root: ctx.root, system: 'jira', pmkit: { tracker: { system: 'jira', scope: { site, space: wanted } } } }
+    try {
+      const view = await (await adapter.create(config, { now: ctx.now, env: ctx.env })).discover({ refresh: true })
+      return { value: wanted, view }
+    } catch (error) {
+      if (!(isPmkitError(error) && error.code === 'NOT_CONFIGURED')) throw error
+      const { client, spaces } = await listSpaces()
+      const step = proposeSpace({ answer, held, heldMissing: true, spaces, site })
+      if (!step.question) throw error
+      return { ...step, session: await client.session() }
+    }
+  }
+  const { client, spaces } = await listSpaces()
+  return { ...proposeSpace({ held, spaces, site }), session: await client.session() }
+}
+
+// init --tracker jira. See docs/superpowers/specs/2026-11-22-pmk-365-setup-pmkit-on-jira-design.md, "The CLI".
+async function runInitJira(ctx) {
+  const adapter = adapterFor('jira', ctx.adapters)
+  const file = hostedInitFile(ctx, 'jira', 'Jira')
+  const { edit } = file
+  let text = await withHostRepo(ctx, file.text, file.gitHost)
+  const { current } = hostedDraft(text)
+
+  // The site cannot be discovered, so setup asks the user for it. Only a host reaches the client: a URL is refused here.
+  const given = ctx.opt('site') === undefined ? current.scope.site : String(ctx.opt('site'))
+  if (typeof given !== 'string' || !JIRA_HOST.test(given.toLowerCase())) {
+    throw usageError(given === undefined ? 'setup needs the Jira site' : `--site ${given} is not a host name`, 'Pass --site <host>, such as --site acme.atlassian.net')
+  }
+  const site = given.toLowerCase()
+  const spaceFlag = ctx.opt('space')
+  if (spaceFlag !== undefined && !JIRA_SPACE_KEY.test(String(spaceFlag))) throw usageError(`--space ${spaceFlag} is not a space key`, 'Pass --space <KEY>, such as --space ENG')
+  const spaceStep = await resolveJiraSpace(ctx, adapter, site, current.scope.space)
+  const { view } = spaceStep
+  const defaults = withLocalDefaults({}).types
+  const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]
+  const proposal = spaceStep.question
+    ? { applied: [], questions: [spaceStep.question], broken: spaceStep.broken, notes: [], values: null }
+    : proposeJiraSetup(view.raw, current, parseMappingFlags(ctx), types)
+
+  for (const [key, value] of [['site', site], ['space', spaceStep.value]]) {
+    if (value !== undefined && value !== current.scope[key]) text = edit(`tracker.scope.${key}`, () => setScalar(text, ['tracker', 'scope', key], value))
+  }
+  if (proposal.values) text = putMappings(text, edit, proposal.values, current)
+  // While the space is a question the file has none yet, so only its absence is let through, and a real run still refuses.
+  const checks = spaceStep.question
+    ? { configProblems: (pmkit) => adapter.configProblems(pmkit).filter((problem) => !problem.startsWith(`${SPACE_PATH} is required`)) }
+    : adapter
+  const entry = writeHostedInit(ctx, checks, file, text, proposal.questions)
+
+  // The statuses as the answers leave them.
+  const statuses = proposal.values
+    ? jiraDiscoveryView(view.raw, { mappings: { status: { ...current.status, ...proposal.values.status } } }).statuses
+    : []
+  // The space question has no discovery, so its viewer comes from the session the space list opened.
+  const viewer = view?.viewer ?? { id: spaceStep.session.viewer.accountId, name: spaceStep.session.viewer.displayName }
+  const space = view ? { key: view.space.key, name: view.space.name, style: view.space.style } : null
+  const data = {
+    dryRun: ctx.dryRun, tracker: 'jira', site, space, viewer,
+    applied: proposal.applied, questions: proposal.questions, broken: proposal.broken, statuses, notes: proposal.notes, files: [entry],
+  }
+  const lines = [
+    `site: ${site}${viewer ? `, viewer ${viewer.name}` : ''}`,
+    `space: ${space ? `${space.key} ${space.name} (${space.style})` : '(not chosen yet)'}`,
+    ...hostedInitLines(ctx, { proposal, statuses, notes: proposal.notes, entry }),
+  ]
+  return { data, text: lines.join('\n'), warnings: view?.warnings ?? [] }
 }
 
 // tracker.path is relative for a folder next to the repository; an absolute one is never shown (PMK-271).
@@ -4753,7 +5035,11 @@ function inboxText(item) {
  * The open pull requests that request a review of one of `logins` (ignoring case), from one gh call (PMK-225). A request made to a
  * team never matches and is listed apart. A failed read is `verified: false` with the reason, never an empty list.
  */
-function reviewRequests(ctx, user, logins) {
+async function reviewRequests(ctx, user, logins) {
+  // Bitbucket review requests are not read yet (PMK-81): the inbox still lists the tracker items, and says this part is not verified.
+  if (ctx.config().pmkit.git_host?.system === 'bitbucket') {
+    return { verified: false, requested: null, teamRequests: null, complete: false, reason: 'review requests are not read on Bitbucket yet', code: 'NOT_SUPPORTED' }
+  }
   // A Linear member id is a Linear user id, never a GitHub login, so without --login there is nothing to match: not verified, never 0.
   if (ctx.config().pmkit.tracker?.system === 'linear' && logins.length === 0) {
     return { verified: false, requested: null, teamRequests: null, complete: false, reason: 'the Linear member id is not a GitHub login; pass --login <github login> to match review requests', code: 'INVALID_INPUT' }
@@ -4761,7 +5047,7 @@ function reviewRequests(ctx, user, logins) {
   const wanted = new Set([user, ...logins].map((login) => String(login).toLowerCase()))
   let prs
   try {
-    prs = ctx.host().listReviewRequests()
+    prs = await ctx.host().listReviewRequests()
   } catch (error) {
     if (!isPmkitError(error)) throw error
     return { verified: false, requested: null, teamRequests: null, complete: false, reason: error.message, code: error.code }
@@ -4790,14 +5076,66 @@ function reviewLines(reviews, user) {
 }
 
 function makeHost(ctx) {
-  if (ctx.config().pmkit.git_host?.system !== 'github') {
-    throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup')
+  const { system, repo } = ctx.config().pmkit.git_host ?? {}
+  if (system === 'bitbucket') return createBitbucketHost({ root: ctx.root, env: ctx.env, repo, fetch: ctx.fetch })
+  if (system !== 'github') {
+    throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github or bitbucket in .pmkit/config.yaml, or run /pmkit:setup')
   }
   return createGithubHost({ root: ctx.root, env: ctx.env })
 }
 
+/** Bitbucket reads its 500 newest deploys then filters them (PMK-81): a cut read that kept too few may miss older ones. */
+const deploysCutWarning = (environment) => `only the 500 newest deployments were read, so older deployments${environment === undefined ? '' : ` of ${environment}`} may be missing`
+
+/** One warning naming the open pull requests whose checks were not read (Bitbucket refused their statuses), or none. */
+const uncheckedPrsWarnings = (host, prs) => {
+  if (host.system !== 'bitbucket') return []
+  const numbers = prs.filter((pr) => pr.statusCheckRollup === null).map((pr) => `#${pr.number}`)
+  return numbers.length === 0 ? [] : [`checks of ${numbers.join(', ')} not read`]
+}
+
+/** The name of a host for messages that would otherwise say GitHub on any host. */
+const hostName = (host) => (host?.system === 'bitbucket' ? 'Bitbucket' : 'GitHub')
+
+/**
+ * Whether the head of a merged pull request is on the branch (see branchHas), or null when the branch does not exist. The head is read
+ * only when the branch exists, so a missing branch costs no host read.
+ */
+async function mergedHeadOnBranch(host, branch, prRefs) {
+  if (!host.branchExists(branch)) return null
+  return host.branchHas(branch, (await prRefs()).headRefOid)
+}
+
+/**
+ * The git host of a command, made once. A command whose unsupportedOn names the host's system is refused here, when the command
+ * first asks for the host: after the checks it makes before that, and before any read (PMK-81).
+ */
+function commandHost(ctx, command) {
+  const host = makeHost(ctx)
+  const nextStep = command.unsupportedOn?.[host.system]
+  if (nextStep !== undefined) throw new PmkitError('NOT_SUPPORTED', `${command.name} is not supported on ${hostName(host)} yet`, nextStep)
+  return host
+}
+
+/**
+ * The blockers of a pull request. Bitbucket has no blocker reads yet (PMK-81): the verdict is unknown, never "nothing blocks it",
+ * with one unchecked entry the existing text shows as not verified.
+ */
+function hostBlockers(host, pr) {
+  if (host.system !== 'bitbucket') return collectBlockers(host, pr)
+  return { blocked: null, blocking: [], pending: [], unknown: [], unchecked: [{ area: 'blockers', code: 'NOT_SUPPORTED', message: 'blockers are not verified on Bitbucket' }] }
+}
+
+/** The blockers line of pr status for an open pull request. Bitbucket has no blocker reads at all: one plain line, not the "not verified: <areas>" list of a GitHub read that failed. */
+const openBlockersLine = (host, pr, found) => (host.system === 'bitbucket' ? 'blockers: not verified on Bitbucket' : `blockers: ${blockedText(prSummary(pr, found))}`)
+
+/** The cause of a blockers verdict that is not verified, for the incomplete line of track-agents. */
+const notVerifiedCause = (host) => (host?.system === 'bitbucket'
+  ? 'blockers are not verified on Bitbucket'
+  : 'a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+
 /** Runs one command line. Resolves to the text for each stream and the exit code. */
-export async function run(argv, { env = process.env, cwd = process.cwd(), adapters = ADAPTERS } = {}) {
+export async function run(argv, { env = process.env, cwd = process.cwd(), adapters = ADAPTERS, fetch } = {}) {
   const stdout = []
   const stderr = []
   let code = 0
@@ -4825,10 +5163,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     }
     const { options } = parsed
     const root = path.resolve(typeof options.root === 'string' ? options.root : findRoot(cwd))
-    // PMK-267: Linear refuses bulk unarchive before the flag check, so a flag the command does not take answers NOT_SUPPORTED too.
+    // PMK-267: GitHub refuses bulk unarchive before the flag check, so a flag the command does not take answers NOT_SUPPORTED too. Linear unarchives (PMK-259).
     if (command.name === 'issues bulk' && parsed.positionals[0] === 'unarchive') {
       const { system } = loadPmkitConfig(root, { adapters })
-      if (system !== 'local') throw unarchiveNotSupported(system)
+      if (system === 'github') throw unarchiveNotSupported()
     }
     checkUsage(command, parsed)
     const dryRun = last(options['dry-run']) === true
@@ -4839,6 +5177,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     let host
     const ctx = {
       root, cwd, env, dryRun, now, args: parsed.positionals, json, adapters,
+      // The fetch of the Bitbucket host: a test's fake, else the global one, read when the host is made.
+      get fetch() { return fetch ?? globalThis.fetch },
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,
@@ -4867,8 +5207,14 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         await ctx.tracker()
         return tracker[feature]
       },
+      // The Jira-only features of the raw Jira tracker, or null for any other system.
+      jira: async (feature) => {
+        if (ctx.config().system !== 'jira') return null
+        await ctx.tracker()
+        return tracker[feature]
+      },
       settings: () => adapterFor(ctx.config().system, adapters).settings(ctx.config()),
-      host: () => (host ??= makeHost(ctx)),
+      host: () => (host ??= commandHost(ctx, command)),
       actor: async () => (typeof options.as === 'string' ? options.as : (await requireMember(ctx)).id),
     }
     kind = configClass(command, options)
@@ -4893,6 +5239,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (command.github) {
       const { system } = ctx.config()
       if (system !== 'github') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the GitHub Issues tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
+    }
+    if (command.jira) {
+      const { system } = ctx.config()
+      if (system !== 'jira') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Jira tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
     // auto_commit commits Local tracker files, so a hosted tracker never commits.
     const autoCommit = (commit, written) => {

@@ -2,7 +2,7 @@
 // that returns a fresh tracker; the suite uses contract operations only.
 //
 // setup() returns { tracker, actor, teardown, today? }. The tracker has every status category,
-// at least one member and no issues. `today` is the YYYY-MM-DD date the tracker treats as today
+// at least one member and no issues. `actor` is the member the tracker reads `me` as (the viewer on a hosted tracker). `today` is the YYYY-MM-DD date the tracker treats as today
 // (default: the real date); the suite opens its cycle on that day so the cycle starts active.
 // setup() may name `assignee`, the member id the suite assigns issues to (default: the first member). A shared workspace
 // returns the key owner so the suite never assigns a person who would be notified.
@@ -30,8 +30,8 @@ import { teamMembers } from './lib/team-capacity.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
-// deliverable-writes covers moving an epic to a status category: the live Linear run leaves it out, because its write guard has no projectUpdate rule.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'deliverable-writes', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
+// deliverable-writes covers moving an epic to a status category. archive covers archiving an issue, which Jira leaves out.
+export const FAMILIES = ['discovery', 'issues', 'archive', 'relations', 'history', 'threads', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'deliverable-writes', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
 
 /** The members of the scope team: on Linear `discover().members` lists the whole workspace, and a capacity write refuses another team's user. */
 const scopeMembers = async (tracker) => {
@@ -44,6 +44,8 @@ const DOC_PATH = 'contract/notes.md'
 
 const rejects = (fn, code) => assert.rejects(async () => fn(), (error) => error.code === code, `expected ${code}`)
 const ids = (issues) => issues.map((issue) => issue.id)
+// A sprint id in the same format as `id` that no sprint has: a cycle number far past it, or a far date. Null for another format.
+const unknownSprintLike = (id) => (/^\d+$/.test(id) ? String(Number(id) + 100000) : /^\d{4}-\d{2}-\d{2}$/.test(id) ? '2099-12-31' : null)
 const issueState = async (tracker, issueIds) => JSON.stringify({
   issues: await Promise.all(issueIds.map(async (id) => ({ issue: await tracker.getIssue(id), history: await tracker.getHistory(id) }))),
   all: (await tracker.searchIssues({ archived: true })).issues.map((issue) => issue.id),
@@ -105,7 +107,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       for (const entry of manifest.capabilities) assert.ok(entry.id && entry.path, `capability ${entry.id} has a path`)
     })
 
-    it('creates, gets, updates, moves through every category, assigns and archives an issue', ['issues'], async ({ tracker, actor, assignee }) => {
+    it('creates, gets, updates, moves through every category and assigns an issue', ['issues'], async ({ tracker, actor, assignee }) => {
       const { statuses, members, types } = await tracker.discover()
       const created = await tracker.createIssue({ title: 'First', type: types[0] }, actor)
       assert.equal(created.before, null)
@@ -131,11 +133,24 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ assignee: who })).issues), [id])
       await tracker.assign(id, null, actor)
       assert.equal((await tracker.getIssue(id)).assignee, undefined)
+    })
 
+    it('archives an issue', ['issues', 'archive'], async ({ tracker, actor }) => {
+      const { id } = (await tracker.createIssue({ title: 'Archived' }, actor)).after
       await tracker.archive(id, actor)
       assert.equal((await tracker.getIssue(id)).archived, true)
       assert.deepEqual((await tracker.searchIssues({})).issues, [])
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [id])
+    })
+
+    it('searchIssues with assignee me returns the issues assigned to the actor, and none the unassigned ones', ['issues'], async ({ tracker, actor, assignee }) => {
+      // `me` assigns the actor, so a setup that allows only another assignee skips the case.
+      if (assignee !== undefined && assignee !== actor) return
+      const mine = (await tracker.createIssue({ title: 'Mine' }, actor)).after.id
+      const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
+      await tracker.assign(mine, 'me', actor)
+      assert.deepEqual(ids((await tracker.searchIssues({ assignee: 'me' })).issues), [mine])
+      assert.deepEqual(ids((await tracker.searchIssues({ assignee: 'none' })).issues), [free])
     })
 
     it('deletes an issue, refuses while another issue references it, and a dry run changes nothing', ['issues'], async ({ tracker, actor }) => {
@@ -368,6 +383,19 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: planned.id })).issues), [inPlanned])
     })
 
+    it('a closed sprint as the target of createIssue, updateIssue and moveToCycle fails with CONFLICT and writes nothing', ['cycles', 'cycle-lifecycle'], async ({ tracker, actor, today }) => {
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const closed = (await tracker.openCycle({ start: today }, actor)).after
+      await tracker.closeCycle(closed.id, actor)
+      const before = await issueState(tracker, [a])
+      await rejects(() => tracker.createIssue({ title: 'Never', sprint: closed.id }, actor), 'CONFLICT')
+      await rejects(() => tracker.updateIssue(a, { sprint: closed.id }, actor), 'CONFLICT')
+      await rejects(() => tracker.moveToCycle([a], closed.id, actor), 'CONFLICT')
+      await rejects(() => tracker.moveToCycle([a], closed.id, actor, { dryRun: true }), 'CONFLICT')
+      assert.equal(await issueState(tracker, [a]), before)
+      assert.deepEqual(await tracker.cycleIssues(closed.id), [])
+    })
+
     it('searchIssues with sprint current returns an empty list without an active sprint', ['cycles', 'cycle-lifecycle'], async ({ tracker, actor }) => {
       const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
       await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)
@@ -375,6 +403,52 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
 
       assert.deepEqual((await tracker.searchIssues({ sprint: 'current' })).issues, [])
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
+    })
+    it('sprint current with dryRun returns the active sprint id and writes nothing', ['cycles'], async ({ tracker, actor, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const dry = { dryRun: true }
+      const made = await tracker.createIssue({ title: 'Never current', sprint: 'current' }, actor, dry)
+      assert.equal(made.after.sprint, sprint.id)
+      const plain = (await tracker.createIssue({ title: 'Plain' }, actor)).after.id
+      assert.equal((await tracker.updateIssue(plain, { sprint: 'current' }, actor, dry)).after.sprint, sprint.id)
+      const moved = await tracker.moveToCycle([plain], 'current', actor, dry)
+      assert.deepEqual(moved.map((entry) => entry.after.sprint), [sprint.id])
+      assert.equal((await tracker.getIssue(plain)).sprint, undefined)
+      assert.deepEqual(await tracker.cycleIssues(sprint.id), [])
+      assert.deepEqual(ids((await tracker.searchIssues({ text: 'Never current' })).issues), [])
+    })
+
+    it('searchIssues with an unknown sprint id fails with INVALID_INPUT', ['cycles'], async ({ tracker, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const unknown = unknownSprintLike(sprint.id)
+      if (unknown !== null) await rejects(() => tracker.searchIssues({ sprint: unknown }), 'INVALID_INPUT')
+      await rejects(() => tracker.searchIssues({ sprint: 'not-a-sprint' }), 'INVALID_INPUT')
+    })
+
+    it('a sprint value no sprint has, or none, fails with INVALID_INPUT in createIssue, updateIssue and moveToCycle and writes nothing', ['cycles'], async ({ tracker, actor, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
+      const unknown = unknownSprintLike(sprint.id)
+      for (const value of [...(unknown === null ? [] : [unknown]), 'none']) {
+        const before = await issueState(tracker, [a, b])
+        await rejects(() => tracker.createIssue({ title: 'Never', sprint: value }, actor), 'INVALID_INPUT')
+        await rejects(() => tracker.updateIssue(a, { sprint: value }, actor), 'INVALID_INPUT')
+        await rejects(() => tracker.moveToCycle([a, b], value, actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before, value)
+        assert.deepEqual(ids((await tracker.searchIssues({ text: 'Never' })).issues), [], value)
+      }
+    })
+
+    it('cycleIssues of an unknown sprint id fails with NOT_FOUND', ['cycles'], async ({ tracker, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
+      const unknown = unknownSprintLike(sprint.id)
+      if (unknown !== null) await rejects(() => tracker.cycleIssues(unknown), 'NOT_FOUND')
+      await rejects(() => tracker.cycleIssues('not-a-sprint'), 'NOT_FOUND')
     })
 
     it('sets and reads cycle capacity', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
@@ -454,6 +528,25 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.moveDeliverable(epic.id, 'done', actor), 'INVALID_INPUT')
     })
 
+    it('edits the title and the description of an epic, and refuses an edit that changes nothing (PMK-348)', ['deliverables', 'deliverable-writes'], async ({ tracker, actor }) => {
+      const epic = (await tracker.createDeliverable({ title: 'Edits', description: 'First purpose.' }, actor)).after
+      const dry = await tracker.updateDeliverable(epic.id, { description: 'Second purpose.' }, actor, { dryRun: true })
+      assert.equal(dry.before.description, 'First purpose.')
+      assert.equal(dry.after.description, 'Second purpose.')
+      assert.equal((await tracker.getDeliverable(epic.id)).description, 'First purpose.')
+      const described = await tracker.updateDeliverable(epic.id, { description: 'Second purpose.' }, actor)
+      assert.equal(described.after.description, 'Second purpose.')
+      const renamed = await tracker.updateDeliverable(epic.id, { title: 'Edited' }, actor)
+      assert.equal(renamed.before.title, 'Edits')
+      assert.equal(renamed.after.title, 'Edited')
+      const read = await tracker.getDeliverable(epic.id)
+      assert.equal(read.title, 'Edited')
+      assert.equal(read.description, 'Second purpose.')
+      await rejects(() => tracker.updateDeliverable(epic.id, { title: 'Edited' }, actor), 'INVALID_INPUT')
+      await rejects(() => tracker.updateDeliverable(epic.id, {}, actor), 'INVALID_INPUT')
+      await rejects(() => tracker.updateDeliverable('NOPE-999999', { title: 'x' }, actor), 'NOT_FOUND')
+    })
+
     it('lists the status updates of an epic, newest first', ['deliverables'], async ({ tracker, actor }) => {
       const epic = (await tracker.createDeliverable({ title: 'Updates' }, actor)).after
       assert.deepEqual(await tracker.listStatusUpdates(epic.id), [])
@@ -521,7 +614,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(await tracker.listReleases(), [])
     })
 
-    it('lists the issues of a release and marks it released', ['releases'], async ({ tracker, actor }) => {
+    it('lists the issues of a release and marks it released', ['releases', 'archive'], async ({ tracker, actor }) => {
       await tracker.createRelease({ id: 'contract-2.0' }, actor)
       const first = (await tracker.createIssue({ title: 'In release one' }, actor)).after
       const second = (await tracker.createIssue({ title: 'In release two' }, actor)).after
@@ -556,7 +649,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
     })
 
-    it('archived issues drop out of search', ['issues'], async ({ tracker, actor }) => {
+    it('archived issues drop out of search', ['issues', 'archive'], async ({ tracker, actor }) => {
       const keep = (await tracker.createIssue({ title: 'Keep' }, actor)).after.id
       const drop = (await tracker.createIssue({ title: 'Drop' }, actor)).after.id
       await tracker.archive(drop, actor)

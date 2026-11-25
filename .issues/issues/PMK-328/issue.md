@@ -2,13 +2,14 @@
 id: PMK-328
 title: "Read an ordered list item as a status in adr-status, as a bullet item"
 type: bug
-status: backlog
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-328-read-an-ordered-list-item-as-a-status-in
 created: 2026-11-15T23:21:50.971Z
-updated: 2026-11-15T23:21:50Z
+updated: 2026-11-22T02:55:20Z
 ---
 
 ## Description
@@ -42,6 +43,6 @@ Source: PMK-325 (PR #302, review cycles 1 and 2: 1,458 of 150,000 random bodies)
 
 ## Acceptance criteria
 
-- [ ] `Accepted`, blank, `1. Proposed` (also `1)`, `10.` and indented) refuses as `- Proposed` does, real and dry run, and `adr-get` reads the section as it reads the bullet one, with tests
-- [ ] `1. Accepted`, blank, `> Proposed` keeps `1. Accepted` and names `> Proposed`, as the bullet item does, with tests; `1.Accepted` and `see 1. Proposed` keep their behaviour, with tests
-- [ ] A develop x branch comparison on random Status bodies shows every difference in refusal, text written, `adr-get` status and names comes from an ordered list item that reads as a status, each explained, and `scripts/dev/adr-commonmark-diff.mjs` exits 0 with 0 worse on the full run, in the PR
+- [x] `Accepted`, blank, `1. Proposed` (also `1)`, `10.` and indented) refuses as `- Proposed` does, real and dry run, and `adr-get` reads the section as it reads the bullet one, with tests
+- [x] `1. Accepted`, blank, `> Proposed` keeps `1. Accepted` and names `> Proposed`, as the bullet item does, with tests; `1.Accepted` and `see 1. Proposed` keep their behaviour, with tests
+- [x] A develop x branch comparison on random Status bodies shows every difference in refusal, text written, `adr-get` status and names comes from an ordered list item that reads as a status, each explained, and `scripts/dev/adr-commonmark-diff.mjs` exits 0 with 0 worse on the full run, in the PR

@@ -188,13 +188,24 @@ test('an issue already in the target cycle sends no mutation', async () => {
   assert.equal(mutationCount(fetch), 0)
 })
 
-test('current with no active cycle is INVALID_INPUT, and an unknown cycle is NOT_FOUND', async () => {
+test('current with no active cycle is INVALID_INPUT, and so is an unknown cycle', async () => {
   const { ops, fake, fetch } = await setup({ cycles: [CYCLES[0], CYCLES[2]] })
   const a = fake.seed({ title: 'A' }).identifier
   await assert.rejects(ops.moveToCycle([a], 'current', ACTOR), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
-  await assert.rejects(ops.moveToCycle([a], '99', ACTOR), { code: 'NOT_FOUND', message: 'sprint 99 does not exist' })
-  await assert.rejects(ops.moveToCycle([a], 'abc', ACTOR), { code: 'NOT_FOUND' })
+  await assert.rejects(ops.moveToCycle([a], '99', ACTOR), { code: 'INVALID_INPUT', message: 'sprint "99" is not current, none or an existing sprint id' })
+  await assert.rejects(ops.moveToCycle([a], 'abc', ACTOR), { code: 'INVALID_INPUT' })
   assert.equal(mutationCount(fetch), 0)
+})
+
+test('a past cycle as the target of a move or an update is CONFLICT and sends no mutation', async () => {
+  const { ops, fake, fetch, issues } = await setup()
+  const a = fake.seed({ title: 'A' }).identifier
+  await assert.rejects(ops.moveToCycle([a], '1', ACTOR), { code: 'CONFLICT', message: 'sprint 1 is closed', nextStep: 'pmkit cycle list --state planned' })
+  await assert.rejects(issues.updateIssue(a, { sprint: '1' }, ACTOR), { code: 'CONFLICT' })
+  assert.equal(mutationCount(fetch), 0)
+  // Reading a closed cycle stays allowed: only a write into one is refused.
+  assert.deepEqual((await issues.searchIssues({ sprint: '1' })).issues, [])
+  assert.deepEqual(await ops.cycleIssues('1'), [])
 })
 
 test('an unknown issue is NOT_FOUND and no issue moves', async () => {
