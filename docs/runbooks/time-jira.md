@@ -2,7 +2,7 @@
 
 Logging time and listing the time entries on a repository whose tracker is Jira Cloud (PMK-80): `issues log-time` adds a worklog to the work item, and `issues time-entries` reads its worklogs, each dated by its start and rounded to the nearest minute. Every worklog is also a `log_time` event in the issue's history and in the flow metrics. `scripts/runbook-time-jira.test.mjs` runs every step below with the real CLI and a stateful fake Jira in place of `fetch`, with the fake's state saved to a file between runs and the clock fixed at 2026-11-22 12:00 UTC (`PMKIT_NOW`), so `npm test` checks this runbook.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; PMK-378 in EPC-14 lists what a follow-up settles: the worklog calls and the `started` format, the 20 worklogs a search carries, the changelog items a worklog writes, and how a site with time tracking off reports it.
+Live check: run on 2026-11-25 against a real Jira Cloud site (PMK-378) by the opt-in `time tracking flows on the throwaway space` test in `scripts/lib/jira/client-live.mjs`: steps 1 to 6 pass, and the worklog calls, the `started` format, the 20 worklogs a search carries and the changelog items a worklog writes behave as the steps say. Jira keeps whole minutes (it cuts 100 seconds to 60) and answers `started` in the token owner's time zone, the same instant. Step 7 is checked on the fake only: Jira Cloud no longer lets a site turn time tracking off (Atlassian removed the switch and `DELETE /rest/api/3/configuration/timetracking` in 2020; it answers 405), so a Cloud site always reports it on. pmkit keeps the off path for a site that reports it off.
 
 ## Before you start
 
@@ -82,7 +82,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
 
    Expect exit 2 with `INVALID_INPUT`.
 
-7. On a site with time tracking off (the test serves global settings with `timeTrackingEnabled: false`), read the site again, since pmkit keeps what it read for an hour:
+7. On a site with time tracking off (Jira Cloud sites can no longer turn it off, so this step runs on the fake only; the test serves global settings with `timeTrackingEnabled: false`), read the site again, since pmkit keeps what it read for an hour:
 
    ```
    node scripts/pmkit.mjs discover --json

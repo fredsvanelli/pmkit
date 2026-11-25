@@ -94,6 +94,20 @@ Assertion wording, the retry interval, names of work items, and how the worklogs
 
 Answered on 2026-11-25 by the coordinator; the design is approved.
 
-- Q1: pending with the owner (a site-wide change). Everything else goes ahead; steps 8 and 9 of the live test (AC 4 and 6) wait for the owner's answer.
+- Q1: the owner approved turning time tracking off with the settings read first and restored in `finally`. One try settled it: `DELETE /rest/api/3/configuration/timetracking` answers 405 and changes nothing. Atlassian removed the switch from Jira Cloud's UI and REST API in 2020 (deprecation notice "Removal of the ability to disable time tracking"). The provider (`JIRA`, the only one listed) and the options read afterwards matched those read before.
+- Q3 (after Q1): yes. AC 4 and 6 are recorded as unreachable on Jira Cloud and left open in the PR. pmkit's off path (discovery, `capabilities` absent, `log-time` and `time-entries` refused) and the fake's off mode stay; runbook step 7 is checked on the fake only. Live steps 8 and 9 are dropped. No Kudos work type has the Time tracking field (Atlassian's per-space replacement), and worklogs are still accepted, so no space setting stops the worklog calls either.
 - Q2: yes. `timeestimate` stays a `jira:timeestimate` update; the fake writes it with each worklog and the runbook notes it.
 - No new `CONTEXT.md` term (Time entry already covers worklogs) and no ADR.
+
+## Result
+
+Run on 2026-11-25 against the owner's Jira Cloud site (host kept out of the repository, the PR and the issue), space Kudos: `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`. No output held the token, the email or the host. Kudos after the run: no work item; the site's time tracking provider and options as found.
+
+| Check | AC | Result |
+|---|---|---|
+| `issues log-time` (dry run sends nothing; 1h30 and 45m are worklogs of 5400 and 2700 seconds by the viewer, started now), `0` is `INVALID_INPUT`, `issues time-entries` totals, `GET worklog` paged by 5 | 1 | pass |
+| 22 worklogs: a search's `worklog` field carries 20 and `total` 22; `issues time-entries` and `events` (`metricEvents`) read all 22 | 2 | pass |
+| `issues get --history`: 22 `log_time` events, no `jira:timespent` or `jira:WorklogId`; `jira:timeestimate` updates stay (Q2) | 3 | pass |
+| Time tracking off: configuration read and `capabilities` | 4 | **unreachable on Jira Cloud** (Q1, Q3): checked on the fake only, open in the PR |
+| A worklog edited (to 1800 s) and one deleted in Jira | 5 | **fail, then pass after the fix**: the delete wrote `WorklogTimeSpent`, shown as `jira:WorklogTimeSpent`; now dropped like `timespent` |
+| Time tracking off: `issues get --history`, worklog calls refused | 6 | **unreachable on Jira Cloud** (Q1, Q3): checked on the fake only, open in the PR |
