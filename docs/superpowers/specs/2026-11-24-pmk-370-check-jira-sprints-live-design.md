@@ -58,7 +58,7 @@ Output prints keys, ids and counts only; `scrub`, `hostless` and `assertNoSecret
 
 ### AC 3: the day in the Jira UI
 
-The raw dates are checked exactly in step 3. The UI renders them in the viewer's profile time zone: 12:00 UTC is 23:00 the same day in `Australia/Sydney` (UTC+11), the owner's zone, so the same calendar day, at the edge the PMK-78 design names (UTC-11 to UTC+11). **My call:** look at the sprint once in the Jira UI through the browser tool, if it is connected and signed in to the site, and record what it shows; if not, record the computation and leave the UI look open in the PR. A zone beyond UTC+11 (New Zealand in summer, UTC+13) shows the next day: recorded as a known limit in the runbook, no change (PMK-78 Q6 chose noon UTC).
+The raw dates are checked exactly in step 3. The UI renders them in the viewer's profile time zone: 12:00 UTC is 23:00 the same day in `Australia/Sydney` (UTC+11), the owner's zone, so the same calendar day, at the edge the PMK-78 design names (UTC-11 to UTC+11). The computation is recorded and the UI look stays open in the PR (Interview Q3: no browser). A zone beyond UTC+11 (New Zealand in summer, UTC+13) shows the next day: recorded as a known limit in the runbook, no change (PMK-78 Q6 chose noon UTC).
 
 ### AC 4: other boards
 
@@ -91,6 +91,15 @@ Test-first, in this PR.
 
 - **Q1. AC 4 needs a second board.** (a) Create a saved filter `project = KAN` and a Scrum board on it (site-level, located on the token's user, not in Kudos), run: a sprint of that board holding a Kudos item reads as no sprint of board 1, `cycle list` leaves it out even when `GET /board/1/sprint` lists it, `cycle add` to its id is refused; then delete the sprint, the board and the filter. (b) Skip AC 4 live (unit tests cover it on the fake), leave it open in the PR with the company-managed checks. Recommend (a): it is the only way to settle the point, and everything it makes is deleted; but it writes outside Kudos, which the task forbids without your yes.
 - **Q2. The silent subtask move.** Fix it in this PR as above (recommended: a `cycle add` that reports success while Jira did nothing misleads `/pmkit:cycle:plan`, and the fix is one re-read check), or file a follow-up in EPC-14 and only record it here.
+
+## Interview
+
+Answered on 2026-11-24 by the coordinator; the design is approved.
+
+- Q1: goes to the owner, since it writes outside Kudos. Everything else runs; only the other-board check waits for the answer.
+- Q2: yes. The silent subtask move is fixed in this PR, test-first.
+- Q3: no browser. The time-zone computation is recorded and the UI look stays open in the PR.
+- Q4: yes. No new `CONTEXT.md` term (Jira's Subtask is named as Jira's work type, a kind of sub-issue); ADR 0016 gains a consequence line; no new ADR.
 
 ## Left to the builder
 
