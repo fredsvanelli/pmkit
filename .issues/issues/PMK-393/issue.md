@@ -2,7 +2,7 @@
 id: PMK-393
 title: Read team-managed board features in the Jira manifest
 type: bug
-status: in_progress
+status: in_review
 priority: high
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-366, PMK-396]
 milestone: jira
 branch: fredsvanelli/pmk-393-team-managed
 created: 2026-11-24T18:53:31.447Z
-updated: 2026-11-24T23:59:59Z
+updated: 2026-11-25T00:12:57Z
 ---
 
 ## Description
@@ -28,6 +28,6 @@ Checked live on 2026-11-24 (PMK-366, owner's Q3): with the Backlog, Sprints and 
 
 ## Acceptance criteria
 
-- [ ] On a team-managed space, `releases`, `cycles` and `estimation` follow the board features (an optional read that warns when refused)
-- [ ] The `cycles` hint on a team-managed space names the Sprints feature, not a Scrum board
-- [ ] Checked live with sprints on in a team-managed space, and `CONTEXT.md` "Scrum board" matches what was seen
+- [x] On a team-managed space, `releases`, `cycles` and `estimation` follow the board features (an optional read that warns when refused)
+- [x] The `cycles` hint on a team-managed space names the Sprints feature, not a Scrum board
+- [x] Checked live with sprints on in a team-managed space, and `CONTEXT.md` "Scrum board" matches what was seen
