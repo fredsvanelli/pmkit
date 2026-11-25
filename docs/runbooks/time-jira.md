@@ -70,7 +70,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs issues get ENG-1 --history --json
    ```
 
-   Expect two `log_time` events with `minutes` 90 and 45, and no `jira:timespent` event: the time each worklog adds is not counted twice.
+   Expect two `log_time` events with `minutes` 90 and 45, and no `jira:timespent` event: the time each worklog adds is not counted twice. Expect also two `jira:timeestimate` updates, from none to `0` and from `0` to `0`: Jira adjusts the remaining estimate with each worklog, which logs no time. A worklog edited or deleted in Jira adds no `jira:` update either (a delete's `WorklogTimeSpent` item is dropped like `timespent`); the `log_time` events show the worklogs as they are now.
 
 ## Errors
 

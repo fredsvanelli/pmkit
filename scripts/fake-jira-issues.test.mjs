@@ -402,7 +402,7 @@ test('comment properties come back only under expand=properties', async () => {
   assert.deepEqual(expanded.json.comments.map((comment) => comment.properties), [properties, []])
 })
 
-test('worklogs: added, listed, logged in the changelog as timespent, refused at zero seconds (PMK-80)', async () => {
+test('worklogs: added, listed, logged in the changelog as timespent and timeestimate, refused at zero seconds (PMK-80, PMK-378)', async () => {
   const { create, api } = setup()
   await create({ summary: 'Timed' })
   const added = await api('POST', '/rest/api/3/issue/ENG-1/worklog', { timeSpentSeconds: 2700, started: '2026-11-22T12:00:00.000+0000' })
@@ -411,7 +411,7 @@ test('worklogs: added, listed, logged in the changelog as timespent, refused at 
   const listed = (await api('GET', '/rest/api/3/issue/ENG-1/worklog')).json
   assert.deepEqual([listed.total, listed.worklogs.map((worklog) => worklog.timeSpentSeconds)], [1, [2700]])
   const items = (await api('GET', '/rest/api/3/issue/ENG-1/changelog')).json.values.at(-1).items
-  assert.deepEqual(items.map((item) => [item.field, item.from, item.to]), [['timespent', null, '2700'], ['WorklogId', null, '10000']])
+  assert.deepEqual(items.map((item) => [item.field, item.from, item.to]), [['timespent', null, '2700'], ['WorklogId', null, '10000'], ['timeestimate', null, '0']])
   assert.equal((await api('POST', '/rest/api/3/issue/ENG-1/worklog', { timeSpentSeconds: 0, started: '2026-11-22T12:00:00.000+0000' })).status, 400)
   assert.equal((await api('POST', '/rest/api/3/issue/ENG-9/worklog', { timeSpentSeconds: 60, started: '2026-11-22T12:00:00.000+0000' })).status, 404)
 })

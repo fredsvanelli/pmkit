@@ -579,6 +579,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
       record(item, [
         { field: 'timespent', fieldId: 'timespent', fieldtype: 'jira', from: spent(before), fromString: spent(before), to: spent(before + worklog.timeSpentSeconds), toString: spent(before + worklog.timeSpentSeconds) },
         { field: 'WorklogId', fieldtype: 'jira', from: null, fromString: null, to: worklog.id, toString: worklog.id },
+        // Jira auto-adjusts the remaining estimate too; with no estimate set it goes from none to 0, then stays 0 (PMK-378, live).
+        { field: 'timeestimate', fieldId: 'timeestimate', fieldtype: 'jira', from: list.length > 1 ? '0' : null, fromString: list.length > 1 ? '0' : null, to: '0', toString: '0' },
       ], created)
       return { status: 201, json: structuredClone(worklog) }
     },
