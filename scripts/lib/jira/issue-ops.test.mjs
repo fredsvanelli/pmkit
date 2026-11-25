@@ -531,3 +531,9 @@ test('an update that writes fields and then has its sprint move ignored says the
   })
   assert.equal((await tracker.getIssue(sub)).title, 'Renamed')
 })
+
+test('a sprint move Jira answers and ignores for a work item that is no subtask names the work item to check', async () => {
+  const { fake, tracker } = setup({ sprints: [SPRINT], routes: { 'POST /rest/agile/1.0/sprint/1/issue': { status: 204 } } })
+  const [key] = seed(fake.state, 1)
+  await assert.rejects(tracker.updateIssue(key, { sprint: '1' }, ME), { code: 'CONFLICT', message: `Jira did not move ${key} to sprint 1`, nextStep: `Check ${key} on the sprint board in Jira` })
+})
