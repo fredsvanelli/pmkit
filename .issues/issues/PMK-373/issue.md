@@ -2,12 +2,14 @@
 id: PMK-373
 title: "Check the Jira epic, release and status-update flows against a live site"
 type: chore
-status: backlog
+status: in_progress
 priority: low
+assignee: fred
 parent: EPC-14
 milestone: jira
+branch: fredsvanelli/pmk-373-check-jira
 created: 2026-11-23T04:51:57.971Z
-updated: 2026-11-23T04:51:57Z
+updated: 2026-11-25T01:47:18Z
 ---
 
 ## Description
