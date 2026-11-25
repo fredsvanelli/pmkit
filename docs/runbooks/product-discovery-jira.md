@@ -120,7 +120,7 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
     node scripts/pmkit.mjs jira ideas list --json
     ```
 
-    Expect `available: false`, `reason: no_discovery_project`, `ideas: []` and `enableHint`: `Create a Jira Product Discovery project on acme.atlassian.net, or check that the token's owner can browse one`. The text output is one line, `Jira Product Discovery is not available on acme.atlassian.net:` and that hint. When the cached discovery has no Jira Product Discovery project (or not the one named, or not the idea's project or the delivery link type for a connect), pmkit reads Jira once more, so a project created since shows up.
+    Expect `available: false`, `reason: no_discovery_project`, `ideas: []` and `enableHint`: `Add Jira Product Discovery to acme.atlassian.net and create a project there, or check that the token's owner can browse one`. The text output is one line, `Jira Product Discovery is not available on acme.atlassian.net:` and that hint. When the cached discovery has no Jira Product Discovery project (or not the one named, or not the idea's project or the delivery link type for a connect), pmkit reads Jira once more, so a project created since shows up.
 
 ## Failures
 
@@ -132,4 +132,4 @@ Live check: skipped (no Jira credentials), see EPC-14. No step has run against a
 | A `--project` that is not a Jira Product Discovery project, even on a site with none | `NOT_FOUND` | Pass one of the keys the error lists |
 | No delivery link type on the site | `NOT_SUPPORTED` | Check that Jira Product Discovery is installed and its `Polaris work item link` type exists |
 | The site's link types could not be read | `NOT_SUPPORTED` | Check that the token's owner can browse the link types, then run `pmkit discover` |
-| No Jira Product Discovery project (step 10) | none: `available: false`, exit 0 | Create a Jira Product Discovery project, or use a token whose owner can browse one |
+| No Jira Product Discovery project (step 10) | none: `available: false`, exit 0 | Add Jira Product Discovery to the site and create a project there, or use a token whose owner can browse one |

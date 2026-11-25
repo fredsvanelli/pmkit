@@ -4,7 +4,7 @@ import { PmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
 import { API, isIssueKey, issuePath, lower, normalizeKey } from './ids.mjs'
 
-export const IDEAS_HINT = (site) => `Create a Jira Product Discovery project on ${site}, or check that the token's owner can browse one`
+export const IDEAS_HINT = (site) => `Add Jira Product Discovery to ${site} and create a project there, or check that the token's owner can browse one`
 export const INSIGHTS_UNREAD = "Jira's REST API does not return Jira Product Discovery insights, so insights are unread"
 
 const DELIVERY = ['polaris work item link', 'polaris issue link']

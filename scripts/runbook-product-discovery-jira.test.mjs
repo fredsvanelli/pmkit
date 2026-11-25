@@ -162,7 +162,7 @@ test('a site without Jira Product Discovery answers available: false with the hi
   // Step 10, in a fresh repository: the cached discovery of the first one still names the IDEA project, and a cache that has a JPD project is not read again.
   const { pmkit } = session()
   const off = { PMKIT_FAKE_NO_DISCOVERY: '1' }
-  const hint = "Create a Jira Product Discovery project on acme.atlassian.net, or check that the token's owner can browse one"
+  const hint = "Add Jira Product Discovery to acme.atlassian.net and create a project there, or check that the token's owner can browse one"
   const offList = body(pmkit(['jira', 'ideas', 'list', '--json'], off))
   assert.deepEqual([offList.available, offList.reason, offList.enableHint, offList.ideas], [false, 'no_discovery_project', hint, []])
   assert.equal(pmkit(['jira', 'ideas', 'list'], off).stdout.trim(), `Jira Product Discovery is not available on acme.atlassian.net: ${hint}`)
