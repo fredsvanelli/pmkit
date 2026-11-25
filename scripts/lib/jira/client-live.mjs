@@ -18,6 +18,9 @@
 // Then the plans flows (PMK-381), read-only: on a site without Jira Premium, the raw Plans read answers 403 and the real CLI's
 // jira plans list and get answer available false with the hint; on any edition but Free or Standard the test skips (the Premium
 // checks are the EPC-14 follow-up PMK-399).
+// Then the Jira Product Discovery flows (PMK-384), read-only: on a site without a Jira Product Discovery project, the real CLI's
+// jira ideas list answers available false with the hint and jira ideas connect refuses a key that is not an idea; on a site with
+// one the test skips (the votes field and delivery link checks wait on a site with Jira Product Discovery, see PMK-384).
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -44,6 +47,7 @@ import { createJiraClient } from './client.mjs'
 import { jiraCredential } from './credential.mjs'
 import { categoryOfStatus, discoveryView, fetchDiscovery } from './discovery.mjs'
 import { buildJiraCapabilities, sprintBoardHint } from './manifest.mjs'
+import { IDEAS_HINT } from './ideas.mjs'
 import { PLANS_HINT } from './plans.mjs'
 import { requiredFields } from './transitions.mjs'
 
@@ -982,6 +986,31 @@ test('jira plans answer available false on a site without Premium', { skip: NEED
     assert.deepEqual(off(cli('jira', 'plans', 'get', '1')), [false, 'premium', PLANS_HINT, true])
     assert.equal(refused('jira', 'plans', 'get', 'abc').code, 'INVALID_INPUT')
     t.diagnostic(`license ${edition}; the Plans list answers 403; jira plans list and get answer available false`)
+  } finally {
+    cleanup()
+  }
+})
+
+// Jira Product Discovery (PMK-384), read-only. The owner's site has no Jira Product Discovery installed: no project, no Polaris
+// link type and no jira.polaris field, so only the off path can be checked.
+test('jira ideas answer available false on a site without Jira Product Discovery', { skip: NEEDS_SPACE }, async (t) => {
+  const { items: projects } = await client().paginate('/rest/api/3/project/search', { key: 'values' })
+  if (projects.some((project) => project.projectTypeKey === 'product_discovery')) {
+    return t.skip('the site has a Jira Product Discovery project: the votes field and delivery link checks are not written yet (PMK-384)')
+  }
+  const { cli, refused, cleanup } = liveRepo()
+  try {
+    const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
+    cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
+    const hint = IDEAS_HINT(SITE.toLowerCase())
+    for (const flags of [[], ['--limit', '1']]) {
+      const list = cli('jira', 'ideas', 'list', ...flags)
+      assert.deepEqual([list.available, list.reason, list.enableHint, list.site === SITE.toLowerCase(), list.ideas, list.hasMore], [false, 'no_discovery_project', hint, true, [], false])
+    }
+    const named = refused('jira', 'ideas', 'list', '--project', SPACE)
+    assert.deepEqual([named.code, named.nextStep], ['NOT_FOUND', hint])
+    assert.equal(refused('jira', 'ideas', 'connect', `${SPACE}-1`, `${SPACE}-2`, '--dry-run').code, 'NOT_FOUND')
+    t.diagnostic(`${projects.length} projects, none Product Discovery; jira ideas list answers available false; --project and connect answer NOT_FOUND`)
   } finally {
     cleanup()
   }
