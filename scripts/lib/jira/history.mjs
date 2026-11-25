@@ -9,7 +9,8 @@ import { worklogEvents } from './worklogs.mjs'
 const HOURS = 'timeoriginalestimate'
 const PLAIN = { summary: 'title', description: 'description', duedate: 'due' }
 const PARENT = ['IssueParentAssociation', 'Parent']
-const WORKLOG_ITEMS = ['timespent', 'WorklogId']
+// A deleted worklog also writes WorklogTimeSpent (PMK-378, live).
+const WORKLOG_ITEMS = ['timespent', 'WorklogId', 'WorklogTimeSpent']
 const accountOf = (user) => user?.accountId ?? null
 // The changelog names a status in English, while the site shows it in its viewer's language (PMK-367); its id gives the shown name.
 const statusName = (context, id, text) => context.raw.statuses.find((status) => status.id === String(id))?.name ?? text ?? null

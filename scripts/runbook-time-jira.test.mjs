@@ -127,6 +127,9 @@ test('the time tracking flows, step by step', () => {
   const history = body(pmkit(['issues', 'get', 'ENG-1', '--history', '--json'])).history
   assert.deepEqual(history.filter((event) => event.op === 'log_time').map((event) => event.minutes), [90, 45])
   assert.ok(!history.some((event) => String(event.field).startsWith('jira:timespent')))
+  // Jira auto-adjusts the remaining estimate with each worklog, as the live site showed (PMK-378): an update, no time.
+  assert.deepEqual(history.filter((event) => event.field === 'jira:timeestimate').map((event) => [event.from, event.to]), [[null, '0'], ['0', '0']])
+  assert.ok(!history.some((event) => String(event.field).startsWith('jira:Worklog')))
 
   // Step 6: a time of zero.
   assert.equal(failure(pmkit(['issues', 'log-time', 'ENG-1', '0', '--json'])).code, 'INVALID_INPUT')
