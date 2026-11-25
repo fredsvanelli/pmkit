@@ -18,4 +18,6 @@ Accepted
 
 - pmkit's `sprint` of a Jira issue is derived, not stored: reopening a done issue moves it from its closed sprint to no sprint.
 - A sprint of another board never counts, so an item in one reads as no sprint of this board.
+- A close through Jira's REST API leaves the unfinished work items in the closed sprint and Jira's backlog lists them, so the rule reads them as having no sprint, as Jira shows them. Checked live on 2026-11-24 (PMK-370).
+- `issues list --sprint none` does not yet list an item in another board's open sprint, which this rule reads as having no sprint (PMK-397).
 - Changing the rule changes velocity history for every closed sprint, so it needs a note in the changelog.

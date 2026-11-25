@@ -81,6 +81,23 @@ test('step 2 on a team-managed space reads its own estimate field', () => {
   assert.deepEqual(found.fields.estimate, { id: 'customfield_10016', name: 'Story point estimate' })
 })
 
+// PMK-370, seen live: Jira lists a cross-project Scrum board under a team-managed space too; discover keeps the space's own board.
+test('step 2 on a team-managed space that a cross-project Scrum board also takes reads the space\'s own board', () => {
+  const feature = (key, on) => ({ boardId: 1, feature: `jsw.agility.${key}`, state: on ? 'ENABLED' : 'DISABLED' })
+  const routes = {
+    'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [{ id: 4, name: 'Cross-project', type: 'scrum' }, { id: 1, name: 'ENG board', type: 'simple', location: { projectKey: 'ENG' } }] } },
+    'GET /rest/agile/1.0/board/1/configuration': { json: { id: 1, name: 'ENG board', type: 'simple' } },
+    'GET /rest/agile/1.0/board/1/features': { json: { features: [feature('sprints', true), feature('estimation', false), feature('releases', false)] } },
+    'GET /rest/agile/1.0/board/4/configuration': { json: { id: 4, name: 'Cross-project' } },
+    'GET /rest/agile/1.0/board/4/features': { status: 400, json: { errorMessages: ['Board with id 4 is not an agility (Team-managed project) board.'] } },
+  }
+  const root = jiraRepo()
+  assert.equal(json(pmkit(root, ['discover', '--json'], { style: 'team-managed', routes })).space.style, 'team-managed')
+  const capabilities = json(pmkit(root, ['capabilities', '--json'], { style: 'team-managed', routes })).capabilities
+  assert.equal(capabilities.find((entry) => entry.id === 'cycles').path, 'native')
+  assert.equal(capabilities.find((entry) => entry.id === 'releases').path, 'absent')
+})
+
 test('step 2 on a site in another language finds the fields by their English name', () => {
   const found = json(pmkit(jiraRepo(), ['discover', '--json'], { locale: 'pt' }))
   assert.deepEqual(found.fields.start_date, { id: 'customfield_10015', name: 'Data de início' })

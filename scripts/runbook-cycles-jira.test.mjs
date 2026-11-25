@@ -74,7 +74,7 @@ function session() {
     return { code: result.status, stdout: result.stdout, stderr: result.stderr }
   }
   const write = (name, text) => fs.writeFileSync(path.join(root, 'tmp', name), text)
-  return { pmkit, write, root }
+  return { pmkit, write, root, stateFile: path.join(path.dirname(launch), 'state.json') }
 }
 
 const body = (result) => {
@@ -104,6 +104,7 @@ test('the runbook names every command the test runs', () => {
     'issues move ENG-2 done --json',
     'cycle list --json',
     'cycle open --start 2026-11-22 --json',
+    'cycle add ENG-2 --to 1 --json',
   ]
   for (const command of commands) assert.ok(text.includes(`node scripts/pmkit.mjs ${command}`), command)
   assert.ok(text.includes('PMK-370'))
@@ -200,4 +201,24 @@ test('a team-managed space with Sprints off names the Sprints feature', () => {
   const { error } = JSON.parse(result.stdout)
   assert.equal(error.code, 'NOT_SUPPORTED')
   assert.equal(error.nextStep, "Turn on Sprints in space ENG's features")
+})
+
+// PMK-370, seen live: Jira answers 204 to a subtask's sprint move and leaves it out; pmkit says so and names the parent.
+test('a subtask made in Jira is refused, naming its parent', () => {
+  const { pmkit, write, stateFile } = session()
+  write('title-1.txt', 'Plan the sprint')
+  body(pmkit(['cycle', 'open', '--start', '2026-11-22', '--goal', 'Ship sprints', '--json']))
+  assert.equal(body(pmkit(['issues', 'create', '--title-file', 'tmp/title-1.txt', '--type', 'feature', '--json'])).after.id, 'ENG-1')
+  // The subtask ENG-2 is made in Jira's UI: the test adds it to the fake's saved state.
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'))
+  const parent = state.items['ENG-1']
+  state.items['ENG-2'] = { ...structuredClone(parent), id: String(Number(parent.id) + 1), key: 'ENG-2', fields: { ...structuredClone(parent.fields), summary: 'Write the test', issuetype: { id: '10003', name: 'Sub-task' }, parent: { key: 'ENG-1' } } }
+  state.next.item += 1
+  fs.writeFileSync(stateFile, JSON.stringify(state))
+  const result = pmkit(['cycle', 'add', 'ENG-2', '--to', '1', '--json'])
+  assert.equal(result.code, 2, result.stdout)
+  const { error } = JSON.parse(result.stdout)
+  assert.equal(error.code, 'CONFLICT')
+  assert.equal(error.message, "Jira did not move ENG-2 to sprint 1: Jira keeps a subtask in its parent's sprint (ENG-1)")
+  assert.equal(error.nextStep, 'pmkit cycle add ENG-1 --to 1')
 })

@@ -259,6 +259,24 @@ test('a team-managed board reads its Sprints, Estimation and Releases features',
   assert.equal(sprintsOn(raw), true)
 })
 
+// PMK-370, seen live: Jira lists a cross-project Scrum board whose filter takes the space's items under the space too, and refuses
+// its features (400, not a team-managed board). A team-managed space's board is the one located in the space.
+test('a team-managed space reads its own board, not a cross-project Scrum board Jira lists with it', async () => {
+  const other = { id: 4, name: 'Cross-project', type: 'scrum' }
+  const own = { id: 1, name: 'ENG board', type: 'simple', location: { projectId: 10001, projectKey: 'ENG' } }
+  const { raw } = await discover({
+    style: 'team-managed',
+    board: 'simple',
+    features: { sprints: true, estimation: true, releases: false },
+    routes: {
+      'GET /rest/agile/1.0/board': { json: { startAt: 0, maxResults: 50, total: 2, isLast: true, values: [own, other].reverse() } },
+      'GET /rest/agile/1.0/board/4/configuration': { json: { id: 4, name: 'Cross-project' } },
+      'GET /rest/agile/1.0/board/4/features': { status: 400, json: { errorMessages: ['Board with id 4 is not an agility (Team-managed project) board.'] } },
+    },
+  })
+  assert.deepEqual(raw.board, { id: 1, type: 'simple', estimationField: 'customfield_10016', features: { sprints: true, estimation: true, releases: false } })
+})
+
 test('a company-managed space does not read board features', async () => {
   const { raw, fetch } = await discover()
   assert.equal(raw.board.features, undefined)

@@ -110,10 +110,11 @@ test('serverLimit only without steps and with sort created', async () => {
   assert.equal(translateFilter({}, ctx).serverLimit, undefined)
 })
 
+// The id goes unquoted: Jira reads a quoted sprint value as a sprint name, so sprint = "41" finds nothing (PMK-370, seen live).
 test('a sprint id, current and none become clauses and the sprint step', async () => {
   const ctx = await context()
-  assert.deepEqual(translateFilter({ sprint: '41' }, ctx), { jql: `${SCOPE} AND sprint = "41"${TAIL}`, clientSteps: ['sprint'], serverLimit: undefined })
-  assert.equal(translateFilter({ sprint: 'current' }, ctx, { activeId: '42' }).jql, `${SCOPE} AND sprint = "42"${TAIL}`)
+  assert.deepEqual(translateFilter({ sprint: '41' }, ctx), { jql: `${SCOPE} AND sprint = 41${TAIL}`, clientSteps: ['sprint'], serverLimit: undefined })
+  assert.equal(translateFilter({ sprint: 'current' }, ctx, { activeId: '42' }).jql, `${SCOPE} AND sprint = 42${TAIL}`)
   assert.deepEqual(translateFilter({ sprint: 'current' }, ctx), { empty: true })
   assert.deepEqual(translateFilter({ sprint: 'none' }, ctx), { jql: `${SCOPE} AND (sprint is EMPTY OR sprint not in openSprints())${TAIL}`, clientSteps: ['sprint'], serverLimit: undefined })
 })

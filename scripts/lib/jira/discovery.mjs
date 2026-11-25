@@ -50,10 +50,14 @@ async function optional(read, what, unread) {
   }
 }
 
-/** The space's first Scrum board, else its first board, with the board's estimate field. */
-async function readBoard(client, space) {
+/**
+ * The space's board, with its estimate field: on a team-managed space the board located in the space (Jira also lists a
+ * cross-project board whose filter takes the space's items, PMK-370), else the first Scrum board, else the first board.
+ */
+async function readBoard(client, space, teamManaged) {
   const { items } = await client.paginate('/rest/agile/1.0/board', { query: { projectKeyOrId: space } })
-  const board = items.find((item) => item.type === 'scrum') ?? items[0]
+  const located = teamManaged ? items.find((item) => item.location?.projectKey?.toUpperCase() === space.toUpperCase()) : undefined
+  const board = located ?? items.find((item) => item.type === 'scrum') ?? items[0]
   if (!board) return null
   const config = await client.request('GET', `/rest/agile/1.0/board/${encodeURIComponent(board.id)}/configuration`)
   return { id: board.id, type: board.type ?? null, estimationField: config?.estimation?.field?.fieldId ?? null }
@@ -113,7 +117,7 @@ export async function fetchDiscovery(client, { space, now = () => new Date() }) 
     optional(() => client.request('GET', '/rest/api/3/issueLinkType'), 'link types', unread),
   ])
   const own = ownedBy(String(found.id))
-  const board = found.projectTypeKey === 'software' ? await optional(() => readBoard(client, space), 'boards', unread) : null
+  const board = found.projectTypeKey === 'software' ? await optional(() => readBoard(client, space, styleOf(found) === 'team-managed'), 'boards', unread) : null
   if (board && styleOf(found) === 'team-managed') {
     const features = await optional(() => readFeatures(client, board.id), 'board features', unread)
     if (features) board.features = features

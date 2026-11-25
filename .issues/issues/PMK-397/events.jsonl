@@ -1,0 +1,2 @@
+{"at":"2026-11-25T01:10:27Z","by":"fred","op":"create","to":{"id":"PMK-397","title":"Jira --sprint none leaves out an item in another board's open sprint","type":"bug","status":"backlog","priority":"low","labels":[],"parent":"EPC-14","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-11-25T01:10:27.050Z","updated":"2026-11-25T01:10:27Z"}}
+{"at":"2026-11-25T01:10:27Z","by":"fred","op":"link","field":"related","to":"PMK-370"}

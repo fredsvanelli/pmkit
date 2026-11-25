@@ -212,12 +212,24 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
     return name === null ? client.request('DELETE', path) : client.request('PUT', path, { body: name })
   }
 
+  /**
+   * The CONFLICT of a sprint move Jira answered 204 to and did not make, as for a subtask, which stays in its parent's sprint
+   * (PMK-370, seen live). `wrote` says a field or property write went through before the move.
+   */
+  function ignoredMove(before, item, to, wrote) {
+    const head = wrote ? `Jira updated ${before.id}, but did not move it to sprint ${to}` : `Jira did not move ${before.id} to sprint ${to}`
+    if (item.fields.issuetype?.subtask === true && before.parent) {
+      return new PmkitError('CONFLICT', `${head}: Jira keeps a subtask in its parent's sprint (${before.parent})`, `pmkit cycle add ${before.parent} --to ${to}`)
+    }
+    return new PmkitError('CONFLICT', head, `Check ${before.id} on the sprint board in Jira`)
+  }
+
   /** `sprints`, internal, is the board's raw Jira sprints when the caller (moveToCycle) has read them. */
   async function updateIssue(id, patch, actor, { dryRun = false, sprints: known } = {}) {
     await requireActor(actor)
     // A patch naming a sprint reads a cached discovery with no sprint board again first (PMK-393).
     if (typeof patch?.sprint === 'string') await getContext({ sprints: true })
-    const { issue: before, context } = await readItem(id)
+    const { item, issue: before, context } = await readItem(id)
     const plan = toFields(patch ?? {}, before, context, { now: now().toISOString(), sprints: await sprintsFor(patch ?? {}, context, known), versions: await versionsFor(patch ?? {}) })
     const changed = Object.keys(plan.fields).length > 0
     if (!changed && !plan.property && !plan.sprint) return { before, after: before }
@@ -240,7 +252,10 @@ export function issueOperations({ client, getContext, now = () => new Date(), sp
         throw new PmkitError('UPSTREAM', `Jira updated ${before.id}, but moving it to sprint ${to} failed: ${error.message}`, `pmkit cycle add ${before.id} --to ${to}`, { cause: error.code ?? error.name })
       }
     }
-    return { before, after: await afterOf(before.id) }
+    const after = await afterOf(before.id)
+    // A move to none is not checked: a done item then reads its last closed sprint (ADR 0016).
+    if (plan.sprint && plan.sprint.to !== null && after.sprint !== plan.sprint.to) throw ignoredMove(before, item, plan.sprint.to, changed || Boolean(plan.property))
+    return { before, after }
   }
 
   /** The move after the actor check: target, transition, screen fields, then one POST. */

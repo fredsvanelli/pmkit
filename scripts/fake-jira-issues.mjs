@@ -133,7 +133,7 @@ function linkItem(otherKey, verb, added) {
 
 // JQL: exactly the subset translateFilter and metricEvents emit; anything else is a 400.
 
-const TOKEN = /\s*(?:("(?:[^"\\]|\\.)*")|(>=|[=~<(),])|([A-Za-z_][\w.-]*))/y
+const TOKEN = /\s*(?:("(?:[^"\\]|\\.)*")|(>=|[=~<(),])|([A-Za-z_][\w.-]*|[0-9]+))/y
 const FORMS = { '=': ['project', 'assignee', 'labels', 'parent', 'sprint', 'fixVersion'], in: ['status', 'issuetype', 'parent', 'key'], is: ['assignee', 'sprint', 'fixVersion'], '>=': ['updated'], '<': ['updated'] }
 const VALUE = {
   project: (item) => item.key.slice(0, item.key.lastIndexOf('-')),
@@ -207,8 +207,17 @@ function parseJql(jql, sprintOf) {
       expect(')')
       return (item) => values.some((value) => same(field, VALUE[field](item), value))
     }
+    // As on the site, an unquoted sprint value is an id and a quoted one a name.
+    if (field === 'sprint') {
+      if (tokens[at]?.kind === 'word' && /^[0-9]+$/.test(tokens[at].value)) {
+        const id = tokens[at++].value
+        return (item) => VALUE.sprint(item).includes(id)
+      }
+      const name = string()
+      return (item) => (item.sprintIds ?? []).some((id) => sprintOf(id).name === name)
+    }
     const value = string()
-    if (field === 'sprint' || field === 'fixVersion') return (item) => VALUE[field](item).includes(value)
+    if (field === 'fixVersion') return (item) => VALUE[field](item).includes(value)
     if (field === 'labels') return (item) => item.fields.labels.includes(value)
     if (field !== 'updated') return (item) => same(field, VALUE[field](item), value)
     const day = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : fail()
@@ -350,7 +359,7 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
   /** The item as a read returns it; `propertyKeys` limits the properties (all when undefined). */
   function render(item, propertyKeys) {
     const logged = state.worklogs[item.key] ?? []
-    const fields = { ...item.fields, worklog: { startAt: 0, maxResults: 20, total: logged.length, worklogs: structuredClone(logged.slice(0, 20)) }, fixVersions: (item.fields.fixVersions ?? []).map((entry) => versionField(versionOf(entry.id))), subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
+    const fields = { ...item.fields, issuetype: { ...item.fields.issuetype, subtask: isSubtaskType(item) }, worklog: { startAt: 0, maxResults: 20, total: logged.length, worklogs: structuredClone(logged.slice(0, 20)) }, fixVersions: (item.fields.fixVersions ?? []).map((entry) => versionField(versionOf(entry.id))), subtasks: subtasksOf(item.key).map((sub) => brief(sub.key)), issuelinks: linksOf(item.key) }
     if (item.sprintIds?.length) fields[SPRINT_FIELD] = item.sprintIds.map((id) => sprintField(sprintOf(id)))
     else fields[SPRINT_FIELD] = null
     const read = structuredClone({ id: item.id, key: item.key, fields })
@@ -380,6 +389,8 @@ export function fakeJiraIssues({ state = emptyState(), requireResolution = true,
     if (issues.length === 0) refuse(400, {}, ['issues must name at least one work item.'])
     if (target?.state === 'closed') refuse(400, {}, ['Cannot add issues to a closed sprint.'])
     for (const item of issues) {
+      // ponytail: the site answers 204 and leaves a subtask alone (it then shows the parent's sprint); the fake leaves it empty
+      if (isSubtaskType(item)) continue
       const before = item.sprintIds ?? []
       const after = [...before.filter((id) => sprintOf(id).state === 'closed'), ...(target ? [target.id] : [])]
       if (after.join() === before.join()) continue
