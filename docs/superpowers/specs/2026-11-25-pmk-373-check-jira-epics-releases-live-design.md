@@ -104,3 +104,19 @@ Answered on 2026-11-25 by the coordinator; the design is approved.
 ## Left to the builder
 
 Assertion wording, the retry interval, the names of versions and work items, and the error wording within the shapes above.
+
+## Result
+
+Run on 2026-11-25 against the owner's Jira Cloud site (host kept out of the repository, the PR and the issue), space Kudos: `PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> PMKIT_LIVE_JIRA_SPACE=<key> node --test scripts/lib/jira/client-live.mjs`, exit 0, 15 pass, 3 skip (scoped token, company-managed space, limited token: as before). No output held the token, the email or the host. Kudos after the run: no work item, no version, no sprint added, Releases off again (Backlog, Sprints, Estimation on, as found).
+
+| Check | AC | Result |
+|---|---|---|
+| `epic create` (dry run, real run with Start date and due date), `issues parent`, `issues list` without the epic, `epic list`, `get`, `progress`, `update`, `move` to in progress and done (health dropped) | 1 | **fail, then pass after the fix**: the dry run showed `Em análise` (an in-progress status) while Jira made the epic in `Tarefas pendentes`. Jira's statuses list is not in workflow order, and both `epic create` and `issues create` dry runs took its first entry; they now take the type's first To Do-category status (fake and runbook serve To Do last, as the site does). Team-managed only: company-managed skipped (owner's decision), open in the PR |
+| `epic update-status` is a comment whose `pmkit.statusUpdate` property Jira keeps and returns with `expand=properties`; a plain comment is not listed by `epic updates`; `epic get` reads the health | 2 | pass |
+| Version paging (page size 1, archived included), `release create` (dry run sends nothing), `release list` and `get`, `issues update --release` sends `fixVersions [{ id }]`, `release mark-released` (dry run sends nothing; real run `released: true`, today's date) | 3 | pass |
+| A version named like the release's id: Jira's `fixVersion = "<id>"` returns both versions' items | 4 | **fail, then pass after the fix**: `release issues` listed the name-alike's item; a client step now keeps only the release's own. PMK-398 closed as a duplicate (the quoted id does find the version's items) |
+| `release create` with the name in another case, or an archived version's name | 5 | **fail, then pass after the fix**: Jira's 400 came back as `INVALID_INPUT` in the site's language; now `CONFLICT` before any write |
+| An archived fix version on an item through `issues update --release` and `--release none` | 6 | pass: Jira keeps it on every write, pmkit shows only the live one |
+| PMK-364, PMK-366, PMK-367, PMK-368, PMK-370 and PMK-393 checks, rerun | — | pass |
+
+Also recorded: Jira makes versions while the Releases feature is off (release writes stay ungated, Interview Q4).

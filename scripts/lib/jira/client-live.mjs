@@ -10,6 +10,9 @@
 // board's Sprints, Estimation and Releases features, and the real CLI's cycle list answers while Sprints is on.
 // Then the sprint flows (PMK-370): the real CLI opens, fills and closes sprints on the throwaway space's sprint board, each answer
 // checked against Jira's raw sprint and work items, and deletes every sprint and work item it made.
+// Then the epic, status update and release flows (PMK-373): the real CLI creates, reads, edits and moves an epic, publishes a status
+// update, and creates, fills and releases versions, each answer checked against Jira's raw answers. It turns the board's Releases
+// feature on when off and off again, and deletes every work item and version it made.
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -31,6 +34,7 @@ import { fileURLToPath } from 'node:url'
 import nodeTest from 'node:test'
 import { isPmkitError } from '../errors.mjs'
 import { addDays } from '../local/sprints.mjs'
+import { adfToText, textToAdf } from './adf.mjs'
 import { createJiraClient } from './client.mjs'
 import { jiraCredential } from './credential.mjs'
 import { categoryOfStatus, discoveryView, fetchDiscovery } from './discovery.mjs'
@@ -698,4 +702,182 @@ test('sprint flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => 
     t.diagnostic(stray.length === 0 ? 'deleted the run\'s sprints' : `sprints left to delete by hand: ${stray.map((sprint) => sprint.id).join(', ')}`)
   }
   assert.deepEqual(left, [], 'work items or sprints left in the throwaway space')
+})
+
+// Epic, status update and release flows (PMK-373). The CLI writes to the throwaway space only. Every work item and version it makes
+// is deleted in the finally, and the Releases feature, when the run turned it on, is turned off again.
+test('epic, status update and release flows on the throwaway space', { skip: NEEDS_SPACE }, async (t) => {
+  const { jira, raw } = await discoverSpace(SPACE)
+  const epicType = raw.workTypes.find((type) => type.level === 'epic')
+  if (!epicType) return t.skip('the throwaway space has no epic work type')
+  const versionsPath = `/rest/api/3/project/${encodeURIComponent(SPACE)}/version`
+  const rawVersions = async () => (await jira.paginate(versionsPath, { key: 'values' })).items
+  const rawItem = (key, fields) => jira.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { query: { fields } })
+  const before = new Set((await rawVersions()).map((version) => version.id))
+  const board = raw.board?.id
+  const toggleReleases = (enabling) => jira.request('PUT', `/rest/agile/1.0/board/${encodeURIComponent(board)}/features`, { body: { boardId: board, feature: FEATURE.releases, enabling } })
+  const run = `pmkit${randomHex(4)}`
+  const today = new Date().toISOString().slice(0, 10)
+  const target = addDays(today, 30)
+  const created = []
+  const made = (key) => {
+    created.push(key)
+    t.diagnostic(`created ${key}`)
+    return key
+  }
+  const madeVersion = (version) => {
+    t.diagnostic(`created version ${version.id}`)
+    return version
+  }
+  const { root, cli, refused, cleanup } = liveRepo()
+  const file = (name, text) => {
+    const at = path.join(root, name)
+    fs.writeFileSync(at, text)
+    return at
+  }
+  let left = []
+  let toggled = false
+  try {
+    if (raw.board?.features?.releases === false) {
+      await toggleReleases(true)
+      toggled = true
+      t.diagnostic('turned Releases on for the run')
+    }
+    const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
+    cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
+    const capabilities = cli('capabilities').capabilities
+    const entry = (id) => capabilities.find((item) => item.id === id)
+    assert.deepEqual([entry('deliverables').path, entry('releases').path, entry('status_update').path, entry('status_update').detail], ['native', 'native', 'derived', { source: 'comment' }])
+    const startField = cli('discover').fields.start_date?.id
+    assert.ok(startField, 'setup mapped no start date field')
+
+    // AC 1: create (the dry run sends nothing), read, list, progress, update and move an epic.
+    const create = ['epic', 'create', '--title-file', file('epic.txt', `pmkit-live ${run} epic`), '--start', today, '--target', target, '--description-file', file('epic.md', 'Bill every customer monthly.')]
+    const dry = cli(...create, '--dry-run')
+    assert.equal(dry.after.id, null)
+    const epic = cli(...create).after
+    made(epic.id)
+    assert.equal(dry.after.status.name, epic.status.name, 'the dry run names another first status')
+    assert.deepEqual([epic.start, epic.target, epic.description], [today, target, 'Bill every customer monthly.'])
+    assert.ok(epic.url.endsWith(`/browse/${epic.id}`), 'the epic url is not the browse page')
+    const rawEpic = await rawItem(epic.id, `issuetype,duedate,${startField}`)
+    assert.deepEqual([String(rawEpic.fields.issuetype.id), rawEpic.fields.duedate, rawEpic.fields[startField]], [epicType.id, target, today])
+
+    const x = made(cli('issues', 'create', '--title', `pmkit-live ${run} child`, '--type', 'feature').after.id)
+    assert.equal(cli('issues', 'parent', x, epic.id).after.parent, epic.id)
+    assert.equal((await rawItem(x, 'parent')).fields.parent?.key, epic.id)
+    await eventually(() => {
+      const ids = cli('issues', 'list').issues.map((issue) => issue.id)
+      assert.ok(ids.includes(x) && !ids.includes(epic.id), 'issues list does not list the child alone of the two')
+    })
+    await eventually(() => assert.ok(cli('epic', 'list').some((item) => item.id === epic.id), 'epic list does not list the epic'))
+    assert.deepEqual(cli('epic', 'get', epic.id), epic)
+    await eventually(() => {
+      const progress = cli('epic', 'progress', epic.id)
+      assert.deepEqual([progress.total, progress.done, progress.open], [1, 0, [x]])
+    })
+    const renamed = `pmkit-live ${run} epic v2`
+    assert.equal(cli('epic', 'update', epic.id, '--title', renamed).after.title, renamed)
+    assert.equal((await rawItem(epic.id, 'summary')).fields.summary, renamed)
+
+    // AC 2: the status update is a comment whose property Jira keeps and returns with expand=properties; a plain comment is no update.
+    const update = cli('epic', 'update-status', epic.id, '--health', 'at_risk', '--body-file', file('update.md', 'The payment provider is late.')).after
+    assert.deepEqual([update.health, update.author, update.body], ['at_risk', (await jira.session()).viewer.accountId, 'The payment provider is late.'])
+    const commentsPath = `/rest/api/3/issue/${encodeURIComponent(epic.id)}/comment`
+    const [comment] = (await jira.request('GET', commentsPath, { query: { expand: 'properties' } })).comments
+    assert.deepEqual(comment.properties, [{ key: 'pmkit.statusUpdate', value: { health: 'at_risk' } }])
+    assert.match(adfToText(comment.body), /^Status update: At risk/)
+    await jira.request('POST', commentsPath, { body: { body: textToAdf('pmkit-live plain comment') } })
+    assert.deepEqual(cli('epic', 'updates', epic.id).map((item) => [item.health, item.body]), [['at_risk', 'The payment provider is late.']])
+    assert.equal(cli('epic', 'get', epic.id).health, 'at_risk')
+
+    cli('epic', 'move', epic.id, 'in_progress')
+    assert.equal((await rawItem(epic.id, 'status')).fields.status.statusCategory.key, 'indeterminate')
+    cli('epic', 'move', epic.id, 'done')
+    assert.equal((await rawItem(epic.id, 'status')).fields.status.statusCategory.key, 'done')
+    assert.equal(cli('epic', 'get', epic.id).health, undefined)
+
+    // AC 3: release create (the dry run sends nothing), list and get, over Jira's version.
+    const name = `pmkit-live-${run}`
+    assert.equal(cli('release', 'create', name, '--target', target, '--dry-run').after.id, name)
+    assert.deepEqual((await rawVersions()).filter((version) => !before.has(version.id)), [])
+    const release = cli('release', 'create', name, '--target', target).after
+    assert.deepEqual(release, { id: name, name, target, state: 'planned', description: '' })
+    const version = madeVersion((await rawVersions()).find((item) => item.name === name))
+    assert.deepEqual([version.releaseDate, version.released, version.archived], [target, false, false])
+    assert.ok(cli('release', 'list').some((item) => item.id === name), 'release list does not list the release')
+    assert.deepEqual(cli('release', 'get', name), release)
+
+    // AC 4: Jira's fixVersion = "<id>" also matches a version named like the id; release issues keeps only the release's own.
+    const alike = madeVersion(await jira.request('POST', '/rest/api/3/version', { body: { name: version.id, projectId: raw.space.id } }))
+    const y = made(cli('issues', 'create', '--title', `pmkit-live ${run} alike`, '--type', 'feature', '--release', alike.name).after.id)
+    assert.equal(cli('issues', 'update', x, '--release', name).after.release, name)
+    assert.deepEqual((await rawItem(x, 'fixVersions')).fields.fixVersions.map((item) => item.id), [version.id])
+    await eventually(async () => {
+      const { issues } = await jira.request('GET', '/rest/api/3/search/jql', { query: { jql: `project = ${SPACE} AND fixVersion = "${version.id}"`, fields: 'summary' } })
+      assert.deepEqual(issues.map((item) => item.key).sort(), [x, y].sort())
+    })
+    assert.deepEqual(cli('release', 'issues', name).map((issue) => issue.id), [x])
+
+    // AC 5: a name taken in another case, or by an archived version, is CONFLICT and adds no version.
+    const upper = refused('release', 'create', name.toUpperCase())
+    assert.deepEqual([upper.code, upper.message], ['CONFLICT', `release ${name.toUpperCase()} is taken by version ${name}, which differs only in case`])
+    const old = madeVersion(await jira.request('POST', '/rest/api/3/version', { body: { name: `${name}-old`, projectId: raw.space.id } }))
+    await jira.request('PUT', `/rest/api/3/issue/${encodeURIComponent(y)}`, { body: { fields: { fixVersions: [{ id: alike.id }, { id: old.id }] } } })
+    await jira.request('PUT', `/rest/api/3/version/${encodeURIComponent(old.id)}`, { body: { archived: true } })
+    const archived = refused('release', 'create', old.name)
+    assert.deepEqual([archived.code, archived.message], ['CONFLICT', `release ${old.name} is taken by archived version ${old.name}`])
+    assert.equal((await rawVersions()).filter((item) => !before.has(item.id)).length, 3)
+
+    // AC 6: Jira keeps an archived fix version on any write; pmkit shows only the live one.
+    const fixIds = async (key) => (await rawItem(key, 'fixVersions')).fields.fixVersions.map((item) => item.id).sort()
+    const shown = cli('issues', 'get', y)
+    assert.deepEqual([shown.release, shown.releases], [alike.name, undefined])
+    assert.equal(cli('issues', 'update', y, '--release', 'none').after.release, undefined)
+    assert.deepEqual(await fixIds(y), [old.id])
+    cli('issues', 'update', y, '--release', alike.name)
+    assert.deepEqual(await fixIds(y), [alike.id, old.id].sort())
+
+    // AC 3: the version list pages (archived versions included), and release list leaves the archived one out.
+    const paged = (await jira.paginate(versionsPath, { key: 'values', pageSize: 1 })).items
+    assert.deepEqual(paged.map((item) => item.id), (await rawVersions()).map((item) => item.id))
+    assert.ok(paged.some((item) => item.id === old.id && item.archived), 'the paged list does not hold the archived version')
+    assert.ok(!cli('release', 'list').some((item) => item.id === old.name), 'release list shows the archived version')
+
+    // AC 3: mark released (the dry run sends nothing) is PUT released with today's date.
+    assert.equal(cli('release', 'mark-released', name, '--dry-run').after.state, 'released')
+    const versionPath = `/rest/api/3/version/${encodeURIComponent(version.id)}`
+    assert.equal((await jira.request('GET', versionPath)).released, false)
+    const marked = cli('release', 'mark-released', name)
+    assert.deepEqual([marked.after.state, marked.after.released, marked.unfinished.map((issue) => issue.id)], ['released', `${today}T12:00:00Z`, [x]])
+    const released = await jira.request('GET', versionPath)
+    assert.deepEqual([released.released, released.releaseDate], [true, today])
+
+    t.diagnostic(`epic created, listed, updated, moved to done; status update kept its property; ${paged.length} versions paged one by one; name-alike left out of release issues; case and archived names refused CONFLICT; archived fix version kept`)
+  } finally {
+    cleanup()
+    left = await removeAll(jira, created, run, t)
+    for (const version of await rawVersions().catch(() => [])) {
+      if (before.has(version.id)) continue
+      try {
+        await jira.request('DELETE', `/rest/api/3/version/${encodeURIComponent(version.id)}`)
+      } catch {
+        left.push(`version ${version.id}`)
+      }
+    }
+    const stray = (await rawVersions().catch(() => [{ id: 'unread' }])).filter((version) => !before.has(version.id))
+    left.push(...stray.map((version) => `version ${version.id}`).filter((item) => !left.includes(item)))
+    if (toggled) {
+      try {
+        await toggleReleases(false)
+        const { features } = await jira.request('GET', `/rest/agile/1.0/board/${encodeURIComponent(board)}/features`)
+        if (features.some((item) => item.feature === FEATURE.releases && item.state === 'ENABLED')) left.push('the Releases feature')
+      } catch {
+        left.push('the Releases feature')
+      }
+    }
+    t.diagnostic(stray.length === 0 ? 'deleted the run\'s versions' : `versions left to delete by hand: ${stray.map((version) => version.id).join(', ')}`)
+    if (toggled) t.diagnostic(left.includes('the Releases feature') ? 'Releases is still on: turn it off by hand' : 'turned Releases off again')
+  }
+  assert.deepEqual(left, [], 'work items, versions or the Releases feature left changed in the throwaway space')
 })

@@ -2,7 +2,7 @@
 
 The epic, status update and release commands on a repository whose tracker is Jira Cloud (PMK-79): an epic is a work item of the space's epic-level work type, a status update is a comment on the epic that pmkit marks as one, and a release is a version of the space, named by the version name. `scripts/runbook-epics-releases-jira.test.mjs` runs every step below with the real CLI and a stateful fake Jira in place of `fetch`, with the fake's state saved to a file between runs and the clock fixed at 2026-11-22 12:00 UTC (`PMKIT_NOW`), so `npm test` checks this runbook.
 
-Live check: skipped. No Jira credentials exist, so no step has run against a real site; PMK-373 in EPC-14 lists what a follow-up settles: epics on company-managed and team-managed spaces, comment properties, the version calls and `fixVersions`, and how JQL reads a quoted version id. Publishing status updates to Atlassian Home is PMK-372.
+Live check: passed on 2026-11-25 (PMK-373) on a real team-managed space of a Jira Cloud site in Portuguese, through `scripts/lib/jira/client-live.mjs` (`PMKIT_LIVE`; its header has the command): `capabilities`, `epic create` (dry run and real run, with the Start date field and the due date), `issues parent`, `issues list` without the epic, `epic list`, `get`, `progress`, `update`, `update-status` and `updates` (Jira keeps the comment's `pmkit.statusUpdate` property and returns it with `expand=properties`; a plain comment is no update), `epic move` to in progress and done, `release create` (dry run and real run), `release list`, `get` and `issues`, `issues update --release`, the two `CONFLICT` cases of the Failures table, and `release mark-released` (dry run and real run). The run found and fixed three differences from the fake: a version named like another's id was in `release issues` (step 8), a create dry run showed an in-progress status (Jira's statuses list is not in workflow order), and a taken name came back as Jira's own 400. Skipped (owner's decision): a company-managed space and a token without admin rights. Publishing status updates to Atlassian Home is PMK-372.
 
 ## Before you start
 
@@ -20,6 +20,8 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
       feature: Story
   ```
 
+- Jira makes versions even when a team-managed space's Releases feature is off, and pmkit's release commands do not check it; `capabilities` then reports `releases` absent. Turn Releases on in the space's features to see versions in Jira.
+- Jira keeps an archived fix version on a work item whatever a write sends: `issues update --release` never drops it, and pmkit does not show it.
 - Titles and bodies go through files in `tmp/`, written with the file tool:
   - `tmp/epic.txt`: `Launch billing`
   - `tmp/epic-2.txt`: `Launch billing v2`
@@ -47,7 +49,7 @@ Live check: skipped. No Jira credentials exist, so no step has run against a rea
    node scripts/pmkit.mjs epic create --title-file tmp/epic.txt --start 2026-11-23 --target 2026-12-31 --description-file tmp/epic.md --json
    ```
 
-   Expect the dry run to show `after` with `id: null` and to create nothing (`epic list` is `[]`). The real run gives `ENG-1`, status `To Do` (category `todo`), `start` `2026-11-23` (the Start date field), `target` `2026-12-31` (the due date), the description and `url` `https://acme.atlassian.net/browse/ENG-1`.
+   Expect the dry run to show `after` with `id: null` and status `To Do` (the Epic type's first status in Jira's To Do category: Jira's statuses list is not in workflow order, and the test's Jira lists To Do last), and to create nothing (`epic list` is `[]`). The real run gives `ENG-1`, status `To Do` (category `todo`), `start` `2026-11-23` (the Start date field), `target` `2026-12-31` (the due date), the description and `url` `https://acme.atlassian.net/browse/ENG-1`.
 
 3. Create a work item, put it under the epic, and list:
 
