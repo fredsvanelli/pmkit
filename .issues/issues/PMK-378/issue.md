@@ -2,7 +2,7 @@
 id: PMK-378
 title: Check the Jira time tracking flows against a live site
 type: chore
-status: in_progress
+status: in_review
 priority: low
 assignee: fred
 parent: EPC-14
@@ -10,7 +10,7 @@ related: [PMK-80]
 milestone: jira
 branch: fredsvanelli/pmk-378-check-jira
 created: 2026-11-23T05:37:43.860Z
-updated: 2026-11-25T03:35:19Z
+updated: 2026-11-25T04:01:52Z
 ---
 
 ## Description
