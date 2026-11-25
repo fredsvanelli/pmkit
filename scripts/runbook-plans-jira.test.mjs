@@ -92,7 +92,7 @@ test('the runbook names every command the test runs', () => {
   ]
   for (const command of commands) assert.ok(text.includes(`node scripts/pmkit.mjs ${command}\n`), command)
   assert.ok(text.includes('PMK-82') && text.includes('EPC-14') && text.includes('/pmkit:jira:plans-scenarios'))
-  assert.ok(text.includes('Live check: skipped'))
+  assert.ok(text.includes('Live check (PMK-381') && text.includes('PMK-399'), 'the runbook records the live run and its Premium follow-up')
 })
 
 test('the Jira plans flows, step by step', () => {

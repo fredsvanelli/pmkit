@@ -15,6 +15,9 @@
 // feature on when off and off again, and deletes every work item and version it made.
 // Then the time tracking flows (PMK-378): the real CLI logs time and reads the entries, history and metric events of a work item,
 // against Jira's raw worklogs, search and changelog, edits and deletes a worklog through the raw client, and deletes the work item.
+// Then the plans flows (PMK-381), read-only: on a site without Jira Premium, the raw Plans read answers 403 and the real CLI's
+// jira plans list and get answer available false with the hint; on a Premium site the test skips (the Premium checks are an
+// EPC-14 follow-up).
 // `npm test` does not load it (the name does not end in .test.mjs), and scripts/run-tests.mjs strips PMKIT_LIVE from its child.
 //
 //   PMKIT_LIVE=1 PMKIT_LIVE_JIRA_SITE=<host> [PMKIT_LIVE_JIRA_SPACE=<key>] [PMKIT_LIVE_JIRA_SCOPED_TOKEN=<token>] \
@@ -41,6 +44,7 @@ import { createJiraClient } from './client.mjs'
 import { jiraCredential } from './credential.mjs'
 import { categoryOfStatus, discoveryView, fetchDiscovery } from './discovery.mjs'
 import { buildJiraCapabilities, sprintBoardHint } from './manifest.mjs'
+import { PLANS_HINT } from './plans.mjs'
 import { requiredFields } from './transitions.mjs'
 
 const env = process.env
@@ -953,4 +957,31 @@ test('time tracking flows on the throwaway space', { skip: NEEDS_SPACE }, async 
     left = await removeAll(jira, created, run, t)
   }
   assert.deepEqual(left, [], 'work items left in the throwaway space')
+})
+
+// Plans (PMK-381), read-only. Every Plans read needs Jira Premium or Enterprise; on another edition Jira answers 403 naming the
+// Administer Jira permission even to an admin, so pmkit cannot tell the two causes apart and its one hint names both.
+test('jira plans answer available false on a site without Premium', { skip: NEEDS_SPACE }, async (t) => {
+  const jira = client()
+  const { applications = [] } = await jira.request('GET', '/rest/api/3/instance/license')
+  const edition = applications.find((app) => app.id === 'jira-software')?.plan ?? 'unlicensed'
+  if (['PREMIUM', 'ENTERPRISE'].includes(edition)) return t.skip(`the site is on Jira ${edition}: the Premium checks are an EPC-14 follow-up`)
+  const refusal = await failure(jira.request('GET', '/rest/api/3/plans/plan'))
+  assert.deepEqual([refusal.code, refusal.details?.jira?.status], ['AUTH', 403])
+
+  const { cli, refused, cleanup } = liveRepo()
+  try {
+    const proposal = cli(...INIT(), '--space', SPACE, '--dry-run')
+    cli(...INIT(), '--space', SPACE, ...acceptAll(proposal))
+    const off = (answer) => [answer.available, answer.reason, answer.enableHint, answer.site === SITE.toLowerCase()]
+    for (const flags of [[], ['--archived', '--trashed', '--limit', '1']]) {
+      const list = cli('jira', 'plans', 'list', ...flags)
+      assert.deepEqual([...off(list), list.plans, list.hasMore], [false, 'premium', PLANS_HINT, true, [], false])
+    }
+    assert.deepEqual(off(cli('jira', 'plans', 'get', '1')), [false, 'premium', PLANS_HINT, true])
+    assert.equal(refused('jira', 'plans', 'get', 'abc').code, 'INVALID_INPUT')
+    t.diagnostic(`license ${edition}; the Plans list answers 403; jira plans list and get answer available false`)
+  } finally {
+    cleanup()
+  }
 })
