@@ -944,7 +944,8 @@ test('time tracking flows on the throwaway space', { skip: NEEDS_SPACE }, async 
     assert.ok(changelog.some((entry) => entry.items.some((item) => item.field === 'WorklogTimeSpent')), 'the delete wrote no WorklogTimeSpent item')
     history = cli('issues', 'get', x, '--history').history
     assert.deepEqual([timeEvents(history).length, timeEvents(history).filter((minutes) => minutes === 30).length], [21, 1])
-    assert.deepEqual(counted(history), [])
+    // Any other jira: item Jira writes on an edit or a delete would show here; the remaining estimate is the only one kept (Q2).
+    assert.deepEqual([...new Set(history.filter((event) => String(event.field).startsWith('jira:')).map((event) => event.field))], ['jira:timeestimate'])
 
     t.diagnostic('worklogs logged, paged and capped at 20 in a search; metric events read all 22; edit and delete add no jira: update')
   } finally {
