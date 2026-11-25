@@ -2,13 +2,15 @@
 id: PMK-384
 title: Check the Jira Product Discovery flows against a live site
 type: chore
-status: backlog
+status: in_progress
 priority: low
+assignee: fred
 parent: EPC-14
 related: [PMK-83]
 milestone: jira
+branch: fredsvanelli/pmk-384-check
 created: 2026-11-23T18:14:42.217Z
-updated: 2026-11-23T18:14:46Z
+updated: 2026-11-25T05:22:56Z
 ---
 
 ## Description
